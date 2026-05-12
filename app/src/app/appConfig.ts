@@ -1,5 +1,3 @@
-import Constants from "expo-constants";
-
 type ExtraConfig = {
   defaultRelayUrl?: string;
   terminal?: {
@@ -8,7 +6,11 @@ type ExtraConfig = {
   };
 };
 
-const extra = (Constants.expoConfig?.extra ?? {}) as ExtraConfig;
+type AppGlobal = typeof globalThis & {
+  __OMNIWORK_APP_CONFIG__?: ExtraConfig;
+};
+
+const extra = (globalThis as AppGlobal).__OMNIWORK_APP_CONFIG__ ?? {};
 
 export const appConfig = {
   defaultRelayUrl: extra.defaultRelayUrl ?? "wss://relay.company.example/mobile",

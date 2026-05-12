@@ -2,7 +2,7 @@
 
 OmniWork is a mobile Codex TUI workbench prototype. The repository contains:
 
-- `app/`: Android/iOS app built with React Native + Expo.
+- `app/`: Android/iOS app built with React Native CLI.
 - `mac/agent`: TypeScript/Node.js Mac Agent.
 - `relay/server`: minimal TypeScript company-network relay.
 - `packages/`: shared TypeScript protocol and client packages.
@@ -20,8 +20,8 @@ Useful local commands:
 pnpm dev:relay
 pnpm dev:mac
 pnpm dev:app
-pnpm app:build:apk
-pnpm app:build:ipa
+pnpm app:build:android
+pnpm app:build:ios
 pnpm verify:app-auth
 pnpm verify:relay
 pnpm verify:mac-key

@@ -27,15 +27,15 @@
 推荐技术栈：
 
 - React Native。
-- Expo / Expo Dev Client。
+- React Native CLI。
 - TypeScript。
 - React Native 原生终端快照视图。
 
 安装交付要求：
 
-- Android 使用 EAS preview profile 产出可安装 APK。
-- iOS 使用 EAS preview/profile 或 ipa profile 产出可安装 IPA。
-- 本地开发支持 `expo run:android` 和 `expo run:ios`。
+- Android 使用 Gradle 产出可安装 APK。
+- iOS 使用 Xcode / `xcodebuild` 产出可安装 IPA。
+- 本地开发支持 `react-native run-android` 和 `react-native run-ios`。
 - bundle id / package name 必须可通过环境变量覆盖。
 - 默认要求 Relay 使用 `wss://`，Android 禁止明文流量。
 

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
-import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Dimensions, Keyboard, type KeyboardEvent, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import type { CodexSession, TerminalInputPayload } from "../../../../packages/protocol-ts/src/index.ts";
 import { createControlInput, createTextInput, type TerminalControlKey } from "../../../../packages/terminal-core/src/index.ts";
@@ -17,6 +17,7 @@ export interface TerminalScreenProps {
 const QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
   { label: "Esc", key: "escape" },
   { label: "Tab", key: "tab" },
+  { label: "Enter", key: "enter" },
   { label: "↑", key: "arrowUp" },
   { label: "↓", key: "arrowDown" },
   { label: "←", key: "arrowLeft" },
@@ -25,8 +26,33 @@ const QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
   { label: "Ctrl+D", key: "ctrlD" },
 ];
 
+const IOS_KEYBOARD_INPUT_GAP = 16;
+
+function getKeyboardBottomInset(event: KeyboardEvent): number {
+  return Math.max(0, Dimensions.get("window").height - event.endCoordinates.screenY);
+}
+
 export function TerminalScreen({ session, frame, status, onBack, onInput }: TerminalScreenProps): JSX.Element {
   const [draft, setDraft] = useState("");
+  const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS !== "ios") {
+      return undefined;
+    }
+
+    const changeSubscription = Keyboard.addListener("keyboardWillChangeFrame", (event) => {
+      setKeyboardBottomInset(getKeyboardBottomInset(event));
+    });
+    const hideSubscription = Keyboard.addListener("keyboardWillHide", () => {
+      setKeyboardBottomInset(0);
+    });
+
+    return () => {
+      changeSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   function sendDraft(): void {
     if (!draft) {
@@ -37,13 +63,15 @@ export function TerminalScreen({ session, frame, status, onBack, onInput }: Term
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, keyboardBottomInset > 0 && { paddingBottom: keyboardBottomInset + IOS_KEYBOARD_INPUT_GAP }]}>
       <View style={styles.toolbar}>
         <Pressable style={styles.backButton} onPress={onBack}>
           <Text style={styles.backText}>Sessions</Text>
         </Pressable>
-        <Text style={styles.meta}>{session.cwd}</Text>
-        {status ? <Text style={styles.status}>{status}</Text> : null}
+        <Pressable style={styles.sessionMetaArea} onPress={Keyboard.dismiss}>
+          <Text style={styles.meta}>{session.cwd}</Text>
+          {status ? <Text style={styles.status}>{status}</Text> : null}
+        </Pressable>
       </View>
 
       <NativeTerminalView frame={frame} />
@@ -64,6 +92,7 @@ export function TerminalScreen({ session, frame, status, onBack, onInput }: Term
           autoCorrect={false}
           placeholder="Send prompt to Codex"
           placeholderTextColor="#66727c"
+          returnKeyType="send"
           style={styles.input}
           onSubmitEditing={sendDraft}
         />
@@ -82,6 +111,12 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  sessionMetaArea: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,

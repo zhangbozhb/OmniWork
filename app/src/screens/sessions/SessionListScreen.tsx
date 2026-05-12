@@ -6,17 +6,21 @@ import type { CodexSession } from "../../../../packages/protocol-ts/src/index.ts
 export interface SessionListScreenProps {
   sessions: CodexSession[];
   creating: boolean;
+  closingSessionIds?: string[];
   onBack(): void;
   onCreateSession(): void;
   onOpenSession(session: CodexSession): void;
+  onCloseSession(session: CodexSession): void;
 }
 
 export function SessionListScreen({
   sessions,
   creating,
+  closingSessionIds = [],
   onBack,
   onCreateSession,
   onOpenSession,
+  onCloseSession,
 }: SessionListScreenProps): JSX.Element {
   return (
     <View style={styles.screen}>
@@ -24,8 +28,14 @@ export function SessionListScreen({
         <Pressable style={styles.secondaryButton} onPress={onBack}>
           <Text style={styles.secondaryText}>Devices</Text>
         </Pressable>
-        <Pressable disabled={creating} style={[styles.primaryButton, creating && styles.disabled]} onPress={onCreateSession}>
-          <Text style={styles.primaryText}>{creating ? "Starting..." : "New Codex"}</Text>
+        <Pressable
+          disabled={creating}
+          style={[styles.primaryButton, creating && styles.disabled]}
+          onPress={onCreateSession}
+        >
+          <Text style={styles.primaryText}>
+            {creating ? "Starting..." : "New Codex"}
+          </Text>
         </Pressable>
       </View>
 
@@ -33,13 +43,30 @@ export function SessionListScreen({
         {sessions.length === 0 ? (
           <Text style={styles.empty}>No sessions yet.</Text>
         ) : (
-          sessions.map((session) => (
-            <Pressable key={session.session_id} style={styles.sessionCard} onPress={() => onOpenSession(session)}>
-              <Text style={styles.sessionTitle}>{session.title}</Text>
-              <Text style={styles.sessionMeta}>{session.cwd}</Text>
-              <Text style={styles.sessionStatus}>{session.status}</Text>
-            </Pressable>
-          ))
+          sessions.map((session) => {
+            const closing = closingSessionIds.includes(session.session_id);
+            return (
+              <View key={session.session_id} style={styles.sessionCard}>
+                <Pressable
+                  style={styles.sessionMain}
+                  onPress={() => onOpenSession(session)}
+                >
+                  <Text style={styles.sessionTitle}>{session.title}</Text>
+                  <Text style={styles.sessionMeta}>{session.cwd}</Text>
+                  <Text style={styles.sessionStatus}>{session.status}</Text>
+                </Pressable>
+                <Pressable
+                  disabled={closing}
+                  style={[styles.closeButton, closing && styles.disabled]}
+                  onPress={() => onCloseSession(session)}
+                >
+                  <Text style={styles.closeText}>
+                    {closing ? "Closing..." : "Delete"}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -96,8 +123,18 @@ const styles = StyleSheet.create({
     borderColor: "#34424c",
     borderWidth: 1,
     borderRadius: 8,
-    padding: 14,
     backgroundColor: "#151c21",
+    overflow: "hidden",
+  },
+  sessionMain: {
+    padding: 14,
+  },
+  closeButton: {
+    minHeight: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    borderTopColor: "#263037",
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   sessionTitle: {
     color: "#f5f7f8",
@@ -112,5 +149,9 @@ const styles = StyleSheet.create({
     color: "#30c48d",
     marginTop: 8,
     fontWeight: "700",
+  },
+  closeText: {
+    color: "#ff8d8d",
+    fontWeight: "800",
   },
 });

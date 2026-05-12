@@ -7,13 +7,16 @@ import { appConfig } from "../../app/appConfig";
 
 export interface PairingScreenProps {
   errorMessage?: string;
+  initialPairing?: PairingConfig;
+  submitLabel?: string;
+  onCancel?(): void;
   onPair(pairing: PairingConfig): void | Promise<void>;
 }
 
-export function PairingScreen({ errorMessage, onPair }: PairingScreenProps): JSX.Element {
-  const [relayUrl, setRelayUrl] = useState(appConfig.defaultRelayUrl);
-  const [deviceId, setDeviceId] = useState("");
-  const [key, setKey] = useState("");
+export function PairingScreen({ errorMessage, initialPairing, submitLabel = "Pair Mac", onCancel, onPair }: PairingScreenProps): JSX.Element {
+  const [relayUrl, setRelayUrl] = useState(initialPairing?.relayUrl ?? appConfig.defaultRelayUrl);
+  const [deviceId, setDeviceId] = useState(initialPairing?.deviceId ?? "");
+  const [key, setKey] = useState(initialPairing?.key ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   async function submit(): Promise<void> {
@@ -78,8 +81,13 @@ export function PairingScreen({ errorMessage, onPair }: PairingScreenProps): JSX
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
       <Pressable disabled={submitting} style={[styles.primaryButton, submitting && styles.disabled]} onPress={submit}>
-        <Text style={styles.primaryButtonText}>{submitting ? "Saving..." : "Pair Mac"}</Text>
+        <Text style={styles.primaryButtonText}>{submitting ? "Saving..." : submitLabel}</Text>
       </Pressable>
+      {onCancel ? (
+        <Pressable style={styles.secondaryButton} onPress={onCancel}>
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -119,6 +127,18 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.55,
+  },
+  secondaryButton: {
+    minHeight: 44,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderColor: "#34424c",
+    borderWidth: 1,
+  },
+  secondaryButtonText: {
+    color: "#d7dde2",
+    fontWeight: "700",
   },
   error: {
     color: "#ff8d8d",

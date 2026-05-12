@@ -104,7 +104,7 @@ flowchart LR
 
 推荐方向：
 
-- React Native + Expo / Expo Dev Client + TypeScript。
+- React Native CLI + TypeScript。
 - 原始 TUI 快照通过 React Native 原生组件渲染。
 - 结构化 Codex UI 使用 React Native 原生组件。
 - 通知走 APNs / FCM 或公司统一推送网关。
@@ -389,7 +389,7 @@ sequenceDiagram
 - Mac Agent 是否可以通过 LaunchAgent 自启动。
 - 是否允许安装 `tmux`，或公司 Mac 是否已内置。
 - 是否有企业证书和内网域名可用于 TLS。
-- 手机端跨端技术选择：React Native + Expo / Expo Dev Client 是否符合企业移动端基建要求。
+- 手机端跨端技术选择：React Native CLI 是否符合企业移动端基建要求。
 
 ## 推荐里程碑
 

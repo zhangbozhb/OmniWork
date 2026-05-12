@@ -1,6 +1,6 @@
 # OmniWork App
 
-Android/iOS installable app built with React Native + Expo. The deliverables are APK and IPA files, not a web page or PWA.
+Android/iOS installable app built with React Native CLI. The deliverables are APK and IPA files, not a web page or PWA.
 
 ## Current MVP
 
@@ -21,16 +21,16 @@ pnpm --filter @omniwork/app start
 
 ## Installable Builds
 
-Android APK:
+Android release build:
 
 ```sh
-pnpm --filter @omniwork/app build:apk
+pnpm --filter @omniwork/app build:android
 ```
 
-iOS IPA:
+iOS release build:
 
 ```sh
-pnpm --filter @omniwork/app build:ipa
+xcodebuild -workspace ios/OmniWork.xcworkspace -scheme OmniWork -configuration Release -sdk iphoneos archive
 ```
 
 Local native runs:
@@ -41,3 +41,7 @@ pnpm --filter @omniwork/app ios
 ```
 
 The terminal surface is implemented as native React Native UI for the MVP. A higher-fidelity native terminal renderer can be added later if the TUI needs full ANSI behavior.
+
+## Native Projects
+
+This package no longer uses Expo or EAS. Add or generate the `android/` and `ios/` native projects with React Native CLI before running local native builds.

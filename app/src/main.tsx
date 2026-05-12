@@ -1,5 +1,5 @@
-import { registerRootComponent } from "expo";
+import { AppRegistry } from "react-native";
 
 import App from "./app/App";
 
-registerRootComponent(App);
+AppRegistry.registerComponent("OmniWork", () => App);

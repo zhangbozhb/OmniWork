@@ -7,3 +7,11 @@ export function createSessionRequest(deviceId: string, payload: SessionCreatePay
 export function listSessionsRequest(deviceId: string) {
   return createMessage("session.list", {}, { device_id: deviceId });
 }
+
+export function closeSessionRequest(deviceId: string, sessionId: string) {
+  return createMessage(
+    "session.close",
+    { session_id: sessionId },
+    { device_id: deviceId, session_id: sessionId },
+  );
+}

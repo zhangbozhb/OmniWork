@@ -1,5 +1,12 @@
 import { type JSX, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import type {
   AuthFailedPayload,
@@ -16,52 +23,90 @@ import { DeviceListScreen } from "../screens/devices/DeviceListScreen";
 import { SessionListScreen } from "../screens/sessions/SessionListScreen";
 import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import type { PairingConfig } from "../features/auth/types";
-import { listSessionsRequest, createSessionRequest } from "../features/sessions/sessionMessages";
-import { terminalInputRequest, terminalSnapshotRequest } from "../features/terminal/terminalMessages";
+import {
+  closeSessionRequest,
+  listSessionsRequest,
+  createSessionRequest,
+} from "../features/sessions/sessionMessages";
+import {
+  terminalInputRequest,
+  terminalSnapshotRequest,
+} from "../features/terminal/terminalMessages";
 import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
-import { clearPairing, loadPairing, savePairing } from "../native/secure-storage/securePairingStore";
+import {
+  clearPairing,
+  loadPairings,
+  savePairings,
+} from "../native/secure-storage/securePairingStore";
 
 type AppView = "pairing" | "devices" | "sessions" | "terminal";
-type ConnectionStatus = "idle" | "connecting" | "authenticating" | "authenticated" | "failed";
+type ConnectionStatus =
+  | "idle"
+  | "connecting"
+  | "authenticating"
+  | "authenticated"
+  | "failed";
 
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
 
 export default function App(): JSX.Element {
+  const [pairings, setPairings] = useState<PairingConfig[]>([]);
   const [pairing, setPairing] = useState<PairingConfig | null>(null);
   const [view, setView] = useState<AppView>("pairing");
-  const [selectedSession, setSelectedSession] = useState<CodexSession | null>(null);
+  const [editingPairing, setEditingPairing] = useState<
+    PairingConfig | undefined
+  >();
+  const [selectedSession, setSelectedSession] = useState<CodexSession | null>(
+    null,
+  );
   const [sessions, setSessions] = useState<CodexSession[]>([]);
-  const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>({});
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
-  const [connectionMessage, setConnectionMessage] = useState("Enter the Mac Agent key to pair.");
+  const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
+    {},
+  );
+  const [connectionStatus, setConnectionStatus] =
+    useState<ConnectionStatus>("idle");
+  const [connectionMessage, setConnectionMessage] = useState(
+    "Enter the Mac Agent key to pair.",
+  );
   const [pairingError, setPairingError] = useState<string | undefined>();
   const [creatingSession, setCreatingSession] = useState(false);
+  const [closingSessionIds, setClosingSessionIds] = useState<string[]>([]);
   const relayRef = useRef<MobileRelaySession | null>(null);
   const pendingCreateRef = useRef(false);
+  const selectedSessionRef = useRef<CodexSession | null>(null);
 
-  const canUseWorkspace = Boolean(pairing);
+  const canUseWorkspace = pairings.length > 0;
   const title = useMemo(() => {
-    if (!pairing) return "Pair Mac";
+    if (view === "pairing") return editingPairing ? "Edit Device" : "Pair Mac";
     if (view === "terminal") return selectedSession?.title ?? "Terminal";
     if (view === "sessions") return "Sessions";
     return "Devices";
-  }, [pairing, selectedSession?.title, view]);
+  }, [editingPairing, selectedSession?.title, view]);
 
-  const selectedFrame = selectedSession ? terminalFrames[selectedSession.session_id] ?? EMPTY_TERMINAL_FRAME : EMPTY_TERMINAL_FRAME;
+  const selectedFrame = selectedSession
+    ? (terminalFrames[selectedSession.session_id] ?? EMPTY_TERMINAL_FRAME)
+    : EMPTY_TERMINAL_FRAME;
+
+  useEffect(() => {
+    selectedSessionRef.current = selectedSession;
+  }, [selectedSession]);
 
   useEffect(() => {
     let active = true;
-    loadPairing()
-      .then((savedPairing) => {
-        if (!active || !savedPairing) {
+    loadPairings()
+      .then((savedPairings) => {
+        if (!active) {
           return;
         }
-        setPairing(savedPairing);
-        setView("devices");
+        setPairings(savedPairings);
+        setPairing(savedPairings[0] ?? null);
+        setView(savedPairings.length > 0 ? "devices" : "pairing");
       })
       .catch(() => {
         if (active) {
-          setPairingError("Could not restore the saved pairing. Enter the latest key again.");
+          setPairingError(
+            "Could not restore the saved pairing. Enter the latest key again.",
+          );
         }
       });
 
@@ -118,7 +163,12 @@ export default function App(): JSX.Element {
   }, [pairing]);
 
   useEffect(() => {
-    if (connectionStatus !== "authenticated" || view !== "terminal" || !pairing || !selectedSession) {
+    if (
+      connectionStatus !== "authenticated" ||
+      view !== "terminal" ||
+      !pairing ||
+      !selectedSession
+    ) {
       return undefined;
     }
 
@@ -132,20 +182,94 @@ export default function App(): JSX.Element {
 
   async function handlePair(nextPairing: PairingConfig): Promise<void> {
     setPairingError(undefined);
-    await savePairing(nextPairing);
+    const nextPairings = editingPairing
+      ? pairings.map((item) =>
+          isSamePairing(item, editingPairing) ? nextPairing : item,
+        )
+      : upsertPairing(pairings, nextPairing);
+    await savePairings(nextPairings);
+    setPairings(nextPairings);
     setPairing(nextPairing);
+    setEditingPairing(undefined);
     setView("devices");
   }
 
-  async function handleForgetPairing(): Promise<void> {
-    relayRef.current?.close();
-    await clearPairing();
-    setPairing(null);
-    setSelectedSession(null);
-    setSessions([]);
-    setTerminalFrames({});
-    setPairingError("The saved key was removed. Enter the Mac Agent's latest key.");
+  function handleAddDevice(): void {
+    setPairingError(undefined);
+    setEditingPairing(undefined);
     setView("pairing");
+  }
+
+  function handleEditDevice(nextPairing: PairingConfig): void {
+    setPairingError(undefined);
+    setEditingPairing(nextPairing);
+    setView("pairing");
+  }
+
+  function handleCancelPairing(): void {
+    setEditingPairing(undefined);
+    setView(pairings.length > 0 ? "devices" : "pairing");
+  }
+
+  function handleDeleteDevice(targetPairing: PairingConfig): void {
+    Alert.alert(
+      "Delete device",
+      `Delete ${targetPairing.deviceId} from linked devices?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            removeDevice(targetPairing).catch((error: unknown) => {
+              setPairingError(`Could not delete device: ${String(error)}`);
+            });
+          },
+        },
+      ],
+    );
+  }
+
+  async function removeDevice(targetPairing: PairingConfig): Promise<void> {
+    const nextPairings = pairings.filter(
+      (item) => !isSamePairing(item, targetPairing),
+    );
+    if (nextPairings.length > 0) {
+      await savePairings(nextPairings);
+    } else {
+      await clearPairing();
+    }
+
+    setPairings(nextPairings);
+    setSessions([]);
+    setSelectedSession(null);
+    setTerminalFrames({});
+    setClosingSessionIds([]);
+    setEditingPairing(undefined);
+
+    if (pairing && isSamePairing(pairing, targetPairing)) {
+      relayRef.current?.close();
+      setPairing(nextPairings[0] ?? null);
+    }
+
+    setView(nextPairings.length > 0 ? "devices" : "pairing");
+  }
+
+  function handleOpenDevice(nextPairing: PairingConfig): void {
+    if (!pairing || !isSamePairing(pairing, nextPairing)) {
+      setPairing(nextPairing);
+      setSessions([]);
+      setSelectedSession(null);
+      setTerminalFrames({});
+      setClosingSessionIds([]);
+      setView("devices");
+      return;
+    }
+
+    if (connectionStatus === "authenticated") {
+      setView("sessions");
+      sendToRelay(listSessionsRequest(nextPairing.deviceId));
+    }
   }
 
   function handleRefreshSessions(): void {
@@ -165,17 +289,51 @@ export default function App(): JSX.Element {
     }
     pendingCreateRef.current = true;
     setCreatingSession(true);
-    sendToRelay(createSessionRequest(pairing.deviceId, { title: `Codex ${sessions.length + 1}` }));
+    sendToRelay(
+      createSessionRequest(pairing.deviceId, {
+        title: `Codex ${sessions.length + 1}`,
+      }),
+    );
+  }
+
+  function handleCloseSession(session: CodexSession): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+
+    Alert.alert("Delete agent", `Close and delete ${session.title}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          setClosingSessionIds((current) =>
+            current.includes(session.session_id)
+              ? current
+              : [...current, session.session_id],
+          );
+          sendToRelay(
+            closeSessionRequest(pairing.deviceId, session.session_id),
+          );
+        },
+      },
+    ]);
   }
 
   function handleOpenSession(session: CodexSession): void {
     setSelectedSession(session);
     setView("terminal");
     if (pairing && connectionStatus === "authenticated") {
-      sendToRelay(createMessage("session.attach", { session_id: session.session_id }, {
-        device_id: pairing.deviceId,
-        session_id: session.session_id,
-      }));
+      sendToRelay(
+        createMessage(
+          "session.attach",
+          { session_id: session.session_id },
+          {
+            device_id: pairing.deviceId,
+            session_id: session.session_id,
+          },
+        ),
+      );
       requestTerminalSnapshot(pairing.deviceId, session.session_id);
     }
   }
@@ -185,7 +343,9 @@ export default function App(): JSX.Element {
       return;
     }
 
-    sendToRelay(terminalInputRequest(pairing.deviceId, selectedSession.session_id, input));
+    sendToRelay(
+      terminalInputRequest(pairing.deviceId, selectedSession.session_id, input),
+    );
     setTimeout(() => {
       requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
     }, 250);
@@ -204,7 +364,11 @@ export default function App(): JSX.Element {
     }
   }
 
-  function handleRelayMessage(message: MessageEnvelope, relay: MobileRelaySession, activePairing: PairingConfig): void {
+  function handleRelayMessage(
+    message: MessageEnvelope,
+    relay: MobileRelaySession,
+    activePairing: PairingConfig,
+  ): void {
     switch (message.type) {
       case "auth.challenge":
         setConnectionStatus("authenticating");
@@ -220,19 +384,49 @@ export default function App(): JSX.Element {
         setConnectionStatus("failed");
         setConnectionMessage(`Authentication failed: ${payload.reason}`);
         if (shouldClearPairing(payload.reason)) {
-          setPairingError("The Mac Agent rejected this key. Enter the latest key generated on the Mac.");
+          setPairingError(
+            "The Mac Agent rejected this key. Enter the latest key generated on the Mac.",
+          );
           setPairing(null);
           setView("pairing");
           clearPairing().catch(() => undefined);
-          Alert.alert("Pairing expired", "The Mac Agent rejected this key. Enter the latest key generated on the Mac.");
+          Alert.alert(
+            "Pairing expired",
+            "The Mac Agent rejected this key. Enter the latest key generated on the Mac.",
+          );
         } else {
-          Alert.alert("Mac unavailable", "The saved key is still kept. Try again after the Mac Agent is online.");
+          Alert.alert(
+            "Mac unavailable",
+            "The saved key is still kept. Try again after the Mac Agent is online.",
+          );
         }
         break;
       }
       case "session.list": {
         const payload = message.payload as SessionListPayload;
+        const remoteSessionIds = new Set(
+          payload.sessions.map((session) => session.session_id),
+        );
         setSessions(payload.sessions);
+        setClosingSessionIds((current) =>
+          current.filter((sessionId) => remoteSessionIds.has(sessionId)),
+        );
+        setTerminalFrames((current) => {
+          const nextFrames = { ...current };
+          for (const sessionId of Object.keys(nextFrames)) {
+            if (!remoteSessionIds.has(sessionId)) {
+              delete nextFrames[sessionId];
+            }
+          }
+          return nextFrames;
+        });
+        if (
+          selectedSessionRef.current &&
+          !remoteSessionIds.has(selectedSessionRef.current.session_id)
+        ) {
+          setSelectedSession(null);
+          setView("sessions");
+        }
         setCreatingSession(false);
         break;
       }
@@ -280,27 +474,40 @@ export default function App(): JSX.Element {
       <StatusBar barStyle="light-content" />
       <View style={styles.header}>
         <Text style={styles.title}>{title}</Text>
-        {canUseWorkspace ? <Text style={styles.subtitle}>{pairing?.deviceId}</Text> : null}
+        {canUseWorkspace ? (
+          <Text style={styles.subtitle}>{pairing?.deviceId}</Text>
+        ) : null}
       </View>
 
       {view === "pairing" ? (
-        <PairingScreen errorMessage={pairingError} onPair={handlePair} />
-      ) : view === "devices" && pairing ? (
+        <PairingScreen
+          errorMessage={pairingError}
+          initialPairing={editingPairing}
+          submitLabel={editingPairing ? "Save Device" : "Pair Mac"}
+          onCancel={pairings.length > 0 ? handleCancelPairing : undefined}
+          onPair={handlePair}
+        />
+      ) : view === "devices" ? (
         <DeviceListScreen
-          pairing={pairing}
+          pairings={pairings}
+          activePairing={pairing ?? undefined}
           connectionStatus={connectionStatus}
           connectionMessage={connectionMessage}
-          onOpenSessions={() => setView("sessions")}
-          onForgetPairing={handleForgetPairing}
+          onAddDevice={handleAddDevice}
+          onEditDevice={handleEditDevice}
+          onDeleteDevice={handleDeleteDevice}
+          onOpenDevice={handleOpenDevice}
           onRefreshSessions={handleRefreshSessions}
         />
       ) : view === "sessions" ? (
         <SessionListScreen
           sessions={sessions}
           creating={creatingSession}
+          closingSessionIds={closingSessionIds}
           onBack={() => setView("devices")}
           onCreateSession={handleCreateSession}
           onOpenSession={handleOpenSession}
+          onCloseSession={handleCloseSession}
         />
       ) : selectedSession ? (
         <TerminalScreen
@@ -339,8 +546,13 @@ const styles = StyleSheet.create({
   },
 });
 
-function upsertSession(sessions: CodexSession[], nextSession: CodexSession): CodexSession[] {
-  const index = sessions.findIndex((session) => session.session_id === nextSession.session_id);
+function upsertSession(
+  sessions: CodexSession[],
+  nextSession: CodexSession,
+): CodexSession[] {
+  const index = sessions.findIndex(
+    (session) => session.session_id === nextSession.session_id,
+  );
   if (index < 0) {
     return [nextSession, ...sessions];
   }
@@ -348,6 +560,26 @@ function upsertSession(sessions: CodexSession[], nextSession: CodexSession): Cod
   const nextSessions = [...sessions];
   nextSessions[index] = nextSession;
   return nextSessions;
+}
+
+function upsertPairing(
+  pairings: PairingConfig[],
+  nextPairing: PairingConfig,
+): PairingConfig[] {
+  const index = pairings.findIndex((pairing) =>
+    isSamePairing(pairing, nextPairing),
+  );
+  if (index < 0) {
+    return [...pairings, nextPairing];
+  }
+
+  const nextPairings = [...pairings];
+  nextPairings[index] = nextPairing;
+  return nextPairings;
+}
+
+function isSamePairing(left: PairingConfig, right: PairingConfig): boolean {
+  return left.relayUrl === right.relayUrl && left.deviceId === right.deviceId;
 }
 
 function shouldClearPairing(reason: AuthFailedPayload["reason"]): boolean {

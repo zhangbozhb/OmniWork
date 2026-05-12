@@ -57,7 +57,7 @@ OmniWork/
 
 - `app/` 使用跨端移动 App 技术，最终产出 Android APK 和 iOS IPA，不以网页或 PWA 作为交付形态。
 - `app/` 必须同时适配 Android 和 iOS。
-- `app/` 推荐采用 React Native + Expo / Expo Dev Client，并使用 TypeScript。
+- `app/` 推荐采用 React Native CLI，并使用 TypeScript。
 - `mac/` 使用 TypeScript / Node.js 技术栈实现 Agent 主体。
 - `mac/` 不采用 Rust/Swift 作为业务主实现；如需 macOS 原生能力，只作为最薄的平台桥接层。
 - `protocol/` 优先生成 TypeScript 类型，供 `app/` 和 `mac/` 共同复用。
@@ -67,7 +67,7 @@ OmniWork/
 
 | 模块 | 主技术栈 | 说明 |
 | --- | --- | --- |
-| `app/` | React Native + Expo / Expo Dev Client + TypeScript | 同一套代码交付 Android/iOS APK/IPA；终端区域默认用原生 React Native 视图 |
+| `app/` | React Native CLI + TypeScript | 同一套代码交付 Android/iOS APK/IPA；终端区域默认用原生 React Native 视图 |
 | `mac/` | Node.js LTS + TypeScript | 管理 Relay 连接、tmux、PTY、Codex runtime、本地状态 |
 | `relay/` | Go / Rust / TypeScript 均可 | 作为企业内网中继，独立部署 |
 | `protocol/` | JSON Schema / OpenAPI / AsyncAPI + TS 生成物 | 跨端协议契约 |
@@ -84,8 +84,8 @@ app/
 |-- README.md
 |-- package.json
 |-- tsconfig.json
-|-- expo.config.ts
-|-- eas.json
+|-- app.json
+|-- index.js
 |-- babel.config.js
 |-- metro.config.js
 |-- assets/

@@ -1,23 +1,4 @@
 {
-  "expo": {
-    "extra": {
-      "eas": {
-        "projectId": "6d7a59bb-9491-48c9-86ef-590d6d67a676"
-      }
-    },
-    "owner": "zhangbozhbs-organization",
-    "slug": "omniwork",
-    "icon": "./assets/icon.png",
-    "android": {
-      "package": "com.travelme.bot.omniwork",
-      "versionCode": 4
-    },
-    "ios": {
-      "bundleIdentifier": "com.travelme.bot.omniwork",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      },
-      "buildNumber": "4"
-    }
-  }
+  "name": "OmniWork",
+  "displayName": "OmniWork"
 }

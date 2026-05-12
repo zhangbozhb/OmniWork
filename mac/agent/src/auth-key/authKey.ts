@@ -1,4 +1,9 @@
-import { createHmac, createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  createHash,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import { mkdir, writeFile, chmod, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -40,7 +45,10 @@ export function generateSessionKey(): string {
 }
 
 export function createAgentInstanceId(now = new Date()): string {
-  const stamp = now.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  const stamp = now
+    .toISOString()
+    .replace(/[-:.TZ]/g, "")
+    .slice(0, 14);
   return `agent_${stamp}_${randomBytes(4).toString("hex")}`;
 }
 
@@ -52,7 +60,11 @@ export function createProof(key: string, nonce: string): string {
   return createHmac("sha256", key).update(nonce).digest("base64url");
 }
 
-export function verifyProof(key: string, nonce: string, proof: string): boolean {
+export function verifyProof(
+  key: string,
+  nonce: string,
+  proof: string,
+): boolean {
   const expected = Buffer.from(createProof(key, nonce), "utf8");
   const received = Buffer.from(proof, "utf8");
 
@@ -63,12 +75,17 @@ export function verifyProof(key: string, nonce: string, proof: string): boolean 
   return timingSafeEqual(expected, received);
 }
 
-export async function readSessionKeyRecord(path: string): Promise<SessionKeyRecord> {
+export async function readSessionKeyRecord(
+  path: string,
+): Promise<SessionKeyRecord> {
   const raw = await readFile(path, "utf8");
   return JSON.parse(raw) as SessionKeyRecord;
 }
 
-async function writeSessionKeyRecord(path: string, record: SessionKeyRecord): Promise<void> {
+async function writeSessionKeyRecord(
+  path: string,
+  record: SessionKeyRecord,
+): Promise<void> {
   const directory = dirname(path);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await chmod(directory, 0o700);
