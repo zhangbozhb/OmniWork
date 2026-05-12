@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omniwork.local/protocol/envelopes/message-envelope.schema.json",
+  "title": "MessageEnvelope",
+  "type": "object",
+  "required": ["v", "id", "type", "ts", "payload"],
+  "properties": {
+    "v": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "type": { "type": "string", "minLength": 1 },
+    "device_id": { "type": "string" },
+    "session_id": { "type": "string" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "ts": { "type": "string", "format": "date-time" },
+    "payload": {}
+  },
+  "additionalProperties": false
+}

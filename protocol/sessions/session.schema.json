@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omniwork.local/protocol/sessions/session.schema.json",
+  "title": "CodexSession",
+  "type": "object",
+  "required": [
+    "session_id",
+    "title",
+    "cwd",
+    "command",
+    "status",
+    "created_at",
+    "last_active_at",
+    "terminal_size",
+    "tmux_session_name"
+  ],
+  "properties": {
+    "session_id": { "type": "string" },
+    "title": { "type": "string" },
+    "cwd": { "type": "string" },
+    "command": { "type": "string" },
+    "status": {
+      "enum": ["created", "starting", "running", "detached", "exited", "error", "recovering", "archived"]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "last_active_at": { "type": "string", "format": "date-time" },
+    "terminal_size": {
+      "type": "object",
+      "required": ["cols", "rows"],
+      "properties": {
+        "cols": { "type": "integer", "minimum": 20 },
+        "rows": { "type": "integer", "minimum": 5 }
+      },
+      "additionalProperties": false
+    },
+    "tmux_session_name": { "type": "string" }
+  },
+  "additionalProperties": false
+}

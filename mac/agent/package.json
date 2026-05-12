@@ -1,0 +1,21 @@
+{
+  "name": "@omniwork/mac-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "node --experimental-strip-types src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types tests/auth-key.test.ts"
+  },
+  "dependencies": {
+    "@omniwork/protocol-ts": "workspace:*",
+    "@omniwork/relay-client": "workspace:*",
+    "@omniwork/terminal-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}

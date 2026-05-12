@@ -1,0 +1,19 @@
+{
+  "name": "@omniwork/terminal-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types src/index.ts"
+  },
+  "dependencies": {
+    "@omniwork/protocol-ts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}

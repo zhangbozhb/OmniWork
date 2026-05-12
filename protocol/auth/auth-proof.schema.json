@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omniwork.local/protocol/auth/auth-proof.schema.json",
+  "title": "AuthProof",
+  "type": "object",
+  "required": ["key_id", "nonce", "proof"],
+  "properties": {
+    "key_id": { "type": "string", "pattern": "^sha256:[0-9a-f]{12}$" },
+    "nonce": { "type": "string", "minLength": 16 },
+    "proof": { "type": "string", "minLength": 32 },
+    "connection_id": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

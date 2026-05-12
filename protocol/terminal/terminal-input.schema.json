@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omniwork.local/protocol/terminal/terminal-input.schema.json",
+  "title": "TerminalInput",
+  "type": "object",
+  "required": ["kind", "data"],
+  "properties": {
+    "kind": { "enum": ["text", "key", "paste"] },
+    "data": { "type": "string" }
+  },
+  "additionalProperties": false
+}

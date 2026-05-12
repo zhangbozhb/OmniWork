@@ -1,0 +1,7 @@
+packages:
+  - "app"
+  - "mac/agent"
+  - "relay/*"
+  - "packages/*"
+allowBuilds:
+  dtrace-provider: true
