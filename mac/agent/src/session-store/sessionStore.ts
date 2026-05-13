@@ -51,6 +51,8 @@ function normalizeSession(session: CodexSession): CodexSession {
     ...session,
     runtime_kind: runtimeKind,
     runtime_label: session.runtime_label ?? getRuntimeLabel(runtimeKind),
+    origin: session.origin ?? "managed",
+    registered: session.registered ?? true,
   };
 }
 
@@ -59,7 +61,9 @@ function getRuntimeLabel(runtimeKind: RuntimeKind): string {
     case "claude":
       return "Claude";
     case "codex":
-    default:
       return "Codex";
+    case "other":
+    default:
+      return "Other";
   }
 }

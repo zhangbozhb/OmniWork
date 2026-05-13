@@ -14,6 +14,7 @@ export type MessageType =
   | "session.create"
   | "session.rename"
   | "session.close"
+  | "session.kill_tmux"
   | "session.attach"
   | "session.detach"
   | "session.status"
@@ -57,6 +58,8 @@ export type AgentCapability =
   | "terminal.tui"
   | "terminal.snapshot"
   | "session.tmux"
+  | "session.tmux.attach"
+  | "session.tmux.kill"
   | "codex.cli"
   | "codex.app_server"
   | "claude.cli";
@@ -112,7 +115,8 @@ export type SessionStatus =
   | "recovering"
   | "archived";
 
-export type RuntimeKind = "codex" | "claude";
+export type RuntimeKind = "codex" | "claude" | "other";
+export type SessionOrigin = "managed" | "external";
 
 export interface CodexSession {
   session_id: string;
@@ -126,6 +130,8 @@ export interface CodexSession {
   last_active_at: string;
   terminal_size: TerminalSize;
   tmux_session_name: string;
+  origin?: SessionOrigin;
+  registered?: boolean;
 }
 
 export interface SessionListPayload {
@@ -150,6 +156,10 @@ export interface SessionAttachPayload {
 }
 
 export interface SessionClosePayload {
+  session_id: string;
+}
+
+export interface SessionKillTmuxPayload {
   session_id: string;
 }
 

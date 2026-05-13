@@ -100,6 +100,8 @@ export class AgentService {
           "terminal.tui",
           "terminal.snapshot",
           "session.tmux",
+          "session.tmux.attach",
+          "session.tmux.kill",
           ...this.runtimes.capabilities(),
         ],
       }, { device_id: this.config.deviceId }),
@@ -125,14 +127,22 @@ export class AgentService {
           await this.handleSessionList(message);
         }
         break;
+      case "session.kill_tmux":
+        if (message.session_id) {
+          await this.sessionManager.killTmux(message.session_id);
+          await this.handleSessionList(message);
+        }
+        break;
       case "terminal.input":
         await this.handleTerminalInput(message as MessageEnvelope<TerminalInputPayload>);
         break;
       case "terminal.resize":
         await this.handleTerminalResize(message as MessageEnvelope<TerminalResizePayload>);
         break;
-      case "terminal.snapshot":
       case "session.attach":
+        await this.handleSessionAttach(message);
+        break;
+      case "terminal.snapshot":
         await this.handleTerminalSnapshot(message);
         break;
       default:
@@ -174,6 +184,25 @@ export class AgentService {
 
   private async handleSessionCreate(message: MessageEnvelope<SessionCreatePayload>): Promise<void> {
     const session = await this.sessionManager.create(message.payload ?? {});
+    this.send(
+      createMessage("session.status", { session }, {
+        device_id: this.config.deviceId,
+        session_id: session.session_id,
+      }),
+    );
+    await this.handleTerminalSnapshot({ ...message, session_id: session.session_id });
+  }
+
+  private async handleSessionAttach(message: MessageEnvelope): Promise<void> {
+    if (!message.session_id) {
+      return;
+    }
+
+    const session = await this.sessionManager.attach(message.session_id);
+    if (!session) {
+      return;
+    }
+
     this.send(
       createMessage("session.status", { session }, {
         device_id: this.config.deviceId,

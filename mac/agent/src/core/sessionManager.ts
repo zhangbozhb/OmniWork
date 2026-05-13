@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type {
   CodexSession,
@@ -36,7 +36,17 @@ export class SessionManager {
   }
 
   async list(): Promise<CodexSession[]> {
-    return (await this.store.list()).sort(compareSessionsByRecentTime);
+    const storedSessions = await this.store.list();
+    const storedTmuxNames = new Set(
+      storedSessions.map((session) => session.tmux_session_name),
+    );
+    const externalSessions = (await this.tmux.listSessions())
+      .filter((session) => !storedTmuxNames.has(session.name))
+      .map((session) => this.createExternalSession(session));
+
+    return [...storedSessions, ...externalSessions].sort(
+      compareSessionsByRecentTime,
+    );
   }
 
   async create(payload: SessionCreatePayload = {}): Promise<CodexSession> {
@@ -62,6 +72,8 @@ export class SessionManager {
       last_active_at: now,
       terminal_size: size,
       tmux_session_name: tmuxSessionName,
+      origin: "managed",
+      registered: true,
     };
 
     await this.store.upsert(session);
@@ -91,11 +103,51 @@ export class SessionManager {
       return;
     }
 
+    if (session.origin === "external") {
+      await this.store.remove(sessionId);
+      return;
+    }
+
+    try {
+      await this.tmux.killSession(session.tmux_session_name);
+    } catch {
+      // Treat stale tmux records as already closed so mobile can recover.
+    } finally {
+      await this.store.remove(sessionId);
+    }
+  }
+
+  async killTmux(sessionId: string): Promise<void> {
+    const session = await this.get(sessionId);
+    if (!session) {
+      return;
+    }
+
     try {
       await this.tmux.killSession(session.tmux_session_name);
     } finally {
       await this.store.remove(sessionId);
     }
+  }
+
+  async attach(sessionId: string): Promise<CodexSession | undefined> {
+    const session = await this.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    if (session.origin === "external" && !session.registered) {
+      const attached = {
+        ...session,
+        status: "running" as const,
+        last_active_at: new Date().toISOString(),
+        registered: true,
+      };
+      await this.store.upsert(attached);
+      return attached;
+    }
+
+    return session;
   }
 
   async updateTerminalSize(
@@ -117,12 +169,65 @@ export class SessionManager {
   }
 
   private async countSessionsForRuntime(runtimeKind: RuntimeKind): Promise<number> {
-    return (await this.list()).filter((session) => session.runtime_kind === runtimeKind).length;
+    return (await this.store.list()).filter((session) => session.runtime_kind === runtimeKind).length;
+  }
+
+  private createExternalSession(session: {
+    name: string;
+    createdAt: string;
+    currentPath?: string;
+    currentCommand?: string;
+  }): CodexSession {
+    const runtimeKind = inferRuntimeKind(session.currentCommand);
+    const runtimeLabel = getRuntimeLabel(runtimeKind);
+    return {
+      session_id: toExternalSessionId(session.name),
+      runtime_kind: runtimeKind,
+      runtime_label: runtimeLabel,
+      title: session.name,
+      cwd: session.currentPath || this.defaults.cwd,
+      command: session.currentCommand || "tmux",
+      status: "detached",
+      created_at: session.createdAt,
+      last_active_at: session.createdAt,
+      terminal_size: this.defaults.terminalSize,
+      tmux_session_name: session.name,
+      origin: "external",
+      registered: false,
+    };
   }
 }
 
 function toTmuxSessionName(sessionId: string): string {
   return `omniwork_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
+function toExternalSessionId(tmuxSessionName: string): string {
+  const digest = createHash("sha1").update(tmuxSessionName).digest("hex");
+  return `tmux_${digest.slice(0, 16)}`;
+}
+
+function inferRuntimeKind(command?: string): RuntimeKind {
+  const normalizedCommand = command?.toLowerCase() ?? "";
+  if (normalizedCommand.includes("claude")) {
+    return "claude";
+  }
+  if (normalizedCommand.includes("codex")) {
+    return "codex";
+  }
+  return "other";
+}
+
+function getRuntimeLabel(runtimeKind: RuntimeKind): string {
+  switch (runtimeKind) {
+    case "claude":
+      return "Claude";
+    case "codex":
+      return "Codex";
+    case "other":
+    default:
+      return "Other";
+  }
 }
 
 function compareSessionsByRecentTime(left: CodexSession, right: CodexSession): number {

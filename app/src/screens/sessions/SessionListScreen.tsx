@@ -14,38 +14,54 @@ import type {
   RuntimeKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
 
+type CreatableRuntimeKind = Extract<RuntimeKind, "claude" | "codex">;
+
 export interface SessionListScreenProps {
   sessions: CodexSession[];
   creating: boolean;
   closingSessionIds?: string[];
+  killingSessionIds?: string[];
   defaultCwd: string;
   onBack(): void;
-  onCreateSession(input: { cwd: string; runtimeKind: RuntimeKind }): void;
+  onRefreshSessions(): void;
+  onCreateSession(input: {
+    cwd: string;
+    runtimeKind: CreatableRuntimeKind;
+  }): void;
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
+  onKillTmuxSession(session: CodexSession): void;
 }
 
-const RUNTIME_GROUPS: Array<{ kind: RuntimeKind; label: string }> = [
-  { kind: "claude", label: "Claude" },
-  { kind: "codex", label: "Codex" },
+const RUNTIME_GROUPS: Array<{
+  kind: RuntimeKind;
+  label: string;
+  creatable: boolean;
+}> = [
+  { kind: "claude", label: "Claude", creatable: true },
+  { kind: "codex", label: "Codex", creatable: true },
+  { kind: "other", label: "Other", creatable: false },
 ];
 
 export function SessionListScreen({
   sessions,
   creating,
   closingSessionIds = [],
+  killingSessionIds = [],
   defaultCwd,
   onBack,
+  onRefreshSessions,
   onCreateSession,
   onOpenSession,
   onCloseSession,
+  onKillTmuxSession,
 }: SessionListScreenProps): JSX.Element {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createCwd, setCreateCwd] = useState(defaultCwd);
   const [createRuntimeKind, setCreateRuntimeKind] =
-    useState<RuntimeKind>("claude");
+    useState<CreatableRuntimeKind>("claude");
 
-  function openCreateModal(runtimeKind: RuntimeKind): void {
+  function openCreateModal(runtimeKind: CreatableRuntimeKind): void {
     setCreateRuntimeKind(runtimeKind);
     setCreateCwd(defaultCwd);
     setCreateModalVisible(true);
@@ -60,18 +76,37 @@ export function SessionListScreen({
     onCreateSession({ cwd, runtimeKind: createRuntimeKind });
   }
 
+  const visibleGroups = RUNTIME_GROUPS.filter((group) => {
+    if (group.creatable) {
+      return true;
+    }
+
+    return sessions.some(
+      (session) => getRuntimeGroupKind(session) === group.kind,
+    );
+  });
+
   return (
     <View style={styles.screen}>
       <View style={styles.actions}>
         <Pressable style={styles.secondaryButton} onPress={onBack}>
           <Text style={styles.secondaryText}>Devices</Text>
         </Pressable>
+        <View style={styles.toolbarTitleArea}>
+          <Text style={styles.toolbarTitle}>Sessions</Text>
+          <Text style={styles.toolbarMeta}>
+            {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
+          </Text>
+        </View>
+        <Pressable style={styles.secondaryButton} onPress={onRefreshSessions}>
+          <Text style={styles.secondaryText}>Refresh</Text>
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {RUNTIME_GROUPS.map((group) => {
+        {visibleGroups.map((group) => {
           const groupSessions = sessions.filter(
-            (session) => session.runtime_kind === group.kind,
+            (session) => getRuntimeGroupKind(session) === group.kind,
           );
           return (
             <View key={group.kind} style={styles.runtimeSection}>
@@ -83,20 +118,24 @@ export function SessionListScreen({
                     {groupSessions.length === 1 ? "session" : "sessions"}
                   </Text>
                 </View>
-                <Pressable
-                  disabled={creating}
-                  style={[
-                    styles.sectionCreateButton,
-                    creating && styles.disabled,
-                  ]}
-                  onPress={() => openCreateModal(group.kind)}
-                >
-                  <Text style={styles.primaryText}>
-                    {creating && createRuntimeKind === group.kind
-                      ? "Starting..."
-                      : "New"}
-                  </Text>
-                </Pressable>
+                {group.creatable ? (
+                  <Pressable
+                    disabled={creating}
+                    style={[
+                      styles.sectionCreateButton,
+                      creating && styles.disabled,
+                    ]}
+                    onPress={() =>
+                      openCreateModal(group.kind as CreatableRuntimeKind)
+                    }
+                  >
+                    <Text style={styles.primaryText}>
+                      {creating && createRuntimeKind === group.kind
+                        ? "Starting..."
+                        : "New"}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
 
               {groupSessions.length === 0 ? (
@@ -111,8 +150,26 @@ export function SessionListScreen({
                     const closing = closingSessionIds.includes(
                       session.session_id,
                     );
+                    const killing = killingSessionIds.includes(
+                      session.session_id,
+                    );
+                    const external = session.origin === "external";
+                    const registered = session.registered !== false;
                     return (
                       <View key={session.session_id} style={styles.sessionCard}>
+                        <Pressable
+                          disabled={killing || closing}
+                          accessibilityLabel="Kill tmux session"
+                          style={[
+                            styles.cardKillButton,
+                            (killing || closing) && styles.disabled,
+                          ]}
+                          onPress={() => onKillTmuxSession(session)}
+                        >
+                          <Text style={styles.cardKillText}>
+                            {killing ? "…" : "×"}
+                          </Text>
+                        </Pressable>
                         <Pressable
                           style={styles.sessionMain}
                           onPress={() => onOpenSession(session)}
@@ -120,6 +177,11 @@ export function SessionListScreen({
                           <Text numberOfLines={1} style={styles.sessionTitle}>
                             {session.title}
                           </Text>
+                          {external ? (
+                            <Text style={styles.originBadge}>
+                              {registered ? "Attached tmux" : "Existing tmux"}
+                            </Text>
+                          ) : null}
                           <Text
                             ellipsizeMode="middle"
                             numberOfLines={1}
@@ -129,7 +191,9 @@ export function SessionListScreen({
                           </Text>
                           <View style={styles.sessionDetails}>
                             <Text style={styles.sessionStatus}>
-                              {session.status}
+                              {external && !registered
+                                ? "attachable"
+                                : session.status}
                             </Text>
                             <Text style={styles.sessionTime}>
                               Active{" "}
@@ -140,18 +204,28 @@ export function SessionListScreen({
                             Created {formatAbsoluteTime(session.created_at)}
                           </Text>
                         </Pressable>
-                        <Pressable
-                          disabled={closing}
-                          style={[
-                            styles.closeButton,
-                            closing && styles.disabled,
-                          ]}
-                          onPress={() => onCloseSession(session)}
-                        >
-                          <Text style={styles.closeText}>
-                            {closing ? "Closing..." : "Close Session"}
-                          </Text>
-                        </Pressable>
+                        {registered ? (
+                          <Pressable
+                            disabled={closing || killing}
+                            style={[
+                              styles.closeButton,
+                              (closing || killing) && styles.disabled,
+                            ]}
+                            onPress={() => onCloseSession(session)}
+                          >
+                            <Text style={styles.closeText}>
+                              {closing
+                                ? "Closing..."
+                                : external
+                                  ? "Forget tmux"
+                                  : "Close Session"}
+                            </Text>
+                          </Pressable>
+                        ) : (
+                          <View style={styles.closeButton}>
+                            <Text style={styles.attachHint}>Tap to attach</Text>
+                          </View>
+                        )}
                       </View>
                     );
                   })}
@@ -219,12 +293,30 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
     marginBottom: 12,
   },
+  toolbarTitleArea: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toolbarTitle: {
+    color: "#f5f7f8",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  toolbarMeta: {
+    color: "#94a3ad",
+    fontSize: 12,
+    marginTop: 2,
+  },
   secondaryButton: {
-    minHeight: 44,
-    paddingHorizontal: 16,
+    minHeight: 38,
+    minWidth: 86,
+    paddingHorizontal: 12,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
@@ -289,10 +381,32 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#151c21",
     overflow: "hidden",
+    position: "relative",
     width: 260,
+  },
+  cardKillButton: {
+    position: "absolute",
+    right: 8,
+    top: 8,
+    zIndex: 2,
+    width: 30,
+    minHeight: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    borderColor: "#5b3030",
+    borderWidth: 1,
+    backgroundColor: "#2a1517",
+  },
+  cardKillText: {
+    color: "#ff8d8d",
+    fontSize: 20,
+    fontWeight: "800",
+    lineHeight: 22,
   },
   sessionMain: {
     padding: 14,
+    paddingRight: 46,
   },
   closeButton: {
     minHeight: 38,
@@ -305,6 +419,18 @@ const styles = StyleSheet.create({
     color: "#f5f7f8",
     fontSize: 16,
     fontWeight: "700",
+  },
+  originBadge: {
+    alignSelf: "flex-start",
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: "hidden",
+    color: "#f4c95d",
+    fontSize: 11,
+    fontWeight: "800",
+    backgroundColor: "rgba(244, 201, 93, 0.16)",
   },
   sessionMetaText: {
     color: "#94a3ad",
@@ -335,6 +461,10 @@ const styles = StyleSheet.create({
   },
   closeText: {
     color: "#ff8d8d",
+    fontWeight: "800",
+  },
+  attachHint: {
+    color: "#30c48d",
     fontWeight: "800",
   },
   modalBackdrop: {
@@ -437,4 +567,10 @@ function getRuntimeLabel(runtimeKind: RuntimeKind): string {
     RUNTIME_GROUPS.find((group) => group.kind === runtimeKind)?.label ??
     runtimeKind
   );
+}
+
+function getRuntimeGroupKind(session: CodexSession): RuntimeKind {
+  return session.runtime_kind === "claude" || session.runtime_kind === "codex"
+    ? session.runtime_kind
+    : "other";
 }

@@ -15,3 +15,11 @@ export function closeSessionRequest(deviceId: string, sessionId: string) {
     { device_id: deviceId, session_id: sessionId },
   );
 }
+
+export function killTmuxSessionRequest(deviceId: string, sessionId: string) {
+  return createMessage(
+    "session.kill_tmux",
+    { session_id: sessionId },
+    { device_id: deviceId, session_id: sessionId },
+  );
+}

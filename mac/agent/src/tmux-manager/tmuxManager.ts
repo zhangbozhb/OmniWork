@@ -9,6 +9,8 @@ export interface TmuxSessionInfo {
   name: string;
   createdAt: string;
   attached: boolean;
+  currentPath?: string;
+  currentCommand?: string;
 }
 
 export class TmuxManager {
@@ -47,18 +49,21 @@ export class TmuxManager {
       const { stdout } = await execFileAsync("tmux", [
         "list-sessions",
         "-F",
-        "#{session_name}\t#{session_created}\t#{session_attached}",
+        "#{session_name}\t#{session_created}\t#{session_attached}\t#{pane_current_path}\t#{pane_current_command}",
       ]);
 
       return stdout
         .split("\n")
         .filter(Boolean)
         .map((line) => {
-          const [name, created, attached] = line.split("\t");
+          const [name, created, attached, currentPath, currentCommand] =
+            line.split("\t");
           return {
             name,
             createdAt: new Date(Number(created) * 1000).toISOString(),
             attached: attached === "1",
+            currentPath,
+            currentCommand,
           };
         });
     } catch {
@@ -75,7 +80,13 @@ export class TmuxManager {
       return;
     }
 
-    await execFileAsync("tmux", ["send-keys", "-t", tmuxSessionName, "-l", data]);
+    await execFileAsync("tmux", [
+      "send-keys",
+      "-t",
+      tmuxSessionName,
+      "-l",
+      data,
+    ]);
   }
 
   async sendKey(tmuxSessionName: string, key: string): Promise<void> {

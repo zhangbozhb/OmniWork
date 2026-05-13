@@ -27,6 +27,7 @@ import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import type { PairingConfig } from "../features/auth/types";
 import {
   closeSessionRequest,
+  killTmuxSessionRequest,
   listSessionsRequest,
   createSessionRequest,
 } from "../features/sessions/sessionMessages";
@@ -76,6 +77,7 @@ export default function App(): JSX.Element {
   const [pairingError, setPairingError] = useState<string | undefined>();
   const [creatingSession, setCreatingSession] = useState(false);
   const [closingSessionIds, setClosingSessionIds] = useState<string[]>([]);
+  const [killingSessionIds, setKillingSessionIds] = useState<string[]>([]);
   const relayRef = useRef<MobileRelaySession | null>(null);
   const pendingCreateRef = useRef(false);
   const pairingsRef = useRef<PairingConfig[]>([]);
@@ -92,6 +94,7 @@ export default function App(): JSX.Element {
   const selectedFrame = selectedSession
     ? (terminalFrames[selectedSession.session_id] ?? EMPTY_TERMINAL_FRAME)
     : EMPTY_TERMINAL_FRAME;
+  const showHeader = view === "pairing";
 
   useEffect(() => {
     selectedSessionRef.current = selectedSession;
@@ -248,6 +251,7 @@ export default function App(): JSX.Element {
     setSelectedSession(null);
     setTerminalFrames({});
     setClosingSessionIds([]);
+    setKillingSessionIds([]);
     setEditingPairing(undefined);
 
     if (pairing && isSamePairing(pairing, targetPairing)) {
@@ -282,6 +286,7 @@ export default function App(): JSX.Element {
       setSelectedSession(null);
       setTerminalFrames({});
       setClosingSessionIds([]);
+      setKillingSessionIds([]);
       setView("devices");
       return;
     }
@@ -326,23 +331,58 @@ export default function App(): JSX.Element {
       return;
     }
 
-    Alert.alert("Close session", `Close ${session.title} on the Mac Agent?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Close",
-        style: "destructive",
-        onPress: () => {
-          setClosingSessionIds((current) =>
-            current.includes(session.session_id)
-              ? current
-              : [...current, session.session_id],
-          );
-          sendToRelay(
-            closeSessionRequest(pairing.deviceId, session.session_id),
-          );
+    const external = session.origin === "external";
+    Alert.alert(
+      external ? "Forget tmux session" : "Close session",
+      external
+        ? `Forget ${session.title} in OmniWork? The tmux session will keep running on the Mac.`
+        : `Close ${session.title} on the Mac Agent?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: external ? "Forget" : "Close",
+          style: "destructive",
+          onPress: () => {
+            setClosingSessionIds((current) =>
+              current.includes(session.session_id)
+                ? current
+                : [...current, session.session_id],
+            );
+            sendToRelay(
+              closeSessionRequest(pairing.deviceId, session.session_id),
+            );
+          },
         },
-      },
-    ]);
+      ],
+    );
+  }
+
+  function handleKillTmuxSession(session: CodexSession): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+
+    Alert.alert(
+      "Kill tmux session",
+      `Really kill ${session.title}? This will close the tmux session on the Mac and cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Kill tmux",
+          style: "destructive",
+          onPress: () => {
+            setKillingSessionIds((current) =>
+              current.includes(session.session_id)
+                ? current
+                : [...current, session.session_id],
+            );
+            sendToRelay(
+              killTmuxSessionRequest(pairing.deviceId, session.session_id),
+            );
+          },
+        },
+      ],
+    );
   }
 
   function handleOpenSession(session: CodexSession): void {
@@ -443,13 +483,7 @@ export default function App(): JSX.Element {
         const payload = message.payload as AuthFailedPayload;
         setConnectionStatus("failed");
         setConnectionMessage(`Authentication failed: ${payload.reason}`);
-        setPairingError(
-          "The Mac Agent rejected this key. The saved device is kept; edit it to enter the latest key.",
-        );
-        Alert.alert(
-          "Authentication failed",
-          "The saved device is still kept. Edit the device to enter the latest key, or try again after the Mac Agent is online.",
-        );
+        setPairingError(undefined);
         break;
       }
       case "session.list": {
@@ -457,11 +491,19 @@ export default function App(): JSX.Element {
         const remoteSessionIds = new Set(
           payload.sessions.map((session) => session.session_id),
         );
+        const closableSessionIds = new Set(
+          payload.sessions
+            .filter((session) => session.registered !== false)
+            .map((session) => session.session_id),
+        );
         if (payload.default_cwd) {
           setDefaultSessionCwd(payload.default_cwd);
         }
         setSessions(payload.sessions);
         setClosingSessionIds((current) =>
+          current.filter((sessionId) => closableSessionIds.has(sessionId)),
+        );
+        setKillingSessionIds((current) =>
           current.filter((sessionId) => remoteSessionIds.has(sessionId)),
         );
         setTerminalFrames((current) => {
@@ -486,6 +528,11 @@ export default function App(): JSX.Element {
       case "session.status": {
         const payload = message.payload as { session: CodexSession };
         setSessions((current) => upsertSession(current, payload.session));
+        setSelectedSession((current) =>
+          current?.session_id === payload.session.session_id
+            ? payload.session
+            : current,
+        );
         setCreatingSession(false);
         if (pendingCreateRef.current) {
           pendingCreateRef.current = false;
@@ -525,14 +572,16 @@ export default function App(): JSX.Element {
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
-        {canUseWorkspace ? (
-          <Text style={styles.subtitle}>
-            {getHeaderSubtitle(view, pairings.length, pairing)}
-          </Text>
-        ) : null}
-      </View>
+      {showHeader ? (
+        <View style={styles.header}>
+          <Text style={styles.title}>{title}</Text>
+          {canUseWorkspace ? (
+            <Text style={styles.subtitle}>
+              {getHeaderSubtitle(view, pairings.length, pairing)}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {view === "pairing" ? (
         <PairingScreen
@@ -559,11 +608,14 @@ export default function App(): JSX.Element {
           sessions={sessions}
           creating={creatingSession}
           closingSessionIds={closingSessionIds}
+          killingSessionIds={killingSessionIds}
           defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
           onBack={() => setView("devices")}
+          onRefreshSessions={handleRefreshSessions}
           onCreateSession={handleCreateSession}
           onOpenSession={handleOpenSession}
           onCloseSession={handleCloseSession}
+          onKillTmuxSession={handleKillTmuxSession}
         />
       ) : selectedSession ? (
         <TerminalScreen
@@ -572,6 +624,7 @@ export default function App(): JSX.Element {
           connectionStatus={connectionStatus}
           statusLabel={connectionMessage}
           onBack={() => setView("sessions")}
+          onKillTmux={() => handleKillTmuxSession(selectedSession)}
           onInput={handleTerminalInput}
           onResize={handleTerminalResize}
         />
@@ -589,6 +642,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 14,
     paddingBottom: 10,
+    alignItems: "center",
     borderBottomColor: "#263037",
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -601,6 +655,7 @@ const styles = StyleSheet.create({
     color: "#94a3ad",
     fontSize: 12,
     marginTop: 3,
+    textAlign: "center",
   },
 });
 

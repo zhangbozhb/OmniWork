@@ -39,6 +39,7 @@ export interface TerminalScreenProps {
   connectionStatus?: TerminalConnectionStatus;
   statusLabel?: string;
   onBack(): void;
+  onKillTmux(): void;
   onInput(input: TerminalInputPayload): void;
   onResize(size: TerminalResizePayload): void;
 }
@@ -84,11 +85,13 @@ export function TerminalScreen({
   connectionStatus = "idle",
   statusLabel,
   onBack,
+  onKillTmux,
   onInput,
   onResize,
 }: TerminalScreenProps): JSX.Element {
   const [draft, setDraft] = useState("");
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [terminalViewport, setTerminalViewport] = useState<TerminalViewport>({
     width: Dimensions.get("window").width,
     height: Math.max(260, Dimensions.get("window").height - 260),
@@ -99,6 +102,8 @@ export function TerminalScreen({
   const lastResizeKeyRef = useRef("");
   const agentStatus = getAgentStatusPresentation(connectionStatus);
   const runtimeLabel = session.runtime_label;
+  const hasDraft = draft.trim().length > 0;
+  const canHideKeyboard = keyboardVisible && !hasDraft;
   const terminalLayout = useMemo(
     () => computeTerminalLayout(terminalViewport, profile),
     [profile, terminalViewport],
@@ -112,11 +117,14 @@ export function TerminalScreen({
     const changeSubscription = Keyboard.addListener(
       "keyboardWillChangeFrame",
       (event) => {
-        setKeyboardBottomInset(getKeyboardBottomInset(event));
+        const inset = getKeyboardBottomInset(event);
+        setKeyboardBottomInset(inset);
+        setKeyboardVisible(inset > 0);
       },
     );
     const hideSubscription = Keyboard.addListener("keyboardWillHide", () => {
       setKeyboardBottomInset(0);
+      setKeyboardVisible(false);
     });
 
     return () => {
@@ -161,6 +169,17 @@ export function TerminalScreen({
     setDraft("");
   }
 
+  function handlePrimaryComposerAction(): void {
+    if (hasDraft) {
+      sendDraft();
+      return;
+    }
+
+    if (canHideKeyboard) {
+      Keyboard.dismiss();
+    }
+  }
+
   function handleTerminalAreaLayout(event: LayoutChangeEvent): void {
     const { width, height } = event.nativeEvent.layout;
     setTerminalViewport({
@@ -186,6 +205,13 @@ export function TerminalScreen({
           <Text style={[styles.statusIcon, { color: agentStatus.color }]}>
             {agentStatus.icon}
           </Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Kill tmux session"
+          style={styles.killButton}
+          onPress={onKillTmux}
+        >
+          <Text style={styles.killText}>×</Text>
         </Pressable>
       </View>
 
@@ -225,9 +251,6 @@ export function TerminalScreen({
               <Text style={styles.keyButtonText}>{item.label}</Text>
             </Pressable>
           ))}
-          <Pressable style={styles.keyButton} onPress={Keyboard.dismiss}>
-            <Text style={styles.keyButtonText}>Hide</Text>
-          </Pressable>
           <Pressable
             disabled={!draft}
             style={[styles.keyButton, !draft && styles.disabled]}
@@ -286,20 +309,31 @@ export function TerminalScreen({
               onChangeText={setDraft}
               autoCapitalize="none"
               autoCorrect={false}
-              blurOnSubmit={false}
               multiline
               placeholder={`Ask ${runtimeLabel} to inspect, edit, test, or explain...`}
               placeholderTextColor="#66727c"
               returnKeyType="default"
               scrollEnabled
+              submitBehavior="newline"
               style={styles.input}
             />
             <Pressable
-              disabled={!draft.trim()}
-              style={[styles.sendButton, !draft.trim() && styles.disabled]}
-              onPress={sendDraft}
+              disabled={!hasDraft && !canHideKeyboard}
+              style={[
+                styles.sendButton,
+                canHideKeyboard && styles.sendButtonSecondary,
+                !hasDraft && !canHideKeyboard && styles.disabled,
+              ]}
+              onPress={handlePrimaryComposerAction}
             >
-              <Text style={styles.sendText}>Send</Text>
+              <Text
+                style={[
+                  styles.sendText,
+                  canHideKeyboard && styles.sendTextSecondary,
+                ]}
+              >
+                {canHideKeyboard ? "Hide" : "Send"}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -406,6 +440,22 @@ const styles = StyleSheet.create({
     minWidth: 24,
     textAlign: "right",
   },
+  killButton: {
+    width: 38,
+    minHeight: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    borderColor: "#5b3030",
+    borderWidth: 1,
+    backgroundColor: "#2a1517",
+  },
+  killText: {
+    color: "#ff8d8d",
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 24,
+  },
   quickKeys: {
     flexGrow: 0,
   },
@@ -497,11 +547,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  sendButtonSecondary: {
+    backgroundColor: "#1d272d",
+    borderColor: "#34424c",
+    borderWidth: 1,
+  },
   disabled: {
     opacity: 0.45,
   },
   sendText: {
     color: "#08110d",
     fontWeight: "800",
+  },
+  sendTextSecondary: {
+    color: "#d7dde2",
   },
 });
