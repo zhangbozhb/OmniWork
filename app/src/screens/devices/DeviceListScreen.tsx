@@ -27,9 +27,24 @@ export function DeviceListScreen({
   onRefreshSessions,
 }: DeviceListScreenProps): JSX.Element {
   const ready = connectionStatus === "authenticated";
+  const activeStatus = getDeviceStatusPresentation(connectionStatus, connectionMessage);
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
+      <View style={styles.summaryCard}>
+        <View>
+          <Text style={styles.summaryEyebrow}>Device Center</Text>
+          <Text style={styles.summaryTitle}>
+            {pairings.length} linked {pairings.length === 1 ? "device" : "devices"}
+          </Text>
+        </View>
+        <View style={[styles.summaryBadge, { backgroundColor: activeStatus.backgroundColor }]}>
+          <Text style={[styles.summaryBadgeText, { color: activeStatus.color }]}>
+            {activeStatus.label}
+          </Text>
+        </View>
+      </View>
+
       {pairings.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No linked devices</Text>
@@ -43,6 +58,7 @@ export function DeviceListScreen({
               pairing.relayUrl === activePairing.relayUrl,
           );
           const canOpen = !active || ready;
+          const status = active ? activeStatus : getSavedDeviceStatusPresentation();
           return (
             <View
               key={`${pairing.relayUrl}:${pairing.deviceId}`}
@@ -54,15 +70,23 @@ export function DeviceListScreen({
                 onPress={() => onOpenDevice(pairing)}
               >
                 <View style={styles.deviceText}>
-                  <Text style={styles.deviceName}>{pairing.deviceId}</Text>
-                  <Text style={styles.deviceMeta}>{pairing.relayUrl}</Text>
-                  <Text style={styles.deviceStatus}>
-                    {active ? connectionMessage ?? connectionStatus : "Saved"}
+                  <View style={styles.deviceTitleRow}>
+                    <Text numberOfLines={1} style={styles.deviceName}>
+                      {pairing.deviceId}
+                    </Text>
+                    <View style={[styles.statusBadge, { backgroundColor: status.backgroundColor }]}>
+                      <Text style={[styles.statusBadgeText, { color: status.color }]}>
+                        {status.label}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text numberOfLines={1} style={styles.deviceMeta}>
+                    {formatRelayUrl(pairing.relayUrl)}
+                  </Text>
+                  <Text numberOfLines={2} style={styles.deviceStatus}>
+                    {active ? status.detail : "Ready to connect when selected."}
                   </Text>
                 </View>
-                <Text style={styles.openLabel}>
-                  {active && !ready ? "Connecting" : "Open"}
-                </Text>
               </Pressable>
               <View style={styles.deviceActions}>
                 <Pressable
@@ -87,11 +111,9 @@ export function DeviceListScreen({
         <Text style={styles.primaryText}>Add Link</Text>
       </Pressable>
 
-      <View style={styles.actions}>
-        <Pressable style={styles.secondaryButton} onPress={onRefreshSessions}>
-          <Text style={styles.secondaryText}>{ready ? "Refresh" : "Retry"}</Text>
-        </Pressable>
-      </View>
+      <Pressable style={styles.secondaryButton} onPress={onRefreshSessions}>
+        <Text style={styles.secondaryText}>{ready ? "Refresh Sessions" : "Retry Connection"}</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -101,6 +123,39 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 18,
     gap: 12,
+  },
+  summaryCard: {
+    borderColor: "#263037",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 16,
+    backgroundColor: "#11181d",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  summaryEyebrow: {
+    color: "#66727c",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  summaryTitle: {
+    color: "#f5f7f8",
+    fontSize: 20,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  summaryBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  summaryBadgeText: {
+    fontSize: 12,
+    fontWeight: "800",
   },
   emptyCard: {
     borderColor: "#34424c",
@@ -121,7 +176,7 @@ const styles = StyleSheet.create({
   deviceCard: {
     borderColor: "#34424c",
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     backgroundColor: "#151c21",
     overflow: "hidden",
   },
@@ -133,29 +188,26 @@ const styles = StyleSheet.create({
   },
   deviceText: {
     flex: 1,
-    paddingRight: 10,
+  },
+  deviceTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   deviceName: {
     color: "#f5f7f8",
     fontSize: 17,
     fontWeight: "700",
+    flex: 1,
   },
   deviceMeta: {
     color: "#94a3ad",
-    marginTop: 4,
+    marginTop: 6,
   },
   deviceStatus: {
     color: "#d7dde2",
     marginTop: 8,
-    fontWeight: "700",
-  },
-  openLabel: {
-    color: "#30c48d",
-    fontWeight: "800",
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 10,
+    lineHeight: 19,
   },
   deviceActions: {
     flexDirection: "row",
@@ -184,6 +236,15 @@ const styles = StyleSheet.create({
     borderColor: "#34424c",
     borderWidth: 1,
   },
+  statusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
   smallButton: {
     minHeight: 36,
     paddingHorizontal: 12,
@@ -205,3 +266,62 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
 });
+
+function formatRelayUrl(relayUrl: string): string {
+  try {
+    const url = new URL(relayUrl);
+    return `${url.host}${url.pathname}`;
+  } catch {
+    return relayUrl;
+  }
+}
+
+function getSavedDeviceStatusPresentation(): DeviceStatusPresentation {
+  return {
+    backgroundColor: "rgba(148, 163, 173, 0.16)",
+    color: "#94a3ad",
+    detail: "Ready to connect when selected.",
+    label: "Saved",
+  };
+}
+
+function getDeviceStatusPresentation(status: string, message?: string): DeviceStatusPresentation {
+  switch (status) {
+    case "authenticated":
+      return {
+        backgroundColor: "rgba(48, 196, 141, 0.16)",
+        color: "#30c48d",
+        detail: "Connected to Mac Agent.",
+        label: "Online",
+      };
+    case "connecting":
+    case "authenticating":
+      return {
+        backgroundColor: "rgba(244, 201, 93, 0.18)",
+        color: "#f4c95d",
+        detail: message ?? "Connecting to Relay...",
+        label: "Connecting",
+      };
+    case "failed":
+      return {
+        backgroundColor: "rgba(255, 141, 141, 0.16)",
+        color: "#ff8d8d",
+        detail: message ?? "Connection failed.",
+        label: "Offline",
+      };
+    default:
+      return {
+        backgroundColor: "rgba(148, 163, 173, 0.16)",
+        color: "#94a3ad",
+        detail: message ?? "Not connected.",
+        label: "Idle",
+      };
+  }
+}
+
+interface DeviceStatusPresentation {
+  backgroundColor: string;
+  color: string;
+  detail: string;
+  label: string;
+}

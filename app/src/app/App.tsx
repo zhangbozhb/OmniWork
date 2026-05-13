@@ -154,7 +154,9 @@ export default function App(): JSX.Element {
       .catch((error: unknown) => {
         if (!closed) {
           setConnectionStatus("failed");
-          setConnectionMessage(`Relay connection failed: ${String(error)}`);
+          setConnectionMessage(
+            `Relay connection failed: ${formatErrorMessage(error)}`,
+          );
         }
       });
 
@@ -387,7 +389,7 @@ export default function App(): JSX.Element {
       relayRef.current?.send(message);
     } catch (error: unknown) {
       setConnectionStatus("failed");
-      setConnectionMessage(`Relay send failed: ${String(error)}`);
+      setConnectionMessage(`Relay send failed: ${formatErrorMessage(error)}`);
     }
   }
 
@@ -516,7 +518,9 @@ export default function App(): JSX.Element {
       <View style={styles.header}>
         <Text style={styles.title}>{title}</Text>
         {canUseWorkspace ? (
-          <Text style={styles.subtitle}>{pairing?.deviceId}</Text>
+          <Text style={styles.subtitle}>
+            {getHeaderSubtitle(view, pairings.length, pairing)}
+          </Text>
         ) : null}
       </View>
 
@@ -627,4 +631,31 @@ function isSamePairing(left: PairingConfig, right: PairingConfig): boolean {
 
 function shouldClearPairing(reason: AuthFailedPayload["reason"]): boolean {
   return reason !== "device_not_online" && reason !== "too_many_attempts";
+}
+
+function getHeaderSubtitle(
+  view: AppView,
+  deviceCount: number,
+  activePairing: PairingConfig | null,
+): string {
+  if (view === "devices") {
+    return `${deviceCount} linked ${deviceCount === 1 ? "device" : "devices"}`;
+  }
+
+  return activePairing?.deviceId ?? "";
+}
+
+function formatErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown error";
+  }
 }
