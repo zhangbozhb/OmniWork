@@ -60,6 +60,7 @@ export default function App(): JSX.Element {
     null,
   );
   const [sessions, setSessions] = useState<CodexSession[]>([]);
+  const [defaultSessionCwd, setDefaultSessionCwd] = useState("");
   const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
     {},
   );
@@ -296,7 +297,7 @@ export default function App(): JSX.Element {
     sendToRelay(listSessionsRequest(pairing.deviceId));
   }
 
-  function handleCreateSession(): void {
+  function handleCreateSession(cwd: string): void {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
@@ -304,6 +305,7 @@ export default function App(): JSX.Element {
     setCreatingSession(true);
     sendToRelay(
       createSessionRequest(pairing.deviceId, {
+        cwd,
         title: `Codex ${sessions.length + 1}`,
       }),
     );
@@ -443,6 +445,9 @@ export default function App(): JSX.Element {
         const remoteSessionIds = new Set(
           payload.sessions.map((session) => session.session_id),
         );
+        if (payload.default_cwd) {
+          setDefaultSessionCwd(payload.default_cwd);
+        }
         setSessions(payload.sessions);
         setClosingSessionIds((current) =>
           current.filter((sessionId) => remoteSessionIds.has(sessionId)),
@@ -540,6 +545,7 @@ export default function App(): JSX.Element {
           sessions={sessions}
           creating={creatingSession}
           closingSessionIds={closingSessionIds}
+          defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
           onBack={() => setView("devices")}
           onCreateSession={handleCreateSession}
           onOpenSession={handleOpenSession}

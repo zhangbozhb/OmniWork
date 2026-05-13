@@ -1,5 +1,13 @@
-import type { JSX } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { type JSX, useState } from "react";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import type { CodexSession } from "../../../../packages/protocol-ts/src/index.ts";
 
@@ -7,8 +15,9 @@ export interface SessionListScreenProps {
   sessions: CodexSession[];
   creating: boolean;
   closingSessionIds?: string[];
+  defaultCwd: string;
   onBack(): void;
-  onCreateSession(): void;
+  onCreateSession(cwd: string): void;
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
 }
@@ -17,11 +26,29 @@ export function SessionListScreen({
   sessions,
   creating,
   closingSessionIds = [],
+  defaultCwd,
   onBack,
   onCreateSession,
   onOpenSession,
   onCloseSession,
 }: SessionListScreenProps): JSX.Element {
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [createCwd, setCreateCwd] = useState(defaultCwd);
+
+  function openCreateModal(): void {
+    setCreateCwd(defaultCwd);
+    setCreateModalVisible(true);
+  }
+
+  function confirmCreateSession(): void {
+    const cwd = createCwd.trim();
+    if (!cwd) {
+      return;
+    }
+    setCreateModalVisible(false);
+    onCreateSession(cwd);
+  }
+
   return (
     <View style={styles.screen}>
       <View style={styles.actions}>
@@ -31,7 +58,7 @@ export function SessionListScreen({
         <Pressable
           disabled={creating}
           style={[styles.primaryButton, creating && styles.disabled]}
-          onPress={onCreateSession}
+          onPress={openCreateModal}
         >
           <Text style={styles.primaryText}>
             {creating ? "Starting..." : "New Codex"}
@@ -52,8 +79,12 @@ export function SessionListScreen({
                   onPress={() => onOpenSession(session)}
                 >
                   <Text style={styles.sessionTitle}>{session.title}</Text>
-                  <Text numberOfLines={1} style={styles.sessionMeta}>
-                    {formatCompactPath(session.cwd)}
+                  <Text
+                    ellipsizeMode="middle"
+                    numberOfLines={1}
+                    style={styles.sessionMeta}
+                  >
+                    {session.cwd}
                   </Text>
                   <View style={styles.sessionDetails}>
                     <Text style={styles.sessionStatus}>{session.status}</Text>
@@ -79,6 +110,51 @@ export function SessionListScreen({
           })
         )}
       </ScrollView>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={createModalVisible}
+        onRequestClose={() => setCreateModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>New Codex Session</Text>
+            <Text style={styles.modalDescription}>
+              Confirm or edit the working directory before creating.
+            </Text>
+            <TextInput
+              value={createCwd}
+              onChangeText={setCreateCwd}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="Working directory"
+              placeholderTextColor="#66727c"
+              style={styles.cwdInput}
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalSecondaryButton}
+                onPress={() => setCreateModalVisible(false)}
+              >
+                <Text style={styles.secondaryText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                disabled={!createCwd.trim() || creating}
+                style={[
+                  styles.modalPrimaryButton,
+                  (!createCwd.trim() || creating) && styles.disabled,
+                ]}
+                onPress={confirmCreateSession}
+              >
+                <Text style={styles.primaryText}>
+                  {creating ? "Starting..." : "Create"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -154,6 +230,7 @@ const styles = StyleSheet.create({
   sessionMeta: {
     color: "#94a3ad",
     marginTop: 4,
+    width: "100%",
   },
   sessionStatus: {
     color: "#30c48d",
@@ -181,23 +258,61 @@ const styles = StyleSheet.create({
     color: "#ff8d8d",
     fontWeight: "800",
   },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 22,
+    backgroundColor: "rgba(0, 0, 0, 0.58)",
+  },
+  modalCard: {
+    borderColor: "#34424c",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
+    backgroundColor: "#151c21",
+  },
+  modalTitle: {
+    color: "#f5f7f8",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  modalDescription: {
+    color: "#94a3ad",
+    fontSize: 13,
+  },
+  cwdInput: {
+    minHeight: 48,
+    borderColor: "#34424c",
+    borderWidth: 1,
+    borderRadius: 8,
+    color: "#f5f7f8",
+    paddingHorizontal: 12,
+    backgroundColor: "#101417",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  modalSecondaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderColor: "#34424c",
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalPrimaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#30c48d",
+  },
 });
-
-function formatCompactPath(path: string): string {
-  const trimmedPath = path.trim();
-  if (!trimmedPath) {
-    return "";
-  }
-
-  const normalizedPath = trimmedPath.replace(/\/+$/g, "") || "/";
-  const parts = normalizedPath.split("/").filter(Boolean);
-  if (parts.length <= 2) {
-    return normalizedPath;
-  }
-
-  const prefix = normalizedPath.startsWith("/") ? `/${parts[0]}` : parts[0];
-  return `${prefix}/…/${parts[parts.length - 1]}`;
-}
 
 function formatRelativeTime(value: string): string {
   const timestamp = Date.parse(value);

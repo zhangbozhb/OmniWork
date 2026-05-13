@@ -125,6 +125,7 @@ export interface CodexSession {
 
 export interface SessionListPayload {
   sessions: CodexSession[];
+  default_cwd?: string;
 }
 
 export interface SessionCreatePayload {

@@ -158,6 +158,7 @@ export class AgentService {
 
   private async handleSessionList(message: MessageEnvelope): Promise<void> {
     const payload: SessionListPayload = {
+      default_cwd: this.config.defaultCwd,
       sessions: await this.sessionManager.list(),
     };
     this.send(createMessage("session.list", payload, { device_id: this.config.deviceId, id: message.id }));
