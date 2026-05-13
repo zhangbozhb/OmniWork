@@ -1,0 +1,1004 @@
+mac/agent/src/core/agentService.ts
+  ae3009dc6c739c6f 15,25,34-37,41,99-104,202 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":15},{"Single":25},{"Range":[34,37]},{"Single":41},{"Range":[99,104]},{"Single":202}]}]}
+app/src/screens/terminal/TerminalScreen.tsx
+  ae3009dc6c739c6f 2,7,20,28-33,43,67-72,88,92-99,101-105,128-154,164-171,197,199-203,240-278,281,291,430-465 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":2},{"Single":7},{"Single":20},{"Range":[28,33]},{"Single":43},{"Range":[67,72]},{"Single":88},{"Range":[92,99]},{"Range":[101,105]},{"Range":[128,154]},{"Range":[164,171]},{"Single":197},{"Range":[199,203]},{"Range":[240,278]},{"Single":281},{"Single":291},{"Range":[430,465]}]}]}
+mac/agent/src/runtime/runtimeAdapter.ts
+  ae3009dc6c739c6f 1-70 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[1,70]}]}]}
+mac/agent/src/config/config.ts
+  ae3009dc6c739c6f 13,32 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":13},{"Single":32}]}]}
+mac/agent/src/core/sessionManager.ts
+  ae3009dc6c739c6f 5,12,17,26,34,46-47,49,51,55-57,100-120 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":5},{"Single":12},{"Single":17},{"Single":26},{"Single":34},{"Range":[46,47]},{"Single":49},{"Single":51},{"Range":[55,57]},{"Range":[100,120]}]}]}
+mac/agent/src/session-store/sessionStore.ts
+  ae3009dc6c739c6f 4,17,47-63 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":4},{"Single":17},{"Range":[47,63]}]}]}
+app/src/features/terminal/terminalMessages.ts
+  ae3009dc6c739c6f 1-5,24-30 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[1,5]},{"Range":[24,30]}]}]}
+packages/protocol-ts/src/index.ts
+  ae3009dc6c739c6f 61-62,115-116,119-120,137 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[61,62]},{"Range":[115,116]},{"Range":[119,120]},{"Single":137}]}]}
+app/src/app/App.tsx
+  ae3009dc6c739c6f 15,19,35,38,306-309,317-319,380-402,446-452,576 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":15},{"Single":19},{"Single":35},{"Single":38},{"Range":[306,309]},{"Range":[317,319]},{"Range":[380,402]},{"Range":[446,452]},{"Single":576}]}]}
+app/src/screens/sessions/SessionListScreen.tsx
+  ae3009dc6c739c6f 12-15,23,28-32,45-46,48-49,60,72-83,85,87-92,94-97,101-162,173-175,246-275,277,281-284,292,309,434-439 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[12,15]},{"Single":23},{"Range":[28,32]},{"Range":[45,46]},{"Range":[48,49]},{"Single":60},{"Range":[72,83]},{"Single":85},{"Range":[87,92]},{"Range":[94,97]},{"Range":[101,162]},{"Range":[173,175]},{"Range":[246,275]},{"Single":277},{"Range":[281,284]},{"Single":292},{"Single":309},{"Range":[434,439]}]}]}
+app/src/features/terminal/terminalLayout.ts
+  ae3009dc6c739c6f 1-175 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[1,175]}]}]}
+app/src/terminal/NativeTerminalView.tsx
+  ae3009dc6c739c6f 13-14,19-20,23-27,31-32,81-91,105-106,126 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a04680b300fcd22f1a4ca59","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[13,14]},{"Range":[19,20]},{"Range":[23,27]},{"Range":[31,32]},{"Range":[81,91]},{"Range":[105,106]},{"Single":126}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "dc84fd2f34ebdc61f6f1c55bec120b3f67131285",
+  "prompts": {
+    "ae3009dc6c739c6f": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a04531a300fcd22f1a4c68d",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": "zhangbo.cd <zhangbo.cd@bytedance.com>",
+      "messages": [],
+      "total_additions": 706,
+      "total_deletions": 127,
+      "accepted_lines": 701,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {
+    "app/src/app/App.tsx": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Single": 15
+          },
+          {
+            "Single": 19
+          },
+          {
+            "Single": 35
+          },
+          {
+            "Single": 38
+          },
+          {
+            "Range": [
+              306,
+              309
+            ]
+          },
+          {
+            "Range": [
+              317,
+              319
+            ]
+          },
+          {
+            "Range": [
+              380,
+              402
+            ]
+          },
+          {
+            "Range": [
+              446,
+              452
+            ]
+          },
+          {
+            "Single": 576
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 15
+              },
+              {
+                "Single": 19
+              },
+              {
+                "Single": 35
+              },
+              {
+                "Single": 38
+              },
+              {
+                "Range": [
+                  306,
+                  309
+                ]
+              },
+              {
+                "Range": [
+                  317,
+                  319
+                ]
+              },
+              {
+                "Range": [
+                  380,
+                  402
+                ]
+              },
+              {
+                "Range": [
+                  446,
+                  452
+                ]
+              },
+              {
+                "Single": 576
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "app/src/features/terminal/terminalLayout.ts": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              175
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  175
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "app/src/features/terminal/terminalMessages.ts": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              5
+            ]
+          },
+          {
+            "Range": [
+              24,
+              30
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  5
+                ]
+              },
+              {
+                "Range": [
+                  24,
+                  30
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "app/src/screens/sessions/SessionListScreen.tsx": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Range": [
+              12,
+              15
+            ]
+          },
+          {
+            "Single": 23
+          },
+          {
+            "Range": [
+              28,
+              32
+            ]
+          },
+          {
+            "Range": [
+              45,
+              46
+            ]
+          },
+          {
+            "Range": [
+              48,
+              49
+            ]
+          },
+          {
+            "Single": 60
+          },
+          {
+            "Range": [
+              72,
+              83
+            ]
+          },
+          {
+            "Single": 85
+          },
+          {
+            "Range": [
+              87,
+              92
+            ]
+          },
+          {
+            "Range": [
+              94,
+              97
+            ]
+          },
+          {
+            "Range": [
+              101,
+              162
+            ]
+          },
+          {
+            "Range": [
+              173,
+              175
+            ]
+          },
+          {
+            "Range": [
+              246,
+              275
+            ]
+          },
+          {
+            "Single": 277
+          },
+          {
+            "Range": [
+              281,
+              284
+            ]
+          },
+          {
+            "Single": 292
+          },
+          {
+            "Single": 309
+          },
+          {
+            "Range": [
+              434,
+              439
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  12,
+                  15
+                ]
+              },
+              {
+                "Single": 23
+              },
+              {
+                "Range": [
+                  28,
+                  32
+                ]
+              },
+              {
+                "Range": [
+                  45,
+                  46
+                ]
+              },
+              {
+                "Range": [
+                  48,
+                  49
+                ]
+              },
+              {
+                "Single": 60
+              },
+              {
+                "Range": [
+                  72,
+                  83
+                ]
+              },
+              {
+                "Single": 85
+              },
+              {
+                "Range": [
+                  87,
+                  92
+                ]
+              },
+              {
+                "Range": [
+                  94,
+                  97
+                ]
+              },
+              {
+                "Range": [
+                  101,
+                  162
+                ]
+              },
+              {
+                "Range": [
+                  173,
+                  175
+                ]
+              },
+              {
+                "Range": [
+                  246,
+                  275
+                ]
+              },
+              {
+                "Single": 277
+              },
+              {
+                "Range": [
+                  281,
+                  284
+                ]
+              },
+              {
+                "Single": 292
+              },
+              {
+                "Single": 309
+              },
+              {
+                "Range": [
+                  434,
+                  439
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "app/src/screens/terminal/TerminalScreen.tsx": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Single": 2
+          },
+          {
+            "Single": 7
+          },
+          {
+            "Single": 20
+          },
+          {
+            "Range": [
+              28,
+              33
+            ]
+          },
+          {
+            "Single": 43
+          },
+          {
+            "Range": [
+              67,
+              72
+            ]
+          },
+          {
+            "Single": 88
+          },
+          {
+            "Range": [
+              92,
+              99
+            ]
+          },
+          {
+            "Range": [
+              101,
+              105
+            ]
+          },
+          {
+            "Range": [
+              128,
+              154
+            ]
+          },
+          {
+            "Range": [
+              164,
+              171
+            ]
+          },
+          {
+            "Single": 197
+          },
+          {
+            "Range": [
+              199,
+              203
+            ]
+          },
+          {
+            "Range": [
+              240,
+              278
+            ]
+          },
+          {
+            "Single": 281
+          },
+          {
+            "Single": 291
+          },
+          {
+            "Range": [
+              430,
+              465
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 2
+              },
+              {
+                "Single": 7
+              },
+              {
+                "Single": 20
+              },
+              {
+                "Range": [
+                  28,
+                  33
+                ]
+              },
+              {
+                "Single": 43
+              },
+              {
+                "Range": [
+                  67,
+                  72
+                ]
+              },
+              {
+                "Single": 88
+              },
+              {
+                "Range": [
+                  92,
+                  99
+                ]
+              },
+              {
+                "Range": [
+                  101,
+                  105
+                ]
+              },
+              {
+                "Range": [
+                  128,
+                  154
+                ]
+              },
+              {
+                "Range": [
+                  164,
+                  171
+                ]
+              },
+              {
+                "Single": 197
+              },
+              {
+                "Range": [
+                  199,
+                  203
+                ]
+              },
+              {
+                "Range": [
+                  240,
+                  278
+                ]
+              },
+              {
+                "Single": 281
+              },
+              {
+                "Single": 291
+              },
+              {
+                "Range": [
+                  430,
+                  465
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "app/src/terminal/NativeTerminalView.tsx": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Range": [
+              13,
+              14
+            ]
+          },
+          {
+            "Range": [
+              19,
+              20
+            ]
+          },
+          {
+            "Range": [
+              23,
+              27
+            ]
+          },
+          {
+            "Range": [
+              31,
+              32
+            ]
+          },
+          {
+            "Range": [
+              81,
+              91
+            ]
+          },
+          {
+            "Range": [
+              105,
+              106
+            ]
+          },
+          {
+            "Single": 126
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  13,
+                  14
+                ]
+              },
+              {
+                "Range": [
+                  19,
+                  20
+                ]
+              },
+              {
+                "Range": [
+                  23,
+                  27
+                ]
+              },
+              {
+                "Range": [
+                  31,
+                  32
+                ]
+              },
+              {
+                "Range": [
+                  81,
+                  91
+                ]
+              },
+              {
+                "Range": [
+                  105,
+                  106
+                ]
+              },
+              {
+                "Single": 126
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mac/agent/src/config/config.ts": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Single": 13
+          },
+          {
+            "Single": 32
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 13
+              },
+              {
+                "Single": 32
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mac/agent/src/core/agentService.ts": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Single": 15
+          },
+          {
+            "Single": 25
+          },
+          {
+            "Range": [
+              34,
+              37
+            ]
+          },
+          {
+            "Single": 41
+          },
+          {
+            "Range": [
+              99,
+              104
+            ]
+          },
+          {
+            "Single": 202
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 15
+              },
+              {
+                "Single": 25
+              },
+              {
+                "Range": [
+                  34,
+                  37
+                ]
+              },
+              {
+                "Single": 41
+              },
+              {
+                "Range": [
+                  99,
+                  104
+                ]
+              },
+              {
+                "Single": 202
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mac/agent/src/core/sessionManager.ts": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Single": 5
+          },
+          {
+            "Single": 12
+          },
+          {
+            "Single": 17
+          },
+          {
+            "Single": 26
+          },
+          {
+            "Single": 34
+          },
+          {
+            "Range": [
+              46,
+              47
+            ]
+          },
+          {
+            "Single": 49
+          },
+          {
+            "Single": 51
+          },
+          {
+            "Range": [
+              55,
+              57
+            ]
+          },
+          {
+            "Range": [
+              100,
+              120
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 5
+              },
+              {
+                "Single": 12
+              },
+              {
+                "Single": 17
+              },
+              {
+                "Single": 26
+              },
+              {
+                "Single": 34
+              },
+              {
+                "Range": [
+                  46,
+                  47
+                ]
+              },
+              {
+                "Single": 49
+              },
+              {
+                "Single": 51
+              },
+              {
+                "Range": [
+                  55,
+                  57
+                ]
+              },
+              {
+                "Range": [
+                  100,
+                  120
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mac/agent/src/runtime/runtimeAdapter.ts": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              70
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  70
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mac/agent/src/session-store/sessionStore.ts": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Single": 4
+          },
+          {
+            "Single": 17
+          },
+          {
+            "Range": [
+              47,
+              63
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 4
+              },
+              {
+                "Single": 17
+              },
+              {
+                "Range": [
+                  47,
+                  63
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "packages/protocol-ts/src/index.ts": [
+      {
+        "hash": "ae3009dc6c739c6f",
+        "line_ranges": [
+          {
+            "Range": [
+              61,
+              62
+            ]
+          },
+          {
+            "Range": [
+              115,
+              116
+            ]
+          },
+          {
+            "Range": [
+              119,
+              120
+            ]
+          },
+          {
+            "Single": 137
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a04680b300fcd22f1a4ca59",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  61,
+                  62
+                ]
+              },
+              {
+                "Range": [
+                  115,
+                  116
+                ]
+              },
+              {
+                "Range": [
+                  119,
+                  120
+                ]
+              },
+              {
+                "Single": 137
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "ae3009dc6c739c6f": {
+      "tool": "trae",
+      "conversation_id": "6a04531a300fcd22f1a4c68d",
+      "session_id": "6a04531a300fcd22f1a4c68d",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
