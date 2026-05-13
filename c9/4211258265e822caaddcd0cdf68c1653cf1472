@@ -1,0 +1,232 @@
+app/src/app/App.tsx
+  1f582f03515bbb3a 157-159,392,521-523,635-660 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a040618300fcd22f1a4b49c","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[157,159]},{"Single":392},{"Range":[521,523]},{"Range":[635,660]}]}]}
+app/src/screens/devices/DeviceListScreen.tsx
+  1f582f03515bbb3a 30,34-47,61,73-87,114-116,127-159,179,191-195,201,205,210,239-247,269-327 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a040618300fcd22f1a4b49c","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":30},{"Range":[34,47]},{"Single":61},{"Range":[73,87]},{"Range":[114,116]},{"Range":[127,159]},{"Single":179},{"Range":[191,195]},{"Single":201},{"Single":205},{"Single":210},{"Range":[239,247]},{"Range":[269,327]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "c94211258265e822caaddcd0cdf68c1653cf1472",
+  "prompts": {
+    "1f582f03515bbb3a": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a034565300fcd22f1a4a1c7",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": "zhangbo.cd <zhangbo.cd@bytedance.com>",
+      "messages": [],
+      "total_additions": 178,
+      "total_deletions": 27,
+      "accepted_lines": 178,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {
+    "app/src/app/App.tsx": [
+      {
+        "hash": "1f582f03515bbb3a",
+        "line_ranges": [
+          {
+            "Range": [
+              157,
+              159
+            ]
+          },
+          {
+            "Single": 392
+          },
+          {
+            "Range": [
+              521,
+              523
+            ]
+          },
+          {
+            "Range": [
+              635,
+              660
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a040618300fcd22f1a4b49c",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  157,
+                  159
+                ]
+              },
+              {
+                "Single": 392
+              },
+              {
+                "Range": [
+                  521,
+                  523
+                ]
+              },
+              {
+                "Range": [
+                  635,
+                  660
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "app/src/screens/devices/DeviceListScreen.tsx": [
+      {
+        "hash": "1f582f03515bbb3a",
+        "line_ranges": [
+          {
+            "Single": 30
+          },
+          {
+            "Range": [
+              34,
+              47
+            ]
+          },
+          {
+            "Single": 61
+          },
+          {
+            "Range": [
+              73,
+              87
+            ]
+          },
+          {
+            "Range": [
+              114,
+              116
+            ]
+          },
+          {
+            "Range": [
+              127,
+              159
+            ]
+          },
+          {
+            "Single": 179
+          },
+          {
+            "Range": [
+              191,
+              195
+            ]
+          },
+          {
+            "Single": 201
+          },
+          {
+            "Single": 205
+          },
+          {
+            "Single": 210
+          },
+          {
+            "Range": [
+              239,
+              247
+            ]
+          },
+          {
+            "Range": [
+              269,
+              327
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a040618300fcd22f1a4b49c",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 30
+              },
+              {
+                "Range": [
+                  34,
+                  47
+                ]
+              },
+              {
+                "Single": 61
+              },
+              {
+                "Range": [
+                  73,
+                  87
+                ]
+              },
+              {
+                "Range": [
+                  114,
+                  116
+                ]
+              },
+              {
+                "Range": [
+                  127,
+                  159
+                ]
+              },
+              {
+                "Single": 179
+              },
+              {
+                "Range": [
+                  191,
+                  195
+                ]
+              },
+              {
+                "Single": 201
+              },
+              {
+                "Single": 205
+              },
+              {
+                "Single": 210
+              },
+              {
+                "Range": [
+                  239,
+                  247
+                ]
+              },
+              {
+                "Range": [
+                  269,
+                  327
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "1f582f03515bbb3a": {
+      "tool": "trae",
+      "conversation_id": "6a034565300fcd22f1a4a1c7",
+      "session_id": "6a034565300fcd22f1a4a1c7",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
