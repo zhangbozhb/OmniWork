@@ -52,8 +52,18 @@ export function SessionListScreen({
                   onPress={() => onOpenSession(session)}
                 >
                   <Text style={styles.sessionTitle}>{session.title}</Text>
-                  <Text style={styles.sessionMeta}>{session.cwd}</Text>
-                  <Text style={styles.sessionStatus}>{session.status}</Text>
+                  <Text numberOfLines={1} style={styles.sessionMeta}>
+                    {formatCompactPath(session.cwd)}
+                  </Text>
+                  <View style={styles.sessionDetails}>
+                    <Text style={styles.sessionStatus}>{session.status}</Text>
+                    <Text style={styles.sessionTime}>
+                      Active {formatRelativeTime(session.last_active_at)}
+                    </Text>
+                  </View>
+                  <Text style={styles.sessionCreated}>
+                    Created {formatAbsoluteTime(session.created_at)}
+                  </Text>
                 </Pressable>
                 <Pressable
                   disabled={closing}
@@ -61,7 +71,7 @@ export function SessionListScreen({
                   onPress={() => onCloseSession(session)}
                 >
                   <Text style={styles.closeText}>
-                    {closing ? "Closing..." : "Delete"}
+                    {closing ? "Closing..." : "Close Session"}
                   </Text>
                 </Pressable>
               </View>
@@ -147,11 +157,83 @@ const styles = StyleSheet.create({
   },
   sessionStatus: {
     color: "#30c48d",
-    marginTop: 8,
     fontWeight: "700",
+    textTransform: "capitalize",
+  },
+  sessionDetails: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 8,
+  },
+  sessionTime: {
+    color: "#d7dde2",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  sessionCreated: {
+    color: "#66727c",
+    fontSize: 12,
+    marginTop: 6,
   },
   closeText: {
     color: "#ff8d8d",
     fontWeight: "800",
   },
 });
+
+function formatCompactPath(path: string): string {
+  const trimmedPath = path.trim();
+  if (!trimmedPath) {
+    return "";
+  }
+
+  const normalizedPath = trimmedPath.replace(/\/+$/g, "") || "/";
+  const parts = normalizedPath.split("/").filter(Boolean);
+  if (parts.length <= 2) {
+    return normalizedPath;
+  }
+
+  const prefix = normalizedPath.startsWith("/") ? `/${parts[0]}` : parts[0];
+  return `${prefix}/…/${parts[parts.length - 1]}`;
+}
+
+function formatRelativeTime(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "unknown";
+  }
+
+  const diffSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (diffSeconds < 60) {
+    return "just now";
+  }
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+function formatAbsoluteTime(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "unknown";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(timestamp);
+}

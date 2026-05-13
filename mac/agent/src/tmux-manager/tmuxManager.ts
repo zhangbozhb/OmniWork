@@ -67,11 +67,19 @@ export class TmuxManager {
   }
 
   async sendInput(tmuxSessionName: string, data: string): Promise<void> {
+    await this.sendLiteralInput(tmuxSessionName, data);
+  }
+
+  async sendLiteralInput(tmuxSessionName: string, data: string): Promise<void> {
     if (!data) {
       return;
     }
 
     await execFileAsync("tmux", ["send-keys", "-t", tmuxSessionName, "-l", data]);
+  }
+
+  async sendKey(tmuxSessionName: string, key: string): Promise<void> {
+    await execFileAsync("tmux", ["send-keys", "-t", tmuxSessionName, key]);
   }
 
   async resize(tmuxSessionName: string, size: TerminalSize): Promise<void> {

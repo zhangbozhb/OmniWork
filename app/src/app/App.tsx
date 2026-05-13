@@ -73,6 +73,7 @@ export default function App(): JSX.Element {
   const [closingSessionIds, setClosingSessionIds] = useState<string[]>([]);
   const relayRef = useRef<MobileRelaySession | null>(null);
   const pendingCreateRef = useRef(false);
+  const pairingsRef = useRef<PairingConfig[]>([]);
   const selectedSessionRef = useRef<CodexSession | null>(null);
 
   const canUseWorkspace = pairings.length > 0;
@@ -90,6 +91,10 @@ export default function App(): JSX.Element {
   useEffect(() => {
     selectedSessionRef.current = selectedSession;
   }, [selectedSession]);
+
+  useEffect(() => {
+    pairingsRef.current = pairings;
+  }, [pairings]);
 
   useEffect(() => {
     let active = true;
@@ -231,16 +236,7 @@ export default function App(): JSX.Element {
   }
 
   async function removeDevice(targetPairing: PairingConfig): Promise<void> {
-    const nextPairings = pairings.filter(
-      (item) => !isSamePairing(item, targetPairing),
-    );
-    if (nextPairings.length > 0) {
-      await savePairings(nextPairings);
-    } else {
-      await clearPairing();
-    }
-
-    setPairings(nextPairings);
+    const nextPairings = await removeSavedPairing(targetPairing);
     setSessions([]);
     setSelectedSession(null);
     setTerminalFrames({});
@@ -253,6 +249,23 @@ export default function App(): JSX.Element {
     }
 
     setView(nextPairings.length > 0 ? "devices" : "pairing");
+  }
+
+  async function removeSavedPairing(
+    targetPairing: PairingConfig,
+  ): Promise<PairingConfig[]> {
+    const nextPairings = pairingsRef.current.filter(
+      (item) => !isSamePairing(item, targetPairing),
+    );
+    if (nextPairings.length > 0) {
+      await savePairings(nextPairings);
+    } else {
+      await clearPairing();
+    }
+
+    pairingsRef.current = nextPairings;
+    setPairings(nextPairings);
+    return nextPairings;
   }
 
   function handleOpenDevice(nextPairing: PairingConfig): void {
@@ -301,10 +314,10 @@ export default function App(): JSX.Element {
       return;
     }
 
-    Alert.alert("Delete agent", `Close and delete ${session.title}?`, [
+    Alert.alert("Close session", `Close ${session.title} on the Mac Agent?`, [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Delete",
+        text: "Close",
         style: "destructive",
         onPress: () => {
           setClosingSessionIds((current) =>
@@ -346,13 +359,25 @@ export default function App(): JSX.Element {
     sendToRelay(
       terminalInputRequest(pairing.deviceId, selectedSession.session_id, input),
     );
-    setTimeout(() => {
-      requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
-    }, 250);
+    requestTerminalSnapshotsAfterInput(
+      pairing.deviceId,
+      selectedSession.session_id,
+    );
   }
 
   function requestTerminalSnapshot(deviceId: string, sessionId: string): void {
     sendToRelay(terminalSnapshotRequest(deviceId, sessionId));
+  }
+
+  function requestTerminalSnapshotsAfterInput(
+    deviceId: string,
+    sessionId: string,
+  ): void {
+    for (const delayMs of [250, 700, 1400]) {
+      setTimeout(() => {
+        requestTerminalSnapshot(deviceId, sessionId);
+      }, delayMs);
+    }
   }
 
   function sendToRelay(message: MessageEnvelope): void {
@@ -387,9 +412,20 @@ export default function App(): JSX.Element {
           setPairingError(
             "The Mac Agent rejected this key. Enter the latest key generated on the Mac.",
           );
-          setPairing(null);
-          setView("pairing");
-          clearPairing().catch(() => undefined);
+          removeSavedPairing(activePairing)
+            .then((nextPairings) => {
+              setPairing(nextPairings[0] ?? null);
+              setSessions([]);
+              setSelectedSession(null);
+              setTerminalFrames({});
+              setClosingSessionIds([]);
+              setView(nextPairings.length > 0 ? "devices" : "pairing");
+            })
+            .catch((error: unknown) => {
+              setPairingError(
+                `Could not update saved devices: ${String(error)}`,
+              );
+            });
           Alert.alert(
             "Pairing expired",
             "The Mac Agent rejected this key. Enter the latest key generated on the Mac.",
@@ -513,7 +549,8 @@ export default function App(): JSX.Element {
         <TerminalScreen
           session={selectedSession}
           frame={selectedFrame}
-          status={connectionMessage}
+          connectionStatus={connectionStatus}
+          statusLabel={connectionMessage}
           onBack={() => setView("sessions")}
           onInput={handleTerminalInput}
         />

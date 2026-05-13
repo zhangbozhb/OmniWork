@@ -35,7 +35,7 @@ export class SessionManager {
   }
 
   async list(): Promise<CodexSession[]> {
-    return this.store.list();
+    return (await this.store.list()).sort(compareSessionsByRecentTime);
   }
 
   async create(payload: SessionCreatePayload = {}): Promise<CodexSession> {
@@ -85,11 +85,28 @@ export class SessionManager {
       return;
     }
 
-    await this.tmux.killSession(session.tmux_session_name);
-    await this.store.remove(sessionId);
+    try {
+      await this.tmux.killSession(session.tmux_session_name);
+    } finally {
+      await this.store.remove(sessionId);
+    }
   }
 }
 
 function toTmuxSessionName(sessionId: string): string {
   return `omniwork_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
+function compareSessionsByRecentTime(left: CodexSession, right: CodexSession): number {
+  return getSessionSortTime(right) - getSessionSortTime(left);
+}
+
+function getSessionSortTime(session: CodexSession): number {
+  const lastActiveAt = Date.parse(session.last_active_at);
+  if (Number.isFinite(lastActiveAt)) {
+    return lastActiveAt;
+  }
+
+  const createdAt = Date.parse(session.created_at);
+  return Number.isFinite(createdAt) ? createdAt : 0;
 }

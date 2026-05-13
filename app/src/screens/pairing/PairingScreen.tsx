@@ -1,5 +1,5 @@
 import { type JSX, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from "react-native";
 
 import type { PairingConfig } from "../../features/auth/types";
 import { isValidSessionKey } from "../../features/auth/keyProof";
@@ -43,7 +43,10 @@ export function PairingScreen({ errorMessage, initialPairing, submitLabel = "Pai
   }
 
   return (
-    <View style={styles.screen}>
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={styles.screen}
+    >
       <Text style={styles.label}>Relay URL</Text>
       <TextInput
         autoCapitalize="none"
@@ -88,13 +91,13 @@ export function PairingScreen({ errorMessage, initialPairing, submitLabel = "Pai
           <Text style={styles.secondaryButtonText}>Cancel</Text>
         </Pressable>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
+    flexGrow: 1,
     padding: 18,
     gap: 10,
   },

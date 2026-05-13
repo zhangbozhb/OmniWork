@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { PairingConfig } from "../../features/auth/types";
 
@@ -29,7 +29,7 @@ export function DeviceListScreen({
   const ready = connectionStatus === "authenticated";
 
   return (
-    <View style={styles.screen}>
+    <ScrollView contentContainerStyle={styles.screen}>
       {pairings.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No linked devices</Text>
@@ -92,13 +92,13 @@ export function DeviceListScreen({
           <Text style={styles.secondaryText}>{ready ? "Refresh" : "Retry"}</Text>
         </Pressable>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
+    flexGrow: 1,
     padding: 18,
     gap: 12,
   },
