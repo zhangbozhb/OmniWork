@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type { CodexSession } from "../../../../packages/protocol-ts/src/index.ts";
+import type { CodexSession, RuntimeKind } from "../../../../packages/protocol-ts/src/index.ts";
 
 export class JsonSessionStore {
   private readonly path: string;
@@ -14,7 +14,7 @@ export class JsonSessionStore {
     try {
       const raw = await readFile(this.path, "utf8");
       const parsed = JSON.parse(raw) as { sessions: CodexSession[] };
-      return parsed.sessions;
+      return parsed.sessions.map(normalizeSession);
     } catch {
       return [];
     }
@@ -42,5 +42,24 @@ export class JsonSessionStore {
   async remove(sessionId: string): Promise<void> {
     const sessions = await this.list();
     await this.saveAll(sessions.filter((session) => session.session_id !== sessionId));
+  }
+}
+
+function normalizeSession(session: CodexSession): CodexSession {
+  const runtimeKind = (session.runtime_kind ?? "codex") as RuntimeKind;
+  return {
+    ...session,
+    runtime_kind: runtimeKind,
+    runtime_label: session.runtime_label ?? getRuntimeLabel(runtimeKind),
+  };
+}
+
+function getRuntimeLabel(runtimeKind: RuntimeKind): string {
+  switch (runtimeKind) {
+    case "claude":
+      return "Claude";
+    case "codex":
+    default:
+      return "Codex";
   }
 }

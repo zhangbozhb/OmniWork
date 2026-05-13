@@ -12,9 +12,11 @@ import type {
   AuthFailedPayload,
   CodexSession,
   MessageEnvelope,
+  RuntimeKind,
   SessionListPayload,
   TerminalFramePayload,
   TerminalInputPayload,
+  TerminalResizePayload,
   TerminalSnapshotPayload,
 } from "../../../packages/protocol-ts/src/index.ts";
 import { createMessage } from "../../../packages/protocol-ts/src/index.ts";
@@ -30,8 +32,10 @@ import {
 } from "../features/sessions/sessionMessages";
 import {
   terminalInputRequest,
+  terminalResizeRequest,
   terminalSnapshotRequest,
 } from "../features/terminal/terminalMessages";
+import { computeInitialTerminalSize } from "../features/terminal/terminalLayout";
 import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
 import {
   clearPairing,
@@ -299,7 +303,10 @@ export default function App(): JSX.Element {
     sendToRelay(listSessionsRequest(pairing.deviceId));
   }
 
-  function handleCreateSession(cwd: string): void {
+  function handleCreateSession(input: {
+    cwd: string;
+    runtimeKind: RuntimeKind;
+  }): void {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
@@ -307,8 +314,9 @@ export default function App(): JSX.Element {
     setCreatingSession(true);
     sendToRelay(
       createSessionRequest(pairing.deviceId, {
-        cwd,
-        title: `Codex ${sessions.length + 1}`,
+        cwd: input.cwd,
+        runtime_kind: input.runtimeKind,
+        terminal_size: computeInitialTerminalSize(),
       }),
     );
   }
@@ -369,6 +377,29 @@ export default function App(): JSX.Element {
     );
   }
 
+  function handleTerminalResize(size: TerminalResizePayload): void {
+    if (!pairing || !selectedSession || connectionStatus !== "authenticated") {
+      return;
+    }
+
+    setSelectedSession((current) =>
+      current && current.session_id === selectedSession.session_id
+        ? { ...current, terminal_size: size }
+        : current,
+    );
+    setSessions((current) =>
+      current.map((session) =>
+        session.session_id === selectedSession.session_id
+          ? { ...session, terminal_size: size }
+          : session,
+      ),
+    );
+    sendToRelay(
+      terminalResizeRequest(pairing.deviceId, selectedSession.session_id, size),
+    );
+    requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
+  }
+
   function requestTerminalSnapshot(deviceId: string, sessionId: string): void {
     sendToRelay(terminalSnapshotRequest(deviceId, sessionId));
   }
@@ -412,34 +443,13 @@ export default function App(): JSX.Element {
         const payload = message.payload as AuthFailedPayload;
         setConnectionStatus("failed");
         setConnectionMessage(`Authentication failed: ${payload.reason}`);
-        if (shouldClearPairing(payload.reason)) {
-          setPairingError(
-            "The Mac Agent rejected this key. Enter the latest key generated on the Mac.",
-          );
-          removeSavedPairing(activePairing)
-            .then((nextPairings) => {
-              setPairing(nextPairings[0] ?? null);
-              setSessions([]);
-              setSelectedSession(null);
-              setTerminalFrames({});
-              setClosingSessionIds([]);
-              setView(nextPairings.length > 0 ? "devices" : "pairing");
-            })
-            .catch((error: unknown) => {
-              setPairingError(
-                `Could not update saved devices: ${String(error)}`,
-              );
-            });
-          Alert.alert(
-            "Pairing expired",
-            "The Mac Agent rejected this key. Enter the latest key generated on the Mac.",
-          );
-        } else {
-          Alert.alert(
-            "Mac unavailable",
-            "The saved key is still kept. Try again after the Mac Agent is online.",
-          );
-        }
+        setPairingError(
+          "The Mac Agent rejected this key. The saved device is kept; edit it to enter the latest key.",
+        );
+        Alert.alert(
+          "Authentication failed",
+          "The saved device is still kept. Edit the device to enter the latest key, or try again after the Mac Agent is online.",
+        );
         break;
       }
       case "session.list": {
@@ -563,6 +573,7 @@ export default function App(): JSX.Element {
           statusLabel={connectionMessage}
           onBack={() => setView("sessions")}
           onInput={handleTerminalInput}
+          onResize={handleTerminalResize}
         />
       ) : null}
     </SafeAreaView>
@@ -627,10 +638,6 @@ function upsertPairing(
 
 function isSamePairing(left: PairingConfig, right: PairingConfig): boolean {
   return left.relayUrl === right.relayUrl && left.deviceId === right.deviceId;
-}
-
-function shouldClearPairing(reason: AuthFailedPayload["reason"]): boolean {
-  return reason !== "device_not_online" && reason !== "too_many_attempts";
 }
 
 function getHeaderSubtitle(

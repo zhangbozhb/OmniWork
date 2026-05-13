@@ -2,18 +2,19 @@ import { randomUUID } from "node:crypto";
 
 import type {
   CodexSession,
+  RuntimeKind,
   SessionCreatePayload,
   TerminalSize,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import { clampTerminalSize } from "../../../../packages/terminal-core/src/index.ts";
-import { CodexRuntime } from "../codex-runtime/codexRuntime.ts";
 import { JsonSessionStore } from "../session-store/sessionStore.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
+import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
 
 export class SessionManager {
   private readonly store: JsonSessionStore;
   private readonly tmux: TmuxManager;
-  private readonly runtime: CodexRuntime;
+  private readonly runtimes: RuntimeRegistry;
   private readonly defaults: {
     cwd: string;
     terminalSize: TerminalSize;
@@ -22,7 +23,7 @@ export class SessionManager {
   constructor(
     store: JsonSessionStore,
     tmux: TmuxManager,
-    runtime: CodexRuntime,
+    runtimes: RuntimeRegistry,
     defaults: {
       cwd: string;
       terminalSize: TerminalSize;
@@ -30,7 +31,7 @@ export class SessionManager {
   ) {
     this.store = store;
     this.tmux = tmux;
-    this.runtime = runtime;
+    this.runtimes = runtimes;
     this.defaults = defaults;
   }
 
@@ -42,13 +43,18 @@ export class SessionManager {
     const sessionId = `sess_${randomUUID()}`;
     const tmuxSessionName = toTmuxSessionName(sessionId);
     const now = new Date().toISOString();
+    const runtimeKind = payload.runtime_kind ?? "codex";
+    const runtime = this.runtimes.get(runtimeKind);
     const cwd = payload.cwd ?? this.defaults.cwd;
-    const command = payload.command ?? this.runtime.buildTuiCommand();
+    const command = payload.command ?? runtime.buildTuiCommand();
     const size = clampTerminalSize(payload.terminal_size ?? this.defaults.terminalSize);
+    const runtimeSessionCount = await this.countSessionsForRuntime(runtimeKind);
 
     const session: CodexSession = {
       session_id: sessionId,
-      title: payload.title ?? "Codex",
+      runtime_kind: runtime.kind,
+      runtime_label: runtime.displayName,
+      title: payload.title ?? runtime.defaultTitle(runtimeSessionCount + 1),
       cwd,
       command,
       status: "starting",
@@ -90,6 +96,28 @@ export class SessionManager {
     } finally {
       await this.store.remove(sessionId);
     }
+  }
+
+  async updateTerminalSize(
+    sessionId: string,
+    terminalSize: TerminalSize,
+  ): Promise<CodexSession | undefined> {
+    const session = await this.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    const updated = {
+      ...session,
+      terminal_size: clampTerminalSize(terminalSize),
+      last_active_at: new Date().toISOString(),
+    };
+    await this.store.upsert(updated);
+    return updated;
+  }
+
+  private async countSessionsForRuntime(runtimeKind: RuntimeKind): Promise<number> {
+    return (await this.list()).filter((session) => session.runtime_kind === runtimeKind).length;
   }
 }
 

@@ -1,9 +1,10 @@
 import type { JSX } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   Keyboard,
   type KeyboardEvent,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -16,6 +17,7 @@ import {
 import type {
   CodexSession,
   TerminalInputPayload,
+  TerminalResizePayload,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import {
   createControlInput,
@@ -23,6 +25,12 @@ import {
   sanitizeTerminalText,
   type TerminalControlKey,
 } from "../../../../packages/terminal-core/src/index.ts";
+import {
+  computeTerminalLayout,
+  getDefaultTerminalDisplayProfile,
+  type TerminalDisplayProfile,
+  type TerminalViewport,
+} from "../../features/terminal/terminalLayout";
 import { NativeTerminalView } from "../../terminal/NativeTerminalView";
 
 export interface TerminalScreenProps {
@@ -32,6 +40,7 @@ export interface TerminalScreenProps {
   statusLabel?: string;
   onBack(): void;
   onInput(input: TerminalInputPayload): void;
+  onResize(size: TerminalResizePayload): void;
 }
 
 type TerminalConnectionStatus =
@@ -55,7 +64,12 @@ const QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
   { label: "Ctrl+L", key: "ctrlL" },
 ];
 
-const BOTTOM_DOCK_HEIGHT = 128;
+const BOTTOM_DOCK_HEIGHT = 178;
+const PROFILE_OPTIONS: Array<{ key: TerminalDisplayProfile; label: string }> = [
+  { key: "readableScroll", label: "Readable" },
+  { key: "fitPreview", label: "Fit" },
+  { key: "landscapeWide", label: "Wide" },
+];
 
 function getKeyboardBottomInset(event: KeyboardEvent): number {
   return Math.max(
@@ -71,10 +85,24 @@ export function TerminalScreen({
   statusLabel,
   onBack,
   onInput,
+  onResize,
 }: TerminalScreenProps): JSX.Element {
   const [draft, setDraft] = useState("");
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
+  const [terminalViewport, setTerminalViewport] = useState<TerminalViewport>({
+    width: Dimensions.get("window").width,
+    height: Math.max(260, Dimensions.get("window").height - 260),
+  });
+  const [profile, setProfile] = useState<TerminalDisplayProfile>(() =>
+    getDefaultTerminalDisplayProfile(Dimensions.get("window")),
+  );
+  const lastResizeKeyRef = useRef("");
   const agentStatus = getAgentStatusPresentation(connectionStatus);
+  const runtimeLabel = session.runtime_label;
+  const terminalLayout = useMemo(
+    () => computeTerminalLayout(terminalViewport, profile),
+    [profile, terminalViewport],
+  );
 
   useEffect(() => {
     if (Platform.OS !== "ios") {
@@ -97,6 +125,33 @@ export function TerminalScreen({
     };
   }, []);
 
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener("change", ({ window }) => {
+      setProfile((currentProfile) => {
+        if (currentProfile === "fitPreview") {
+          return currentProfile;
+        }
+        return getDefaultTerminalDisplayProfile(window);
+      });
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    const size = terminalLayout.terminalSize;
+    const resizeKey = `${session.session_id}:${size.cols}x${size.rows}`;
+    if (lastResizeKeyRef.current === resizeKey) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      lastResizeKeyRef.current = resizeKey;
+      onResize(size);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [onResize, session.session_id, terminalLayout.terminalSize]);
+
   function sendDraft(): void {
     const normalizedDraft = sanitizeTerminalText(draft.trimEnd());
     if (!normalizedDraft) {
@@ -104,6 +159,14 @@ export function TerminalScreen({
     }
     onInput(createTextInput(`${normalizedDraft}\r`));
     setDraft("");
+  }
+
+  function handleTerminalAreaLayout(event: LayoutChangeEvent): void {
+    const { width, height } = event.nativeEvent.layout;
+    setTerminalViewport({
+      width: Math.max(1, width),
+      height: Math.max(1, height),
+    });
   }
 
   return (
@@ -131,8 +194,13 @@ export function TerminalScreen({
           styles.terminalArea,
           { marginBottom: BOTTOM_DOCK_HEIGHT + keyboardBottomInset },
         ]}
+        onLayout={handleTerminalAreaLayout}
       >
-        <NativeTerminalView frame={frame} />
+        <NativeTerminalView
+          frame={frame}
+          layout={terminalLayout}
+          terminalSize={terminalLayout.terminalSize}
+        />
       </View>
 
       <View
@@ -169,9 +237,48 @@ export function TerminalScreen({
           </Pressable>
         </ScrollView>
 
+        <View style={styles.profileRow}>
+          {PROFILE_OPTIONS.map((item) => {
+            const selected = profile === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                style={[
+                  styles.profileButton,
+                  selected && styles.profileSelected,
+                ]}
+                onPress={() => setProfile(item.key)}
+              >
+                <Text
+                  style={[
+                    styles.profileButtonText,
+                    selected && styles.profileSelectedText,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          <Text style={styles.gridMeta}>
+            {terminalLayout.terminalSize.cols}x
+            {terminalLayout.terminalSize.rows}
+            {" · "}
+            {Math.round(terminalLayout.fontSize * 10) / 10}
+            {Platform.OS === "ios" ? "pt" : "sp"}
+          </Text>
+        </View>
+
+        {terminalLayout.fitLimited ? (
+          <Text style={styles.fitNotice}>
+            Fit would make text too small; horizontal scrolling keeps it
+            readable.
+          </Text>
+        ) : null}
+
         <View style={styles.composer}>
           <Text style={styles.composerHint}>
-            Compose prompt, then send it to Codex TUI
+            Compose prompt, then send it to {runtimeLabel} TUI
           </Text>
           <View style={styles.inputRow}>
             <TextInput
@@ -181,7 +288,7 @@ export function TerminalScreen({
               autoCorrect={false}
               blurOnSubmit={false}
               multiline
-              placeholder="Ask Codex to inspect, edit, test, or explain..."
+              placeholder={`Ask ${runtimeLabel} to inspect, edit, test, or explain...`}
               placeholderTextColor="#66727c"
               returnKeyType="default"
               scrollEnabled
@@ -319,6 +426,42 @@ const styles = StyleSheet.create({
   keyButtonText: {
     color: "#d7dde2",
     fontWeight: "700",
+  },
+  profileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  profileButton: {
+    minHeight: 30,
+    borderRadius: 8,
+    borderColor: "#34424c",
+    borderWidth: 1,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    backgroundColor: "#151c21",
+  },
+  profileSelected: {
+    borderColor: "#30c48d",
+    backgroundColor: "#1a3028",
+  },
+  profileButtonText: {
+    color: "#94a3ad",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  profileSelectedText: {
+    color: "#d7ffe9",
+  },
+  gridMeta: {
+    color: "#66727c",
+    flex: 1,
+    fontSize: 12,
+    textAlign: "right",
+  },
+  fitNotice: {
+    color: "#f4c95d",
+    fontSize: 12,
   },
   composer: {
     gap: 6,

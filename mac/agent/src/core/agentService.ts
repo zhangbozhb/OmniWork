@@ -12,7 +12,7 @@ import type { AgentConfig } from "../config/config.ts";
 import { createAndPersistSessionKey, createAgentInstanceId, verifyProof } from "../auth-key/authKey.ts";
 import type { SessionKeyRecord } from "../auth-key/authKey.ts";
 import { AgentRelayClient } from "../relay-client/agentRelayClient.ts";
-import { CodexRuntime } from "../codex-runtime/codexRuntime.ts";
+import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
 import { SessionManager } from "./sessionManager.ts";
 import { JsonSessionStore } from "../session-store/sessionStore.ts";
 import { TerminalBridge } from "../pty-bridge/terminalBridge.ts";
@@ -22,7 +22,7 @@ import { Logger } from "../telemetry/logger.ts";
 export class AgentService {
   private readonly logger = new Logger("omniwork-agent");
   private readonly tmux = new TmuxManager();
-  private readonly runtime: CodexRuntime;
+  private readonly runtimes: RuntimeRegistry;
   private readonly sessionManager: SessionManager;
   private readonly terminalBridge: TerminalBridge;
   private readonly config: AgentConfig;
@@ -31,11 +31,14 @@ export class AgentService {
 
   constructor(config: AgentConfig) {
     this.config = config;
-    this.runtime = new CodexRuntime({ codexCommand: config.codexCommand });
+    this.runtimes = new RuntimeRegistry({
+      codexCommand: config.codexCommand,
+      claudeCommand: config.claudeCommand,
+    });
     this.sessionManager = new SessionManager(
       new JsonSessionStore(config.sessionStorePath),
       this.tmux,
-      this.runtime,
+      this.runtimes,
       {
         cwd: config.defaultCwd,
         terminalSize: config.terminalSize,
@@ -93,7 +96,12 @@ export class AgentService {
         hostname: this.config.hostname,
         platform: "darwin",
         agent_version: this.config.agentVersion,
-        capabilities: ["terminal.tui", "terminal.snapshot", "session.tmux", "codex.cli"],
+        capabilities: [
+          "terminal.tui",
+          "terminal.snapshot",
+          "session.tmux",
+          ...this.runtimes.capabilities(),
+        ],
       }, { device_id: this.config.deviceId }),
     );
 
@@ -191,6 +199,7 @@ export class AgentService {
     }
 
     await this.terminalBridge.resize(session, message.payload);
+    await this.sessionManager.updateTerminalSize(session.session_id, message.payload);
   }
 
   private async handleTerminalSnapshot(message: MessageEnvelope): Promise<void> {

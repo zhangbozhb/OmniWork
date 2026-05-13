@@ -58,7 +58,8 @@ export type AgentCapability =
   | "terminal.snapshot"
   | "session.tmux"
   | "codex.cli"
-  | "codex.app_server";
+  | "codex.app_server"
+  | "claude.cli";
 
 export interface MobileConnectPayload {
   device_id: string;
@@ -111,8 +112,12 @@ export type SessionStatus =
   | "recovering"
   | "archived";
 
+export type RuntimeKind = "codex" | "claude";
+
 export interface CodexSession {
   session_id: string;
+  runtime_kind: RuntimeKind;
+  runtime_label: string;
   title: string;
   cwd: string;
   command: string;
@@ -129,6 +134,7 @@ export interface SessionListPayload {
 }
 
 export interface SessionCreatePayload {
+  runtime_kind?: RuntimeKind;
   title?: string;
   cwd?: string;
   command?: string;

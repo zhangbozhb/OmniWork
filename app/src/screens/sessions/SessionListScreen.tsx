@@ -9,7 +9,10 @@ import {
   View,
 } from "react-native";
 
-import type { CodexSession } from "../../../../packages/protocol-ts/src/index.ts";
+import type {
+  CodexSession,
+  RuntimeKind,
+} from "../../../../packages/protocol-ts/src/index.ts";
 
 export interface SessionListScreenProps {
   sessions: CodexSession[];
@@ -17,10 +20,15 @@ export interface SessionListScreenProps {
   closingSessionIds?: string[];
   defaultCwd: string;
   onBack(): void;
-  onCreateSession(cwd: string): void;
+  onCreateSession(input: { cwd: string; runtimeKind: RuntimeKind }): void;
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
 }
+
+const RUNTIME_GROUPS: Array<{ kind: RuntimeKind; label: string }> = [
+  { kind: "claude", label: "Claude" },
+  { kind: "codex", label: "Codex" },
+];
 
 export function SessionListScreen({
   sessions,
@@ -34,8 +42,11 @@ export function SessionListScreen({
 }: SessionListScreenProps): JSX.Element {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createCwd, setCreateCwd] = useState(defaultCwd);
+  const [createRuntimeKind, setCreateRuntimeKind] =
+    useState<RuntimeKind>("claude");
 
-  function openCreateModal(): void {
+  function openCreateModal(runtimeKind: RuntimeKind): void {
+    setCreateRuntimeKind(runtimeKind);
     setCreateCwd(defaultCwd);
     setCreateModalVisible(true);
   }
@@ -46,7 +57,7 @@ export function SessionListScreen({
       return;
     }
     setCreateModalVisible(false);
-    onCreateSession(cwd);
+    onCreateSession({ cwd, runtimeKind: createRuntimeKind });
   }
 
   return (
@@ -55,60 +66,100 @@ export function SessionListScreen({
         <Pressable style={styles.secondaryButton} onPress={onBack}>
           <Text style={styles.secondaryText}>Devices</Text>
         </Pressable>
-        <Pressable
-          disabled={creating}
-          style={[styles.primaryButton, creating && styles.disabled]}
-          onPress={openCreateModal}
-        >
-          <Text style={styles.primaryText}>
-            {creating ? "Starting..." : "New Codex"}
-          </Text>
-        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {sessions.length === 0 ? (
-          <Text style={styles.empty}>No sessions yet.</Text>
-        ) : (
-          sessions.map((session) => {
-            const closing = closingSessionIds.includes(session.session_id);
-            return (
-              <View key={session.session_id} style={styles.sessionCard}>
-                <Pressable
-                  style={styles.sessionMain}
-                  onPress={() => onOpenSession(session)}
-                >
-                  <Text style={styles.sessionTitle}>{session.title}</Text>
-                  <Text
-                    ellipsizeMode="middle"
-                    numberOfLines={1}
-                    style={styles.sessionMeta}
-                  >
-                    {session.cwd}
+        {RUNTIME_GROUPS.map((group) => {
+          const groupSessions = sessions.filter(
+            (session) => session.runtime_kind === group.kind,
+          );
+          return (
+            <View key={group.kind} style={styles.runtimeSection}>
+              <View style={styles.sectionHeader}>
+                <View>
+                  <Text style={styles.sectionTitle}>{group.label}</Text>
+                  <Text style={styles.sectionMeta}>
+                    {groupSessions.length}{" "}
+                    {groupSessions.length === 1 ? "session" : "sessions"}
                   </Text>
-                  <View style={styles.sessionDetails}>
-                    <Text style={styles.sessionStatus}>{session.status}</Text>
-                    <Text style={styles.sessionTime}>
-                      Active {formatRelativeTime(session.last_active_at)}
-                    </Text>
-                  </View>
-                  <Text style={styles.sessionCreated}>
-                    Created {formatAbsoluteTime(session.created_at)}
-                  </Text>
-                </Pressable>
+                </View>
                 <Pressable
-                  disabled={closing}
-                  style={[styles.closeButton, closing && styles.disabled]}
-                  onPress={() => onCloseSession(session)}
+                  disabled={creating}
+                  style={[
+                    styles.sectionCreateButton,
+                    creating && styles.disabled,
+                  ]}
+                  onPress={() => openCreateModal(group.kind)}
                 >
-                  <Text style={styles.closeText}>
-                    {closing ? "Closing..." : "Close Session"}
+                  <Text style={styles.primaryText}>
+                    {creating && createRuntimeKind === group.kind
+                      ? "Starting..."
+                      : "New"}
                   </Text>
                 </Pressable>
               </View>
-            );
-          })
-        )}
+
+              {groupSessions.length === 0 ? (
+                <Text style={styles.empty}>No {group.label} sessions yet.</Text>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.sessionRow}
+                >
+                  {groupSessions.map((session) => {
+                    const closing = closingSessionIds.includes(
+                      session.session_id,
+                    );
+                    return (
+                      <View key={session.session_id} style={styles.sessionCard}>
+                        <Pressable
+                          style={styles.sessionMain}
+                          onPress={() => onOpenSession(session)}
+                        >
+                          <Text numberOfLines={1} style={styles.sessionTitle}>
+                            {session.title}
+                          </Text>
+                          <Text
+                            ellipsizeMode="middle"
+                            numberOfLines={1}
+                            style={styles.sessionMetaText}
+                          >
+                            {session.cwd}
+                          </Text>
+                          <View style={styles.sessionDetails}>
+                            <Text style={styles.sessionStatus}>
+                              {session.status}
+                            </Text>
+                            <Text style={styles.sessionTime}>
+                              Active{" "}
+                              {formatRelativeTime(session.last_active_at)}
+                            </Text>
+                          </View>
+                          <Text style={styles.sessionCreated}>
+                            Created {formatAbsoluteTime(session.created_at)}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          disabled={closing}
+                          style={[
+                            styles.closeButton,
+                            closing && styles.disabled,
+                          ]}
+                          onPress={() => onCloseSession(session)}
+                        >
+                          <Text style={styles.closeText}>
+                            {closing ? "Closing..." : "Close Session"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+          );
+        })}
       </ScrollView>
 
       <Modal
@@ -119,7 +170,9 @@ export function SessionListScreen({
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>New Codex Session</Text>
+            <Text style={styles.modalTitle}>
+              New {getRuntimeLabel(createRuntimeKind)} Session
+            </Text>
             <Text style={styles.modalDescription}>
               Confirm or edit the working directory before creating.
             </Text>
@@ -169,14 +222,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 12,
   },
-  primaryButton: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#30c48d",
-  },
   secondaryButton: {
     minHeight: 44,
     paddingHorizontal: 16,
@@ -198,12 +243,45 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   list: {
+    gap: 18,
+  },
+  runtimeSection: {
     gap: 10,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  sectionTitle: {
+    color: "#f5f7f8",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  sectionMeta: {
+    color: "#94a3ad",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  sectionCreateButton: {
+    minHeight: 38,
+    minWidth: 72,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#30c48d",
+  },
+  sessionRow: {
+    gap: 10,
+    paddingRight: 2,
   },
   empty: {
     color: "#94a3ad",
-    textAlign: "center",
-    marginTop: 40,
+    borderColor: "#263037",
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
   },
   sessionCard: {
     borderColor: "#34424c",
@@ -211,6 +289,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#151c21",
     overflow: "hidden",
+    width: 260,
   },
   sessionMain: {
     padding: 14,
@@ -227,7 +306,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
-  sessionMeta: {
+  sessionMetaText: {
     color: "#94a3ad",
     marginTop: 4,
     width: "100%",
@@ -351,4 +430,11 @@ function formatAbsoluteTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(timestamp);
+}
+
+function getRuntimeLabel(runtimeKind: RuntimeKind): string {
+  return (
+    RUNTIME_GROUPS.find((group) => group.kind === runtimeKind)?.label ??
+    runtimeKind
+  );
 }

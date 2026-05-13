@@ -10,6 +10,7 @@ export interface AgentConfig {
   hostname: string;
   relayUrl?: string;
   codexCommand: string;
+  claudeCommand: string;
   defaultCwd: string;
   appSupportDir: string;
   sessionKeyPath: string;
@@ -28,6 +29,7 @@ export function loadAgentConfig(env: NodeJS.ProcessEnv = process.env): AgentConf
     hostname: hostname(),
     relayUrl: env.OMNIWORK_RELAY_URL,
     codexCommand: env.OMNIWORK_CODEX_COMMAND ?? "codex",
+    claudeCommand: env.OMNIWORK_CLAUDE_COMMAND ?? "claude",
     defaultCwd: env.OMNIWORK_DEFAULT_CWD ?? process.cwd(),
     appSupportDir,
     sessionKeyPath: env.OMNIWORK_SESSION_KEY_PATH ?? join(appSupportDir, "session-key.json"),

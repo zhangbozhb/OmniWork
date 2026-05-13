@@ -10,16 +10,26 @@ import {
   View,
 } from "react-native";
 
+import type { TerminalSize } from "../../../packages/protocol-ts/src/index.ts";
+import type { TerminalLayout } from "../features/terminal/terminalLayout";
 import { normalizeTerminalFrame } from "./terminalText";
 
 export interface NativeTerminalViewProps {
   frame: string;
+  layout: TerminalLayout;
+  terminalSize: TerminalSize;
 }
 
-export function NativeTerminalView({ frame }: NativeTerminalViewProps): JSX.Element {
+export function NativeTerminalView({
+  frame,
+  layout,
+  terminalSize,
+}: NativeTerminalViewProps): JSX.Element {
   const verticalScrollRef = useRef<ScrollView>(null);
   const followOutputRef = useRef(true);
   const [followOutput, setFollowOutput] = useState(true);
+  const terminalContentWidth =
+    terminalSize.cols * layout.cellWidth + TERMINAL_TEXT_PADDING * 2;
 
   const scrollToBottom = useCallback((animated: boolean) => {
     requestAnimationFrame(() => {
@@ -68,7 +78,17 @@ export function NativeTerminalView({ frame }: NativeTerminalViewProps): JSX.Elem
           onScroll={handleScroll}
           scrollEventThrottle={80}
         >
-          <Text selectable style={styles.text}>
+          <Text
+            selectable
+            style={[
+              styles.text,
+              {
+                fontSize: layout.fontSize,
+                lineHeight: layout.lineHeight,
+                minWidth: terminalContentWidth,
+              },
+            ]}
+          >
             {normalizeTerminalFrame(frame)}
           </Text>
         </ScrollView>
@@ -81,6 +101,8 @@ export function NativeTerminalView({ frame }: NativeTerminalViewProps): JSX.Elem
     </View>
   );
 }
+
+const TERMINAL_TEXT_PADDING = 12;
 
 const styles = StyleSheet.create({
   container: {
@@ -101,10 +123,7 @@ const styles = StyleSheet.create({
   text: {
     color: "#d7ffe9",
     fontFamily: "Menlo",
-    fontSize: 12,
-    lineHeight: 18,
-    padding: 12,
-    minWidth: 900,
+    padding: TERMINAL_TEXT_PADDING,
   },
   jumpButton: {
     position: "absolute",
