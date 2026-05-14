@@ -2,6 +2,8 @@ import type { JSX } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { PairingConfig } from "../../features/auth/types";
+import { Badge, Button, Card } from "../../ui/components";
+import { colors, radii, spacing, typography } from "../../ui/theme";
 
 export interface DeviceListScreenProps {
   pairings: PairingConfig[];
@@ -27,29 +29,31 @@ export function DeviceListScreen({
   onRefreshSessions,
 }: DeviceListScreenProps): JSX.Element {
   const ready = connectionStatus === "authenticated";
+  const failed = connectionStatus === "failed";
   const activeStatus = getDeviceStatusPresentation(connectionStatus, connectionMessage);
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
-      <View style={styles.summaryCard}>
+      <Card elevated style={styles.summaryCard}>
         <View>
           <Text style={styles.summaryEyebrow}>Device Center</Text>
           <Text style={styles.summaryTitle}>
             {pairings.length} linked {pairings.length === 1 ? "device" : "devices"}
           </Text>
         </View>
-        <View style={[styles.summaryBadge, { backgroundColor: activeStatus.backgroundColor }]}>
-          <Text style={[styles.summaryBadgeText, { color: activeStatus.color }]}>
-            {activeStatus.label}
-          </Text>
-        </View>
-      </View>
+        <Badge
+          backgroundColor={activeStatus.backgroundColor}
+          color={activeStatus.color}
+        >
+          {activeStatus.label}
+        </Badge>
+      </Card>
 
       {pairings.length === 0 ? (
-        <View style={styles.emptyCard}>
+        <Card style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No linked devices</Text>
           <Text style={styles.emptyText}>Add a Mac Agent link to start using OmniWork.</Text>
-        </View>
+        </Card>
       ) : (
         pairings.map((pairing) => {
           const active = Boolean(
@@ -59,8 +63,17 @@ export function DeviceListScreen({
           );
           const canOpen = !active || ready;
           const status = active ? activeStatus : getSavedDeviceStatusPresentation();
+          const primaryActionLabel = active
+            ? ready
+              ? "Open Sessions"
+              : failed
+                ? "Retry Connection"
+                : "Connecting..."
+            : "Connect Device";
+          const primaryActionDisabled = active && !ready && !failed;
+          const primaryAction = active && !ready ? onRefreshSessions : () => onOpenDevice(pairing);
           return (
-            <View
+            <Card
               key={`${pairing.relayUrl}:${pairing.deviceId}`}
               style={styles.deviceCard}
             >
@@ -74,11 +87,12 @@ export function DeviceListScreen({
                     <Text numberOfLines={1} style={styles.deviceName}>
                       {pairing.deviceId}
                     </Text>
-                    <View style={[styles.statusBadge, { backgroundColor: status.backgroundColor }]}>
-                      <Text style={[styles.statusBadgeText, { color: status.color }]}>
-                        {status.label}
-                      </Text>
-                    </View>
+                    <Badge
+                      backgroundColor={status.backgroundColor}
+                      color={status.color}
+                    >
+                      {status.label}
+                    </Badge>
                   </View>
                   <Text numberOfLines={1} style={styles.deviceMeta}>
                     {formatRelayUrl(pairing.relayUrl)}
@@ -89,31 +103,42 @@ export function DeviceListScreen({
                 </View>
               </Pressable>
               <View style={styles.deviceActions}>
-                <Pressable
+                <Button
+                  disabled={primaryActionDisabled}
+                  style={styles.devicePrimaryAction}
+                  tone="primary"
+                  onPress={primaryAction}
+                >
+                  {primaryActionLabel}
+                </Button>
+                <Button
                   style={styles.smallButton}
                   onPress={() => onEditDevice(pairing)}
                 >
-                  <Text style={styles.secondaryText}>Edit</Text>
-                </Pressable>
-                <Pressable
+                  Edit
+                </Button>
+                <Button
                   style={styles.smallButton}
+                  tone="danger"
                   onPress={() => onDeleteDevice(pairing)}
                 >
-                  <Text style={styles.dangerText}>Delete</Text>
-                </Pressable>
+                  Delete
+                </Button>
               </View>
-            </View>
+            </Card>
           );
         })
       )}
 
-      <Pressable style={styles.primaryButton} onPress={onAddDevice}>
-        <Text style={styles.primaryText}>Add Link</Text>
-      </Pressable>
+      <Button tone="primary" onPress={onAddDevice}>
+        Add Link
+      </Button>
 
-      <Pressable style={styles.secondaryButton} onPress={onRefreshSessions}>
-        <Text style={styles.secondaryText}>{ready ? "Refresh Sessions" : "Retry Connection"}</Text>
-      </Pressable>
+      {pairings.length > 0 ? (
+        <Button onPress={onRefreshSessions}>
+          {ready ? "Refresh Sessions" : "Retry Active Device"}
+        </Button>
+      ) : null}
     </ScrollView>
   );
 }
@@ -121,67 +146,41 @@ export function DeviceListScreen({
 const styles = StyleSheet.create({
   screen: {
     flexGrow: 1,
-    padding: 18,
-    gap: 12,
+    padding: spacing.xxl,
+    gap: spacing.lg,
   },
   summaryCard: {
-    borderColor: "#263037",
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 16,
-    backgroundColor: "#11181d",
+    padding: spacing.xl,
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 12,
+    gap: spacing.lg,
   },
   summaryEyebrow: {
-    color: "#66727c",
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
+    color: colors.textDim,
+    ...typography.eyebrow,
   },
   summaryTitle: {
-    color: "#f5f7f8",
-    fontSize: 20,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-  summaryBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  summaryBadgeText: {
-    fontSize: 12,
-    fontWeight: "800",
+    color: colors.textPrimary,
+    ...typography.title,
+    marginTop: spacing.xs,
   },
   emptyCard: {
-    borderColor: "#34424c",
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 18,
-    backgroundColor: "#151c21",
+    padding: spacing.xxl,
   },
   emptyTitle: {
-    color: "#f5f7f8",
+    color: colors.textPrimary,
     fontSize: 17,
     fontWeight: "700",
   },
   emptyText: {
-    color: "#94a3ad",
+    color: colors.textMuted,
     marginTop: 6,
   },
   deviceCard: {
-    borderColor: "#34424c",
-    borderWidth: 1,
-    borderRadius: 12,
-    backgroundColor: "#151c21",
     overflow: "hidden",
   },
   deviceMain: {
-    padding: 16,
+    padding: spacing.xl,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -192,75 +191,38 @@ const styles = StyleSheet.create({
   deviceTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: spacing.md,
   },
   deviceName: {
-    color: "#f5f7f8",
+    color: colors.textPrimary,
     fontSize: 17,
     fontWeight: "700",
     flex: 1,
   },
   deviceMeta: {
-    color: "#94a3ad",
+    color: colors.textMuted,
     marginTop: 6,
   },
   deviceStatus: {
-    color: "#d7dde2",
-    marginTop: 8,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
     lineHeight: 19,
   },
   deviceActions: {
     flexDirection: "row",
-    gap: 8,
-    padding: 10,
-    borderTopColor: "#263037",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderTopColor: colors.borderSubtle,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  primaryButton: {
-    minHeight: 44,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#30c48d",
-  },
-  primaryText: {
-    color: "#08110d",
-    fontWeight: "800",
-  },
-  secondaryButton: {
-    minHeight: 42,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderColor: "#34424c",
-    borderWidth: 1,
-  },
-  statusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: "800",
+  devicePrimaryAction: {
+    flex: 1,
+    minHeight: 36,
   },
   smallButton: {
     minHeight: 36,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderColor: "#34424c",
-    borderWidth: 1,
-  },
-  secondaryText: {
-    color: "#d7dde2",
-    fontWeight: "700",
-  },
-  dangerText: {
-    color: "#ff8d8d",
-    fontWeight: "700",
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.sm,
   },
   disabled: {
     opacity: 0.55,
@@ -279,7 +241,7 @@ function formatRelayUrl(relayUrl: string): string {
 function getSavedDeviceStatusPresentation(): DeviceStatusPresentation {
   return {
     backgroundColor: "rgba(148, 163, 173, 0.16)",
-    color: "#94a3ad",
+    color: colors.textMuted,
     detail: "Ready to connect when selected.",
     label: "Saved",
   };
@@ -289,30 +251,30 @@ function getDeviceStatusPresentation(status: string, message?: string): DeviceSt
   switch (status) {
     case "authenticated":
       return {
-        backgroundColor: "rgba(48, 196, 141, 0.16)",
-        color: "#30c48d",
+        backgroundColor: colors.successSoft,
+        color: colors.success,
         detail: "Connected to Mac Agent.",
         label: "Online",
       };
     case "connecting":
     case "authenticating":
       return {
-        backgroundColor: "rgba(244, 201, 93, 0.18)",
-        color: "#f4c95d",
+        backgroundColor: colors.warningSoft,
+        color: colors.warning,
         detail: message ?? "Connecting to Relay...",
         label: "Connecting",
       };
     case "failed":
       return {
-        backgroundColor: "rgba(255, 141, 141, 0.16)",
-        color: "#ff8d8d",
+        backgroundColor: colors.dangerSoft,
+        color: colors.danger,
         detail: message ?? "Connection failed.",
         label: "Offline",
       };
     default:
       return {
-        backgroundColor: "rgba(148, 163, 173, 0.16)",
-        color: "#94a3ad",
+        backgroundColor: colors.neutralSoft,
+        color: colors.textMuted,
         detail: message ?? "Not connected.",
         label: "Idle",
       };

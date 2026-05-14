@@ -5,6 +5,17 @@ import type { TerminalSize } from "../../../../packages/protocol-ts/src/index.ts
 
 const execFileAsync = promisify(execFile);
 
+export class TmuxTargetMissingError extends Error {
+  readonly code = "TMUX_TARGET_MISSING";
+  readonly tmuxTarget: string;
+
+  constructor(tmuxTarget: string, cause: unknown) {
+    super(`tmux target is no longer available: ${tmuxTarget}`, { cause });
+    this.name = "TmuxTargetMissingError";
+    this.tmuxTarget = tmuxTarget;
+  }
+}
+
 export interface TmuxSessionInfo {
   name: string;
   createdAt: string;
@@ -29,7 +40,7 @@ export class TmuxManager {
     command: string;
     size: TerminalSize;
   }): Promise<void> {
-    await execFileAsync("tmux", [
+    await runTmux([
       "new-session",
       "-d",
       "-s",
@@ -80,44 +91,75 @@ export class TmuxManager {
       return;
     }
 
-    await execFileAsync("tmux", [
-      "send-keys",
-      "-t",
+    await runTmux(
+      ["send-keys", "-t", tmuxSessionName, "-l", data],
       tmuxSessionName,
-      "-l",
-      data,
-    ]);
+    );
   }
 
   async sendKey(tmuxSessionName: string, key: string): Promise<void> {
-    await execFileAsync("tmux", ["send-keys", "-t", tmuxSessionName, key]);
+    await runTmux(["send-keys", "-t", tmuxSessionName, key], tmuxSessionName);
   }
 
   async resize(tmuxSessionName: string, size: TerminalSize): Promise<void> {
-    await execFileAsync("tmux", [
-      "resize-window",
-      "-t",
+    await runTmux(
+      [
+        "resize-window",
+        "-t",
+        tmuxSessionName,
+        "-x",
+        String(size.cols),
+        "-y",
+        String(size.rows),
+      ],
       tmuxSessionName,
-      "-x",
-      String(size.cols),
-      "-y",
-      String(size.rows),
-    ]);
+    );
   }
 
   async capturePane(tmuxSessionName: string, lines = 200): Promise<string> {
-    const { stdout } = await execFileAsync("tmux", [
-      "capture-pane",
-      "-p",
-      "-t",
+    const { stdout } = await runTmux(
+      ["capture-pane", "-p", "-t", tmuxSessionName, "-S", `-${lines}`],
       tmuxSessionName,
-      "-S",
-      `-${lines}`,
-    ]);
+    );
     return stdout;
   }
 
   async killSession(tmuxSessionName: string): Promise<void> {
-    await execFileAsync("tmux", ["kill-session", "-t", tmuxSessionName]);
+    await runTmux(["kill-session", "-t", tmuxSessionName], tmuxSessionName);
   }
+}
+
+async function runTmux(
+  args: string[],
+  tmuxTarget?: string,
+): Promise<{ stdout: string; stderr: string }> {
+  try {
+    return await execFileAsync("tmux", args, { encoding: "utf8" });
+  } catch (error) {
+    if (tmuxTarget && isMissingTargetError(error)) {
+      throw new TmuxTargetMissingError(tmuxTarget, error);
+    }
+
+    throw error;
+  }
+}
+
+function isMissingTargetError(error: unknown): boolean {
+  const stderr = getErrorField(error, "stderr").toLowerCase();
+  const message = getErrorField(error, "message").toLowerCase();
+  const details = `${stderr}\n${message}`;
+  return (
+    details.includes("can't find pane") ||
+    details.includes("can't find session") ||
+    details.includes("can't find window")
+  );
+}
+
+function getErrorField(error: unknown, key: "message" | "stderr"): string {
+  if (!error || typeof error !== "object" || !(key in error)) {
+    return "";
+  }
+
+  const value = (error as Record<typeof key, unknown>)[key];
+  return typeof value === "string" ? value : "";
 }

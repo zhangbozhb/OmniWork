@@ -1,9 +1,11 @@
-import { type JSX, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from "react-native";
+import { type JSX, useEffect, useState } from "react";
+import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import type { PairingConfig } from "../../features/auth/types";
 import { isValidSessionKey } from "../../features/auth/keyProof";
 import { appConfig } from "../../app/appConfig";
+import { Button, Card } from "../../ui/components";
+import { colors, radii, spacing, typography } from "../../ui/theme";
 
 export interface PairingScreenProps {
   errorMessage?: string;
@@ -18,6 +20,12 @@ export function PairingScreen({ errorMessage, initialPairing, submitLabel = "Pai
   const [deviceId, setDeviceId] = useState(initialPairing?.deviceId ?? "");
   const [key, setKey] = useState(initialPairing?.key ?? "");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setRelayUrl(initialPairing?.relayUrl ?? appConfig.defaultRelayUrl);
+    setDeviceId(initialPairing?.deviceId ?? "");
+    setKey(initialPairing?.key ?? "");
+  }, [initialPairing]);
 
   async function submit(): Promise<void> {
     const trimmedKey = key.trim();
@@ -47,6 +55,21 @@ export function PairingScreen({ errorMessage, initialPairing, submitLabel = "Pai
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={styles.screen}
     >
+      <Card success style={styles.scanCard}>
+        <Text style={styles.scanEyebrow}>Recommended</Text>
+        <Text style={styles.scanTitle}>Scan the Mac Agent QR code</Text>
+        <Text style={styles.scanText}>
+          Open the system camera, scan the QR code printed in the Mac Agent
+          terminal, then tap the OmniWork link to fill these fields and connect.
+        </Text>
+      </Card>
+
+      <View style={styles.dividerRow}>
+        <View style={styles.divider} />
+        <Text style={styles.dividerText}>Manual fallback</Text>
+        <View style={styles.divider} />
+      </View>
+
       <Text style={styles.label}>Relay URL</Text>
       <TextInput
         autoCapitalize="none"
@@ -83,13 +106,16 @@ export function PairingScreen({ errorMessage, initialPairing, submitLabel = "Pai
 
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
-      <Pressable disabled={submitting} style={[styles.primaryButton, submitting && styles.disabled]} onPress={submit}>
-        <Text style={styles.primaryButtonText}>{submitting ? "Saving..." : submitLabel}</Text>
-      </Pressable>
+      <Button
+        disabled={submitting}
+        style={styles.primaryButton}
+        tone="primary"
+        onPress={submit}
+      >
+        {submitting ? "Saving..." : submitLabel}
+      </Button>
       {onCancel ? (
-        <Pressable style={styles.secondaryButton} onPress={onCancel}>
-          <Text style={styles.secondaryButtonText}>Cancel</Text>
-        </Pressable>
+        <Button onPress={onCancel}>Cancel</Button>
       ) : null}
     </ScrollView>
   );
@@ -98,34 +124,65 @@ export function PairingScreen({ errorMessage, initialPairing, submitLabel = "Pai
 const styles = StyleSheet.create({
   screen: {
     flexGrow: 1,
-    padding: 18,
-    gap: 10,
+    padding: spacing.xxl,
+    gap: spacing.md,
+  },
+  scanCard: {
+    padding: spacing.xl,
+  },
+  scanEyebrow: {
+    color: colors.success,
+    ...typography.eyebrow,
+    letterSpacing: 0.7,
+  },
+  scanTitle: {
+    color: colors.textPrimary,
+    fontSize: 21,
+    fontWeight: "800",
+    marginTop: 6,
+  },
+  scanText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: spacing.sm,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginVertical: 6,
+  },
+  divider: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    color: colors.textDim,
+    ...typography.eyebrow,
+    letterSpacing: 0.5,
   },
   label: {
-    color: "#d7dde2",
-    fontSize: 13,
-    fontWeight: "600",
+    color: colors.textSecondary,
+    ...typography.label,
   },
   input: {
     minHeight: 48,
-    borderColor: "#34424c",
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 8,
-    color: "#f5f7f8",
-    paddingHorizontal: 12,
-    backgroundColor: "#151c21",
+    borderRadius: radii.sm,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
   },
   primaryButton: {
     minHeight: 48,
-    borderRadius: 8,
-    backgroundColor: "#30c48d",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 12,
+    marginTop: spacing.lg,
   },
   primaryButtonText: {
-    color: "#08110d",
-    fontWeight: "800",
+    color: colors.successText,
+    ...typography.action,
     fontSize: 16,
   },
   disabled: {
@@ -133,18 +190,18 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     minHeight: 44,
-    borderRadius: 8,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
-    borderColor: "#34424c",
+    borderColor: colors.border,
     borderWidth: 1,
   },
   secondaryButtonText: {
-    color: "#d7dde2",
+    color: colors.textSecondary,
     fontWeight: "700",
   },
   error: {
-    color: "#ff8d8d",
-    marginTop: 4,
+    color: colors.danger,
+    marginTop: spacing.xs,
   },
 });

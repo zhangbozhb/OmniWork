@@ -13,6 +13,8 @@ import type {
   CodexSession,
   RuntimeKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
+import { Badge, Button, Card } from "../../ui/components";
+import { colors, radii, spacing, typography } from "../../ui/theme";
 
 type CreatableRuntimeKind = Extract<RuntimeKind, "claude" | "codex">;
 
@@ -89,18 +91,18 @@ export function SessionListScreen({
   return (
     <View style={styles.screen}>
       <View style={styles.actions}>
-        <Pressable style={styles.secondaryButton} onPress={onBack}>
-          <Text style={styles.secondaryText}>Devices</Text>
-        </Pressable>
+        <Button style={styles.toolbarButton} onPress={onBack}>
+          Devices
+        </Button>
         <View style={styles.toolbarTitleArea}>
           <Text style={styles.toolbarTitle}>Sessions</Text>
           <Text style={styles.toolbarMeta}>
             {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
           </Text>
         </View>
-        <Pressable style={styles.secondaryButton} onPress={onRefreshSessions}>
-          <Text style={styles.secondaryText}>Refresh</Text>
-        </Pressable>
+        <Button style={styles.toolbarButton} onPress={onRefreshSessions}>
+          Refresh
+        </Button>
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
@@ -119,33 +121,25 @@ export function SessionListScreen({
                   </Text>
                 </View>
                 {group.creatable ? (
-                  <Pressable
+                  <Button
                     disabled={creating}
-                    style={[
-                      styles.sectionCreateButton,
-                      creating && styles.disabled,
-                    ]}
+                    style={styles.sectionCreateButton}
+                    tone="primary"
                     onPress={() =>
                       openCreateModal(group.kind as CreatableRuntimeKind)
                     }
                   >
-                    <Text style={styles.primaryText}>
-                      {creating && createRuntimeKind === group.kind
-                        ? "Starting..."
-                        : "New"}
-                    </Text>
-                  </Pressable>
+                    {creating && createRuntimeKind === group.kind
+                      ? "Starting..."
+                      : "New"}
+                  </Button>
                 ) : null}
               </View>
 
               {groupSessions.length === 0 ? (
                 <Text style={styles.empty}>No {group.label} sessions yet.</Text>
               ) : (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.sessionRow}
-                >
+                <View style={styles.sessionStack}>
                   {groupSessions.map((session) => {
                     const closing = closingSessionIds.includes(
                       session.session_id,
@@ -156,32 +150,39 @@ export function SessionListScreen({
                     const external = session.origin === "external";
                     const registered = session.registered !== false;
                     return (
-                      <View key={session.session_id} style={styles.sessionCard}>
+                      <Card key={session.session_id} style={styles.sessionCard}>
                         <Pressable
                           disabled={killing || closing}
-                          accessibilityLabel="Kill tmux session"
                           style={[
-                            styles.cardKillButton,
+                            styles.sessionMain,
                             (killing || closing) && styles.disabled,
                           ]}
-                          onPress={() => onKillTmuxSession(session)}
-                        >
-                          <Text style={styles.cardKillText}>
-                            {killing ? "…" : "×"}
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          style={styles.sessionMain}
                           onPress={() => onOpenSession(session)}
                         >
-                          <Text numberOfLines={1} style={styles.sessionTitle}>
-                            {session.title}
-                          </Text>
-                          {external ? (
-                            <Text style={styles.originBadge}>
-                              {registered ? "Attached tmux" : "Existing tmux"}
+                          <View style={styles.sessionTitleRow}>
+                            <Text numberOfLines={1} style={styles.sessionTitle}>
+                              {session.title}
                             </Text>
-                          ) : null}
+                            <Text style={styles.openHint}>Open</Text>
+                          </View>
+                          <View style={styles.badgeRow}>
+                            <Badge
+                              backgroundColor={colors.successSoft}
+                              color="#d7ffe9"
+                              style={styles.compactBadge}
+                            >
+                              {getRuntimeLabel(getRuntimeGroupKind(session))}
+                            </Badge>
+                            {external ? (
+                              <Badge
+                                backgroundColor={colors.warningSoft}
+                                color={colors.warning}
+                                style={styles.compactBadge}
+                              >
+                                {registered ? "Attached tmux" : "Existing tmux"}
+                              </Badge>
+                            ) : null}
+                          </View>
                           <Text
                             ellipsizeMode="middle"
                             numberOfLines={1}
@@ -204,32 +205,41 @@ export function SessionListScreen({
                             Created {formatAbsoluteTime(session.created_at)}
                           </Text>
                         </Pressable>
-                        {registered ? (
-                          <Pressable
-                            disabled={closing || killing}
-                            style={[
-                              styles.closeButton,
-                              (closing || killing) && styles.disabled,
-                            ]}
-                            onPress={() => onCloseSession(session)}
-                          >
-                            <Text style={styles.closeText}>
+                        <View style={styles.sessionActions}>
+                          {registered ? (
+                            <Button
+                              disabled={closing || killing}
+                              style={styles.closeButton}
+                              tone="danger"
+                              onPress={() => onCloseSession(session)}
+                            >
                               {closing
                                 ? "Closing..."
                                 : external
                                   ? "Forget tmux"
                                   : "Close Session"}
-                            </Text>
-                          </Pressable>
-                        ) : (
-                          <View style={styles.closeButton}>
-                            <Text style={styles.attachHint}>Tap to attach</Text>
-                          </View>
-                        )}
-                      </View>
+                            </Button>
+                          ) : (
+                            <View style={styles.closeButton}>
+                              <Text style={styles.attachHint}>
+                                Tap card to attach
+                              </Text>
+                            </View>
+                          )}
+                          <Button
+                            disabled={closing || killing}
+                            accessibilityLabel="Kill tmux session"
+                            style={styles.killSessionButton}
+                            tone="danger"
+                            onPress={() => onKillTmuxSession(session)}
+                          >
+                            {killing ? "Killing..." : "Kill tmux"}
+                          </Button>
+                        </View>
+                      </Card>
                     );
                   })}
-                </ScrollView>
+                </View>
               )}
             </View>
           );
@@ -243,7 +253,7 @@ export function SessionListScreen({
         onRequestClose={() => setCreateModalVisible(false)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <Card style={styles.modalCard}>
             <Text style={styles.modalTitle}>
               New {getRuntimeLabel(createRuntimeKind)} Session
             </Text>
@@ -260,26 +270,22 @@ export function SessionListScreen({
               style={styles.cwdInput}
             />
             <View style={styles.modalActions}>
-              <Pressable
+              <Button
                 style={styles.modalSecondaryButton}
                 onPress={() => setCreateModalVisible(false)}
               >
-                <Text style={styles.secondaryText}>Cancel</Text>
-              </Pressable>
-              <Pressable
+                Cancel
+              </Button>
+              <Button
                 disabled={!createCwd.trim() || creating}
-                style={[
-                  styles.modalPrimaryButton,
-                  (!createCwd.trim() || creating) && styles.disabled,
-                ]}
+                style={styles.modalPrimaryButton}
+                tone="primary"
                 onPress={confirmCreateSession}
               >
-                <Text style={styles.primaryText}>
-                  {creating ? "Starting..." : "Create"}
-                </Text>
-              </Pressable>
+                {creating ? "Starting..." : "Create"}
+              </Button>
             </View>
-          </View>
+          </Card>
         </View>
       </Modal>
     </View>
@@ -289,27 +295,31 @@ export function SessionListScreen({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    padding: 18,
+    padding: spacing.xxl,
   },
   actions: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 12,
+    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
   toolbarTitleArea: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
+  toolbarButton: {
+    minHeight: 38,
+    minWidth: 86,
+  },
   toolbarTitle: {
-    color: "#f5f7f8",
+    color: colors.textPrimary,
     fontSize: 17,
     fontWeight: "800",
   },
   toolbarMeta: {
-    color: "#94a3ad",
+    color: colors.textMuted,
     fontSize: 12,
     marginTop: 2,
   },
@@ -324,121 +334,143 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   primaryText: {
-    color: "#08110d",
-    fontWeight: "800",
+    color: colors.successText,
+    ...typography.action,
   },
   secondaryText: {
-    color: "#d7dde2",
+    color: colors.textSecondary,
     fontWeight: "700",
   },
   disabled: {
     opacity: 0.55,
   },
   list: {
-    gap: 18,
+    gap: spacing.xxl,
   },
   runtimeSection: {
-    gap: 10,
+    gap: spacing.md,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: spacing.lg,
   },
   sectionTitle: {
-    color: "#f5f7f8",
+    color: colors.textPrimary,
     fontSize: 18,
     fontWeight: "800",
   },
   sectionMeta: {
-    color: "#94a3ad",
+    color: colors.textMuted,
     fontSize: 12,
     marginTop: 2,
   },
   sectionCreateButton: {
     minHeight: 38,
     minWidth: 72,
-    borderRadius: 8,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#30c48d",
+    backgroundColor: colors.success,
   },
-  sessionRow: {
-    gap: 10,
-    paddingRight: 2,
+  sessionStack: {
+    gap: spacing.md,
   },
   empty: {
-    color: "#94a3ad",
-    borderColor: "#263037",
+    color: colors.textMuted,
+    borderColor: colors.borderSubtle,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: radii.sm,
     padding: 14,
   },
   sessionCard: {
-    borderColor: "#34424c",
-    borderWidth: 1,
-    borderRadius: 8,
-    backgroundColor: "#151c21",
     overflow: "hidden",
-    position: "relative",
-    width: 260,
-  },
-  cardKillButton: {
-    position: "absolute",
-    right: 8,
-    top: 8,
-    zIndex: 2,
-    width: 30,
-    minHeight: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    borderColor: "#5b3030",
-    borderWidth: 1,
-    backgroundColor: "#2a1517",
-  },
-  cardKillText: {
-    color: "#ff8d8d",
-    fontSize: 20,
-    fontWeight: "800",
-    lineHeight: 22,
   },
   sessionMain: {
     padding: 14,
-    paddingRight: 46,
   },
-  closeButton: {
-    minHeight: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderTopColor: "#263037",
+  sessionActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderTopColor: colors.borderSubtle,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  closeButton: {
+    flex: 1,
+    minHeight: 38,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  killSessionButton: {
+    flex: 1,
+    minHeight: 38,
+    borderColor: colors.dangerBorder,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.dangerSurface,
+  },
+  sessionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
   sessionTitle: {
-    color: "#f5f7f8",
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: "700",
+    flex: 1,
   },
-  originBadge: {
+  openHint: {
+    color: colors.success,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  compactBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  runtimeBadge: {
     alignSelf: "flex-start",
-    marginTop: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
     overflow: "hidden",
-    color: "#f4c95d",
+    color: "#d7ffe9",
     fontSize: 11,
     fontWeight: "800",
-    backgroundColor: "rgba(244, 201, 93, 0.16)",
+    backgroundColor: colors.successSoft,
+  },
+  originBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: "hidden",
+    color: colors.warning,
+    fontSize: 11,
+    fontWeight: "800",
+    backgroundColor: colors.warningSoft,
   },
   sessionMetaText: {
-    color: "#94a3ad",
-    marginTop: 4,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
     width: "100%",
   },
   sessionStatus: {
-    color: "#30c48d",
+    color: colors.success,
     fontWeight: "700",
     textTransform: "capitalize",
   },
@@ -446,25 +478,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
-    marginTop: 8,
+    gap: spacing.md,
+    marginTop: spacing.sm,
   },
   sessionTime: {
-    color: "#d7dde2",
+    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: "700",
   },
   sessionCreated: {
-    color: "#66727c",
+    color: colors.textDim,
     fontSize: 12,
     marginTop: 6,
   },
   closeText: {
-    color: "#ff8d8d",
+    color: colors.danger,
+    fontWeight: "800",
+  },
+  killSessionText: {
+    color: colors.danger,
     fontWeight: "800",
   },
   attachHint: {
-    color: "#30c48d",
+    color: colors.success,
     fontWeight: "800",
   },
   modalBackdrop: {
@@ -474,52 +510,48 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.58)",
   },
   modalCard: {
-    borderColor: "#34424c",
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    gap: 10,
-    backgroundColor: "#151c21",
+    padding: spacing.xl,
+    gap: spacing.md,
   },
   modalTitle: {
-    color: "#f5f7f8",
+    color: colors.textPrimary,
     fontSize: 18,
     fontWeight: "800",
   },
   modalDescription: {
-    color: "#94a3ad",
+    color: colors.textMuted,
     fontSize: 13,
   },
   cwdInput: {
     minHeight: 48,
-    borderColor: "#34424c",
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 8,
-    color: "#f5f7f8",
-    paddingHorizontal: 12,
-    backgroundColor: "#101417",
+    borderRadius: radii.sm,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.background,
   },
   modalActions: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 4,
+    gap: spacing.md,
+    marginTop: spacing.xs,
   },
   modalSecondaryButton: {
     flex: 1,
     minHeight: 44,
-    borderColor: "#34424c",
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
   },
   modalPrimaryButton: {
     flex: 1,
     minHeight: 44,
-    borderRadius: 8,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#30c48d",
+    backgroundColor: colors.success,
   },
 });
 

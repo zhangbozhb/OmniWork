@@ -13,7 +13,8 @@
   "dependencies": {
     "@omniwork/protocol-ts": "workspace:*",
     "@omniwork/relay-client": "workspace:*",
-    "@omniwork/terminal-core": "workspace:*"
+    "@omniwork/terminal-core": "workspace:*",
+    "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
     "@types/node": "^22.19.19",

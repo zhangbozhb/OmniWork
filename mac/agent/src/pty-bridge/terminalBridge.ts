@@ -29,15 +29,16 @@ export class TerminalBridge {
     const next = previous
       .catch(() => undefined)
       .then(() => this.writeInputNow(session, input));
-    const queued = next.finally(() => {
-      if (this.inputQueues.get(sessionId) === queued) {
+
+    this.inputQueues.set(sessionId, next);
+
+    try {
+      await next;
+    } finally {
+      if (this.inputQueues.get(sessionId) === next) {
         this.inputQueues.delete(sessionId);
       }
-    });
-
-    this.inputQueues.set(sessionId, queued);
-
-    await next;
+    }
   }
 
   private async writeInputNow(

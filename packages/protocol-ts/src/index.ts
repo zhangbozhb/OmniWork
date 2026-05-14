@@ -105,6 +105,19 @@ export interface AuthFailedPayload {
   retry_after_ms?: number;
 }
 
+export interface PairingLinkPayload {
+  v: typeof PROTOCOL_VERSION;
+  relay_url: string;
+  device_id: string;
+  key: string;
+  key_id?: string;
+  host?: string;
+  port?: string;
+}
+
+export const PAIRING_LINK_SCHEME = "omniwork" as const;
+export const PAIRING_LINK_HOST = "pair" as const;
+
 export type SessionStatus =
   | "created"
   | "starting"
@@ -224,4 +237,111 @@ export function createMessage<TPayload>(
 export function createMessageId(): string {
   const random = Math.random().toString(36).slice(2, 10);
   return `msg_${Date.now().toString(36)}_${random}`;
+}
+
+export function createPairingLink(payload: PairingLinkPayload): string {
+  const params = new URLSearchParams();
+  params.set("v", String(payload.v));
+  params.set("relay_url", payload.relay_url);
+  params.set("device_id", payload.device_id);
+  params.set("key", payload.key);
+  setOptionalParam(params, "key_id", payload.key_id);
+  setOptionalParam(params, "host", payload.host);
+  setOptionalParam(params, "port", payload.port);
+
+  return `${PAIRING_LINK_SCHEME}://${PAIRING_LINK_HOST}?${params.toString()}`;
+}
+
+export function parsePairingLink(input: string): PairingLinkPayload | null {
+  const query = extractPairingQuery(input);
+  if (!query) {
+    return null;
+  }
+
+  const params = parseQueryParams(query);
+
+  const relayUrl = searchParam(params, "relay_url");
+  const deviceId = searchParam(params, "device_id");
+  const key = searchParam(params, "key");
+  if (!relayUrl || !deviceId || !key) {
+    return null;
+  }
+
+  return {
+    v: PROTOCOL_VERSION,
+    relay_url: relayUrl,
+    device_id: deviceId,
+    key,
+    key_id: searchParam(params, "key_id"),
+    host: searchParam(params, "host"),
+    port: searchParam(params, "port"),
+  };
+}
+
+function setOptionalParam(
+  params: URLSearchParams,
+  key: string,
+  value?: string,
+): void {
+  if (value) {
+    params.set(key, value);
+  }
+}
+
+function extractPairingQuery(input: string): string | null {
+  const trimmed = input.trim();
+  const lower = trimmed.toLowerCase();
+  const prefixes = [
+    `${PAIRING_LINK_SCHEME}://${PAIRING_LINK_HOST}`,
+    `${PAIRING_LINK_SCHEME}:/${PAIRING_LINK_HOST}`,
+    `${PAIRING_LINK_SCHEME}:${PAIRING_LINK_HOST}`,
+  ];
+  const prefix = prefixes.find((item) => lower.startsWith(item));
+  if (!prefix) {
+    return null;
+  }
+
+  const remainder = trimmed.slice(prefix.length).replace(/^\/+/, "");
+  const queryStart = remainder.indexOf("?");
+  if (queryStart < 0) {
+    return null;
+  }
+
+  const query = remainder.slice(queryStart + 1);
+  const hashStart = query.indexOf("#");
+  return hashStart >= 0 ? query.slice(0, hashStart) : query;
+}
+
+function parseQueryParams(query: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  for (const part of query.split("&")) {
+    if (!part) {
+      continue;
+    }
+
+    const separator = part.indexOf("=");
+    const rawKey = separator >= 0 ? part.slice(0, separator) : part;
+    const rawValue = separator >= 0 ? part.slice(separator + 1) : "";
+    const key = decodeQueryComponent(rawKey);
+    if (key) {
+      params[key] = decodeQueryComponent(rawValue);
+    }
+  }
+
+  return params;
+}
+
+function decodeQueryComponent(value: string): string {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, " "));
+  } catch {
+    return value;
+  }
+}
+
+function searchParam(
+  params: Record<string, string>,
+  key: string,
+): string | undefined {
+  return params[key]?.trim() || undefined;
 }

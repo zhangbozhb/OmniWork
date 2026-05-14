@@ -32,6 +32,7 @@ import {
   type TerminalViewport,
 } from "../../features/terminal/terminalLayout";
 import { NativeTerminalView } from "../../terminal/NativeTerminalView";
+import { colors, radii, spacing } from "../../ui/theme";
 
 export interface TerminalScreenProps {
   session: CodexSession;
@@ -51,7 +52,7 @@ type TerminalConnectionStatus =
   | "authenticated"
   | "failed";
 
-const QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
+const PRIMARY_QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
   { label: "Esc", key: "escape" },
   { label: "Tab", key: "tab" },
   { label: "Enter", key: "enter" },
@@ -60,12 +61,16 @@ const QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
   { label: "↓", key: "arrowDown" },
   { label: "←", key: "arrowLeft" },
   { label: "→", key: "arrowRight" },
+];
+
+const ADVANCED_QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
   { label: "Ctrl+C", key: "ctrlC" },
   { label: "Ctrl+D", key: "ctrlD" },
   { label: "Ctrl+L", key: "ctrlL" },
 ];
 
-const BOTTOM_DOCK_HEIGHT = 178;
+const BOTTOM_DOCK_BOTTOM_MARGIN = 12;
+const INITIAL_BOTTOM_DOCK_HEIGHT = 178;
 const PROFILE_OPTIONS: Array<{ key: TerminalDisplayProfile; label: string }> = [
   { key: "readableScroll", label: "Readable" },
   { key: "fitPreview", label: "Fit" },
@@ -73,6 +78,11 @@ const PROFILE_OPTIONS: Array<{ key: TerminalDisplayProfile; label: string }> = [
 ];
 
 function getKeyboardBottomInset(event: KeyboardEvent): number {
+  const keyboardHeight = event.endCoordinates.height;
+  if (keyboardHeight > 0) {
+    return keyboardHeight;
+  }
+
   return Math.max(
     0,
     Dimensions.get("window").height - event.endCoordinates.screenY,
@@ -90,6 +100,10 @@ export function TerminalScreen({
   onResize,
 }: TerminalScreenProps): JSX.Element {
   const [draft, setDraft] = useState("");
+  const [bottomDockHeight, setBottomDockHeight] = useState(
+    INITIAL_BOTTOM_DOCK_HEIGHT,
+  );
+  const [advancedKeysVisible, setAdvancedKeysVisible] = useState(false);
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [terminalViewport, setTerminalViewport] = useState<TerminalViewport>({
@@ -110,25 +124,22 @@ export function TerminalScreen({
   );
 
   useEffect(() => {
-    if (Platform.OS !== "ios") {
-      return undefined;
-    }
-
-    const changeSubscription = Keyboard.addListener(
-      "keyboardWillChangeFrame",
-      (event) => {
-        const inset = getKeyboardBottomInset(event);
-        setKeyboardBottomInset(inset);
-        setKeyboardVisible(inset > 0);
-      },
-    );
-    const hideSubscription = Keyboard.addListener("keyboardWillHide", () => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      const inset = getKeyboardBottomInset(event);
+      setKeyboardBottomInset(inset);
+      setKeyboardVisible(inset > 0);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
       setKeyboardBottomInset(0);
       setKeyboardVisible(false);
     });
 
     return () => {
-      changeSubscription.remove();
+      showSubscription.remove();
       hideSubscription.remove();
     };
   }, []);
@@ -188,6 +199,13 @@ export function TerminalScreen({
     });
   }
 
+  function handleBottomDockLayout(event: LayoutChangeEvent): void {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+    setBottomDockHeight((currentHeight) =>
+      Math.abs(currentHeight - nextHeight) > 1 ? nextHeight : currentHeight,
+    );
+  }
+
   return (
     <View style={styles.screen}>
       <View style={styles.toolbar}>
@@ -218,7 +236,12 @@ export function TerminalScreen({
       <View
         style={[
           styles.terminalArea,
-          { marginBottom: BOTTOM_DOCK_HEIGHT + keyboardBottomInset },
+          {
+            marginBottom:
+              bottomDockHeight +
+              keyboardBottomInset +
+              BOTTOM_DOCK_BOTTOM_MARGIN,
+          },
         ]}
         onLayout={handleTerminalAreaLayout}
       >
@@ -232,8 +255,14 @@ export function TerminalScreen({
       <View
         style={[
           styles.bottomDock,
-          { bottom: keyboardBottomInset > 0 ? keyboardBottomInset : 12 },
+          {
+            bottom:
+              keyboardBottomInset > 0
+                ? keyboardBottomInset
+                : BOTTOM_DOCK_BOTTOM_MARGIN,
+          },
         ]}
+        onLayout={handleBottomDockLayout}
       >
         <ScrollView
           horizontal
@@ -242,7 +271,7 @@ export function TerminalScreen({
           style={styles.quickKeys}
           contentContainerStyle={styles.quickKeysContent}
         >
-          {QUICK_KEYS.map((item) => (
+          {PRIMARY_QUICK_KEYS.map((item) => (
             <Pressable
               key={item.key}
               style={styles.keyButton}
@@ -251,12 +280,31 @@ export function TerminalScreen({
               <Text style={styles.keyButtonText}>{item.label}</Text>
             </Pressable>
           ))}
+          {advancedKeysVisible
+            ? ADVANCED_QUICK_KEYS.map((item) => (
+                <Pressable
+                  key={item.key}
+                  style={[styles.keyButton, styles.advancedKeyButton]}
+                  onPress={() => onInput(createControlInput(item.key))}
+                >
+                  <Text style={styles.keyButtonText}>{item.label}</Text>
+                </Pressable>
+              ))
+            : null}
           <Pressable
             disabled={!draft}
             style={[styles.keyButton, !draft && styles.disabled]}
             onPress={() => setDraft("")}
           >
             <Text style={styles.keyButtonText}>Clear</Text>
+          </Pressable>
+          <Pressable
+            style={styles.keyButton}
+            onPress={() => setAdvancedKeysVisible((visible) => !visible)}
+          >
+            <Text style={styles.keyButtonText}>
+              {advancedKeysVisible ? "Less" : "More"}
+            </Text>
           </Pressable>
         </ScrollView>
 
@@ -367,34 +415,38 @@ function getAgentStatusPresentation(status: TerminalConnectionStatus): {
     case "authenticated":
       return {
         accessibilityLabel: "Agent connected",
-        color: "#30c48d",
+        color: colors.success,
         icon: "●",
       };
     case "connecting":
     case "authenticating":
       return {
         accessibilityLabel: "Agent connecting",
-        color: "#f4c95d",
+        color: colors.warning,
         icon: "◐",
       };
     case "failed":
       return {
         accessibilityLabel: "Agent disconnected",
-        color: "#ff8d8d",
+        color: colors.danger,
         icon: "×",
       };
     case "idle":
     default:
-      return { accessibilityLabel: "Agent idle", color: "#66727c", icon: "○" };
+      return {
+        accessibilityLabel: "Agent idle",
+        color: colors.textDim,
+        icon: "○",
+      };
   }
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    gap: 10,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    gap: spacing.md,
   },
   terminalArea: {
     flex: 1,
@@ -403,35 +455,35 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 12,
     right: 12,
-    gap: 8,
-    paddingTop: 8,
-    backgroundColor: "#101417",
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    backgroundColor: colors.background,
   },
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: spacing.md,
   },
   sessionMetaArea: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: spacing.md,
   },
   backButton: {
-    borderColor: "#34424c",
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: radii.sm,
     minHeight: 38,
     justifyContent: "center",
     paddingHorizontal: 12,
   },
   backText: {
-    color: "#d7dde2",
+    color: colors.textSecondary,
     fontWeight: "700",
   },
   meta: {
-    color: "#94a3ad",
+    color: colors.textMuted,
     flex: 1,
   },
   statusIcon: {
@@ -446,12 +498,12 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    borderColor: "#5b3030",
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
-    backgroundColor: "#2a1517",
+    backgroundColor: colors.dangerSurface,
   },
   killText: {
-    color: "#ff8d8d",
+    color: colors.danger,
     fontSize: 22,
     fontWeight: "800",
     lineHeight: 24,
@@ -460,43 +512,47 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   quickKeysContent: {
-    gap: 8,
-    paddingRight: 4,
+    gap: spacing.sm,
+    paddingRight: spacing.xs,
   },
   keyButton: {
     minWidth: 52,
     minHeight: 36,
-    borderRadius: 8,
-    borderColor: "#34424c",
+    borderRadius: radii.sm,
+    borderColor: colors.border,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#151c21",
+    backgroundColor: colors.surface,
+  },
+  advancedKeyButton: {
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.background,
   },
   keyButtonText: {
-    color: "#d7dde2",
+    color: colors.textSecondary,
     fontWeight: "700",
   },
   profileRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.sm,
   },
   profileButton: {
     minHeight: 30,
-    borderRadius: 8,
-    borderColor: "#34424c",
+    borderRadius: radii.sm,
+    borderColor: colors.border,
     borderWidth: 1,
     justifyContent: "center",
     paddingHorizontal: 10,
-    backgroundColor: "#151c21",
+    backgroundColor: colors.surface,
   },
   profileSelected: {
-    borderColor: "#30c48d",
+    borderColor: colors.success,
     backgroundColor: "#1a3028",
   },
   profileButtonText: {
-    color: "#94a3ad",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "800",
   },
@@ -504,62 +560,62 @@ const styles = StyleSheet.create({
     color: "#d7ffe9",
   },
   gridMeta: {
-    color: "#66727c",
+    color: colors.textDim,
     flex: 1,
     fontSize: 12,
     textAlign: "right",
   },
   fitNotice: {
-    color: "#f4c95d",
+    color: colors.warning,
     fontSize: 12,
   },
   composer: {
     gap: 6,
   },
   composerHint: {
-    color: "#94a3ad",
+    color: colors.textMuted,
     fontSize: 12,
   },
   inputRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: spacing.sm,
     alignItems: "flex-end",
   },
   input: {
     flex: 1,
     minHeight: 48,
     maxHeight: 112,
-    borderColor: "#34424c",
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 8,
-    color: "#f5f7f8",
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 12,
-    backgroundColor: "#151c21",
+    borderRadius: radii.sm,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+    backgroundColor: colors.surface,
     textAlignVertical: "top",
   },
   sendButton: {
     minHeight: 44,
-    borderRadius: 8,
-    backgroundColor: "#30c48d",
-    paddingHorizontal: 16,
+    borderRadius: radii.sm,
+    backgroundColor: colors.success,
+    paddingHorizontal: spacing.xl,
     alignItems: "center",
     justifyContent: "center",
   },
   sendButtonSecondary: {
     backgroundColor: "#1d272d",
-    borderColor: "#34424c",
+    borderColor: colors.border,
     borderWidth: 1,
   },
   disabled: {
     opacity: 0.45,
   },
   sendText: {
-    color: "#08110d",
+    color: colors.successText,
     fontWeight: "800",
   },
   sendTextSecondary: {
-    color: "#d7dde2",
+    color: colors.textSecondary,
   },
 });

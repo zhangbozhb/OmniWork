@@ -97,6 +97,10 @@ export class SessionManager {
     return (await this.list()).find((session) => session.session_id === sessionId);
   }
 
+  async remove(sessionId: string): Promise<void> {
+    await this.store.remove(sessionId);
+  }
+
   async close(sessionId: string): Promise<void> {
     const session = await this.get(sessionId);
     if (!session) {
