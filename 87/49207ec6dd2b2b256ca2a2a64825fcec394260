@@ -1,0 +1,165 @@
+package.json
+  ed57091727a2eff5 15-16 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a056c47300fcd22f1a4e3ae","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[15,16]}]}]}
+app/android/gradle/wrapper/gradle-wrapper.properties
+  4797f1b527ea9757 3 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0562ee300fcd22f1a4e2c0","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":3}]}]}
+app/android/app/build.gradle
+  4797f1b527ea9757 87-89 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0562ee300fcd22f1a4e2c0","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[87,89]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "8749207ec6dd2b2b256ca2a2a64825fcec394260",
+  "prompts": {
+    "04cbcb0757b4e293": {
+      "agent_id": {
+        "tool": "trae-cue",
+        "id": "ai_tab-icr-8f660e1b-49cc-4840-b6c3-87ef00af23de",
+        "model": "default"
+      },
+      "human_author": "zhangbo.cd <zhangbo.cd@bytedance.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "36c9cec22873f01d": {
+      "agent_id": {
+        "tool": "trae-cue",
+        "id": "ai_tab-icr-bad970b5-3cf9-4281-926e-bd82db22c823",
+        "model": "default"
+      },
+      "human_author": "zhangbo.cd <zhangbo.cd@bytedance.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "4797f1b527ea9757": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a048b57300fcd22f1a4d1cd",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": "zhangbo.cd <zhangbo.cd@bytedance.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 3,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "ed57091727a2eff5": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a0296ec300fcd22f1a48dc3",
+        "model": "gpt-5.4__dev"
+      },
+      "human_author": "zhangbo.cd <zhangbo.cd@bytedance.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 2,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {
+    "app/android/app/build.gradle": [
+      {
+        "hash": "4797f1b527ea9757",
+        "line_ranges": [
+          {
+            "Range": [
+              87,
+              89
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0562ee300fcd22f1a4e2c0",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  87,
+                  89
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "app/android/gradle/wrapper/gradle-wrapper.properties": [
+      {
+        "hash": "4797f1b527ea9757",
+        "line_ranges": [
+          {
+            "Single": 3
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0562ee300fcd22f1a4e2c0",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 3
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "package.json": [
+      {
+        "hash": "ed57091727a2eff5",
+        "line_ranges": [
+          {
+            "Range": [
+              15,
+              16
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a056c47300fcd22f1a4e3ae",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  15,
+                  16
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "4797f1b527ea9757": {
+      "tool": "trae",
+      "conversation_id": "6a048b57300fcd22f1a4d1cd",
+      "session_id": "6a048b57300fcd22f1a4d1cd",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "ed57091727a2eff5": {
+      "tool": "trae",
+      "conversation_id": "6a0296ec300fcd22f1a48dc3",
+      "session_id": "6a0296ec300fcd22f1a48dc3",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
