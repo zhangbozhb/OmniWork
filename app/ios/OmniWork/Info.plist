@@ -46,6 +46,8 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OmniWork uses the local network to connect to your relay or development services.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>OmniWork uses the camera to scan the Mac Agent pairing QR code.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

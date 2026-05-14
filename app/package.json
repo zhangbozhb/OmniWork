@@ -43,6 +43,7 @@
     "react-is-18": "npm:react-is@18",
     "react-is-19": "npm:react-is@19",
     "react-native": "0.83.6",
+    "react-native-camera-kit": "^18.0.0",
     "react-native-keychain": "^10.0.0",
     "react-native-safe-area-context": "^5.6.2",
     "react-refresh": "^0.18.0",
@@ -62,9 +63,9 @@
     "@react-native/codegen": "0.83.6",
     "@react-native/gradle-plugin": "0.83.6",
     "@react-native/metro-config": "0.83.6",
-    "hermes-compiler": "0.14.1",
     "@types/node": "^22.10.0",
     "@types/react": "^19.2.14",
+    "hermes-compiler": "0.14.1",
     "typescript": "^5.8.0"
   }
 }
