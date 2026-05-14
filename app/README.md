@@ -21,10 +21,16 @@ pnpm --filter @omniwork/app start
 
 ## Installable Builds
 
-Android release build:
+Android release APK:
 
 ```sh
-pnpm --filter @omniwork/app build:android
+pnpm --filter @omniwork/app build:android:apk
+```
+
+Android release AAB:
+
+```sh
+pnpm --filter @omniwork/app build:android:aab
 ```
 
 iOS release build:

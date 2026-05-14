@@ -7,7 +7,8 @@
     "start": "react-native start",
     "android": "react-native run-android",
     "ios": "react-native run-ios",
-    "build:android": "react-native build-android --mode release",
+    "build:android:apk": "react-native build-android --mode release --tasks assembleRelease",
+    "build:android:aab": "react-native build-android --mode release --tasks bundleRelease",
     "pods:ios": "cd ios && bundle exec pod install",
     "build:ios": "pnpm run pods:ios && react-native build-ios --mode Release --extra-params \"CODE_SIGNING_ALLOWED=NO\"",
     "typecheck": "tsc -p tsconfig.json",
@@ -53,12 +54,15 @@
     "whatwg-url-without-unicode": "8.0.0-3"
   },
   "devDependencies": {
+    "@babel/runtime": "^7.29.2",
     "@react-native-community/cli": "^20.1.2",
     "@react-native-community/cli-platform-android": "^20.1.2",
     "@react-native-community/cli-platform-ios": "^20.1.2",
     "@react-native/babel-preset": "0.83.6",
+    "@react-native/codegen": "0.83.6",
+    "@react-native/gradle-plugin": "0.83.6",
     "@react-native/metro-config": "0.83.6",
-    "@babel/runtime": "^7.29.2",
+    "hermes-compiler": "0.14.1",
     "@types/node": "^22.10.0",
     "@types/react": "^19.2.14",
     "typescript": "^5.8.0"
