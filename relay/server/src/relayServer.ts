@@ -1,5 +1,9 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import type { Socket } from "node:net";
 
 import {
@@ -16,9 +20,11 @@ import type { RelayServerConfig } from "./config.ts";
 import { acceptWebSocket, WebSocketConnection } from "./websocket.ts";
 
 type RelayRole = "unknown" | "agent" | "mobile";
+type RelayEndpoint = "agent" | "mobile";
 
 interface RelayConnection {
   id: string;
+  endpoint: RelayEndpoint;
   role: RelayRole;
   socket: WebSocketConnection;
   deviceId?: string;
@@ -44,11 +50,22 @@ export class RelayServer {
   }
 
   async start(): Promise<void> {
-    const server = createServer((request, response) => this.handleHttp(request, response));
+    const server = createServer((request, response) =>
+      this.handleHttp(request, response),
+    );
     server.on("upgrade", (request, socket) => {
+      const endpoint = parseRelayEndpoint(request);
+      if (!endpoint) {
+        rejectWebSocketUpgrade(
+          socket as Socket,
+          "Use /agent for Mac Agent connections or /mobile for app connections.",
+        );
+        return;
+      }
+
       const connection = acceptWebSocket(request, socket as Socket);
       if (connection) {
-        this.register(connection);
+        this.register(connection, endpoint);
       }
     });
 
@@ -56,7 +73,9 @@ export class RelayServer {
       server.listen(this.config.port, this.config.host, resolve);
     });
 
-    console.log(`[omniwork-relay] listening on ${this.config.host}:${this.config.port}`);
+    console.log(
+      `[omniwork-relay] listening on ${this.config.host}:${this.config.port}`,
+    );
   }
 
   private handleHttp(request: IncomingMessage, response: ServerResponse): void {
@@ -70,9 +89,10 @@ export class RelayServer {
     response.end(JSON.stringify({ error: "not_found" }));
   }
 
-  private register(socket: WebSocketConnection): void {
+  private register(socket: WebSocketConnection, endpoint: RelayEndpoint): void {
     const connection: RelayConnection = {
       id: `conn_${randomUUID()}`,
+      endpoint,
       role: "unknown",
       socket,
       authenticated: false,
@@ -108,13 +128,28 @@ export class RelayServer {
 
     switch (message.type) {
       case "agent.hello":
-        this.handleAgentHello(connection, message as MessageEnvelope<AgentHelloPayload>);
+        if (!this.ensureEndpoint(connection, "agent")) {
+          return;
+        }
+        this.handleAgentHello(
+          connection,
+          message as MessageEnvelope<AgentHelloPayload>,
+        );
         break;
       case "mobile.connect":
-        this.handleMobileConnect(connection, message as MessageEnvelope<MobileConnectPayload>);
+        if (!this.ensureEndpoint(connection, "mobile")) {
+          return;
+        }
+        this.handleMobileConnect(
+          connection,
+          message as MessageEnvelope<MobileConnectPayload>,
+        );
         break;
       case "auth.proof":
-        this.handleAuthProof(connection, message as MessageEnvelope<AuthProofPayload>);
+        this.handleAuthProof(
+          connection,
+          message as MessageEnvelope<AuthProofPayload>,
+        );
         break;
       case "auth.ok":
       case "auth.failed":
@@ -126,7 +161,10 @@ export class RelayServer {
     }
   }
 
-  private handleAgentHello(connection: RelayConnection, message: MessageEnvelope<AgentHelloPayload>): void {
+  private handleAgentHello(
+    connection: RelayConnection,
+    message: MessageEnvelope<AgentHelloPayload>,
+  ): void {
     connection.role = "agent";
     connection.deviceId = message.payload.device_id;
     connection.keyId = message.payload.key_id;
@@ -134,18 +172,28 @@ export class RelayServer {
     this.agentsByDevice.set(message.payload.device_id, connection);
   }
 
-  private handleMobileConnect(connection: RelayConnection, message: MessageEnvelope<MobileConnectPayload>): void {
+  private handleMobileConnect(
+    connection: RelayConnection,
+    message: MessageEnvelope<MobileConnectPayload>,
+  ): void {
     const deviceId = message.payload.device_id;
     const agent = this.agentsByDevice.get(deviceId);
     connection.role = "mobile";
     connection.deviceId = deviceId;
 
     if (!agent?.keyId) {
-      this.send(connection, createMessage<AuthFailedPayload>("auth.failed", {
-        reason: "device_not_online",
-        connection_id: connection.id,
-        retry_after_ms: 2000,
-      }, { device_id: deviceId }));
+      this.send(
+        connection,
+        createMessage<AuthFailedPayload>(
+          "auth.failed",
+          {
+            reason: "device_not_online",
+            connection_id: connection.id,
+            retry_after_ms: 2000,
+          },
+          { device_id: deviceId },
+        ),
+      );
       return;
     }
 
@@ -156,50 +204,90 @@ export class RelayServer {
       keyId: agent.keyId,
     });
 
-    this.send(connection, createMessage("auth.challenge", {
-      nonce,
-      key_id: agent.keyId,
-      expires_at: new Date(Date.now() + 60_000).toISOString(),
-    }, { device_id: deviceId }));
+    this.send(
+      connection,
+      createMessage(
+        "auth.challenge",
+        {
+          nonce,
+          key_id: agent.keyId,
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        },
+        { device_id: deviceId },
+      ),
+    );
   }
 
-  private handleAuthProof(connection: RelayConnection, message: MessageEnvelope<AuthProofPayload>): void {
+  private handleAuthProof(
+    connection: RelayConnection,
+    message: MessageEnvelope<AuthProofPayload>,
+  ): void {
     const pending = this.pendingAuth.get(connection.id);
-    if (!pending || message.payload.nonce !== pending.nonce || message.payload.key_id !== pending.keyId) {
-      this.send(connection, createMessage<AuthFailedPayload>("auth.failed", {
-        reason: "malformed_proof",
-        connection_id: connection.id,
-        retry_after_ms: 2000,
-      }, { device_id: connection.deviceId }));
+    if (
+      !pending ||
+      message.payload.nonce !== pending.nonce ||
+      message.payload.key_id !== pending.keyId
+    ) {
+      this.send(
+        connection,
+        createMessage<AuthFailedPayload>(
+          "auth.failed",
+          {
+            reason: "malformed_proof",
+            connection_id: connection.id,
+            retry_after_ms: 2000,
+          },
+          { device_id: connection.deviceId },
+        ),
+      );
       return;
     }
 
     const agent = this.agentsByDevice.get(pending.deviceId);
     if (!agent) {
-      this.send(connection, createMessage<AuthFailedPayload>("auth.failed", {
-        reason: "device_not_online",
-        connection_id: connection.id,
-        retry_after_ms: 2000,
-      }, { device_id: pending.deviceId }));
+      this.send(
+        connection,
+        createMessage<AuthFailedPayload>(
+          "auth.failed",
+          {
+            reason: "device_not_online",
+            connection_id: connection.id,
+            retry_after_ms: 2000,
+          },
+          { device_id: pending.deviceId },
+        ),
+      );
       return;
     }
 
-    this.send(agent, createMessage("auth.verify", {
-      key_id: message.payload.key_id,
-      nonce: message.payload.nonce,
-      proof: message.payload.proof,
-      connection_id: connection.id,
-    }, { device_id: pending.deviceId }));
+    this.send(
+      agent,
+      createMessage(
+        "auth.verify",
+        {
+          key_id: message.payload.key_id,
+          nonce: message.payload.nonce,
+          proof: message.payload.proof,
+          connection_id: connection.id,
+        },
+        { device_id: pending.deviceId },
+      ),
+    );
   }
 
-  private handleAuthResult(connection: RelayConnection, message: MessageEnvelope): void {
+  private handleAuthResult(
+    connection: RelayConnection,
+    message: MessageEnvelope,
+  ): void {
     if (connection.role !== "agent") {
       return;
     }
 
     const payload = message.payload as AuthOkPayload | AuthFailedPayload;
     const mobileConnectionId = payload.connection_id;
-    const mobile = mobileConnectionId ? this.connections.get(mobileConnectionId) : undefined;
+    const mobile = mobileConnectionId
+      ? this.connections.get(mobileConnectionId)
+      : undefined;
     if (!mobile) {
       return;
     }
@@ -208,7 +296,9 @@ export class RelayServer {
     if (message.type === "auth.ok") {
       mobile.authenticated = true;
       if (mobile.deviceId) {
-        const mobiles = this.mobilesByDevice.get(mobile.deviceId) ?? new Set<RelayConnection>();
+        const mobiles =
+          this.mobilesByDevice.get(mobile.deviceId) ??
+          new Set<RelayConnection>();
         mobiles.add(mobile);
         this.mobilesByDevice.set(mobile.deviceId, mobiles);
       }
@@ -217,14 +307,24 @@ export class RelayServer {
     this.send(mobile, message);
   }
 
-  private routeMessage(connection: RelayConnection, message: MessageEnvelope): void {
+  private routeMessage(
+    connection: RelayConnection,
+    message: MessageEnvelope,
+  ): void {
     if (connection.role === "mobile") {
       if (!connection.authenticated || !connection.deviceId) {
-        this.send(connection, createMessage<AuthFailedPayload>("auth.failed", {
-          reason: "malformed_proof",
-          connection_id: connection.id,
-          retry_after_ms: 2000,
-        }, { device_id: connection.deviceId }));
+        this.send(
+          connection,
+          createMessage<AuthFailedPayload>(
+            "auth.failed",
+            {
+              reason: "malformed_proof",
+              connection_id: connection.id,
+              retry_after_ms: 2000,
+            },
+            { device_id: connection.deviceId },
+          ),
+        );
         return;
       }
 
@@ -249,4 +349,45 @@ export class RelayServer {
   private send(connection: RelayConnection, message: MessageEnvelope): void {
     connection.socket.sendText(JSON.stringify(message));
   }
+
+  private ensureEndpoint(
+    connection: RelayConnection,
+    expected: RelayEndpoint,
+  ): boolean {
+    if (connection.endpoint === expected) {
+      return true;
+    }
+
+    connection.socket.close(
+      1008,
+      `wrong endpoint: use /${expected} for ${expected} connections`,
+    );
+    return false;
+  }
+}
+
+function parseRelayEndpoint(request: IncomingMessage): RelayEndpoint | null {
+  const url = new URL(request.url ?? "/", "http://relay.local");
+  if (url.pathname === "/agent") {
+    return "agent";
+  }
+  if (url.pathname === "/mobile") {
+    return "mobile";
+  }
+  return null;
+}
+
+function rejectWebSocketUpgrade(socket: Socket, message: string): void {
+  const body = JSON.stringify({ error: "invalid_relay_path", message });
+  socket.write(
+    [
+      "HTTP/1.1 404 Not Found",
+      "Content-Type: application/json",
+      `Content-Length: ${Buffer.byteLength(body)}`,
+      "Connection: close",
+      "",
+      body,
+    ].join("\r\n"),
+  );
+  socket.destroy();
 }

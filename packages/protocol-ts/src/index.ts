@@ -12,6 +12,9 @@ export type MessageType =
   | "device.list"
   | "session.list"
   | "session.create"
+  | "session.retry"
+  | "session.recover"
+  | "session.restart"
   | "session.rename"
   | "session.close"
   | "session.kill_tmux"
@@ -173,6 +176,10 @@ export interface SessionClosePayload {
 }
 
 export interface SessionKillTmuxPayload {
+  session_id: string;
+}
+
+export interface SessionRecoveryPayload {
   session_id: string;
 }
 

@@ -5,12 +5,18 @@ type WebSocketLike = {
   send(data: string): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: "open", listener: () => void): void;
-  addEventListener(type: "close", listener: (event: unknown) => void): void;
+  addEventListener(type: "close", listener: (event: RelayCloseEvent) => void): void;
   addEventListener(type: "error", listener: (event: unknown) => void): void;
   addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
 };
 
+export interface RelayCloseEvent {
+  code?: number;
+  reason?: string;
+}
+
 export type RelayMessageHandler = (message: MessageEnvelope) => void;
+export type RelayCloseHandler = (event: RelayCloseEvent) => void;
 
 export interface RelayConnectionOptions {
   url: string;
@@ -20,6 +26,7 @@ export interface RelayConnectionOptions {
 export class RelayClient {
   private socket: WebSocketLike | null = null;
   private readonly handlers = new Set<RelayMessageHandler>();
+  private readonly closeHandlers = new Set<RelayCloseHandler>();
   private readonly options: RelayConnectionOptions;
 
   constructor(options: RelayConnectionOptions) {
@@ -36,8 +43,18 @@ export class RelayClient {
     this.socket = socket;
 
     return new Promise((resolve, reject) => {
-      socket.addEventListener("open", () => resolve());
+      let opened = false;
+      socket.addEventListener("open", () => {
+        opened = true;
+        resolve();
+      });
       socket.addEventListener("error", (event) => reject(event));
+      socket.addEventListener("close", (event) => {
+        if (!opened) {
+          reject(new Error(formatCloseEvent(event)));
+        }
+        this.handleClose(event);
+      });
       socket.addEventListener("message", (event) => this.handleMessage(event.data));
     });
   }
@@ -45,6 +62,11 @@ export class RelayClient {
   onMessage(handler: RelayMessageHandler): () => void {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
+  }
+
+  onClose(handler: RelayCloseHandler): () => void {
+    this.closeHandlers.add(handler);
+    return () => this.closeHandlers.delete(handler);
   }
 
   send(message: MessageEnvelope): void {
@@ -70,6 +92,12 @@ export class RelayClient {
       handler(parsed);
     }
   }
+
+  private handleClose(event: RelayCloseEvent): void {
+    for (const handler of this.closeHandlers) {
+      handler(event);
+    }
+  }
 }
 
 function defaultWebSocketFactory(url: string): WebSocketLike {
@@ -79,4 +107,9 @@ function defaultWebSocketFactory(url: string): WebSocketLike {
   }
 
   return new WebSocketCtor(url) as unknown as WebSocketLike;
+}
+
+function formatCloseEvent(event: RelayCloseEvent): string {
+  const reason = event.reason ? `: ${event.reason}` : "";
+  return `Relay socket closed${event.code ? ` (${event.code})` : ""}${reason}`;
 }

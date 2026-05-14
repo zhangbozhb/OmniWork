@@ -11,6 +11,8 @@ import { JsonSessionStore } from "../session-store/sessionStore.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
 import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
 
+type SessionStatusListener = (session: CodexSession) => void | Promise<void>;
+
 export class SessionManager {
   private readonly store: JsonSessionStore;
   private readonly tmux: TmuxManager;
@@ -37,19 +39,36 @@ export class SessionManager {
 
   async list(): Promise<CodexSession[]> {
     const storedSessions = await this.store.list();
-    const storedTmuxNames = new Set(
-      storedSessions.map((session) => session.tmux_session_name),
+    const tmuxSessions = await this.tmux.listSessions();
+    const liveTmuxNames = new Set(tmuxSessions.map((session) => session.name));
+    const reconciledStoredSessions = storedSessions.map((session) =>
+      shouldMarkMissingTmuxAsError(session, liveTmuxNames)
+        ? {
+            ...session,
+            status: "error" as const,
+            last_active_at: new Date().toISOString(),
+          }
+        : session,
     );
-    const externalSessions = (await this.tmux.listSessions())
+    if (hasSessionChanges(storedSessions, reconciledStoredSessions)) {
+      await this.store.saveAll(reconciledStoredSessions);
+    }
+    const storedTmuxNames = new Set(
+      reconciledStoredSessions.map((session) => session.tmux_session_name),
+    );
+    const externalSessions = tmuxSessions
       .filter((session) => !storedTmuxNames.has(session.name))
       .map((session) => this.createExternalSession(session));
 
-    return [...storedSessions, ...externalSessions].sort(
+    return [...reconciledStoredSessions, ...externalSessions].sort(
       compareSessionsByRecentTime,
     );
   }
 
-  async create(payload: SessionCreatePayload = {}): Promise<CodexSession> {
+  async create(
+    payload: SessionCreatePayload = {},
+    onStatus?: SessionStatusListener,
+  ): Promise<CodexSession> {
     const sessionId = `sess_${randomUUID()}`;
     const tmuxSessionName = toTmuxSessionName(sessionId);
     const now = new Date().toISOString();
@@ -60,14 +79,14 @@ export class SessionManager {
     const size = clampTerminalSize(payload.terminal_size ?? this.defaults.terminalSize);
     const runtimeSessionCount = await this.countSessionsForRuntime(runtimeKind);
 
-    const session: CodexSession = {
+    const created: CodexSession = {
       session_id: sessionId,
       runtime_kind: runtime.kind,
       runtime_label: runtime.displayName,
       title: payload.title ?? runtime.defaultTitle(runtimeSessionCount + 1),
       cwd,
       command,
-      status: "starting",
+      status: "created",
       created_at: now,
       last_active_at: now,
       terminal_size: size,
@@ -76,16 +95,36 @@ export class SessionManager {
       registered: true,
     };
 
-    await this.store.upsert(session);
-    await this.tmux.createSession({
-      tmuxSessionName,
-      cwd,
-      command,
-      size,
-    });
+    await this.store.upsert(created);
+    await onStatus?.(created);
+
+    const starting = {
+      ...created,
+      status: "starting" as const,
+      last_active_at: new Date().toISOString(),
+    };
+    await this.store.upsert(starting);
+    await onStatus?.(starting);
+
+    try {
+      await this.tmux.createSession({
+        tmuxSessionName,
+        cwd,
+        command,
+        size,
+      });
+    } catch {
+      const failed = {
+        ...starting,
+        status: "error" as const,
+        last_active_at: new Date().toISOString(),
+      };
+      await this.store.upsert(failed);
+      return failed;
+    }
 
     const running = {
-      ...session,
+      ...starting,
       status: "running" as const,
       last_active_at: new Date().toISOString(),
     };
@@ -134,6 +173,54 @@ export class SessionManager {
     }
   }
 
+  async retry(
+    sessionId: string,
+    onStatus?: SessionStatusListener,
+  ): Promise<CodexSession | undefined> {
+    const session = await this.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    return this.restartTmuxSession(session, onStatus);
+  }
+
+  async restart(
+    sessionId: string,
+    onStatus?: SessionStatusListener,
+  ): Promise<CodexSession | undefined> {
+    const session = await this.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    try {
+      await this.tmux.killSession(session.tmux_session_name);
+    } catch {
+      // Restart should also work when the previous tmux target is already gone.
+    }
+    return this.restartTmuxSession(session, onStatus);
+  }
+
+  async recover(sessionId: string): Promise<CodexSession | undefined> {
+    const session = await this.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    const tmuxSessions = await this.tmux.listSessions();
+    const live = tmuxSessions.some(
+      (item) => item.name === session.tmux_session_name,
+    );
+    const recovered = {
+      ...session,
+      status: live ? ("running" as const) : ("error" as const),
+      last_active_at: new Date().toISOString(),
+    };
+    await this.store.upsert(recovered);
+    return recovered;
+  }
+
   async attach(sessionId: string): Promise<CodexSession | undefined> {
     const session = await this.get(sessionId);
     if (!session) {
@@ -152,6 +239,45 @@ export class SessionManager {
     }
 
     return session;
+  }
+
+  private async restartTmuxSession(
+    session: CodexSession,
+    onStatus?: SessionStatusListener,
+  ): Promise<CodexSession> {
+    const recovering = {
+      ...session,
+      status: "recovering" as const,
+      registered: true,
+      last_active_at: new Date().toISOString(),
+    };
+    await this.store.upsert(recovering);
+    await onStatus?.(recovering);
+
+    try {
+      await this.tmux.createSession({
+        tmuxSessionName: recovering.tmux_session_name,
+        cwd: recovering.cwd,
+        command: recovering.command,
+        size: recovering.terminal_size,
+      });
+    } catch {
+      const failed = {
+        ...recovering,
+        status: "error" as const,
+        last_active_at: new Date().toISOString(),
+      };
+      await this.store.upsert(failed);
+      return failed;
+    }
+
+    const running = {
+      ...recovering,
+      status: "running" as const,
+      last_active_at: new Date().toISOString(),
+    };
+    await this.store.upsert(running);
+    return running;
   }
 
   async updateTerminalSize(
@@ -246,4 +372,30 @@ function getSessionSortTime(session: CodexSession): number {
 
   const createdAt = Date.parse(session.created_at);
   return Number.isFinite(createdAt) ? createdAt : 0;
+}
+
+function shouldMarkMissingTmuxAsError(
+  session: CodexSession,
+  liveTmuxNames: Set<string>,
+): boolean {
+  if (
+    session.status === "error" ||
+    session.status === "exited" ||
+    session.status === "archived"
+  ) {
+    return false;
+  }
+
+  if (session.registered === false) {
+    return false;
+  }
+
+  return !liveTmuxNames.has(session.tmux_session_name);
+}
+
+function hasSessionChanges(
+  previous: CodexSession[],
+  next: CodexSession[],
+): boolean {
+  return JSON.stringify(previous) !== JSON.stringify(next);
 }

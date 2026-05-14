@@ -5,6 +5,7 @@ import {
 import type {
   AgentHelloPayload,
   AuthVerifyPayload,
+  CodexSession,
   SessionCreatePayload,
   SessionListPayload,
   TerminalErrorPayload,
@@ -167,6 +168,15 @@ export class AgentService {
           message as MessageEnvelope<SessionCreatePayload>,
         );
         break;
+      case "session.retry":
+        await this.handleSessionRecovery(message, "retry");
+        break;
+      case "session.recover":
+        await this.handleSessionRecovery(message, "recover");
+        break;
+      case "session.restart":
+        await this.handleSessionRecovery(message, "restart");
+        break;
       case "session.close":
         if (message.session_id) {
           await this.sessionManager.close(message.session_id);
@@ -250,17 +260,15 @@ export class AgentService {
   private async handleSessionCreate(
     message: MessageEnvelope<SessionCreatePayload>,
   ): Promise<void> {
-    const session = await this.sessionManager.create(message.payload ?? {});
-    this.send(
-      createMessage(
-        "session.status",
-        { session },
-        {
-          device_id: this.config.deviceId,
-          session_id: session.session_id,
-        },
-      ),
+    const session = await this.sessionManager.create(
+      message.payload ?? {},
+      (nextSession) => this.sendSessionStatus(nextSession),
     );
+    this.sendSessionStatus(session);
+    if (session.status !== "running" && session.status !== "detached") {
+      return;
+    }
+
     await this.handleTerminalSnapshot({
       ...message,
       session_id: session.session_id,
@@ -291,6 +299,38 @@ export class AgentService {
       ...message,
       session_id: session.session_id,
     });
+  }
+
+  private async handleSessionRecovery(
+    message: MessageEnvelope,
+    action: "retry" | "recover" | "restart",
+  ): Promise<void> {
+    if (!message.session_id) {
+      return;
+    }
+
+    const session =
+      action === "retry"
+        ? await this.sessionManager.retry(message.session_id, (nextSession) =>
+            this.sendSessionStatus(nextSession),
+          )
+        : action === "recover"
+          ? await this.sessionManager.recover(message.session_id)
+          : await this.sessionManager.restart(message.session_id, (nextSession) =>
+              this.sendSessionStatus(nextSession),
+            );
+    if (!session) {
+      return;
+    }
+
+    this.sendSessionStatus(session);
+    await this.handleSessionList(message);
+    if (session.status === "running" || session.status === "detached") {
+      await this.handleTerminalSnapshot({
+        ...message,
+        session_id: session.session_id,
+      });
+    }
   }
 
   private async handleTerminalInput(
@@ -414,6 +454,19 @@ export class AgentService {
     }
 
     this.relay.send(message);
+  }
+
+  private sendSessionStatus(session: CodexSession): void {
+    this.send(
+      createMessage(
+        "session.status",
+        { session },
+        {
+          device_id: this.config.deviceId,
+          session_id: session.session_id,
+        },
+      ),
+    );
   }
 
   private requireKeyRecord(): SessionKeyRecord {

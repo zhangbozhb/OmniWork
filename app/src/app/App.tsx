@@ -2,12 +2,12 @@ import { type JSX, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Linking,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import type {
   AuthFailedPayload,
@@ -32,10 +32,14 @@ import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import type { PairingConfig } from "../features/auth/types";
 import {
   closeSessionRequest,
+  recoverSessionRequest,
+  restartSessionRequest,
+  retrySessionRequest,
   killTmuxSessionRequest,
   listSessionsRequest,
   createSessionRequest,
 } from "../features/sessions/sessionMessages";
+import { getSessionCapabilities } from "../features/sessions/sessionCapabilities";
 import {
   terminalInputRequest,
   terminalResizeRequest,
@@ -58,6 +62,8 @@ type ConnectionStatus =
   | "failed";
 
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
+const TERMINAL_IDLE_SNAPSHOT_INTERVAL_MS = 3000;
+const TERMINAL_INPUT_SNAPSHOT_DELAYS_MS = [120, 350, 800, 1600] as const;
 
 export default function App(): JSX.Element {
   const [pairings, setPairings] = useState<PairingConfig[]>([]);
@@ -179,6 +185,13 @@ export default function App(): JSX.Element {
       }
       handleRelayMessage(message, relay, pairing);
     });
+    const unsubscribeClose = relay.onClose((event) => {
+      if (closed) {
+        return;
+      }
+      setConnectionStatus("failed");
+      setConnectionMessage(formatRelayCloseMessage(event));
+    });
 
     relay
       .connect()
@@ -200,6 +213,7 @@ export default function App(): JSX.Element {
     return () => {
       closed = true;
       unsubscribe();
+      unsubscribeClose();
       relay.close();
       if (relayRef.current === relay) {
         relayRef.current = null;
@@ -220,7 +234,7 @@ export default function App(): JSX.Element {
     requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
     const timer = setInterval(() => {
       requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
-    }, 1500);
+    }, TERMINAL_IDLE_SNAPSHOT_INTERVAL_MS);
 
     return () => clearInterval(timer);
   }, [connectionStatus, pairing, selectedSession, view]);
@@ -394,15 +408,25 @@ export default function App(): JSX.Element {
     }
 
     const external = session.origin === "external";
+    const removeOnly =
+      session.status === "error" ||
+      session.status === "exited" ||
+      session.status === "archived";
     Alert.alert(
-      external ? "Forget tmux session" : "Close session",
+      external
+        ? "Forget tmux session"
+        : removeOnly
+          ? "Remove session"
+          : "Close session",
       external
         ? `Forget ${session.title} in OmniWork? The tmux session will keep running on the Mac.`
-        : `Close ${session.title} on the Mac Agent?`,
+        : removeOnly
+          ? `Remove ${session.title} from OmniWork? The session is not interactive.`
+          : `Close ${session.title} on the Mac Agent?`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: external ? "Forget" : "Close",
+          text: external ? "Forget" : removeOnly ? "Remove" : "Close",
           style: "destructive",
           onPress: () => {
             setClosingSessionIds((current) =>
@@ -447,7 +471,48 @@ export default function App(): JSX.Element {
     );
   }
 
+  function handleRecoverSession(session: CodexSession): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+
+    const capabilities = getSessionCapabilities(session, {
+      closing: closingSessionIds.includes(session.session_id),
+      killing: killingSessionIds.includes(session.session_id),
+    });
+    if (!capabilities.canRecover) {
+      setConnectionMessage(
+        capabilities.unavailableReason ??
+          "This session cannot be recovered right now.",
+      );
+      return;
+    }
+
+    setConnectionMessage(
+      `${capabilities.recoveryActionLabel ?? "Recover"} requested for ${session.title}.`,
+    );
+
+    if (session.status === "exited") {
+      sendToRelay(restartSessionRequest(pairing.deviceId, session.session_id));
+      return;
+    }
+    if (session.status === "recovering") {
+      sendToRelay(recoverSessionRequest(pairing.deviceId, session.session_id));
+      return;
+    }
+
+    sendToRelay(retrySessionRequest(pairing.deviceId, session.session_id));
+  }
+
   function handleOpenSession(session: CodexSession): void {
+    const capabilities = getSessionCapabilities(session);
+    if (!capabilities.canOpen) {
+      setConnectionMessage(
+        capabilities.unavailableReason ?? "This session is not ready to open.",
+      );
+      return;
+    }
+
     setSelectedSession(session);
     setView("terminal");
     if (pairing && connectionStatus === "authenticated") {
@@ -469,6 +534,17 @@ export default function App(): JSX.Element {
     if (!pairing || !selectedSession || connectionStatus !== "authenticated") {
       return;
     }
+    const capabilities = getSessionCapabilities(selectedSession, {
+      closing: closingSessionIds.includes(selectedSession.session_id),
+      killing: killingSessionIds.includes(selectedSession.session_id),
+    });
+    if (!capabilities.canInput) {
+      setConnectionMessage(
+        capabilities.unavailableReason ??
+          "This session is not accepting input right now.",
+      );
+      return;
+    }
 
     sendToRelay(
       terminalInputRequest(pairing.deviceId, selectedSession.session_id, input),
@@ -481,6 +557,13 @@ export default function App(): JSX.Element {
 
   function handleTerminalResize(size: TerminalResizePayload): void {
     if (!pairing || !selectedSession || connectionStatus !== "authenticated") {
+      return;
+    }
+    const capabilities = getSessionCapabilities(selectedSession, {
+      closing: closingSessionIds.includes(selectedSession.session_id),
+      killing: killingSessionIds.includes(selectedSession.session_id),
+    });
+    if (!capabilities.canResize) {
       return;
     }
 
@@ -510,7 +593,7 @@ export default function App(): JSX.Element {
     deviceId: string,
     sessionId: string,
   ): void {
-    for (const delayMs of [250, 700, 1400]) {
+    for (const delayMs of TERMINAL_INPUT_SNAPSHOT_DELAYS_MS) {
       setTimeout(() => {
         requestTerminalSnapshot(deviceId, sessionId);
       }, delayMs);
@@ -567,6 +650,16 @@ export default function App(): JSX.Element {
           setDefaultSessionCwd(payload.default_cwd);
         }
         setSessions(payload.sessions);
+        setSelectedSession((current) => {
+          if (!current) {
+            return current;
+          }
+          return (
+            payload.sessions.find(
+              (session) => session.session_id === current.session_id,
+            ) ?? current
+          );
+        });
         setClosingSessionIds((current) =>
           current.filter((sessionId) => closableSessionIds.has(sessionId)),
         );
@@ -600,11 +693,30 @@ export default function App(): JSX.Element {
             ? payload.session
             : current,
         );
-        setCreatingSession(false);
         if (pendingCreateRef.current) {
+          if (isTransitionalSessionStatus(payload.session.status)) {
+            setCreatingSession(true);
+            setConnectionMessage(
+              `${payload.session.title} is ${payload.session.status}.`,
+            );
+            break;
+          }
+
           pendingCreateRef.current = false;
-          setSelectedSession(payload.session);
-          setView("terminal");
+          setCreatingSession(false);
+          const capabilities = getSessionCapabilities(payload.session);
+          if (capabilities.canOpen) {
+            setSelectedSession(payload.session);
+            setView("terminal");
+          } else {
+            setConnectionMessage(
+              capabilities.unavailableReason ??
+                "Session was created but is not interactive.",
+            );
+            setView("sessions");
+          }
+        } else if (!isTransitionalSessionStatus(payload.session.status)) {
+          setCreatingSession(false);
         }
         break;
       }
@@ -633,6 +745,10 @@ export default function App(): JSX.Element {
         setConnectionMessage(
           payload.message || "Terminal error from Mac Agent.",
         );
+        if (payload.code === "TMUX_TARGET_MISSING") {
+          setSelectedSession(null);
+          setView("sessions");
+        }
         break;
       }
       default:
@@ -640,67 +756,90 @@ export default function App(): JSX.Element {
     }
   }
 
-  return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" />
-      {showHeader ? (
-        <View style={styles.header}>
-          <Text style={styles.title}>{title}</Text>
-          {canUseWorkspace ? (
-            <Text style={styles.subtitle}>
-              {getHeaderSubtitle(view, pairings.length, pairing)}
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
+  const selectedSessionCapabilities = selectedSession
+    ? getSessionCapabilities(selectedSession, {
+        closing: closingSessionIds.includes(selectedSession.session_id),
+        killing: killingSessionIds.includes(selectedSession.session_id),
+      })
+    : null;
 
-      {view === "pairing" ? (
-        <PairingScreen
-          errorMessage={pairingError}
-          initialPairing={editingPairing}
-          submitLabel={editingPairing ? "Save Device" : "Pair Mac"}
-          onCancel={pairings.length > 0 ? handleCancelPairing : undefined}
-          onPair={handlePair}
-        />
-      ) : view === "devices" ? (
-        <DeviceListScreen
-          pairings={pairings}
-          activePairing={pairing ?? undefined}
-          connectionStatus={connectionStatus}
-          connectionMessage={connectionMessage}
-          onAddDevice={handleAddDevice}
-          onEditDevice={handleEditDevice}
-          onDeleteDevice={handleDeleteDevice}
-          onOpenDevice={handleOpenDevice}
-          onRefreshSessions={handleRefreshSessions}
-        />
-      ) : view === "sessions" ? (
-        <SessionListScreen
-          sessions={sessions}
-          creating={creatingSession}
-          closingSessionIds={closingSessionIds}
-          killingSessionIds={killingSessionIds}
-          defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
-          onBack={() => setView("devices")}
-          onRefreshSessions={handleRefreshSessions}
-          onCreateSession={handleCreateSession}
-          onOpenSession={handleOpenSession}
-          onCloseSession={handleCloseSession}
-          onKillTmuxSession={handleKillTmuxSession}
-        />
-      ) : selectedSession ? (
-        <TerminalScreen
-          session={selectedSession}
-          frame={selectedFrame}
-          connectionStatus={connectionStatus}
-          statusLabel={connectionMessage}
-          onBack={() => setView("sessions")}
-          onKillTmux={() => handleKillTmuxSession(selectedSession)}
-          onInput={handleTerminalInput}
-          onResize={handleTerminalResize}
-        />
-      ) : null}
-    </SafeAreaView>
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView
+        style={styles.root}
+        edges={["top", "right", "bottom", "left"]}
+      >
+        <StatusBar barStyle="light-content" />
+        {showHeader ? (
+          <View style={styles.header}>
+            <Text style={styles.title}>{title}</Text>
+            {canUseWorkspace ? (
+              <Text style={styles.subtitle}>
+                {getHeaderSubtitle(view, pairings.length, pairing)}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {view === "pairing" ? (
+          <PairingScreen
+            errorMessage={pairingError}
+            initialPairing={editingPairing}
+            submitLabel={editingPairing ? "Save Device" : "Pair Mac"}
+            onCancel={pairings.length > 0 ? handleCancelPairing : undefined}
+            onPair={handlePair}
+          />
+        ) : view === "devices" ? (
+          <DeviceListScreen
+            pairings={pairings}
+            activePairing={pairing ?? undefined}
+            connectionStatus={connectionStatus}
+            connectionMessage={connectionMessage}
+            onAddDevice={handleAddDevice}
+            onEditDevice={handleEditDevice}
+            onDeleteDevice={handleDeleteDevice}
+            onOpenDevice={handleOpenDevice}
+            onRefreshSessions={handleRefreshSessions}
+          />
+        ) : view === "sessions" ? (
+          <SessionListScreen
+            sessions={sessions}
+            creating={creatingSession}
+            closingSessionIds={closingSessionIds}
+            killingSessionIds={killingSessionIds}
+            defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
+            onBack={() => setView("devices")}
+            onRefreshSessions={handleRefreshSessions}
+            onCreateSession={handleCreateSession}
+            onOpenSession={handleOpenSession}
+            onCloseSession={handleCloseSession}
+            onRecoverSession={handleRecoverSession}
+            onKillTmuxSession={handleKillTmuxSession}
+          />
+        ) : selectedSession ? (
+          <TerminalScreen
+            session={selectedSession}
+            frame={selectedFrame}
+            connectionStatus={connectionStatus}
+            statusLabel={connectionMessage}
+            readOnlyReason={
+              selectedSessionCapabilities?.canInput
+                ? undefined
+                : (selectedSessionCapabilities?.unavailableReason ??
+                  "This session is not interactive right now.")
+            }
+            canInput={Boolean(selectedSessionCapabilities?.canInput)}
+            canResize={Boolean(selectedSessionCapabilities?.canResize)}
+            canKillTmux={Boolean(selectedSessionCapabilities?.canKill)}
+            onBack={() => setView("sessions")}
+            onKillTmux={() => handleKillTmuxSession(selectedSession)}
+            onRefreshSessions={handleRefreshSessions}
+            onInput={handleTerminalInput}
+            onResize={handleTerminalResize}
+          />
+        ) : null}
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -805,4 +944,16 @@ function formatErrorMessage(error: unknown): string {
   } catch {
     return "Unknown error";
   }
+}
+
+function isTransitionalSessionStatus(status: CodexSession["status"]): boolean {
+  return status === "created" || status === "starting" || status === "recovering";
+}
+
+function formatRelayCloseMessage(event: {
+  code?: number;
+  reason?: string;
+}): string {
+  const reason = event.reason ? `: ${event.reason}` : "";
+  return `Relay connection closed${event.code ? ` (${event.code})` : ""}${reason}`;
 }

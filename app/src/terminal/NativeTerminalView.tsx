@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -12,7 +12,10 @@ import {
 
 import type { TerminalSize } from "../../../packages/protocol-ts/src/index.ts";
 import type { TerminalLayout } from "../features/terminal/terminalLayout";
-import { normalizeTerminalFrame } from "./terminalText";
+import {
+  parseTerminalFrame,
+  type TerminalTextSegment,
+} from "./terminalText";
 
 export interface NativeTerminalViewProps {
   frame: string;
@@ -30,6 +33,7 @@ export function NativeTerminalView({
   const [followOutput, setFollowOutput] = useState(true);
   const terminalContentWidth =
     terminalSize.cols * layout.cellWidth + TERMINAL_TEXT_PADDING * 2;
+  const terminalSegments = useMemo(() => parseTerminalFrame(frame), [frame]);
 
   const scrollToBottom = useCallback((animated: boolean) => {
     requestAnimationFrame(() => {
@@ -89,7 +93,11 @@ export function NativeTerminalView({
               },
             ]}
           >
-            {normalizeTerminalFrame(frame)}
+            {terminalSegments.map((segment, index) => (
+              <Text key={`${index}:${segment.text.length}`} style={toTextStyle(segment)}>
+                {segment.text}
+              </Text>
+            ))}
           </Text>
         </ScrollView>
       </ScrollView>
@@ -142,3 +150,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 });
+
+function toTextStyle(segment: TerminalTextSegment) {
+  return {
+    color: segment.foregroundColor,
+    backgroundColor: segment.backgroundColor,
+    fontWeight: segment.bold ? ("800" as const) : undefined,
+    fontStyle: segment.italic ? ("italic" as const) : undefined,
+    opacity: segment.dim ? 0.7 : 1,
+    textDecorationLine: segment.underline ? ("underline" as const) : undefined,
+  };
+}

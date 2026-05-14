@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import type {
   CodexSession,
@@ -37,10 +38,15 @@ import { colors, radii, spacing } from "../../ui/theme";
 export interface TerminalScreenProps {
   session: CodexSession;
   frame: string;
+  canInput?: boolean;
+  canKillTmux?: boolean;
+  canResize?: boolean;
   connectionStatus?: TerminalConnectionStatus;
+  readOnlyReason?: string;
   statusLabel?: string;
   onBack(): void;
   onKillTmux(): void;
+  onRefreshSessions(): void;
   onInput(input: TerminalInputPayload): void;
   onResize(size: TerminalResizePayload): void;
 }
@@ -71,6 +77,7 @@ const ADVANCED_QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
 
 const BOTTOM_DOCK_BOTTOM_MARGIN = 12;
 const INITIAL_BOTTOM_DOCK_HEIGHT = 178;
+const TERMINAL_PROFILE_STORAGE_KEY = "omniwork.terminal.displayProfile";
 const PROFILE_OPTIONS: Array<{ key: TerminalDisplayProfile; label: string }> = [
   { key: "readableScroll", label: "Readable" },
   { key: "fitPreview", label: "Fit" },
@@ -92,10 +99,15 @@ function getKeyboardBottomInset(event: KeyboardEvent): number {
 export function TerminalScreen({
   session,
   frame,
+  canInput = true,
+  canKillTmux = true,
+  canResize = true,
   connectionStatus = "idle",
+  readOnlyReason,
   statusLabel,
   onBack,
   onKillTmux,
+  onRefreshSessions,
   onInput,
   onResize,
 }: TerminalScreenProps): JSX.Element {
@@ -113,11 +125,13 @@ export function TerminalScreen({
   const [profile, setProfile] = useState<TerminalDisplayProfile>(() =>
     getDefaultTerminalDisplayProfile(Dimensions.get("window")),
   );
+  const profileLoadedRef = useRef(false);
   const lastResizeKeyRef = useRef("");
   const agentStatus = getAgentStatusPresentation(connectionStatus);
   const runtimeLabel = session.runtime_label;
   const hasDraft = draft.trim().length > 0;
   const canHideKeyboard = keyboardVisible && !hasDraft;
+  const readOnly = !canInput;
   const terminalLayout = useMemo(
     () => computeTerminalLayout(terminalViewport, profile),
     [profile, terminalViewport],
@@ -145,6 +159,28 @@ export function TerminalScreen({
   }, []);
 
   useEffect(() => {
+    AsyncStorage.getItem(TERMINAL_PROFILE_STORAGE_KEY)
+      .then((value) => {
+        if (isTerminalDisplayProfile(value)) {
+          setProfile(value);
+        }
+      })
+      .finally(() => {
+        profileLoadedRef.current = true;
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!profileLoadedRef.current) {
+      return;
+    }
+
+    AsyncStorage.setItem(TERMINAL_PROFILE_STORAGE_KEY, profile).catch(() => {
+      // Display preferences are best-effort and should not block terminal use.
+    });
+  }, [profile]);
+
+  useEffect(() => {
     const subscription = Dimensions.addEventListener("change", ({ window }) => {
       setProfile((currentProfile) => {
         if (currentProfile === "fitPreview") {
@@ -165,13 +201,18 @@ export function TerminalScreen({
 
     const timer = setTimeout(() => {
       lastResizeKeyRef.current = resizeKey;
-      onResize(size);
+      if (canResize) {
+        onResize(size);
+      }
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [onResize, session.session_id, terminalLayout.terminalSize]);
+  }, [canResize, onResize, session.session_id, terminalLayout.terminalSize]);
 
   function sendDraft(): void {
+    if (readOnly) {
+      return;
+    }
     const normalizedDraft = sanitizeTerminalText(draft.trimEnd());
     if (!normalizedDraft) {
       return;
@@ -226,7 +267,8 @@ export function TerminalScreen({
         </Pressable>
         <Pressable
           accessibilityLabel="Kill tmux session"
-          style={styles.killButton}
+          disabled={!canKillTmux}
+          style={[styles.killButton, !canKillTmux && styles.disabled]}
           onPress={onKillTmux}
         >
           <Text style={styles.killText}>×</Text>
@@ -264,6 +306,18 @@ export function TerminalScreen({
         ]}
         onLayout={handleBottomDockLayout}
       >
+        {readOnly && readOnlyReason ? (
+          <View style={styles.readOnlyBanner}>
+            <Text style={styles.readOnlyTitle}>Session is read-only</Text>
+            <Text style={styles.readOnlyText}>{readOnlyReason}</Text>
+            <Pressable
+              style={styles.readOnlyAction}
+              onPress={onRefreshSessions}
+            >
+              <Text style={styles.readOnlyActionText}>Refresh Sessions</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <ScrollView
           horizontal
           keyboardShouldPersistTaps="always"
@@ -274,7 +328,8 @@ export function TerminalScreen({
           {PRIMARY_QUICK_KEYS.map((item) => (
             <Pressable
               key={item.key}
-              style={styles.keyButton}
+              disabled={readOnly}
+              style={[styles.keyButton, readOnly && styles.disabled]}
               onPress={() => onInput(createControlInput(item.key))}
             >
               <Text style={styles.keyButtonText}>{item.label}</Text>
@@ -284,7 +339,12 @@ export function TerminalScreen({
             ? ADVANCED_QUICK_KEYS.map((item) => (
                 <Pressable
                   key={item.key}
-                  style={[styles.keyButton, styles.advancedKeyButton]}
+                  disabled={readOnly}
+                  style={[
+                    styles.keyButton,
+                    styles.advancedKeyButton,
+                    readOnly && styles.disabled,
+                  ]}
                   onPress={() => onInput(createControlInput(item.key))}
                 >
                   <Text style={styles.keyButtonText}>{item.label}</Text>
@@ -349,7 +409,9 @@ export function TerminalScreen({
 
         <View style={styles.composer}>
           <Text style={styles.composerHint}>
-            Compose prompt, then send it to {runtimeLabel} TUI
+            {readOnly
+              ? "Input is disabled until this session becomes interactive."
+              : `Compose prompt, then send it to ${runtimeLabel} TUI`}
           </Text>
           <View style={styles.inputRow}>
             <TextInput
@@ -360,17 +422,19 @@ export function TerminalScreen({
               multiline
               placeholder={`Ask ${runtimeLabel} to inspect, edit, test, or explain...`}
               placeholderTextColor="#66727c"
+              editable={!readOnly}
               returnKeyType="default"
               scrollEnabled
               submitBehavior="newline"
               style={styles.input}
             />
             <Pressable
-              disabled={!hasDraft && !canHideKeyboard}
+              disabled={readOnly || (!hasDraft && !canHideKeyboard)}
               style={[
                 styles.sendButton,
                 canHideKeyboard && styles.sendButtonSecondary,
-                !hasDraft && !canHideKeyboard && styles.disabled,
+                (readOnly || (!hasDraft && !canHideKeyboard)) &&
+                  styles.disabled,
               ]}
               onPress={handlePrimaryComposerAction}
             >
@@ -439,6 +503,16 @@ function getAgentStatusPresentation(status: TerminalConnectionStatus): {
         icon: "○",
       };
   }
+}
+
+function isTerminalDisplayProfile(
+  value: string | null,
+): value is TerminalDisplayProfile {
+  return (
+    value === "readableScroll" ||
+    value === "fitPreview" ||
+    value === "landscapeWide"
+  );
 }
 
 const styles = StyleSheet.create({
@@ -510,6 +584,38 @@ const styles = StyleSheet.create({
   },
   quickKeys: {
     flexGrow: 0,
+  },
+  readOnlyBanner: {
+    gap: spacing.xs,
+    borderColor: colors.warning,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    padding: spacing.md,
+    backgroundColor: colors.warningSoft,
+  },
+  readOnlyTitle: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  readOnlyText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  readOnlyAction: {
+    alignSelf: "flex-start",
+    borderColor: colors.warning,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+  },
+  readOnlyActionText: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: "800",
   },
   quickKeysContent: {
     gap: spacing.sm,

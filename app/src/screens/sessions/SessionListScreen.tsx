@@ -13,6 +13,7 @@ import type {
   CodexSession,
   RuntimeKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
+import { getSessionCapabilities } from "../../features/sessions/sessionCapabilities";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";
 
@@ -32,6 +33,7 @@ export interface SessionListScreenProps {
   }): void;
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
+  onRecoverSession(session: CodexSession): void;
   onKillTmuxSession(session: CodexSession): void;
 }
 
@@ -56,6 +58,7 @@ export function SessionListScreen({
   onCreateSession,
   onOpenSession,
   onCloseSession,
+  onRecoverSession,
   onKillTmuxSession,
 }: SessionListScreenProps): JSX.Element {
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -149,13 +152,20 @@ export function SessionListScreen({
                     );
                     const external = session.origin === "external";
                     const registered = session.registered !== false;
+                    const capabilities = getSessionCapabilities(session, {
+                      closing,
+                      killing,
+                    });
+                    const statusColors = getStatusColors(
+                      capabilities.statusTone,
+                    );
                     return (
                       <Card key={session.session_id} style={styles.sessionCard}>
                         <Pressable
-                          disabled={killing || closing}
+                          disabled={!capabilities.canOpen}
                           style={[
                             styles.sessionMain,
-                            (killing || closing) && styles.disabled,
+                            !capabilities.canOpen && styles.disabled,
                           ]}
                           onPress={() => onOpenSession(session)}
                         >
@@ -163,7 +173,14 @@ export function SessionListScreen({
                             <Text numberOfLines={1} style={styles.sessionTitle}>
                               {session.title}
                             </Text>
-                            <Text style={styles.openHint}>Open</Text>
+                            <Text
+                              style={[
+                                styles.openHint,
+                                !capabilities.canOpen && styles.openHintMuted,
+                              ]}
+                            >
+                              {capabilities.primaryActionLabel}
+                            </Text>
                           </View>
                           <View style={styles.badgeRow}>
                             <Badge
@@ -182,6 +199,13 @@ export function SessionListScreen({
                                 {registered ? "Attached tmux" : "Existing tmux"}
                               </Badge>
                             ) : null}
+                            <Badge
+                              backgroundColor={statusColors.backgroundColor}
+                              color={statusColors.color}
+                              style={styles.compactBadge}
+                            >
+                              {capabilities.statusLabel}
+                            </Badge>
                           </View>
                           <Text
                             ellipsizeMode="middle"
@@ -191,10 +215,13 @@ export function SessionListScreen({
                             {session.cwd}
                           </Text>
                           <View style={styles.sessionDetails}>
-                            <Text style={styles.sessionStatus}>
-                              {external && !registered
-                                ? "attachable"
-                                : session.status}
+                            <Text
+                              style={[
+                                styles.sessionStatus,
+                                { color: statusColors.color },
+                              ]}
+                            >
+                              {capabilities.statusLabel}
                             </Text>
                             <Text style={styles.sessionTime}>
                               Active{" "}
@@ -204,11 +231,32 @@ export function SessionListScreen({
                           <Text style={styles.sessionCreated}>
                             Created {formatAbsoluteTime(session.created_at)}
                           </Text>
+                          {capabilities.unavailableReason ? (
+                            <Text style={styles.unavailableReason}>
+                              {capabilities.unavailableReason}
+                            </Text>
+                          ) : null}
                         </Pressable>
+                        {capabilities.canRecover &&
+                        capabilities.recoveryActionLabel ? (
+                          <View style={styles.recoveryActionRow}>
+                            <Button
+                              accessibilityLabel={`${capabilities.recoveryActionLabel} session`}
+                              style={styles.recoveryButton}
+                              tone="primary"
+                              onPress={() => onRecoverSession(session)}
+                            >
+                              {capabilities.recoveryActionLabel}
+                            </Button>
+                            <Text style={styles.recoveryHint}>
+                              {getRecoveryHint(session)}
+                            </Text>
+                          </View>
+                        ) : null}
                         <View style={styles.sessionActions}>
                           {registered ? (
                             <Button
-                              disabled={closing || killing}
+                              disabled={!capabilities.canClose}
                               style={styles.closeButton}
                               tone="danger"
                               onPress={() => onCloseSession(session)}
@@ -217,7 +265,7 @@ export function SessionListScreen({
                                 ? "Closing..."
                                 : external
                                   ? "Forget tmux"
-                                  : "Close Session"}
+                                  : getCloseActionLabel(session)}
                             </Button>
                           ) : (
                             <View style={styles.closeButton}>
@@ -227,7 +275,7 @@ export function SessionListScreen({
                             </View>
                           )}
                           <Button
-                            disabled={closing || killing}
+                            disabled={!capabilities.canKill}
                             accessibilityLabel="Kill tmux session"
                             style={styles.killSessionButton}
                             tone="danger"
@@ -397,6 +445,25 @@ const styles = StyleSheet.create({
     borderTopColor: colors.borderSubtle,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  recoveryActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  recoveryButton: {
+    minHeight: 36,
+    minWidth: 92,
+    borderRadius: radii.sm,
+    backgroundColor: colors.success,
+  },
+  recoveryHint: {
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   closeButton: {
     flex: 1,
     minHeight: 38,
@@ -431,6 +498,9 @@ const styles = StyleSheet.create({
     color: colors.success,
     fontSize: 12,
     fontWeight: "800",
+  },
+  openHintMuted: {
+    color: colors.textDim,
   },
   badgeRow: {
     flexDirection: "row",
@@ -490,6 +560,12 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     fontSize: 12,
     marginTop: 6,
+  },
+  unavailableReason: {
+    color: colors.warning,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: spacing.sm,
   },
   closeText: {
     color: colors.danger,
@@ -605,4 +681,58 @@ function getRuntimeGroupKind(session: CodexSession): RuntimeKind {
   return session.runtime_kind === "claude" || session.runtime_kind === "codex"
     ? session.runtime_kind
     : "other";
+}
+
+function getCloseActionLabel(session: CodexSession): string {
+  if (
+    session.status === "error" ||
+    session.status === "exited" ||
+    session.status === "archived"
+  ) {
+    return "Remove";
+  }
+
+  return "Close Session";
+}
+
+function getRecoveryHint(session: CodexSession): string {
+  switch (session.status) {
+    case "error":
+      return "Starts the saved command in a fresh tmux session.";
+    case "recovering":
+      return "Checks whether the tmux target is back online.";
+    case "exited":
+      return "Restarts the saved command and keeps the session history.";
+    default:
+      return "Attempts to make this session interactive again.";
+  }
+}
+
+function getStatusColors(tone: "success" | "warning" | "danger" | "neutral"): {
+  backgroundColor: string;
+  color: string;
+} {
+  switch (tone) {
+    case "success":
+      return {
+        backgroundColor: colors.successSoft,
+        color: "#d7ffe9",
+      };
+    case "warning":
+      return {
+        backgroundColor: colors.warningSoft,
+        color: colors.warning,
+      };
+    case "danger":
+      return {
+        backgroundColor: colors.dangerSoft,
+        color: colors.danger,
+      };
+    case "neutral":
+    default:
+      return {
+        backgroundColor: colors.neutralSoft,
+        color: colors.textMuted,
+      };
+  }
 }

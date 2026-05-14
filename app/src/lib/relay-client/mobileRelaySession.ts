@@ -1,4 +1,7 @@
-import { RelayClient } from "../../../../packages/relay-client/src/index.ts";
+import {
+  RelayClient,
+  type RelayCloseEvent,
+} from "../../../../packages/relay-client/src/index.ts";
 import { createMessage, type AuthChallengePayload, type MessageEnvelope } from "../../../../packages/protocol-ts/src/index.ts";
 import type { PairingConfig } from "../../features/auth/types";
 import { createKeyProof } from "../../features/auth/keyProof";
@@ -27,6 +30,10 @@ export class MobileRelaySession {
 
   onMessage(handler: (message: MessageEnvelope) => void): () => void {
     return this.client.onMessage(handler);
+  }
+
+  onClose(handler: (event: RelayCloseEvent) => void): () => void {
+    return this.client.onClose(handler);
   }
 
   send(message: MessageEnvelope): void {
