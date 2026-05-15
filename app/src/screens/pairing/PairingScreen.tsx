@@ -6,7 +6,6 @@ import {
   PermissionsAndroid,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,10 +14,15 @@ import {
 import { Camera as CameraKitCamera, CameraType } from "react-native-camera-kit";
 
 import { parsePairingLink } from "../../../../packages/protocol-ts/src/index.ts";
-import type { PairingConfig } from "../../features/auth/types";
+import {
+  DEFAULT_PAIRING_TRANSPORT,
+  type PairingConfig,
+  type PairingTransport,
+} from "../../features/auth/types";
 import { isValidSessionKey } from "../../features/auth/keyProof";
 import { appConfig } from "../../app/appConfig";
 import { Button, Card } from "../../ui/components";
+import { KeyboardAwareScrollView } from "../../ui/KeyboardAwareScrollView";
 import { colors, radii, spacing, typography } from "../../ui/theme";
 
 type CameraKitReadCodeEvent = {
@@ -48,6 +52,9 @@ export function PairingScreen({
   const [deviceId, setDeviceId] = useState(initialPairing?.deviceId ?? "");
   const [key, setKey] = useState(initialPairing?.key ?? "");
   const [keyId, setKeyId] = useState(initialPairing?.keyId ?? "");
+  const [transport, setTransport] = useState<PairingTransport>(
+    initialPairing?.transport ?? DEFAULT_PAIRING_TRANSPORT,
+  );
   const [scannerVisible, setScannerVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -56,6 +63,7 @@ export function PairingScreen({
     setDeviceId(initialPairing?.deviceId ?? "");
     setKey(initialPairing?.key ?? "");
     setKeyId(initialPairing?.keyId ?? "");
+    setTransport(initialPairing?.transport ?? DEFAULT_PAIRING_TRANSPORT);
   }, [initialPairing]);
 
   async function submit(): Promise<void> {
@@ -82,6 +90,7 @@ export function PairingScreen({
         deviceId: deviceId.trim(),
         key: trimmedKey,
         keyId: keyId.trim() || undefined,
+        transport,
       });
     } finally {
       setSubmitting(false);
@@ -98,6 +107,7 @@ export function PairingScreen({
     setDeviceId(pairing.deviceId);
     setKey(pairing.key);
     setKeyId(pairing.keyId ?? "");
+    setTransport(pairing.transport);
     setScannerVisible(false);
     setSubmitting(true);
     try {
@@ -108,10 +118,7 @@ export function PairingScreen({
   }
 
   return (
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={styles.screen}
-    >
+    <KeyboardAwareScrollView contentContainerStyle={styles.screen}>
       <Card success style={styles.scanCard}>
         <Text style={styles.scanEyebrow}>Recommended</Text>
         <Text style={styles.scanTitle}>Scan the Mac Agent QR code</Text>
@@ -170,6 +177,22 @@ export function PairingScreen({
         style={styles.input}
       />
 
+      <Text style={styles.label}>Connection Mode</Text>
+      <View style={styles.transportRow}>
+        <TransportOption
+          active={transport === "websocket"}
+          description="Stable server relay"
+          label="WebSocket Relay"
+          onPress={() => setTransport("websocket")}
+        />
+        <TransportOption
+          active={transport === "webrtc"}
+          description="WebRTC tunnel"
+          label="WebRTC"
+          onPress={() => setTransport("webrtc")}
+        />
+      </View>
+
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
       <Button
@@ -189,7 +212,36 @@ export function PairingScreen({
           onScanned={handleScannedPairing}
         />
       ) : null}
-    </ScrollView>
+    </KeyboardAwareScrollView>
+  );
+}
+
+function TransportOption({
+  active,
+  description,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  description: string;
+  label: string;
+  onPress(): void;
+}): JSX.Element {
+  return (
+    <Pressable
+      style={[styles.transportOption, active && styles.transportOptionActive]}
+      onPress={onPress}
+    >
+      <Text
+        style={[
+          styles.transportOptionLabel,
+          active && styles.transportOptionLabelActive,
+        ]}
+      >
+        {label}
+      </Text>
+      <Text style={styles.transportOptionDescription}>{description}</Text>
+    </Pressable>
   );
 }
 
@@ -361,6 +413,7 @@ function parsePairingConfig(input: string): PairingConfig | null {
     deviceId: payload.device_id,
     key: payload.key,
     keyId: payload.key_id,
+    transport: payload.transport ?? DEFAULT_PAIRING_TRANSPORT,
   };
 }
 
@@ -404,6 +457,7 @@ const styles = StyleSheet.create({
   screen: {
     flexGrow: 1,
     padding: spacing.xxl,
+    paddingBottom: spacing.xxl * 3,
     gap: spacing.md,
   },
   scanCard: {
@@ -458,6 +512,36 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     paddingHorizontal: spacing.lg,
     backgroundColor: colors.surface,
+  },
+  transportRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  transportOption: {
+    flex: 1,
+    minHeight: 62,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    justifyContent: "center",
+  },
+  transportOptionActive: {
+    borderColor: colors.success,
+    backgroundColor: colors.surfaceSuccess,
+  },
+  transportOptionLabel: {
+    color: colors.textSecondary,
+    fontWeight: "800",
+  },
+  transportOptionLabelActive: {
+    color: colors.success,
+  },
+  transportOptionDescription: {
+    color: colors.textDim,
+    fontSize: 12,
+    marginTop: 4,
   },
   primaryButton: {
     minHeight: 48,

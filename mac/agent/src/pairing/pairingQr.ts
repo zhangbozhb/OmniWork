@@ -26,7 +26,7 @@ export function createPairingQrDetails(
   config: AgentConfig,
   keyRecord: SessionKeyRecord,
 ): PairingQrDetails | null {
-  const relayUrl = createMobileReachableRelayUrl(config.relayUrl);
+  const relayUrl = createPairingRelayUrl(config);
   if (!relayUrl) {
     return null;
   }
@@ -38,6 +38,7 @@ export function createPairingQrDetails(
     device_id: config.deviceId,
     key: keyRecord.key,
     key_id: keyRecord.key_id,
+    transport: config.pairingTransport,
     host: endpoint?.host,
     port: endpoint?.port,
   };
@@ -53,7 +54,9 @@ export function printPairingQr(details: PairingQrDetails): void {
 
   const qrcode = loadQrCodeTerminal();
   if (!qrcode) {
-    console.info("[omniwork-agent] QR code unavailable; run `pnpm install` to install qrcode-terminal.");
+    console.info(
+      "[omniwork-agent] QR code unavailable; run `pnpm install` to install qrcode-terminal.",
+    );
     console.info(`[omniwork-agent] pairing_link=${details.link}`);
     return;
   }
@@ -76,7 +79,9 @@ export function printPairingDetailsWithoutRelay(
   console.info("  host: -");
   console.info("  port: -");
   console.info("  relay_url: -");
-  console.info("[omniwork-agent] set OMNIWORK_RELAY_URL to generate a scannable pairing QR code.");
+  console.info(
+    "[omniwork-agent] set OMNIWORK_RELAY_URL or OMNIWORK_PAIRING_RELAY_URL to generate a scannable pairing QR code.",
+  );
 }
 
 function printPairingSummary(details: PairingQrDetails): void {
@@ -87,6 +92,7 @@ function printPairingSummary(details: PairingQrDetails): void {
   console.info(`  device_id: ${payload.device_id}`);
   console.info(`  host: ${payload.host ?? "-"}`);
   console.info(`  port: ${payload.port ?? "-"}`);
+  console.info(`  transport: ${payload.transport ?? "websocket"}`);
   console.info(`  relay_url: ${payload.relay_url}`);
 }
 
@@ -99,21 +105,43 @@ function loadQrCodeTerminal(): QrCodeTerminal | null {
   }
 }
 
-function createMobileReachableRelayUrl(relayUrl?: string): string | null {
-  if (!relayUrl) {
+function createPairingRelayUrl(config: AgentConfig): string | null {
+  const explicitPairingUrl = config.pairingRelayUrl?.trim();
+  if (explicitPairingUrl) {
+    return createMobileReachableRelayUrl(explicitPairingUrl);
+  }
+
+  const derivedRelayUrl = createMobileRelayUrl(config.relayUrl);
+  if (!derivedRelayUrl) {
+    return null;
+  }
+
+  return createMobileReachableRelayUrl(derivedRelayUrl);
+}
+
+function createMobileRelayUrl(relayUrl?: string): string | null {
+  const trimmed = relayUrl?.trim();
+  if (!trimmed) {
     return null;
   }
 
   try {
+    const url = new URL(trimmed);
+    url.pathname = toMobilePathname(url.pathname);
+    return url.toString();
+  } catch {
+    return trimmed.replace(/\/agent\/?$/, "/mobile");
+  }
+}
+
+function createMobileReachableRelayUrl(relayUrl: string): string {
+  try {
     const url = new URL(relayUrl);
-    if (isLocalhost(url.hostname)) {
-      const localIp = getLocalIpv4Address();
+    if (shouldReplaceWithLocalIp(url.hostname)) {
+      const localIp = getPreferredLocalIpv4Address();
       if (localIp) {
         url.hostname = localIp;
       }
-    }
-    if (url.pathname === "/agent") {
-      url.pathname = "/mobile";
     }
     return url.toString();
   } catch {
@@ -121,7 +149,9 @@ function createMobileReachableRelayUrl(relayUrl?: string): string | null {
   }
 }
 
-function getRelayEndpoint(relayUrl: string): { host: string; port: string } | null {
+function getRelayEndpoint(
+  relayUrl: string,
+): { host: string; port: string } | null {
   try {
     const url = new URL(relayUrl);
     return {
@@ -133,21 +163,48 @@ function getRelayEndpoint(relayUrl: string): { host: string; port: string } | nu
   }
 }
 
-function getLocalIpv4Address(): string | null {
+function getPreferredLocalIpv4Address(): string | null {
+  const candidates: string[] = [];
   const interfaces = networkInterfaces();
   for (const addresses of Object.values(interfaces)) {
     for (const address of addresses ?? []) {
       if (address.family === "IPv4" && !address.internal) {
-        return address.address;
+        candidates.push(address.address);
       }
     }
   }
 
-  return null;
+  return (
+    candidates.find((address) => !address.startsWith("192.")) ??
+    candidates[0] ??
+    null
+  );
 }
 
-function isLocalhost(host: string): boolean {
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+function shouldReplaceWithLocalIp(host: string): boolean {
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    host === "::" ||
+    host === "[::]"
+  );
+}
+
+function toMobilePathname(pathname: string): string {
+  const normalized =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname;
+  if (!normalized || normalized === "/") {
+    return "/mobile";
+  }
+  if (normalized.endsWith("/agent")) {
+    return `${normalized.slice(0, -"/agent".length)}/mobile`;
+  }
+  return normalized;
 }
 
 function defaultPort(protocol: string): string | null {

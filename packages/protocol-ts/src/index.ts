@@ -27,6 +27,14 @@ export type MessageType =
   | "terminal.snapshot"
   | "terminal.ack"
   | "terminal.error"
+  | "tunnel.relay.register"
+  | "tunnel.mobile.join"
+  | "tunnel.session.offer"
+  | "tunnel.session.answer"
+  | "tunnel.session.candidate"
+  | "tunnel.session.ready"
+  | "tunnel.session.failed"
+  | "tunnel.session.close"
   | "codex.thread.list"
   | "codex.thread.start"
   | "codex.thread.resume"
@@ -114,8 +122,68 @@ export interface PairingLinkPayload {
   device_id: string;
   key: string;
   key_id?: string;
+  transport?: PairingTransport;
   host?: string;
   port?: string;
+}
+
+export type PairingTransport = "websocket" | "webrtc";
+
+export type TunnelTransport = "webrtc";
+
+export type TunnelSessionFailureReason =
+  | "agent_not_online"
+  | "webrtc_unavailable"
+  | "invalid_signal"
+  | "ice_failed"
+  | "session_not_found"
+  | "internal_error";
+
+export interface TunnelMobileJoinPayload {
+  device_id: string;
+  key_id: string;
+  transport: TunnelTransport;
+}
+
+export interface TunnelRelayRegisterPayload {
+  device_id: string;
+  transport: TunnelTransport;
+  key_id?: string;
+}
+
+export interface TunnelSessionDescriptionPayload {
+  session_id: string;
+  device_id: string;
+  sdp: string;
+  sdp_type: "offer" | "answer";
+}
+
+export interface TunnelIceCandidatePayload {
+  session_id: string;
+  device_id: string;
+  candidate: string;
+  sdp_mid?: string | null;
+  sdp_m_line_index?: number | null;
+}
+
+export interface TunnelSessionReadyPayload {
+  session_id: string;
+  device_id: string;
+  transport: TunnelTransport;
+}
+
+export interface TunnelSessionFailedPayload {
+  session_id?: string;
+  device_id?: string;
+  reason: TunnelSessionFailureReason;
+  message?: string;
+  retry_after_ms?: number;
+}
+
+export interface TunnelSessionClosePayload {
+  session_id: string;
+  device_id: string;
+  reason?: string;
 }
 
 export const PAIRING_LINK_SCHEME = "omniwork" as const;
@@ -253,6 +321,7 @@ export function createPairingLink(payload: PairingLinkPayload): string {
   params.set("device_id", payload.device_id);
   params.set("key", payload.key);
   setOptionalParam(params, "key_id", payload.key_id);
+  setOptionalParam(params, "transport", payload.transport);
   setOptionalParam(params, "host", payload.host);
   setOptionalParam(params, "port", payload.port);
 
@@ -280,9 +349,19 @@ export function parsePairingLink(input: string): PairingLinkPayload | null {
     device_id: deviceId,
     key,
     key_id: searchParam(params, "key_id"),
+    transport: parsePairingTransport(searchParam(params, "transport")),
     host: searchParam(params, "host"),
     port: searchParam(params, "port"),
   };
+}
+
+function parsePairingTransport(
+  value: string | undefined,
+): PairingTransport | undefined {
+  if (value === "webrtc" || value === "websocket") {
+    return value;
+  }
+  return undefined;
 }
 
 function setOptionalParam(

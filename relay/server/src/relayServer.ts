@@ -14,22 +14,60 @@ import {
   type AuthProofPayload,
   type MessageEnvelope,
   type MobileConnectPayload,
+  type TunnelIceCandidatePayload,
+  type TunnelMobileJoinPayload,
+  type TunnelRelayRegisterPayload,
+  type TunnelSessionDescriptionPayload,
+  type TunnelSessionFailedPayload,
+  type TunnelSessionReadyPayload,
 } from "../../../packages/protocol-ts/src/index.ts";
+import type {
+  WebRtcDataChannelLike,
+  WebRtcPeerConnectionFactory,
+  WebRtcPeerConnectionLike,
+} from "../../../packages/relay-client/src/webrtcTransport.ts";
+import { candidateToInit } from "../../../packages/relay-client/src/webrtcTransport.ts";
+import {
+  RelayClient,
+  type RelayCloseEvent,
+} from "../../../packages/relay-client/src/index.ts";
 
 import type { RelayServerConfig } from "./config.ts";
+import { DataChannelSocket } from "./dataChannelSocket.ts";
 import { acceptWebSocket, WebSocketConnection } from "./websocket.ts";
+import { createDefaultPeerConnectionFactory } from "./webrtcFactory.ts";
 
 type RelayRole = "unknown" | "agent" | "mobile";
 type RelayEndpoint = "agent" | "mobile";
+
+interface RelaySocket {
+  onMessage(handler: (message: string) => void): () => void;
+  onClose(handler: () => void): () => void;
+  sendText(message: string): void;
+  close(code?: number, reason?: string): void;
+}
 
 interface RelayConnection {
   id: string;
   endpoint: RelayEndpoint;
   role: RelayRole;
-  socket: WebSocketConnection;
+  socket: RelaySocket;
   deviceId?: string;
   keyId?: string;
   authenticated: boolean;
+}
+
+interface TunnelSession {
+  id: string;
+  deviceId: string;
+  signal: TunnelSignal;
+  peer: WebRtcPeerConnectionLike;
+  dataSocket?: DataChannelSocket;
+}
+
+interface TunnelSignal {
+  sendText(message: string): void;
+  close(code?: number, reason?: string): void;
 }
 
 interface PendingAuth {
@@ -40,13 +78,21 @@ interface PendingAuth {
 
 export class RelayServer {
   private readonly config: RelayServerConfig;
+  private readonly peerConnectionFactory: WebRtcPeerConnectionFactory | null;
   private readonly connections = new Map<string, RelayConnection>();
   private readonly agentsByDevice = new Map<string, RelayConnection>();
   private readonly pendingAuth = new Map<string, PendingAuth>();
   private readonly mobilesByDevice = new Map<string, Set<RelayConnection>>();
+  private readonly tunnelSessions = new Map<string, TunnelSession>();
+  private publicTunnelClient: RelayClient | null = null;
+  private publicTunnelReconnectTimer: ReturnType<typeof setTimeout> | null =
+    null;
 
   constructor(config: RelayServerConfig) {
     this.config = config;
+    this.peerConnectionFactory = createDefaultPeerConnectionFactory(
+      config.webrtc.iceServers,
+    );
   }
 
   async start(): Promise<void> {
@@ -54,11 +100,19 @@ export class RelayServer {
       this.handleHttp(request, response),
     );
     server.on("upgrade", (request, socket) => {
-      const endpoint = parseRelayEndpoint(request);
-      if (!endpoint) {
+      const endpoint = parseRelayUpgradeEndpoint(request);
+      if (endpoint === "tunnel-mobile") {
+        const connection = acceptWebSocket(request, socket as Socket);
+        if (connection) {
+          this.registerTunnelMobile(connection);
+        }
+        return;
+      }
+
+      if (endpoint !== "agent" && endpoint !== "mobile") {
         rejectWebSocketUpgrade(
           socket as Socket,
-          "Use /agent for Mac Agent connections or /mobile for app connections.",
+          "Use /agent, /mobile, or /tunnel/mobile for OmniWork connections.",
         );
         return;
       }
@@ -76,6 +130,8 @@ export class RelayServer {
     console.log(
       `[omniwork-relay] listening on ${this.config.host}:${this.config.port}`,
     );
+
+    this.connectPublicTunnelService();
   }
 
   private handleHttp(request: IncomingMessage, response: ServerResponse): void {
@@ -89,7 +145,7 @@ export class RelayServer {
     response.end(JSON.stringify({ error: "not_found" }));
   }
 
-  private register(socket: WebSocketConnection, endpoint: RelayEndpoint): void {
+  private register(socket: RelaySocket, endpoint: RelayEndpoint): void {
     const connection: RelayConnection = {
       id: `conn_${randomUUID()}`,
       endpoint,
@@ -101,6 +157,98 @@ export class RelayServer {
 
     socket.onMessage((raw) => this.handleRawMessage(connection, raw));
     socket.onClose(() => this.unregister(connection));
+  }
+
+  private registerTunnelMobile(signal: WebSocketConnection): void {
+    signal.onMessage((raw) => {
+      this.handleTunnelSignal(signal, raw).catch((error: unknown) => {
+        this.sendTunnelFailure(signal, {
+          reason: "internal_error",
+          message: error instanceof Error ? error.message : "unknown error",
+        });
+      });
+    });
+    signal.onClose(() => {
+      this.closeTunnelSessionsBySignal(signal);
+    });
+  }
+
+  private connectPublicTunnelService(): void {
+    const tunnelRelayUrl = this.config.tunnelService?.relayUrl;
+    if (!tunnelRelayUrl || this.publicTunnelClient) {
+      return;
+    }
+
+    const client = new RelayClient({ url: tunnelRelayUrl });
+    this.publicTunnelClient = client;
+    const signal = new RelayClientTunnelSignal(client);
+
+    client.onMessage((message) => {
+      this.handleTunnelMessage(signal, message).catch((error: unknown) => {
+        signal.sendText(
+          JSON.stringify(
+            createMessage<TunnelSessionFailedPayload>("tunnel.session.failed", {
+              reason: "internal_error",
+              message: error instanceof Error ? error.message : "unknown error",
+            }),
+          ),
+        );
+      });
+    });
+    client.onClose((event) =>
+      this.handlePublicTunnelClose(client, signal, event),
+    );
+
+    client
+      .connect()
+      .then(() => {
+        for (const deviceId of this.agentsByDevice.keys()) {
+          client.send(createTunnelRelayRegisterMessage(deviceId));
+        }
+        console.log("[omniwork-relay] connected to tunnel service", {
+          tunnel_relay_url: tunnelRelayUrl,
+        });
+      })
+      .catch((error: unknown) => {
+        if (this.publicTunnelClient === client) {
+          this.publicTunnelClient = null;
+        }
+        console.error("[omniwork-relay] tunnel service connection failed", {
+          tunnel_relay_url: tunnelRelayUrl,
+          error: String(error),
+        });
+        this.schedulePublicTunnelReconnect();
+      });
+  }
+
+  private handlePublicTunnelClose(
+    client: RelayClient,
+    signal: TunnelSignal,
+    event: RelayCloseEvent,
+  ): void {
+    if (this.publicTunnelClient === client) {
+      this.publicTunnelClient = null;
+    }
+    this.closeTunnelSessionsBySignal(signal);
+    console.warn("[omniwork-relay] tunnel service connection closed", {
+      code: event.code,
+      reason: event.reason,
+    });
+    this.schedulePublicTunnelReconnect();
+  }
+
+  private schedulePublicTunnelReconnect(): void {
+    if (
+      !this.config.tunnelService?.relayUrl ||
+      this.publicTunnelReconnectTimer
+    ) {
+      return;
+    }
+
+    this.publicTunnelReconnectTimer = setTimeout(() => {
+      this.publicTunnelReconnectTimer = null;
+      this.connectPublicTunnelService();
+    }, 2000);
   }
 
   private unregister(connection: RelayConnection): void {
@@ -170,6 +318,15 @@ export class RelayServer {
     connection.keyId = message.payload.key_id;
     connection.authenticated = true;
     this.agentsByDevice.set(message.payload.device_id, connection);
+    this.registerDeviceWithPublicTunnel(message.payload.device_id);
+  }
+
+  private registerDeviceWithPublicTunnel(deviceId: string): void {
+    try {
+      this.publicTunnelClient?.send(createTunnelRelayRegisterMessage(deviceId));
+    } catch {
+      // The public tunnel connector is optional; local Relay mode must continue.
+    }
   }
 
   private handleMobileConnect(
@@ -350,6 +507,261 @@ export class RelayServer {
     connection.socket.sendText(JSON.stringify(message));
   }
 
+  private async handleTunnelSignal(
+    signal: TunnelSignal,
+    raw: string,
+  ): Promise<void> {
+    let message: MessageEnvelope;
+    try {
+      message = JSON.parse(raw) as MessageEnvelope;
+    } catch {
+      this.sendTunnelFailure(signal, {
+        reason: "invalid_signal",
+        message: "invalid json",
+      });
+      return;
+    }
+
+    await this.handleTunnelMessage(signal, message);
+  }
+
+  private async handleTunnelMessage(
+    signal: TunnelSignal,
+    message: MessageEnvelope,
+  ): Promise<void> {
+    switch (message.type) {
+      case "tunnel.mobile.join":
+        await this.handleTunnelMobileJoin(
+          signal,
+          message as MessageEnvelope<TunnelMobileJoinPayload>,
+        );
+        break;
+      case "tunnel.session.answer":
+        await this.handleTunnelAnswer(
+          message as MessageEnvelope<TunnelSessionDescriptionPayload>,
+        );
+        break;
+      case "tunnel.session.candidate":
+        await this.handleTunnelCandidate(
+          message as MessageEnvelope<TunnelIceCandidatePayload>,
+        );
+        break;
+      case "tunnel.session.close":
+        this.closeTunnelSession(message.session_id, "mobile closed");
+        break;
+      default:
+        this.sendTunnelFailure(signal, {
+          reason: "invalid_signal",
+          message: `unsupported tunnel message: ${message.type}`,
+        });
+        break;
+    }
+  }
+
+  private async handleTunnelMobileJoin(
+    signal: TunnelSignal,
+    message: MessageEnvelope<TunnelMobileJoinPayload>,
+  ): Promise<void> {
+    const deviceId = message.payload.device_id;
+    if (!this.agentsByDevice.has(deviceId)) {
+      this.sendTunnelFailure(signal, {
+        device_id: deviceId,
+        reason: "agent_not_online",
+        retry_after_ms: 2000,
+      });
+      return;
+    }
+
+    const peer = this.peerConnectionFactory?.();
+    if (!peer?.createDataChannel || !peer.createOffer) {
+      this.sendTunnelFailure(signal, {
+        device_id: deviceId,
+        reason: "webrtc_unavailable",
+        message:
+          "RTCPeerConnection is not available in this Relay runtime. Provide a WebRTC runtime before enabling /tunnel/mobile.",
+      });
+      return;
+    }
+
+    const sessionId = message.session_id ?? `tun_${randomUUID()}`;
+    const session: TunnelSession = {
+      id: sessionId,
+      deviceId,
+      signal,
+      peer,
+    };
+    this.tunnelSessions.set(sessionId, session);
+
+    peer.onicecandidate = (event) => {
+      if (!event.candidate) {
+        return;
+      }
+      const candidate = candidateToInit(event.candidate);
+      this.sendTunnelSignal(
+        signal,
+        createMessage<TunnelIceCandidatePayload>(
+          "tunnel.session.candidate",
+          {
+            session_id: sessionId,
+            device_id: deviceId,
+            candidate: candidate.candidate,
+            sdp_mid: candidate.sdpMid,
+            sdp_m_line_index: candidate.sdpMLineIndex,
+          },
+          { device_id: deviceId, session_id: sessionId },
+        ),
+      );
+    };
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === "failed") {
+        this.sendTunnelFailure(signal, {
+          session_id: sessionId,
+          device_id: deviceId,
+          reason: "ice_failed",
+        });
+      }
+    };
+
+    this.attachTunnelDataChannel(
+      session,
+      peer.createDataChannel("omniwork.envelope"),
+    );
+
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    const local = peer.localDescription ?? offer;
+
+    this.sendTunnelSignal(
+      signal,
+      createMessage<TunnelSessionDescriptionPayload>(
+        "tunnel.session.offer",
+        {
+          session_id: sessionId,
+          device_id: deviceId,
+          sdp: local.sdp ?? "",
+          sdp_type: "offer",
+        },
+        { device_id: deviceId, session_id: sessionId },
+      ),
+    );
+  }
+
+  private async handleTunnelAnswer(
+    message: MessageEnvelope<TunnelSessionDescriptionPayload>,
+  ): Promise<void> {
+    const session = this.tunnelSessions.get(message.payload.session_id);
+    if (!session) {
+      return;
+    }
+
+    await session.peer.setRemoteDescription({
+      type: "answer",
+      sdp: message.payload.sdp,
+    });
+  }
+
+  private async handleTunnelCandidate(
+    message: MessageEnvelope<TunnelIceCandidatePayload>,
+  ): Promise<void> {
+    const session = this.tunnelSessions.get(message.payload.session_id);
+    if (!session) {
+      return;
+    }
+
+    await session.peer.addIceCandidate({
+      candidate: message.payload.candidate,
+      sdpMid: message.payload.sdp_mid,
+      sdpMLineIndex: message.payload.sdp_m_line_index,
+    });
+  }
+
+  private attachTunnelDataChannel(
+    session: TunnelSession,
+    channel: WebRtcDataChannelLike,
+  ): void {
+    const registerMobile = () => {
+      if (session.dataSocket) {
+        return;
+      }
+
+      const socket = new DataChannelSocket(channel);
+      session.dataSocket = socket;
+      this.register(socket, "mobile");
+      this.sendTunnelSignal(
+        session.signal,
+        createMessage<TunnelSessionReadyPayload>(
+          "tunnel.session.ready",
+          {
+            session_id: session.id,
+            device_id: session.deviceId,
+            transport: "webrtc",
+          },
+          { device_id: session.deviceId, session_id: session.id },
+        ),
+      );
+    };
+
+    if (channel.readyState === "open") {
+      registerMobile();
+      return;
+    }
+
+    channel.onopen = registerMobile;
+  }
+
+  private closeTunnelSessionsBySignal(signal: TunnelSignal): void {
+    for (const session of this.tunnelSessions.values()) {
+      if (session.signal === signal) {
+        this.closeTunnelSession(session.id, "signaling closed");
+      }
+    }
+  }
+
+  private closeTunnelSession(
+    sessionId: string | undefined,
+    reason: string,
+  ): void {
+    if (!sessionId) {
+      return;
+    }
+
+    const session = this.tunnelSessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+
+    session.dataSocket?.close();
+    session.peer.close();
+    this.tunnelSessions.delete(sessionId);
+    this.sendTunnelFailure(session.signal, {
+      session_id: sessionId,
+      device_id: session.deviceId,
+      reason: "session_not_found",
+      message: reason,
+    });
+  }
+
+  private sendTunnelFailure(
+    signal: TunnelSignal,
+    payload: TunnelSessionFailedPayload,
+  ): void {
+    this.sendTunnelSignal(
+      signal,
+      createMessage<TunnelSessionFailedPayload>(
+        "tunnel.session.failed",
+        payload,
+        { device_id: payload.device_id, session_id: payload.session_id },
+      ),
+    );
+  }
+
+  private sendTunnelSignal(
+    signal: TunnelSignal,
+    message: MessageEnvelope,
+  ): void {
+    signal.sendText(JSON.stringify(message));
+  }
+
   private ensureEndpoint(
     connection: RelayConnection,
     expected: RelayEndpoint,
@@ -366,15 +778,61 @@ export class RelayServer {
   }
 }
 
-function parseRelayEndpoint(request: IncomingMessage): RelayEndpoint | null {
+class RelayClientTunnelSignal implements TunnelSignal {
+  private readonly client: RelayClient;
+
+  constructor(client: RelayClient) {
+    this.client = client;
+  }
+
+  sendText(message: string): void {
+    this.client.send(JSON.parse(message) as MessageEnvelope);
+  }
+
+  close(code?: number, reason?: string): void {
+    this.client.close(code, reason);
+  }
+}
+
+function createTunnelRelayRegisterMessage(
+  deviceId: string,
+): MessageEnvelope<TunnelRelayRegisterPayload> {
+  return createMessage<TunnelRelayRegisterPayload>(
+    "tunnel.relay.register",
+    {
+      device_id: deviceId,
+      key_id: deviceId,
+      transport: "webrtc",
+    },
+    { device_id: deviceId },
+  );
+}
+
+type RelayUpgradeEndpoint = RelayEndpoint | "tunnel-mobile";
+
+function parseRelayUpgradeEndpoint(
+  request: IncomingMessage,
+): RelayUpgradeEndpoint | null {
   const url = new URL(request.url ?? "/", "http://relay.local");
-  if (url.pathname === "/agent") {
+  const pathname = normalizeRelayPathname(url.pathname);
+  if (pathname === "/agent") {
     return "agent";
   }
-  if (url.pathname === "/mobile") {
+  if (pathname === "/mobile") {
     return "mobile";
   }
+  if (pathname === "/tunnel/mobile") {
+    return "tunnel-mobile";
+  }
   return null;
+}
+
+function normalizeRelayPathname(pathname: string): string {
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    return pathname.slice(0, -1);
+  }
+
+  return pathname;
 }
 
 function rejectWebSocketUpgrade(socket: Socket, message: string): void {

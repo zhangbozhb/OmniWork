@@ -8,6 +8,8 @@
 
 关联鉴权设计：[auth-key-design.md](./auth-key-design.md)
 
+关联内网穿透方案：[intranet-tunnel-technical-solution.md](./intranet-tunnel-technical-solution.md)
+
 ## 结论摘要
 
 推荐采用「公司内网中继 + TypeScript Mac 本地 Agent + Codex 运行时适配层 + Android/iOS 跨端移动 App」的方案。

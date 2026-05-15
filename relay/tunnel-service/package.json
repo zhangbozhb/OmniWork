@@ -1,5 +1,5 @@
 {
-  "name": "@omniwork/relay-server",
+  "name": "@omniwork/tunnel-service",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,11 +9,10 @@
     "start": "node --experimental-strip-types src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types src/main.ts --check"
+    "test": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@omniwork/protocol-ts": "workspace:*",
-    "@roamhq/wrtc": "^0.10.0"
+    "@omniwork/protocol-ts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.19.19",

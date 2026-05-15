@@ -1,6 +1,10 @@
 import * as Keychain from "react-native-keychain";
 
-import type { PairingConfig } from "../../features/auth/types";
+import {
+  DEFAULT_PAIRING_TRANSPORT,
+  type PairingConfig,
+  type PairingTransport,
+} from "../../features/auth/types";
 
 const PAIRING_KEY = "omniwork.pairing";
 const SERVICE = "com.omniwork.mobile.pairing";
@@ -18,8 +22,11 @@ export async function loadPairings(): Promise<PairingConfig[]> {
     return [];
   }
 
-  const parsed = JSON.parse(result.password) as PairingConfig | PairingConfig[];
-  return Array.isArray(parsed) ? parsed : [parsed];
+  const parsed = JSON.parse(result.password) as
+    | Partial<PairingConfig>
+    | Array<Partial<PairingConfig>>;
+  const pairings = Array.isArray(parsed) ? parsed : [parsed];
+  return pairings.map(normalizePairingConfig);
 }
 
 export async function savePairing(pairing: PairingConfig): Promise<void> {
@@ -32,4 +39,23 @@ export async function loadPairing(): Promise<PairingConfig | null> {
 
 export async function clearPairing(): Promise<void> {
   await Keychain.resetGenericPassword({ service: SERVICE });
+}
+
+function normalizePairingConfig(
+  pairing: Partial<PairingConfig>,
+): PairingConfig {
+  return {
+    relayUrl: pairing.relayUrl ?? "",
+    deviceId: pairing.deviceId ?? "",
+    key: pairing.key ?? "",
+    keyId: pairing.keyId,
+    transport: normalizePairingTransport(pairing.transport),
+  };
+}
+
+function normalizePairingTransport(value: unknown): PairingTransport {
+  if (value === "webrtc" || value === "websocket") {
+    return value;
+  }
+  return DEFAULT_PAIRING_TRANSPORT;
 }

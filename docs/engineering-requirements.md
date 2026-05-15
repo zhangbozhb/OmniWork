@@ -7,6 +7,7 @@
 - [project-directory-structure.md](./project-directory-structure.md)
 - [auth-key-design.md](./auth-key-design.md)
 - [app-installation.md](./app-installation.md)
+- [intranet-tunnel-technical-solution.md](./intranet-tunnel-technical-solution.md)
 
 ## 总体要求
 

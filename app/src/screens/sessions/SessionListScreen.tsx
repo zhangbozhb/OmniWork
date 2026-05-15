@@ -1,6 +1,9 @@
 import { type JSX, useState } from "react";
 import {
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -300,41 +303,52 @@ export function SessionListScreen({
         visible={createModalVisible}
         onRequestClose={() => setCreateModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <Card style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              New {getRuntimeLabel(createRuntimeKind)} Session
-            </Text>
-            <Text style={styles.modalDescription}>
-              Confirm or edit the working directory before creating.
-            </Text>
-            <TextInput
-              value={createCwd}
-              onChangeText={setCreateCwd}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="Working directory"
-              placeholderTextColor="#66727c"
-              style={styles.cwdInput}
-            />
-            <View style={styles.modalActions}>
-              <Button
-                style={styles.modalSecondaryButton}
-                onPress={() => setCreateModalVisible(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                disabled={!createCwd.trim() || creating}
-                style={styles.modalPrimaryButton}
-                tone="primary"
-                onPress={confirmCreateSession}
-              >
-                {creating ? "Starting..." : "Create"}
-              </Button>
-            </View>
-          </Card>
-        </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalAvoidingView}
+        >
+          <View
+            style={styles.modalBackdrop}
+            onStartShouldSetResponderCapture={() => {
+              Keyboard.dismiss();
+              return false;
+            }}
+          >
+            <Card style={styles.modalCard}>
+              <Text style={styles.modalTitle}>
+                New {getRuntimeLabel(createRuntimeKind)} Session
+              </Text>
+              <Text style={styles.modalDescription}>
+                Confirm or edit the working directory before creating.
+              </Text>
+              <TextInput
+                value={createCwd}
+                onChangeText={setCreateCwd}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="Working directory"
+                placeholderTextColor="#66727c"
+                style={styles.cwdInput}
+              />
+              <View style={styles.modalActions}>
+                <Button
+                  style={styles.modalSecondaryButton}
+                  onPress={() => setCreateModalVisible(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!createCwd.trim() || creating}
+                  style={styles.modalPrimaryButton}
+                  tone="primary"
+                  onPress={confirmCreateSession}
+                >
+                  {creating ? "Starting..." : "Create"}
+                </Button>
+              </View>
+            </Card>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -578,6 +592,9 @@ const styles = StyleSheet.create({
   attachHint: {
     color: colors.success,
     fontWeight: "800",
+  },
+  modalAvoidingView: {
+    flex: 1,
   },
   modalBackdrop: {
     flex: 1,

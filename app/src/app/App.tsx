@@ -25,6 +25,7 @@ import {
   createMessage,
   parsePairingLink,
 } from "../../../packages/protocol-ts/src/index.ts";
+import type { RelayCloseEvent } from "../../../packages/relay-client/src/index.ts";
 import { PairingScreen } from "../screens/pairing/PairingScreen";
 import { DeviceListScreen } from "../screens/devices/DeviceListScreen";
 import { SessionListScreen } from "../screens/sessions/SessionListScreen";
@@ -47,6 +48,8 @@ import {
 } from "../features/terminal/terminalMessages";
 import { computeInitialTerminalSize } from "../features/terminal/terminalLayout";
 import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
+import { MobileWebRtcTunnelSession } from "../lib/tunnel-client/mobileWebRtcTunnelSession";
+import { DEFAULT_PAIRING_TRANSPORT } from "../features/auth/types";
 import {
   clearPairing,
   loadPairings,
@@ -60,6 +63,14 @@ type ConnectionStatus =
   | "authenticating"
   | "authenticated"
   | "failed";
+
+interface MobileSessionTransport {
+  connect(): Promise<void>;
+  onMessage(handler: (message: MessageEnvelope) => void): () => void;
+  onClose(handler: (event: RelayCloseEvent) => void): () => void;
+  send(message: MessageEnvelope): void;
+  close(): void;
+}
 
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
 const TERMINAL_IDLE_SNAPSHOT_INTERVAL_MS = 3000;
@@ -89,7 +100,7 @@ export default function App(): JSX.Element {
   const [creatingSession, setCreatingSession] = useState(false);
   const [closingSessionIds, setClosingSessionIds] = useState<string[]>([]);
   const [killingSessionIds, setKillingSessionIds] = useState<string[]>([]);
-  const relayRef = useRef<MobileRelaySession | null>(null);
+  const relayRef = useRef<MobileSessionTransport | null>(null);
   const pendingCreateRef = useRef(false);
   const pendingAutoOpenSessionsRef = useRef(false);
   const pairingsRef = useRef<PairingConfig[]>([]);
@@ -174,10 +185,14 @@ export default function App(): JSX.Element {
     }
 
     let closed = false;
-    const relay = new MobileRelaySession(pairing);
+    const relay = createMobileSessionTransport(pairing);
     relayRef.current = relay;
     setConnectionStatus("connecting");
-    setConnectionMessage("Connecting to Relay...");
+    setConnectionMessage(
+      pairing.transport === "webrtc"
+        ? "Connecting with WebRTC P2P tunnel..."
+        : "Connecting to Relay...",
+    );
 
     const unsubscribe = relay.onMessage((message) => {
       if (closed) {
@@ -611,7 +626,7 @@ export default function App(): JSX.Element {
 
   function handleRelayMessage(
     message: MessageEnvelope,
-    relay: MobileRelaySession,
+    relay: MobileSessionTransport,
     activePairing: PairingConfig,
   ): void {
     switch (message.type) {
@@ -843,6 +858,16 @@ export default function App(): JSX.Element {
   );
 }
 
+function createMobileSessionTransport(
+  pairing: PairingConfig,
+): MobileSessionTransport {
+  if (pairing.transport === "webrtc") {
+    return new MobileWebRtcTunnelSession(pairing);
+  }
+
+  return new MobileRelaySession(pairing);
+}
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -916,6 +941,10 @@ function parsePairingConfig(input: string): PairingConfig | null {
     deviceId: payload.device_id,
     key: payload.key,
     keyId: payload.key_id,
+    transport:
+      payload.transport === "websocket" || payload.transport === "webrtc"
+        ? payload.transport
+        : DEFAULT_PAIRING_TRANSPORT,
   };
 }
 
@@ -947,7 +976,9 @@ function formatErrorMessage(error: unknown): string {
 }
 
 function isTransitionalSessionStatus(status: CodexSession["status"]): boolean {
-  return status === "created" || status === "starting" || status === "recovering";
+  return (
+    status === "created" || status === "starting" || status === "recovering"
+  );
 }
 
 function formatRelayCloseMessage(event: {

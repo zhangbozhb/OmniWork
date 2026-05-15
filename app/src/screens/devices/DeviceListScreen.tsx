@@ -97,6 +97,9 @@ export function DeviceListScreen({
                   <Text numberOfLines={1} style={styles.deviceMeta}>
                     {formatRelayUrl(pairing.relayUrl)}
                   </Text>
+                  <Text style={styles.deviceTransport}>
+                    {formatTransportLabel(pairing.transport)}
+                  </Text>
                   <Text numberOfLines={2} style={styles.deviceStatus}>
                     {active ? status.detail : "Ready to connect when selected."}
                   </Text>
@@ -203,6 +206,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 6,
   },
+  deviceTransport: {
+    color: colors.textDim,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
+  },
   deviceStatus: {
     color: colors.textSecondary,
     marginTop: spacing.sm,
@@ -236,6 +245,10 @@ function formatRelayUrl(relayUrl: string): string {
   } catch {
     return relayUrl;
   }
+}
+
+function formatTransportLabel(transport: string): string {
+  return transport === "webrtc" ? "WebRTC tunnel" : "WebSocket relay";
 }
 
 function getSavedDeviceStatusPresentation(): DeviceStatusPresentation {

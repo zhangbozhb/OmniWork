@@ -1,5 +1,7 @@
 import type { MessageEnvelope } from "../../protocol-ts/src/index.ts";
 
+export * from "./webrtcTransport.ts";
+
 type WebSocketLike = {
   readyState: number;
   send(data: string): void;

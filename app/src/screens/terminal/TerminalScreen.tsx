@@ -286,6 +286,10 @@ export function TerminalScreen({
           },
         ]}
         onLayout={handleTerminalAreaLayout}
+        onStartShouldSetResponderCapture={() => {
+          Keyboard.dismiss();
+          return false;
+        }}
       >
         <NativeTerminalView
           frame={frame}
