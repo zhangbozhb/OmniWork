@@ -62,7 +62,7 @@ export function printPairingQr(details: PairingQrDetails): void {
   }
 
   console.info("[omniwork-agent] scan this QR code with the OmniWork app:");
-  qrcode.generate(details.link, { small: false }, (qr) => {
+  qrcode.generate(details.link, { small: true }, (qr) => {
     console.info(qr);
   });
   console.info(`[omniwork-agent] pairing_link=${details.link}`);
