@@ -148,7 +148,7 @@ export function TerminalScreen({
   const profileLoadedRef = useRef(false);
   const lastResizeKeyRef = useRef("");
   const agentStatus = getAgentStatusPresentation(connectionStatus);
-  const runtimeLabel = session.runtime_label;
+  const runtimeLabel = session.runtime_label || session.runtime_kind;
   const hasDraft = draft.trim().length > 0;
   const canHideKeyboard = keyboardVisible && !hasDraft;
   const readOnly = !canInput;
@@ -292,7 +292,7 @@ export function TerminalScreen({
           onPress={Keyboard.dismiss}
         >
           <Text numberOfLines={1} style={styles.meta}>
-            {formatCompactPath(session.cwd)}
+            {runtimeLabel} · {formatCompactPath(session.cwd)}
           </Text>
           <Text style={[styles.statusIcon, { color: agentStatus.color }]}>
             {agentStatus.icon}

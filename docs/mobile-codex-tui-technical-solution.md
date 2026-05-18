@@ -12,7 +12,7 @@
 
 ## 结论摘要
 
-推荐采用「公司内网中继 + TypeScript Mac 本地 Agent + Codex 运行时适配层 + Android/iOS 跨端移动 App」的方案。
+推荐采用「公司内网中继 + TypeScript Mac 本地 Agent + Agent Provider 运行时适配层 + Android/iOS/Web 跨端 App」的方案。
 
 与初始设计相比，最新技术调研后需要补充一个重要判断：
 
@@ -20,7 +20,7 @@
 - 但 Codex app-server 的 WebSocket 传输目前仍标注为 experimental / unsupported，且官方明确提醒非 loopback WebSocket 监听在 rollout 阶段默认不应直接远程暴露，必须配置认证。
 - 因此，正式企业方案不应把 Codex app-server 直接暴露给手机或中继，而应由 Mac Agent 在本机 loopback / unix socket / stdio 内部管理，再通过我们自己的企业中继协议对外提供受控能力。
 
-最终推荐是双通道架构：
+最终推荐是双通道架构，同时保留 Agent Provider 抽象，避免把 Codex、Claude、Gemini、OpenCode 等 CLI 能力写死在 App 页面或 Mac Agent 会话管理逻辑中：
 
 1. **主通道：Codex App Server 结构化通道**
    - 面向长期产品体验。
@@ -31,6 +31,13 @@
    - 面向最小闭环和兼容性。
    - 用于真实显示 Codex CLI TUI。
    - 可满足「手机查看 TUI 结果并交互、多个 TUI 切换」的 MVP 诉求。
+
+3. **Agent Provider 元数据层**
+   - `packages/protocol-ts` 定义 `AgentProviderDefinition`、`runtime_kind`、能力标识等共享协议类型，并提供默认 presets 作为 fallback。
+   - Mac Agent 通过 `OMNIWORK_AGENT_PROVIDERS` 配置实际启用的 provider、展示名、能力标识和命令，例如用户可直接增加 `opencode`。
+   - Mac Agent 的 Runtime Adapter 从配置化 provider 列表创建 runtime，并通过 `agent.hello` / `session.list` 下发给 App。
+   - App 会话列表按 Mac Agent 下发的 provider 分组展示，并在创建会话时传递 `runtime_kind`。
+   - 未识别的外部 tmux 会话归入 `other`，只展示和附加，不作为可创建 provider。
 
 MVP 可以先做兼容通道，随后引入主通道。正式企业版建议两者并存：默认使用结构化通道，必要时切换到原始 TUI。
 
@@ -163,14 +170,14 @@ flowchart LR
   Relay -->|WSS + agent hello| Agent["Mac Agent"]
 
   Agent --> Control["控制面"]
-  Agent --> Runtime["Codex 运行时适配层"]
+  Agent --> Runtime["Agent Provider 运行时适配层"]
   Agent --> Tmux["tmux 会话池"]
   Agent --> Store["本地 SQLite + session-key.json"]
 
   Runtime --> AppServer["Codex app-server<br/>stdio/unix/127.0.0.1"]
   Runtime --> PTY["PTY bridge"]
   PTY --> Tmux
-  Tmux --> CodexTUI["Codex CLI TUI"]
+  Tmux --> ProviderTUI["Configured Agent CLI TUI"]
 
   AppServer --> CodexHarness["Codex harness"]
 ```

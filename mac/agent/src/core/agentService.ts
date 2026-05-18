@@ -49,8 +49,7 @@ export class AgentService {
   constructor(config: AgentConfig) {
     this.config = config;
     this.runtimes = new RuntimeRegistry({
-      codexCommand: config.codexCommand,
-      claudeCommand: config.claudeCommand,
+      providers: config.agentProviders,
     });
     this.sessionManager = new SessionManager(
       new JsonSessionStore(config.sessionStorePath),
@@ -136,6 +135,7 @@ export class AgentService {
           hostname: this.config.hostname,
           platform: "darwin",
           agent_version: this.config.agentVersion,
+          providers: this.runtimes.providers(),
           capabilities: [
             "terminal.tui",
             "terminal.snapshot",
@@ -247,6 +247,7 @@ export class AgentService {
   private async handleSessionList(message: MessageEnvelope): Promise<void> {
     const payload: SessionListPayload = {
       default_cwd: this.config.defaultCwd,
+      providers: this.runtimes.providers(),
       sessions: await this.sessionManager.list(),
     };
     this.send(

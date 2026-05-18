@@ -3,6 +3,7 @@ import { Alert, StatusBar, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import type {
+  AgentProviderDefinition,
   AuthFailedPayload,
   CodexSession,
   MessageEnvelope,
@@ -15,6 +16,7 @@ import type {
   TerminalSnapshotPayload,
 } from "../../../packages/protocol-ts/src/index.ts";
 import {
+  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
   createMessage,
   parsePairingLink,
 } from "../../../packages/protocol-ts/src/index.ts";
@@ -52,6 +54,7 @@ import {
   loadPairings,
   savePairings,
 } from "../platform/secure-storage/securePairingStore";
+import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
 
 type AppView = "pairing" | "devices" | "sessions" | "terminal";
 type ConnectionStatus =
@@ -74,6 +77,14 @@ const TERMINAL_IDLE_SNAPSHOT_INTERVAL_MS = 3000;
 const TERMINAL_INPUT_SNAPSHOT_DELAYS_MS = [120, 350, 800, 1600] as const;
 
 export default function App(): JSX.Element {
+  return (
+    <ConfirmProvider>
+      <AppContent />
+    </ConfirmProvider>
+  );
+}
+
+function AppContent(): JSX.Element {
   const [pairings, setPairings] = useState<PairingConfig[]>([]);
   const [pairing, setPairing] = useState<PairingConfig | null>(null);
   const [view, setView] = useState<AppView>("pairing");
@@ -84,6 +95,9 @@ export default function App(): JSX.Element {
     null,
   );
   const [sessions, setSessions] = useState<CodexSession[]>([]);
+  const [agentProviders, setAgentProviders] = useState<
+    AgentProviderDefinition[]
+  >([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
   const [defaultSessionCwd, setDefaultSessionCwd] = useState("");
   const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
     {},
@@ -102,6 +116,7 @@ export default function App(): JSX.Element {
   const pendingAutoOpenSessionsRef = useRef(false);
   const pairingsRef = useRef<PairingConfig[]>([]);
   const selectedSessionRef = useRef<CodexSession | null>(null);
+  const confirm = useConfirm();
 
   const canUseWorkspace = pairings.length > 0;
   const title = useMemo(() => {
@@ -314,28 +329,27 @@ export default function App(): JSX.Element {
     setView(pairings.length > 0 ? "devices" : "pairing");
   }
 
-  function handleDeleteDevice(targetPairing: PairingConfig): void {
-    Alert.alert(
-      "Delete device",
-      `Delete ${targetPairing.deviceId} from linked devices?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            removeDevice(targetPairing).catch((error: unknown) => {
-              setPairingError(`Could not delete device: ${String(error)}`);
-            });
-          },
-        },
-      ],
-    );
+  async function handleDeleteDevice(
+    targetPairing: PairingConfig,
+  ): Promise<void> {
+    const confirmed = await confirm({
+      title: "Delete device",
+      message: `Delete ${targetPairing.deviceId} from linked devices?`,
+      confirmText: "Delete",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    removeDevice(targetPairing).catch((error: unknown) => {
+      setPairingError(`Could not delete device: ${String(error)}`);
+    });
   }
 
   async function removeDevice(targetPairing: PairingConfig): Promise<void> {
     const nextPairings = await removeSavedPairing(targetPairing);
     setSessions([]);
+    setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
     setSelectedSession(null);
     setTerminalFrames({});
     setClosingSessionIds([]);
@@ -371,6 +385,7 @@ export default function App(): JSX.Element {
     if (!pairing || !isSamePairing(pairing, nextPairing)) {
       setPairing(nextPairing);
       setSessions([]);
+      setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
       setSelectedSession(null);
       setTerminalFrames({});
       setClosingSessionIds([]);
@@ -414,7 +429,7 @@ export default function App(): JSX.Element {
     );
   }
 
-  function handleCloseSession(session: CodexSession): void {
+  async function handleCloseSession(session: CodexSession): Promise<void> {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
@@ -424,63 +439,53 @@ export default function App(): JSX.Element {
       session.status === "error" ||
       session.status === "exited" ||
       session.status === "archived";
-    Alert.alert(
-      external
-        ? "Forget tmux session"
-        : removeOnly
-          ? "Remove session"
-          : "Close session",
-      external
-        ? `Forget ${session.title} in OmniWork? The tmux session will keep running on the Mac.`
-        : removeOnly
-          ? `Remove ${session.title} from OmniWork? The session is not interactive.`
-          : `Close ${session.title} on the Mac Agent?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: external ? "Forget" : removeOnly ? "Remove" : "Close",
-          style: "destructive",
-          onPress: () => {
-            setClosingSessionIds((current) =>
-              current.includes(session.session_id)
-                ? current
-                : [...current, session.session_id],
-            );
-            sendToRelay(
-              closeSessionRequest(pairing.deviceId, session.session_id),
-            );
-          },
-        },
-      ],
+    const title = external
+      ? "Forget tmux session"
+      : removeOnly
+        ? "Remove session"
+        : "Close session";
+    const message = external
+      ? `Forget ${session.title} in OmniWork? The tmux session will keep running on the Mac.`
+      : removeOnly
+        ? `Remove ${session.title} from OmniWork? The session is not interactive.`
+        : `Close ${session.title} on the Mac Agent?`;
+    const confirmed = await confirm({
+      title,
+      message,
+      confirmText: external ? "Forget" : removeOnly ? "Remove" : "Close",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setClosingSessionIds((current) =>
+      current.includes(session.session_id)
+        ? current
+        : [...current, session.session_id],
     );
+    sendToRelay(closeSessionRequest(pairing.deviceId, session.session_id));
   }
 
-  function handleKillTmuxSession(session: CodexSession): void {
+  async function handleKillTmuxSession(session: CodexSession): Promise<void> {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
 
-    Alert.alert(
-      "Kill tmux session",
-      `Really kill ${session.title}? This will close the tmux session on the Mac and cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Kill tmux",
-          style: "destructive",
-          onPress: () => {
-            setKillingSessionIds((current) =>
-              current.includes(session.session_id)
-                ? current
-                : [...current, session.session_id],
-            );
-            sendToRelay(
-              killTmuxSessionRequest(pairing.deviceId, session.session_id),
-            );
-          },
-        },
-      ],
+    const confirmed = await confirm({
+      title: "Kill tmux session",
+      message: `Really kill ${session.title}? This will close the tmux session on the Mac and cannot be undone.`,
+      confirmText: "Kill tmux",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setKillingSessionIds((current) =>
+      current.includes(session.session_id)
+        ? current
+        : [...current, session.session_id],
     );
+    sendToRelay(killTmuxSessionRequest(pairing.deviceId, session.session_id));
   }
 
   function handleRecoverSession(session: CodexSession): void {
@@ -661,6 +666,11 @@ export default function App(): JSX.Element {
         if (payload.default_cwd) {
           setDefaultSessionCwd(payload.default_cwd);
         }
+        setAgentProviders(
+          payload.providers?.length
+            ? payload.providers
+            : [...DEFAULT_AGENT_PROVIDER_DEFINITIONS],
+        );
         setSessions(payload.sessions);
         setSelectedSession((current) => {
           if (!current) {
@@ -816,6 +826,8 @@ export default function App(): JSX.Element {
         ) : view === "sessions" ? (
           <SessionListScreen
             sessions={sessions}
+            providers={agentProviders}
+            providerPreferenceScope={pairing?.deviceId ?? "default"}
             creating={creatingSession}
             closingSessionIds={closingSessionIds}
             killingSessionIds={killingSessionIds}

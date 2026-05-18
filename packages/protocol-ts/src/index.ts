@@ -62,10 +62,11 @@ export interface AgentHelloPayload {
   hostname: string;
   platform: "darwin";
   agent_version: string;
+  providers?: AgentProviderDefinition[];
   capabilities: AgentCapability[];
 }
 
-export type AgentCapability =
+export type KnownAgentCapability =
   | "terminal.tui"
   | "terminal.snapshot"
   | "session.tmux"
@@ -73,7 +74,9 @@ export type AgentCapability =
   | "session.tmux.kill"
   | "codex.cli"
   | "codex.app_server"
-  | "claude.cli";
+  | "claude.cli"
+  | "gemini.cli";
+export type AgentCapability = KnownAgentCapability | (string & {});
 
 export interface MobileConnectPayload {
   device_id: string;
@@ -199,7 +202,73 @@ export type SessionStatus =
   | "recovering"
   | "archived";
 
-export type RuntimeKind = "codex" | "claude" | "other";
+export type RuntimeKind = string;
+export type AgentProviderKind = string;
+
+export interface AgentProviderDefinition {
+  kind: AgentProviderKind;
+  displayName: string;
+  capability: AgentCapability;
+  summary: string;
+  defaultCommand: string;
+  creatable: boolean;
+}
+
+export const DEFAULT_AGENT_PROVIDER_DEFINITIONS: readonly AgentProviderDefinition[] =
+  [
+    {
+      kind: "codex",
+      displayName: "Codex",
+      capability: "codex.cli",
+      summary: "OpenAI Codex CLI TUI session",
+      defaultCommand: "codex",
+      creatable: true,
+    },
+    {
+      kind: "claude",
+      displayName: "Claude",
+      capability: "claude.cli",
+      summary: "Claude Code CLI TUI session",
+      defaultCommand: "claude",
+      creatable: true,
+    },
+    {
+      kind: "gemini",
+      displayName: "Gemini",
+      capability: "gemini.cli",
+      summary: "Gemini CLI TUI session",
+      defaultCommand: "gemini",
+      creatable: true,
+    },
+  ] as const;
+
+export function getAgentProviderDefinition(
+  kind: RuntimeKind,
+  providers: readonly AgentProviderDefinition[] = DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+): AgentProviderDefinition | undefined {
+  return providers.find((provider) => provider.kind === kind);
+}
+
+export function getRuntimeLabel(
+  kind: RuntimeKind,
+  providers: readonly AgentProviderDefinition[] = DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+): string {
+  return getAgentProviderDefinition(kind, providers)?.displayName ?? "Other";
+}
+
+export function getCreatableAgentProviders(
+  providers: readonly AgentProviderDefinition[] = DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+): readonly AgentProviderDefinition[] {
+  return providers.filter((provider) => provider.creatable);
+}
+
+export function isCreatableRuntimeKind(
+  kind: RuntimeKind,
+  providers: readonly AgentProviderDefinition[] = DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+): kind is AgentProviderKind {
+  return Boolean(getAgentProviderDefinition(kind, providers)?.creatable);
+}
+
 export type SessionOrigin = "managed" | "external";
 
 export interface CodexSession {
@@ -221,6 +290,7 @@ export interface CodexSession {
 export interface SessionListPayload {
   sessions: CodexSession[];
   default_cwd?: string;
+  providers?: AgentProviderDefinition[];
 }
 
 export interface SessionCreatePayload {

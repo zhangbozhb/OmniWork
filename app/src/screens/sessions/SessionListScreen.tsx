@@ -1,4 +1,4 @@
-import { type JSX, useState } from "react";
+import { type JSX, useEffect, useMemo, useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -11,19 +11,40 @@ import {
   TextInput,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import type {
+  AgentCapability,
+  AgentProviderDefinition,
   CodexSession,
   RuntimeKind,
+} from "../../../../packages/protocol-ts/src/index.ts";
+import {
+  getAgentProviderDefinition,
+  getCreatableAgentProviders,
+  getRuntimeLabel,
+  isCreatableRuntimeKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import { getSessionCapabilities } from "../../features/sessions/sessionCapabilities";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";
 
-type CreatableRuntimeKind = Extract<RuntimeKind, "claude" | "codex">;
+type CreatableRuntimeKind = RuntimeKind;
+
+type RuntimeGroup = {
+  kind: RuntimeKind;
+  label: string;
+  summary: string;
+  capability?: AgentCapability;
+  creatable: boolean;
+  hidden?: boolean;
+  default?: boolean;
+};
 
 export interface SessionListScreenProps {
   sessions: CodexSession[];
+  providers: AgentProviderDefinition[];
+  providerPreferenceScope: string;
   creating: boolean;
   closingSessionIds?: string[];
   killingSessionIds?: string[];
@@ -40,18 +61,24 @@ export interface SessionListScreenProps {
   onKillTmuxSession(session: CodexSession): void;
 }
 
-const RUNTIME_GROUPS: Array<{
-  kind: RuntimeKind;
-  label: string;
-  creatable: boolean;
-}> = [
-  { kind: "claude", label: "Claude", creatable: true },
-  { kind: "codex", label: "Codex", creatable: true },
-  { kind: "other", label: "Other", creatable: false },
-];
+type ProviderPreferences = {
+  hiddenKinds: string[];
+  orderedKinds: string[];
+  defaultKind?: string;
+};
+
+const EMPTY_PROVIDER_PREFERENCES: ProviderPreferences = {
+  hiddenKinds: [],
+  orderedKinds: [],
+};
+
+const PROVIDER_PREFERENCES_STORAGE_PREFIX =
+  "omniwork.session.providerPreferences";
 
 export function SessionListScreen({
   sessions,
+  providers,
+  providerPreferenceScope,
   creating,
   closingSessionIds = [],
   killingSessionIds = [],
@@ -64,10 +91,105 @@ export function SessionListScreen({
   onRecoverSession,
   onKillTmuxSession,
 }: SessionListScreenProps): JSX.Element {
+  const [providerPreferences, setProviderPreferences] =
+    useState<ProviderPreferences>(EMPTY_PROVIDER_PREFERENCES);
+  const [providerPreferencesLoaded, setProviderPreferencesLoaded] =
+    useState(false);
+  const [providersModalVisible, setProvidersModalVisible] = useState(false);
+  const orderedProviders = useMemo(
+    () => orderProviders(providers, providerPreferences.orderedKinds),
+    [providerPreferences.orderedKinds, providers],
+  );
+  const enabledProviders = useMemo(
+    () =>
+      orderedProviders.filter(
+        (provider) => !providerPreferences.hiddenKinds.includes(provider.kind),
+      ),
+    [orderedProviders, providerPreferences.hiddenKinds],
+  );
+  const creatableProviders = useMemo(
+    () => getCreatableAgentProviders(enabledProviders),
+    [enabledProviders],
+  );
+  const defaultCreateRuntimeKind = creatableProviders[0]?.kind ?? "other";
+  const preferredCreateRuntimeKind =
+    creatableProviders.find(
+      (provider) => provider.kind === providerPreferences.defaultKind,
+    )?.kind ?? defaultCreateRuntimeKind;
+  const effectiveDefaultKind = preferredCreateRuntimeKind;
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createCwd, setCreateCwd] = useState(defaultCwd);
   const [createRuntimeKind, setCreateRuntimeKind] =
-    useState<CreatableRuntimeKind>("claude");
+    useState<CreatableRuntimeKind>(preferredCreateRuntimeKind);
+
+  const runtimeGroups = useMemo<RuntimeGroup[]>(
+    () => [
+      ...orderedProviders.map((provider) => ({
+        kind: provider.kind,
+        label: provider.displayName,
+        summary: provider.summary,
+        capability: provider.capability,
+        creatable: provider.creatable,
+        hidden: providerPreferences.hiddenKinds.includes(provider.kind),
+        default: provider.kind === effectiveDefaultKind,
+      })),
+      {
+        kind: "other",
+        label: "Other",
+        summary:
+          "Existing tmux sessions that do not match a configured Agent CLI",
+        creatable: false,
+      },
+    ],
+    [effectiveDefaultKind, orderedProviders, providerPreferences],
+  );
+
+  useEffect(() => {
+    setProviderPreferencesLoaded(false);
+    AsyncStorage.getItem(getProviderPreferencesStorageKey(providerPreferenceScope))
+      .then((value) => {
+        setProviderPreferences(parseProviderPreferences(value));
+      })
+      .catch(() => {
+        setProviderPreferences(EMPTY_PROVIDER_PREFERENCES);
+      })
+      .finally(() => {
+        setProviderPreferencesLoaded(true);
+      });
+  }, [providerPreferenceScope]);
+
+  useEffect(() => {
+    if (!providerPreferencesLoaded) {
+      return;
+    }
+
+    AsyncStorage.setItem(
+      getProviderPreferencesStorageKey(providerPreferenceScope),
+      JSON.stringify(providerPreferences),
+    ).catch(() => {
+      // Non-critical: provider preferences can be rebuilt from Agent metadata.
+    });
+  }, [providerPreferenceScope, providerPreferences, providerPreferencesLoaded]);
+
+  useEffect(() => {
+    if (
+      !isCreatableRuntimeKind(createRuntimeKind, enabledProviders) ||
+      providerPreferences.hiddenKinds.includes(createRuntimeKind)
+    ) {
+      setCreateRuntimeKind(preferredCreateRuntimeKind);
+    }
+  }, [
+    createRuntimeKind,
+    enabledProviders,
+    preferredCreateRuntimeKind,
+    providerPreferences.hiddenKinds,
+  ]);
+
+  useEffect(() => {
+    setProviderPreferences((current) =>
+      normalizeProviderPreferences(current, providers),
+    );
+  }, [providers]);
 
   function openCreateModal(runtimeKind: CreatableRuntimeKind): void {
     setCreateRuntimeKind(runtimeKind);
@@ -84,13 +206,16 @@ export function SessionListScreen({
     onCreateSession({ cwd, runtimeKind: createRuntimeKind });
   }
 
-  const visibleGroups = RUNTIME_GROUPS.filter((group) => {
+  const visibleGroups = runtimeGroups.filter((group) => {
+    if (group.hidden) {
+      return false;
+    }
     if (group.creatable) {
       return true;
     }
 
     return sessions.some(
-      (session) => getRuntimeGroupKind(session) === group.kind,
+      (session) => getRuntimeGroupKind(session, providers) === group.kind,
     );
   });
 
@@ -109,12 +234,28 @@ export function SessionListScreen({
         <Button style={styles.toolbarButton} onPress={onRefreshSessions}>
           Refresh
         </Button>
+        <Button
+          style={styles.toolbarButton}
+          onPress={() => setProvidersModalVisible(true)}
+        >
+          Providers
+        </Button>
+        <Button
+          disabled={
+            !isCreatableRuntimeKind(preferredCreateRuntimeKind, enabledProviders)
+          }
+          style={styles.toolbarButton}
+          tone="primary"
+          onPress={() => openCreateModal(preferredCreateRuntimeKind)}
+        >
+          New
+        </Button>
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
         {visibleGroups.map((group) => {
           const groupSessions = sessions.filter(
-            (session) => getRuntimeGroupKind(session) === group.kind,
+            (session) => getRuntimeGroupKind(session, providers) === group.kind,
           );
           return (
             <View key={group.kind} style={styles.runtimeSection}>
@@ -125,15 +266,23 @@ export function SessionListScreen({
                     {groupSessions.length}{" "}
                     {groupSessions.length === 1 ? "session" : "sessions"}
                   </Text>
+                  {group.default ? (
+                    <Text style={styles.sectionDefault}>Default provider</Text>
+                  ) : null}
+                  <Text style={styles.sectionDescription}>
+                    {group.summary}
+                  </Text>
                 </View>
                 {group.creatable ? (
                   <Button
                     disabled={creating}
                     style={styles.sectionCreateButton}
                     tone="primary"
-                    onPress={() =>
-                      openCreateModal(group.kind as CreatableRuntimeKind)
-                    }
+                    onPress={() => {
+                      if (isCreatableRuntimeKind(group.kind, providers)) {
+                        openCreateModal(group.kind);
+                      }
+                    }}
                   >
                     {creating && createRuntimeKind === group.kind
                       ? "Starting..."
@@ -155,6 +304,10 @@ export function SessionListScreen({
                     );
                     const external = session.origin === "external";
                     const registered = session.registered !== false;
+                    const provider = getAgentProviderDefinition(
+                      getRuntimeGroupKind(session, providers),
+                      providers,
+                    );
                     const capabilities = getSessionCapabilities(session, {
                       closing,
                       killing,
@@ -191,8 +344,17 @@ export function SessionListScreen({
                               color="#d7ffe9"
                               style={styles.compactBadge}
                             >
-                              {getRuntimeLabel(getRuntimeGroupKind(session))}
+                              {getSessionRuntimeLabel(session, providers)}
                             </Badge>
+                            {provider ? (
+                              <Badge
+                                backgroundColor={colors.surfaceRaised}
+                                color={colors.textSecondary}
+                                style={styles.compactBadge}
+                              >
+                                {provider.capability}
+                              </Badge>
+                            ) : null}
                             {external ? (
                               <Badge
                                 backgroundColor={colors.warningSoft}
@@ -316,10 +478,11 @@ export function SessionListScreen({
           >
             <Card style={styles.modalCard}>
               <Text style={styles.modalTitle}>
-                New {getRuntimeLabel(createRuntimeKind)} Session
+                New {getRuntimeLabel(createRuntimeKind, providers)} Session
               </Text>
               <Text style={styles.modalDescription}>
-                Confirm or edit the working directory before creating.
+                {getProviderSummary(createRuntimeKind, providers)} Confirm or
+                edit the working directory before creating.
               </Text>
               <TextInput
                 value={createCwd}
@@ -350,8 +513,152 @@ export function SessionListScreen({
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={providersModalVisible}
+        onRequestClose={() => setProvidersModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Card style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Agent Providers</Text>
+            <Text style={styles.modalDescription}>
+              Providers are configured on the Mac Agent. This device can hide,
+              reorder, and choose a default provider locally.
+            </Text>
+            <ScrollView contentContainerStyle={styles.providerStack}>
+              {orderedProviders.map((provider, index) => {
+                const hidden = providerPreferences.hiddenKinds.includes(
+                  provider.kind,
+                );
+                const isDefault =
+                  provider.kind === effectiveDefaultKind;
+                return (
+                  <View key={provider.kind} style={styles.providerRow}>
+                    <View style={styles.providerInfo}>
+                      <Text style={styles.providerTitle}>
+                        {provider.displayName}
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        {provider.kind} · {provider.capability}
+                      </Text>
+                      <Text style={styles.providerSummary}>
+                        {provider.summary}
+                      </Text>
+                      <Text style={styles.providerCommand}>
+                        {provider.defaultCommand}
+                      </Text>
+                    </View>
+                    <View style={styles.providerActions}>
+                      <Button
+                        disabled={index === 0}
+                        style={styles.providerActionButton}
+                        onPress={() => moveProvider(provider.kind, -1)}
+                      >
+                        Up
+                      </Button>
+                      <Button
+                        disabled={index === orderedProviders.length - 1}
+                        style={styles.providerActionButton}
+                        onPress={() => moveProvider(provider.kind, 1)}
+                      >
+                        Down
+                      </Button>
+                      <Button
+                        style={styles.providerActionButton}
+                        onPress={() => toggleProviderHidden(provider.kind)}
+                      >
+                        {hidden ? "Show" : "Hide"}
+                      </Button>
+                      <Button
+                        disabled={hidden || isDefault || !provider.creatable}
+                        style={styles.providerActionButton}
+                        tone={isDefault ? "primary" : "secondary"}
+                        onPress={() => setDefaultProvider(provider.kind)}
+                      >
+                        {isDefault ? "Default" : "Set Default"}
+                      </Button>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <Button
+                style={styles.modalSecondaryButton}
+                onPress={resetProviderPreferences}
+              >
+                Reset
+              </Button>
+              <Button
+                style={styles.modalPrimaryButton}
+                tone="primary"
+                onPress={() => setProvidersModalVisible(false)}
+              >
+                Done
+              </Button>
+            </View>
+          </Card>
+        </View>
+      </Modal>
     </View>
   );
+
+  function toggleProviderHidden(kind: RuntimeKind): void {
+    setProviderPreferences((current) => {
+      const hiddenKinds = current.hiddenKinds.includes(kind)
+        ? current.hiddenKinds.filter((item) => item !== kind)
+        : [...current.hiddenKinds, kind];
+      const defaultKind =
+        current.defaultKind === kind ? undefined : current.defaultKind;
+      return normalizeProviderPreferences(
+        {
+          ...current,
+          hiddenKinds,
+          defaultKind,
+        },
+        providers,
+      );
+    });
+  }
+
+  function moveProvider(kind: RuntimeKind, direction: -1 | 1): void {
+    setProviderPreferences((current) => {
+      const orderedKinds = orderProviders(providers, current.orderedKinds).map(
+        (provider) => provider.kind,
+      );
+      const index = orderedKinds.indexOf(kind);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= orderedKinds.length) {
+        return current;
+      }
+
+      const nextOrderedKinds = [...orderedKinds];
+      const [item] = nextOrderedKinds.splice(index, 1);
+      nextOrderedKinds.splice(nextIndex, 0, item);
+      return normalizeProviderPreferences(
+        { ...current, orderedKinds: nextOrderedKinds },
+        providers,
+      );
+    });
+  }
+
+  function setDefaultProvider(kind: RuntimeKind): void {
+    setProviderPreferences((current) =>
+      normalizeProviderPreferences(
+        {
+          ...current,
+          defaultKind: kind,
+        },
+        providers,
+      ),
+    );
+  }
+
+  function resetProviderPreferences(): void {
+    setProviderPreferences(EMPTY_PROVIDER_PREFERENCES);
+  }
 }
 
 const styles = StyleSheet.create({
@@ -361,6 +668,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
@@ -427,6 +735,19 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     marginTop: 2,
+  },
+  sectionDefault: {
+    color: colors.success,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+  sectionDescription: {
+    color: colors.textDim,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+    maxWidth: 420,
   },
   sectionCreateButton: {
     minHeight: 38,
@@ -646,7 +967,122 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.success,
   },
+  providerStack: {
+    gap: spacing.md,
+    maxHeight: 420,
+  },
+  providerRow: {
+    borderColor: colors.borderSubtle,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  providerInfo: {
+    gap: 3,
+  },
+  providerTitle: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  providerMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  providerSummary: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  providerCommand: {
+    color: colors.textDim,
+    fontSize: 12,
+  },
+  providerActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  providerActionButton: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+  },
 });
+
+function getProviderPreferencesStorageKey(scope: string): string {
+  return `${PROVIDER_PREFERENCES_STORAGE_PREFIX}.${scope || "default"}`;
+}
+
+function parseProviderPreferences(value: string | null): ProviderPreferences {
+  if (!value) {
+    return EMPTY_PROVIDER_PREFERENCES;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<ProviderPreferences>;
+    return {
+      hiddenKinds: Array.isArray(parsed.hiddenKinds)
+        ? parsed.hiddenKinds.filter(isNonEmptyString)
+        : [],
+      orderedKinds: Array.isArray(parsed.orderedKinds)
+        ? parsed.orderedKinds.filter(isNonEmptyString)
+        : [],
+      defaultKind: isNonEmptyString(parsed.defaultKind)
+        ? parsed.defaultKind
+        : undefined,
+    };
+  } catch {
+    return EMPTY_PROVIDER_PREFERENCES;
+  }
+}
+
+function normalizeProviderPreferences(
+  preferences: ProviderPreferences,
+  providers: readonly AgentProviderDefinition[],
+): ProviderPreferences {
+  const providerKinds = new Set(providers.map((provider) => provider.kind));
+  const hiddenKinds = preferences.hiddenKinds.filter((kind) =>
+    providerKinds.has(kind),
+  );
+  const orderedKinds = preferences.orderedKinds.filter((kind) =>
+    providerKinds.has(kind),
+  );
+  const defaultKind =
+    preferences.defaultKind &&
+    providerKinds.has(preferences.defaultKind) &&
+    !hiddenKinds.includes(preferences.defaultKind)
+      ? preferences.defaultKind
+      : undefined;
+
+  return {
+    hiddenKinds,
+    orderedKinds,
+    defaultKind,
+  };
+}
+
+function orderProviders(
+  providers: readonly AgentProviderDefinition[],
+  orderedKinds: readonly string[],
+): AgentProviderDefinition[] {
+  const priority = new Map(
+    orderedKinds.map((kind, index) => [kind, index] as const),
+  );
+
+  return [...providers].sort((left, right) => {
+    const leftPriority = priority.get(left.kind) ?? Number.MAX_SAFE_INTEGER;
+    const rightPriority = priority.get(right.kind) ?? Number.MAX_SAFE_INTEGER;
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+    return providers.indexOf(left) - providers.indexOf(right);
+  });
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
 
 function formatRelativeTime(value: string): string {
   const timestamp = Date.parse(value);
@@ -687,17 +1123,33 @@ function formatAbsoluteTime(value: string): string {
   }).format(timestamp);
 }
 
-function getRuntimeLabel(runtimeKind: RuntimeKind): string {
+function getRuntimeGroupKind(
+  session: CodexSession,
+  providers: readonly AgentProviderDefinition[],
+): RuntimeKind {
+  return getAgentProviderDefinition(session.runtime_kind, providers)
+    ? session.runtime_kind
+    : "other";
+}
+
+function getSessionRuntimeLabel(
+  session: CodexSession,
+  providers: readonly AgentProviderDefinition[],
+): string {
   return (
-    RUNTIME_GROUPS.find((group) => group.kind === runtimeKind)?.label ??
-    runtimeKind
+    session.runtime_label ||
+    getRuntimeLabel(getRuntimeGroupKind(session, providers), providers)
   );
 }
 
-function getRuntimeGroupKind(session: CodexSession): RuntimeKind {
-  return session.runtime_kind === "claude" || session.runtime_kind === "codex"
-    ? session.runtime_kind
-    : "other";
+function getProviderSummary(
+  runtimeKind: RuntimeKind,
+  providers: readonly AgentProviderDefinition[],
+): string {
+  return (
+    getAgentProviderDefinition(runtimeKind, providers)?.summary ??
+    "Agent session."
+  );
 }
 
 function getCloseActionLabel(session: CodexSession): string {

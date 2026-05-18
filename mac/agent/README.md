@@ -1,6 +1,6 @@
 # OmniWork Mac Agent
 
-TypeScript/Node.js Mac Agent for managing Codex TUI sessions.
+TypeScript/Node.js Mac Agent for managing Agent CLI TUI sessions.
 
 ## Current MVP
 
@@ -11,7 +11,7 @@ TypeScript/Node.js Mac Agent for managing Codex TUI sessions.
 - Uses `OMNIWORK_PAIRING_RELAY_URL` for QR pairing when the App must connect to a different public Tunnel Service URL.
 - Uses `OMNIWORK_PAIRING_TRANSPORT` to write the App connection type into the QR code. Supported values are `webrtc` and `websocket`.
 - Runs without Relay for local key-generation and environment checks.
-- Manages Codex TUI sessions through `tmux` once tmux is installed.
+- Manages configured Agent CLI TUI sessions through `tmux` once tmux is installed.
 
 ## Run
 
@@ -27,9 +27,42 @@ OMNIWORK_PAIRING_RELAY_URL=wss://tunnel.company.example/mobile
 OMNIWORK_PAIRING_TRANSPORT=webrtc
 OMNIWORK_DEVICE_ID=my-mac
 OMNIWORK_CODEX_COMMAND=codex
+OMNIWORK_CLAUDE_COMMAND=claude
+OMNIWORK_GEMINI_COMMAND=gemini
 OMNIWORK_DEFAULT_CWD=/Users/me/Code
 OMNIWORK_APP_SUPPORT_DIR=/tmp/omniwork-agent
 ```
+
+`OMNIWORK_AGENT_PROVIDERS` is the primary way to choose and extend Agent CLI
+providers. When it is unset, the Mac Agent falls back to the default Codex,
+Claude, and Gemini presets. The legacy `OMNIWORK_CODEX_COMMAND`,
+`OMNIWORK_CLAUDE_COMMAND`, and `OMNIWORK_GEMINI_COMMAND` variables only override
+those fallback preset commands.
+
+Example custom provider set:
+
+```sh
+OMNIWORK_AGENT_PROVIDERS='[
+  {
+    "kind": "codex",
+    "displayName": "Codex",
+    "command": "codex",
+    "capability": "codex.cli",
+    "summary": "OpenAI Codex CLI TUI session"
+  },
+  {
+    "kind": "opencode",
+    "displayName": "OpenCode",
+    "command": "opencode",
+    "capability": "opencode.cli",
+    "summary": "OpenCode CLI TUI session"
+  }
+]'
+```
+
+Provider metadata is sent to the App through `agent.hello` and `session.list`,
+so the App can display and create configured providers without hardcoded
+Codex/Claude/Gemini assumptions.
 
 ## Verify
 

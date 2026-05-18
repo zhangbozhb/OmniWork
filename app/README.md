@@ -9,9 +9,11 @@ browser access without introducing a second UI stack.
 - Pairing screen for Relay URL, Mac device ID, and the 32-character temporary key.
 - Secure pairing persistence through platform secure storage.
 - Relay-driven device connection and HMAC key proof.
-- Session list and session creation through the Mac Agent.
+- Session list and session creation through the Mac Agent, grouped by Agent Provider.
 - Terminal screen with native React Native terminal snapshot surface, polling refresh, and quick keys.
 - Shared TypeScript protocol and terminal input helpers.
+- Configured Agent Provider metadata from the Mac Agent for capability display and session creation, with App-local hide, sort, and default-provider preferences.
+- Shared ConfirmDialog UI for destructive actions across Android, iOS, and Web.
 - Web SPA entry that reuses the React Native screens and disables QR scanning.
 
 ## Run

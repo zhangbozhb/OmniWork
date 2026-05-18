@@ -2,6 +2,10 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 import { DEFAULT_TERMINAL_SIZE } from "../../../../packages/terminal-core/src/index.ts";
+import {
+  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+  type AgentProviderDefinition,
+} from "../../../../packages/protocol-ts/src/index.ts";
 import type {
   PairingTransport,
   TerminalSize,
@@ -14,8 +18,7 @@ export interface AgentConfig {
   relayUrl?: string;
   pairingRelayUrl?: string;
   pairingTransport: PairingTransport;
-  codexCommand: string;
-  claudeCommand: string;
+  agentProviders: AgentProviderDefinition[];
   defaultCwd: string;
   appSupportDir: string;
   sessionKeyPath: string;
@@ -37,8 +40,10 @@ export function loadAgentConfig(
     relayUrl: env.OMNIWORK_RELAY_URL,
     pairingRelayUrl: env.OMNIWORK_PAIRING_RELAY_URL,
     pairingTransport: parsePairingTransport(env.OMNIWORK_PAIRING_TRANSPORT),
-    codexCommand: env.OMNIWORK_CODEX_COMMAND ?? "codex",
-    claudeCommand: env.OMNIWORK_CLAUDE_COMMAND ?? "claude",
+    agentProviders: resolveAgentProviders(
+      env,
+      readDefaultProviderCommandOverrides(env),
+    ),
     defaultCwd: env.OMNIWORK_DEFAULT_CWD ?? process.cwd(),
     appSupportDir,
     sessionKeyPath:
@@ -47,6 +52,89 @@ export function loadAgentConfig(
       env.OMNIWORK_SESSION_STORE_PATH ?? join(appSupportDir, "sessions.json"),
     terminalSize: DEFAULT_TERMINAL_SIZE,
   };
+}
+
+function readDefaultProviderCommandOverrides(
+  env: NodeJS.ProcessEnv,
+): Record<string, string> {
+  return {
+    codex: env.OMNIWORK_CODEX_COMMAND ?? "codex",
+    claude: env.OMNIWORK_CLAUDE_COMMAND ?? "claude",
+    gemini: env.OMNIWORK_GEMINI_COMMAND ?? "gemini",
+  };
+}
+
+function resolveAgentProviders(
+  env: NodeJS.ProcessEnv,
+  commandOverrides: Record<string, string>,
+): AgentProviderDefinition[] {
+  const configuredProviders = parseAgentProviders(env.OMNIWORK_AGENT_PROVIDERS);
+  if (configuredProviders.length > 0) {
+    return configuredProviders;
+  }
+
+  return DEFAULT_AGENT_PROVIDER_DEFINITIONS.map((provider) => ({
+    ...provider,
+    defaultCommand: commandOverrides[provider.kind] ?? provider.defaultCommand,
+  }));
+}
+
+function parseAgentProviders(value?: string): AgentProviderDefinition[] {
+  const rawValue = value?.trim();
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.flatMap((item) => {
+      const provider = normalizeAgentProvider(item);
+      return provider ? [provider] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function normalizeAgentProvider(
+  value: unknown,
+): AgentProviderDefinition | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const kind = readNonEmptyString(record.kind);
+  const command =
+    readNonEmptyString(record.command) ??
+    readNonEmptyString(record.defaultCommand);
+  if (!kind || !command) {
+    return null;
+  }
+
+  const displayName = readNonEmptyString(record.displayName) ?? kind;
+  return {
+    kind,
+    displayName,
+    capability:
+      readNonEmptyString(record.capability) ??
+      `${kind.replace(/\s+/g, "-")}.cli`,
+    summary:
+      readNonEmptyString(record.summary) ?? `${displayName} CLI TUI session`,
+    defaultCommand: command,
+    creatable: record.creatable !== false,
+  };
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed || undefined;
 }
 
 function parsePairingTransport(value?: string): PairingTransport {

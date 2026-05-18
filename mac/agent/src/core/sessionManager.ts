@@ -72,12 +72,11 @@ export class SessionManager {
     const sessionId = `sess_${randomUUID()}`;
     const tmuxSessionName = toTmuxSessionName(sessionId);
     const now = new Date().toISOString();
-    const runtimeKind = payload.runtime_kind ?? "codex";
-    const runtime = this.runtimes.get(runtimeKind);
+    const runtime = this.runtimes.get(payload.runtime_kind);
     const cwd = payload.cwd ?? this.defaults.cwd;
     const command = payload.command ?? runtime.buildTuiCommand();
     const size = clampTerminalSize(payload.terminal_size ?? this.defaults.terminalSize);
-    const runtimeSessionCount = await this.countSessionsForRuntime(runtimeKind);
+    const runtimeSessionCount = await this.countSessionsForRuntime(runtime.kind);
 
     const created: CodexSession = {
       session_id: sessionId,
@@ -298,8 +297,12 @@ export class SessionManager {
     return updated;
   }
 
-  private async countSessionsForRuntime(runtimeKind: RuntimeKind): Promise<number> {
-    return (await this.store.list()).filter((session) => session.runtime_kind === runtimeKind).length;
+  private async countSessionsForRuntime(
+    runtimeKind: RuntimeKind,
+  ): Promise<number> {
+    return (await this.store.list()).filter(
+      (session) => session.runtime_kind === runtimeKind,
+    ).length;
   }
 
   private createExternalSession(session: {
@@ -308,12 +311,11 @@ export class SessionManager {
     currentPath?: string;
     currentCommand?: string;
   }): CodexSession {
-    const runtimeKind = inferRuntimeKind(session.currentCommand);
-    const runtimeLabel = getRuntimeLabel(runtimeKind);
+    const runtime = this.runtimes.infer(session.currentCommand);
     return {
       session_id: toExternalSessionId(session.name),
-      runtime_kind: runtimeKind,
-      runtime_label: runtimeLabel,
+      runtime_kind: runtime?.kind ?? "other",
+      runtime_label: runtime?.displayName ?? "Other",
       title: session.name,
       cwd: session.currentPath || this.defaults.cwd,
       command: session.currentCommand || "tmux",
@@ -335,29 +337,6 @@ function toTmuxSessionName(sessionId: string): string {
 function toExternalSessionId(tmuxSessionName: string): string {
   const digest = createHash("sha1").update(tmuxSessionName).digest("hex");
   return `tmux_${digest.slice(0, 16)}`;
-}
-
-function inferRuntimeKind(command?: string): RuntimeKind {
-  const normalizedCommand = command?.toLowerCase() ?? "";
-  if (normalizedCommand.includes("claude")) {
-    return "claude";
-  }
-  if (normalizedCommand.includes("codex")) {
-    return "codex";
-  }
-  return "other";
-}
-
-function getRuntimeLabel(runtimeKind: RuntimeKind): string {
-  switch (runtimeKind) {
-    case "claude":
-      return "Claude";
-    case "codex":
-      return "Codex";
-    case "other":
-    default:
-      return "Other";
-  }
 }
 
 function compareSessionsByRecentTime(left: CodexSession, right: CodexSession): number {

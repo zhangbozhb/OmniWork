@@ -1,0 +1,156 @@
+import {
+  createContext,
+  type JSX,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Modal,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+
+import { Button, Card } from "../components";
+import { colors, radii, spacing } from "../theme";
+
+export type ConfirmTone = "primary" | "danger";
+
+export interface ConfirmOptions {
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText?: string;
+  tone?: ConfirmTone;
+}
+
+type PendingConfirm = Required<ConfirmOptions>;
+
+type ConfirmContextValue = (options: ConfirmOptions) => Promise<boolean>;
+
+const ConfirmContext = createContext<ConfirmContextValue | null>(null);
+
+export function ConfirmProvider({
+  children,
+}: {
+  children: ReactNode;
+}): JSX.Element {
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(
+    null,
+  );
+  const resolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+
+  const confirm = useCallback((options: ConfirmOptions) => {
+    resolverRef.current?.(false);
+    setPendingConfirm({
+      ...options,
+      cancelText: options.cancelText ?? "Cancel",
+      tone: options.tone ?? "danger",
+    });
+
+    return new Promise<boolean>((resolve) => {
+      resolverRef.current = resolve;
+    });
+  }, []);
+
+  const contextValue = useMemo(() => confirm, [confirm]);
+
+  function resolve(confirmed: boolean): void {
+    resolverRef.current?.(confirmed);
+    resolverRef.current = null;
+    setPendingConfirm(null);
+  }
+
+  return (
+    <ConfirmContext.Provider value={contextValue}>
+      {children}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={Boolean(pendingConfirm)}
+        onRequestClose={() => resolve(false)}
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.dialog}>
+            <Card elevated style={styles.card}>
+              <View style={styles.header}>
+                <Text style={styles.title}>{pendingConfirm?.title}</Text>
+                <Text style={styles.message}>{pendingConfirm?.message}</Text>
+              </View>
+              <View style={styles.actions}>
+                <Button
+                  style={styles.actionButton}
+                  onPress={() => resolve(false)}
+                >
+                  {pendingConfirm?.cancelText ?? "Cancel"}
+                </Button>
+                <Button
+                  style={styles.actionButton}
+                  tone={
+                    pendingConfirm?.tone === "primary" ? "primary" : "danger"
+                  }
+                  onPress={() => resolve(true)}
+                >
+                  {pendingConfirm?.confirmText ?? "Confirm"}
+                </Button>
+              </View>
+            </Card>
+          </View>
+        </View>
+      </Modal>
+    </ConfirmContext.Provider>
+  );
+}
+
+export function useConfirm(): ConfirmContextValue {
+  const confirm = useContext(ConfirmContext);
+  if (!confirm) {
+    throw new Error("useConfirm must be used within ConfirmProvider");
+  }
+  return confirm;
+}
+
+const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+    backgroundColor: "rgba(0, 0, 0, 0.64)",
+  },
+  dialog: {
+    width: "100%",
+    maxWidth: 420,
+  },
+  card: {
+    padding: spacing.xl,
+    gap: spacing.xl,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.lg,
+  },
+  header: {
+    gap: spacing.sm,
+  },
+  title: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  message: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  actions: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  actionButton: {
+    flex: 1,
+    minHeight: 44,
+  },
+});

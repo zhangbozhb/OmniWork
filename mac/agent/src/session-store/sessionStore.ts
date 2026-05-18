@@ -1,7 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type { CodexSession, RuntimeKind } from "../../../../packages/protocol-ts/src/index.ts";
+import type {
+  CodexSession,
+  RuntimeKind,
+} from "../../../../packages/protocol-ts/src/index.ts";
 
 export class JsonSessionStore {
   private readonly path: string;
@@ -46,24 +49,12 @@ export class JsonSessionStore {
 }
 
 function normalizeSession(session: CodexSession): CodexSession {
-  const runtimeKind = (session.runtime_kind ?? "codex") as RuntimeKind;
+  const runtimeKind = (session.runtime_kind ?? "unknown") as RuntimeKind;
   return {
     ...session,
     runtime_kind: runtimeKind,
-    runtime_label: session.runtime_label ?? getRuntimeLabel(runtimeKind),
+    runtime_label: session.runtime_label ?? runtimeKind,
     origin: session.origin ?? "managed",
     registered: session.registered ?? true,
   };
-}
-
-function getRuntimeLabel(runtimeKind: RuntimeKind): string {
-  switch (runtimeKind) {
-    case "claude":
-      return "Claude";
-    case "codex":
-      return "Codex";
-    case "other":
-    default:
-      return "Other";
-  }
 }

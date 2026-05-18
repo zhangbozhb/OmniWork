@@ -13,7 +13,10 @@ import {
 } from "../src/auth-key/authKey.ts";
 import { loadAgentConfig, type AgentConfig } from "../src/config/config.ts";
 import { createPairingQrDetails } from "../src/pairing/pairingQr.ts";
-import { parsePairingLink } from "../../../packages/protocol-ts/src/index.ts";
+import {
+  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+  parsePairingLink,
+} from "../../../packages/protocol-ts/src/index.ts";
 
 const key = generateSessionKey();
 assert.equal(key.length, 32);
@@ -47,8 +50,7 @@ const baseConfig: AgentConfig = {
   hostname: "test.local",
   relayUrl: "wss://relay.example/agent",
   pairingTransport: "websocket",
-  codexCommand: "codex",
-  claudeCommand: "claude",
+  agentProviders: [...DEFAULT_AGENT_PROVIDER_DEFINITIONS],
   defaultCwd: dir,
   appSupportDir: dir,
   sessionKeyPath: path,
@@ -105,6 +107,27 @@ assert.equal(
 assert.equal(
   loadAgentConfig({ OMNIWORK_DEVICE_ID: "custom-device" }).deviceId,
   "custom-device",
+);
+assert.deepEqual(
+  loadAgentConfig({
+    OMNIWORK_AGENT_PROVIDERS: JSON.stringify([
+      {
+        kind: "opencode",
+        displayName: "OpenCode",
+        command: "opencode",
+      },
+    ]),
+  }).agentProviders,
+  [
+    {
+      kind: "opencode",
+      displayName: "OpenCode",
+      capability: "opencode.cli",
+      summary: "OpenCode CLI TUI session",
+      defaultCommand: "opencode",
+      creatable: true,
+    },
+  ],
 );
 
 console.log("auth-key tests passed");
