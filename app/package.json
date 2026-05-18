@@ -11,6 +11,14 @@
     "build:android:aab": "react-native build-android --mode release --tasks bundleRelease",
     "pods:ios": "cd ios && mkdir -p ../.cocoapods-home && CP_HOME_DIR=\"$PWD/../.cocoapods-home\" pod install",
     "build:ios": "pnpm run pods:ios && react-native build-ios --mode Release --extra-params \"CODE_SIGNING_ALLOWED=NO\"",
+    "web:dev": "webpack serve --config webpack.config.js --mode development",
+    "web:build": "webpack --config webpack.config.js --mode production",
+    "bundle:ios": "react-native bundle --platform ios --dev false --entry-file index.js --bundle-output /tmp/omniwork-ios.bundle --assets-dest /tmp/omniwork-ios-assets",
+    "bundle:android": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output /tmp/omniwork-android.bundle --assets-dest /tmp/omniwork-android-assets",
+    "verify:web": "pnpm run web:build",
+    "verify:bundle:ios": "pnpm run bundle:ios",
+    "verify:bundle:android": "pnpm run bundle:android",
+    "verify:targets": "pnpm run typecheck && pnpm run bundle:ios && pnpm run bundle:android && pnpm run web:build",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "tsc -p tsconfig.json --noEmit"
@@ -39,6 +47,7 @@
     "promise": "^8.3.0",
     "punycode": "^2.3.1",
     "react": "^19.2.0",
+    "react-dom": "19.2.0",
     "react-devtools-core": "^7.0.1",
     "react-is-18": "npm:react-is@18",
     "react-is-19": "npm:react-is@19",
@@ -46,6 +55,7 @@
     "react-native-camera-kit": "^18.0.0",
     "react-native-keychain": "^10.0.0",
     "react-native-safe-area-context": "^5.6.2",
+    "react-native-web": "^0.21.2",
     "react-native-webrtc": "^124.0.7",
     "react-refresh": "^0.18.0",
     "regenerator-runtime": "^0.14.1",
@@ -66,7 +76,13 @@
     "@react-native/metro-config": "0.83.6",
     "@types/node": "^22.10.0",
     "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "babel-loader": "^10.0.0",
+    "html-webpack-plugin": "^5.6.4",
     "hermes-compiler": "0.14.1",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "webpack": "^5.103.0",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.2"
   }
 }

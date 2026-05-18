@@ -6,7 +6,6 @@ import {
   DataChannelEnvelopeTransport,
   candidateToInit,
 } from "../../../../packages/relay-client/src/index.ts";
-import { RTCPeerConnection } from "react-native-webrtc";
 import {
   createMessage,
   type AuthChallengePayload,
@@ -18,13 +17,14 @@ import {
 } from "../../../../packages/protocol-ts/src/index.ts";
 import type { PairingConfig } from "../../features/auth/types";
 import { createKeyProof } from "../../features/auth/keyProof";
+import { createPeerConnectionFactory } from "../../platform/webrtc/createPeerConnection";
 
-export interface MobileWebRtcTunnelSessionOptions {
+export interface AppWebRtcTunnelSessionOptions {
   signalingUrl?: string;
   peerConnectionFactory?: WebRtcPeerConnectionFactory;
 }
 
-export class MobileWebRtcTunnelSession {
+export class AppWebRtcTunnelSession {
   private readonly signaling: RelayClient;
   private readonly peerConnectionFactory: WebRtcPeerConnectionFactory;
   private readonly messageHandlers = new Set<
@@ -37,7 +37,7 @@ export class MobileWebRtcTunnelSession {
 
   constructor(
     private readonly pairing: PairingConfig,
-    options: MobileWebRtcTunnelSessionOptions = {},
+    options: AppWebRtcTunnelSessionOptions = {},
   ) {
     const signalingUrl =
       options.signalingUrl ?? toTunnelMobileUrl(pairing.relayUrl);
@@ -154,7 +154,7 @@ export class MobileWebRtcTunnelSession {
           {
             session_id: this.sessionId,
             device_id: this.pairing.deviceId,
-            reason: "mobile closing",
+            reason: "app closing",
           },
           { device_id: this.pairing.deviceId, session_id: this.sessionId },
         ),
@@ -254,11 +254,7 @@ export class MobileWebRtcTunnelSession {
 }
 
 function createDefaultPeerConnectionFactory(): WebRtcPeerConnectionFactory {
-  return () => {
-    return new RTCPeerConnection({
-      iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }],
-    }) as unknown as WebRtcPeerConnectionLike;
-  };
+  return createPeerConnectionFactory();
 }
 
 function toTunnelMobileUrl(relayUrl: string): string {

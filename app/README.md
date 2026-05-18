@@ -1,6 +1,8 @@
 # OmniWork App
 
-Android/iOS installable app built with React Native CLI. The deliverables are APK and IPA files, not a web page or PWA.
+Android/iOS installable app built with React Native CLI. The same React Native
+codebase also exposes a Web single-page app through `react-native-web` for
+browser access without introducing a second UI stack.
 
 ## Current MVP
 
@@ -10,6 +12,7 @@ Android/iOS installable app built with React Native CLI. The deliverables are AP
 - Session list and session creation through the Mac Agent.
 - Terminal screen with native React Native terminal snapshot surface, polling refresh, and quick keys.
 - Shared TypeScript protocol and terminal input helpers.
+- Web SPA entry that reuses the React Native screens and disables QR scanning.
 
 ## Run
 
@@ -18,6 +21,30 @@ Install workspace dependencies first, then:
 ```sh
 pnpm --filter @omniwork/app start
 ```
+
+Web SPA development server:
+
+```sh
+pnpm --filter @omniwork/app web:dev
+```
+
+Web production build:
+
+```sh
+pnpm --filter @omniwork/app web:build
+```
+
+The Web build outputs static SPA assets under `app/dist/web`. Deployment should
+serve `index.html` for all routes.
+
+Three-target verification:
+
+```sh
+pnpm --filter @omniwork/app verify:targets
+```
+
+This runs TypeScript checking, iOS Metro bundle, Android Metro bundle, and the
+Web production build.
 
 ## Installable Builds
 
@@ -47,6 +74,16 @@ pnpm --filter @omniwork/app ios
 ```
 
 The terminal surface is implemented as native React Native UI for the MVP. A higher-fidelity native terminal renderer can be added later if the TUI needs full ANSI behavior.
+
+## Web Support
+
+The Web target is intentionally kept in the React Native stack:
+
+- UI uses the same React Native screens via `react-native-web`.
+- Platform differences live under `src/platform/` or small `.native/.web` components.
+- Web pairing does not use camera scanning; users paste the Relay URL, device ID, and temporary key, or open a URL containing `pairing=` or `relay_url`/`device_id`/`key` query parameters.
+- Native storage continues to use Keychain, while Web uses browser `localStorage`.
+- Native WebRTC continues to use `react-native-webrtc`, while Web uses the browser `RTCPeerConnection`.
 
 ## Native Projects
 

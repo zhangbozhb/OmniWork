@@ -16,8 +16,8 @@
 - 各端边界清晰，避免互相直接依赖内部实现。
 - 协议契约集中管理，手机、Mac、Relay 只依赖生成物或稳定 SDK。
 - 支持先做 MVP，再演进到企业正式部署。
-- 手机 App 和 Mac Agent 均采用 TypeScript 技术栈。
-- 手机 App 采用跨端移动开发技术，同时适配 Android 和 iOS。
+- App 和 Mac Agent 均采用 TypeScript 技术栈。
+- App 采用 React Native 技术栈，同时适配 Android、iOS 和 Web SPA；Web 不另起一套 React DOM UI。
 - Relay 可独立选择 Go、Rust 或 TypeScript，但必须通过 `protocol/` 与 App/Mac 对齐。
 - 不把本项目做成通用远控系统，目录命名也要体现 Codex TUI 工作台的窄能力边界。
 
@@ -27,7 +27,7 @@
 
 ```text
 OmniWork/
-|-- app/                     # 跨端移动 App，适配 Android / iOS
+|-- app/                     # React Native App，适配 Android / iOS / Web SPA
 |-- mac/                     # TypeScript Mac 本地 Agent 与 macOS 集成
 |-- relay/                   # 公司内网中继服务
 |-- protocol/                # 跨端协议、schema、API 契约
@@ -55,9 +55,9 @@ OmniWork/
 
 已确认的工程约束：
 
-- `app/` 使用跨端移动 App 技术，最终产出 Android APK 和 iOS IPA，不以网页或 PWA 作为交付形态。
-- `app/` 必须同时适配 Android 和 iOS。
-- `app/` 推荐采用 React Native CLI，并使用 TypeScript。
+- `app/` 使用 React Native + TypeScript，移动端产出 Android APK 和 iOS IPA，Web 端产出静态 SPA。
+- `app/` 必须共享同一套业务代码适配 Android、iOS 和 Web。
+- `app/` 推荐采用 React Native CLI；Web 通过 `react-native-web` 接入，不独立重写 UI。
 - `mac/` 使用 TypeScript / Node.js 技术栈实现 Agent 主体。
 - `mac/` 不采用 Rust/Swift 作为业务主实现；如需 macOS 原生能力，只作为最薄的平台桥接层。
 - `protocol/` 优先生成 TypeScript 类型，供 `app/` 和 `mac/` 共同复用。
@@ -67,7 +67,7 @@ OmniWork/
 
 | 模块 | 主技术栈 | 说明 |
 | --- | --- | --- |
-| `app/` | React Native CLI + TypeScript | 同一套代码交付 Android/iOS APK/IPA；终端区域默认用原生 React Native 视图 |
+| `app/` | React Native CLI + TypeScript + react-native-web | 同一套代码交付 Android/iOS APK/IPA 和 Web SPA；终端区域默认用 React Native 视图 |
 | `mac/` | Node.js LTS + TypeScript | 管理 Relay 连接、tmux、PTY、Codex runtime、本地状态 |
 | `relay/` | Go / Rust / TypeScript 均可 | 作为企业内网中继，独立部署 |
 | `protocol/` | JSON Schema / OpenAPI / AsyncAPI + TS 生成物 | 跨端协议契约 |
@@ -75,7 +75,7 @@ OmniWork/
 
 ## app 目录
 
-`app/` 是跨端移动 App，负责 Android/iOS 上的登录、设备选择、会话列表、TUI 渲染、结构化 Codex UI、通知和输入体验。
+`app/` 是 React Native App，负责 Android/iOS/Web 上的配对、设备选择、会话列表、TUI 渲染、结构化 Codex UI 和输入体验。Web 端是单页面程序，不实现摄像头扫码。
 
 推荐结构：
 
@@ -86,8 +86,12 @@ app/
 |-- tsconfig.json
 |-- app.json
 |-- index.js
+|-- index.web.tsx
 |-- babel.config.js
 |-- metro.config.js
+|-- webpack.config.js
+|-- web/
+|   |-- index.html
 |-- assets/
 |   |-- icons/
 |   |-- splash/
@@ -123,10 +127,10 @@ app/
 |   |   |-- keyboard/
 |   |   |-- viewport/
 |   |   |-- clipboard/
-|   |-- native/
-|   |   |-- notifications/
+|   |-- platform/
+|   |   |-- linking/
 |   |   |-- secure-storage/
-|   |   |-- device-info/
+|   |   |-- webrtc/
 |   |-- lib/
 |   |   |-- relay-client/
 |   |   |-- storage/
@@ -186,14 +190,24 @@ app/
 - 由 `protocol/` 生成。
 - 不手工编辑。
 
+`platform/`：
+
+- 放 Android/iOS/Web 的平台能力适配。
+- 例如链接导入、安全存储、WebRTC peer connection。
+- 业务层只依赖 `platform` 暴露的统一接口，不直接依赖 Keychain、浏览器 API 或 `react-native-webrtc`。
+
 ### app 跨端要求
 
-- Android 和 iOS 必须共享同一套业务代码。
+- Android、iOS 和 Web 必须共享同一套业务代码。
 - 允许保留 `ios/`、`android/` 原生目录，但原生代码只处理通知、证书、设备信息等平台边界。
+- Web 端只能新增入口、构建配置和必要平台适配，不复制整套页面。
+- 平台差异优先放在 `src/platform/` 或局部 `.native/.web` 组件中。
+- 不再新增 `src/native/` 作为业务依赖目录；原生能力也通过 `src/platform/*/*.native.ts` 暴露。
 - 终端渲染默认使用 React Native 原生快照视图。
 - 结构化 Codex UI 使用 React Native 原生组件实现，不放在 WebView 中。
 - 推送通知使用 APNs / FCM 或公司统一推送网关，不使用 Web Push 作为交付链路。
 - 移动端安全存储使用平台安全存储能力，不能使用普通明文 AsyncStorage 存临时 key。
+- Web 端不使用扫码能力，配对通过手动输入或 URL 导入完成。
 
 ## mac 目录
 
@@ -562,7 +576,7 @@ protocol/
 
 ## packages 目录
 
-`packages/` 只放 TypeScript 共享包，主要服务手机 App、Mac Agent 和未来 Web 管理台。
+`packages/` 只放 TypeScript 共享包，主要服务 App、Mac Agent 和未来 Web 管理台。
 
 推荐结构：
 
@@ -924,7 +938,7 @@ fixtures/codex/
 
 推荐命名：
 
-- 手机端目录叫 `app/`，不是 `web/`，强调它是手机工作台入口。
+- App 目录叫 `app/`，不是单独的 `web/`，强调 Android/iOS/Web 共用同一 React Native 工作台入口。
 - Mac 端目录叫 `mac/`，不是 `desktop/`，避免误解为跨桌面远控。
 - 中继目录叫 `relay/`，不是 `server/`，强调它只做中继、鉴权、路由和审计。
 - 跨端契约叫 `protocol/`，不是 `shared/`，避免被塞进杂物。
@@ -1003,7 +1017,7 @@ remote-control/
 本项目应采用以下核心目录：
 
 ```text
-app/       # Android/iOS 跨端移动 App
+app/       # Android/iOS/Web 共用的 React Native App
 mac/       # TypeScript Mac Agent
 relay/     # 公司内网中继
 protocol/  # 跨端协议

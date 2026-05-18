@@ -1,8 +1,8 @@
 # OmniWork
 
-OmniWork is a mobile Codex TUI workbench prototype. The repository contains:
+OmniWork is a Codex TUI workbench prototype. The repository contains:
 
-- `app/`: Android/iOS app built with React Native CLI.
+- `app/`: Android/iOS app built with React Native CLI, plus a `react-native-web` SPA target.
 - `mac/agent`: TypeScript/Node.js Mac Agent.
 - `relay/server`: minimal TypeScript company-network relay.
 - `packages/`: shared TypeScript protocol and client packages.
@@ -12,7 +12,7 @@ Current MVP authentication is a per-agent-start 32-character random key generate
 
 Mobile packaging guidance for APK/IPA installation lives in [docs/app-installation.md](docs/app-installation.md).
 
-The mobile surface is a native installable App. The current implementation removed the PWA/WebView terminal path and uses React Native views plus WebSocket Relay messages.
+The app surface keeps one React Native technology stack across Android, iOS, and Web. Web is a static SPA built with `react-native-web`; it reuses the same screens, does not implement QR scanning, and uses manual or URL-based pairing.
 
 Useful local commands:
 
@@ -20,8 +20,11 @@ Useful local commands:
 pnpm dev:relay
 pnpm dev:mac
 pnpm dev:app
-pnpm app:build:android
+pnpm dev:web
+pnpm app:build:android:apk
 pnpm app:build:ios
+pnpm app:build:web
+pnpm verify:app:targets
 pnpm verify:app-auth
 pnpm verify:relay
 pnpm verify:mac-key

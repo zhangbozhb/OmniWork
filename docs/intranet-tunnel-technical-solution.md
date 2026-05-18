@@ -62,14 +62,14 @@ WebRTC P2P MVP -> P2P 生产化与 fallback -> Cloudflare-like 增量 Provider
   - 配对 URL 生成时会将 `0.0.0.0`、`127.0.0.1`、`localhost` 替换成本机 IPv4；存在多个 IPv4 时优先选择非 `192.*` 地址。
   - Agent 自身仍可通过 `OMNIWORK_RELAY_URL` 连接内网本机 Relay `/agent`。
 
-- `app/src/lib/tunnel-client/mobileWebRtcTunnelSession.ts`
+- `app/src/lib/tunnel-client/appWebRtcTunnelSession.ts`
   - 已新增 App 侧 WebRTC tunnel session。
   - App 侧作为 WebRTC answerer，接收 offer、返回 answer、交换 ICE candidate。
   - DataChannel 打开后自动发送 `mobile.connect`，并复用现有临时 key proof 逻辑。
 
 - `app/src/app/App.tsx` 和设备配对配置
   - 每个已链接设备都会保存自己的 `transport`，支持在现有 Relay WebSocket 和 WebRTC P2P MVP 之间切换。
-  - 当设备 `transport` 为 `webrtc` 时，App 主流程会使用 `MobileWebRtcTunnelSession`。
+  - 当设备 `transport` 为 `webrtc` 时，App 主流程会使用 `AppWebRtcTunnelSession`。
   - 当设备 `transport` 为 `websocket` 时，App 主流程会使用原 WebSocket Relay。
 
 - WebRTC 运行时依赖
@@ -540,7 +540,7 @@ pnpm app:android
 连接时内部实际发生：
 
 1. App 从配对信息读取 `relayUrl = ws://<mac-lan-ip>:8787/mobile`。
-2. `MobileWebRtcTunnelSession` 将其转换为 `ws://<mac-lan-ip>:8787/tunnel/mobile`。
+2. `AppWebRtcTunnelSession` 将其转换为 `ws://<mac-lan-ip>:8787/tunnel/mobile`。
 3. App 通过 `/tunnel/mobile` 与 Relay 交换 offer、answer 和 ICE candidate。
 4. WebRTC DataChannel 打开。
 5. App 在 DataChannel 上发送 `mobile.connect`。
@@ -830,7 +830,7 @@ pnpm dev:mac
 连接时内部实际发生：
 
 1. App 读取配对信息中的公网 `relay_url`。
-2. `MobileWebRtcTunnelSession` 将 `/mobile` 规范化为 `/tunnel/mobile`。
+2. `AppWebRtcTunnelSession` 将 `/mobile` 规范化为 `/tunnel/mobile`。
 3. Tunnel Service 接收 `tunnel.mobile.join`，按 `device_id` 找到已注册 Relay。
 4. Tunnel Service 在 Relay 和 App 之间转发 offer、answer 和 ICE candidate。
 5. WebRTC DataChannel 打开。

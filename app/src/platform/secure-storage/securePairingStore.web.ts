@@ -1,0 +1,55 @@
+import {
+  DEFAULT_PAIRING_TRANSPORT,
+  type PairingConfig,
+  type PairingTransport,
+} from "../../features/auth/types";
+
+const PAIRING_KEY = "omniwork.pairings";
+
+export async function savePairings(pairings: PairingConfig[]): Promise<void> {
+  localStorage.setItem(PAIRING_KEY, JSON.stringify(pairings));
+}
+
+export async function loadPairings(): Promise<PairingConfig[]> {
+  const saved = localStorage.getItem(PAIRING_KEY);
+  if (!saved) {
+    return [];
+  }
+
+  const parsed = JSON.parse(saved) as
+    | Partial<PairingConfig>
+    | Array<Partial<PairingConfig>>;
+  const pairings = Array.isArray(parsed) ? parsed : [parsed];
+  return pairings.map(normalizePairingConfig);
+}
+
+export async function savePairing(pairing: PairingConfig): Promise<void> {
+  await savePairings([pairing]);
+}
+
+export async function loadPairing(): Promise<PairingConfig | null> {
+  return (await loadPairings())[0] ?? null;
+}
+
+export async function clearPairing(): Promise<void> {
+  localStorage.removeItem(PAIRING_KEY);
+}
+
+function normalizePairingConfig(
+  pairing: Partial<PairingConfig>,
+): PairingConfig {
+  return {
+    relayUrl: pairing.relayUrl ?? "",
+    deviceId: pairing.deviceId ?? "",
+    key: pairing.key ?? "",
+    keyId: pairing.keyId,
+    transport: normalizePairingTransport(pairing.transport),
+  };
+}
+
+function normalizePairingTransport(value: unknown): PairingTransport {
+  if (value === "webrtc" || value === "websocket") {
+    return value;
+  }
+  return DEFAULT_PAIRING_TRANSPORT;
+}
