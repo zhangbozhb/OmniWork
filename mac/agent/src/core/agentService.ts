@@ -8,6 +8,7 @@ import type {
   CodexSession,
   SessionCreatePayload,
   SessionListPayload,
+  SessionRenamePayload,
   TerminalErrorPayload,
   TerminalInputPayload,
   TerminalResizePayload,
@@ -183,6 +184,11 @@ export class AgentService {
           await this.handleSessionList(message);
         }
         break;
+      case "session.rename":
+        await this.handleSessionRename(
+          message as MessageEnvelope<SessionRenamePayload>,
+        );
+        break;
       case "session.kill_tmux":
         if (message.session_id) {
           await this.sessionManager.killTmux(message.session_id);
@@ -274,6 +280,24 @@ export class AgentService {
       ...message,
       session_id: session.session_id,
     });
+  }
+
+  private async handleSessionRename(
+    message: MessageEnvelope<SessionRenamePayload>,
+  ): Promise<void> {
+    const sessionId = message.payload.session_id || message.session_id;
+    if (!sessionId) {
+      return;
+    }
+
+    const session = await this.sessionManager.rename(
+      sessionId,
+      message.payload.title,
+    );
+    if (session) {
+      this.sendSessionStatus(session);
+    }
+    await this.handleSessionList(message);
   }
 
   private async handleSessionAttach(message: MessageEnvelope): Promise<void> {

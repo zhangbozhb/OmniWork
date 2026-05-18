@@ -159,6 +159,23 @@ export class SessionManager {
     }
   }
 
+  async rename(sessionId: string, title: string): Promise<CodexSession | undefined> {
+    const session = await this.get(sessionId);
+    const nextTitle = title.trim();
+    if (!session || !nextTitle) {
+      return undefined;
+    }
+
+    const renamed = {
+      ...session,
+      title: nextTitle,
+      last_active_at: new Date().toISOString(),
+      registered: session.registered ?? true,
+    };
+    await this.store.upsert(renamed);
+    return renamed;
+  }
+
   async killTmux(sessionId: string): Promise<void> {
     const session = await this.get(sessionId);
     if (!session) {

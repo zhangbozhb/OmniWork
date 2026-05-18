@@ -313,6 +313,11 @@ export interface SessionClosePayload {
   session_id: string;
 }
 
+export interface SessionRenamePayload {
+  session_id: string;
+  title: string;
+}
+
 export interface SessionKillTmuxPayload {
   session_id: string;
 }

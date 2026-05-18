@@ -12,6 +12,7 @@ TypeScript/Node.js Mac Agent for managing Agent CLI TUI sessions.
 - Uses `OMNIWORK_PAIRING_TRANSPORT` to write the App connection type into the QR code. Supported values are `webrtc` and `websocket`.
 - Runs without Relay for local key-generation and environment checks.
 - Manages configured Agent CLI TUI sessions through `tmux` once tmux is installed.
+- Persists user-edited session titles through the `session.rename` protocol message.
 
 ## Run
 

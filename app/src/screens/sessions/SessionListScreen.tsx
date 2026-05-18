@@ -57,6 +57,7 @@ export interface SessionListScreenProps {
   }): void;
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
+  onRenameSession(session: CodexSession, title: string): void;
   onRecoverSession(session: CodexSession): void;
   onKillTmuxSession(session: CodexSession): void;
 }
@@ -88,6 +89,7 @@ export function SessionListScreen({
   onCreateSession,
   onOpenSession,
   onCloseSession,
+  onRenameSession,
   onRecoverSession,
   onKillTmuxSession,
 }: SessionListScreenProps): JSX.Element {
@@ -121,6 +123,13 @@ export function SessionListScreen({
   const [createCwd, setCreateCwd] = useState(defaultCwd);
   const [createRuntimeKind, setCreateRuntimeKind] =
     useState<CreatableRuntimeKind>(preferredCreateRuntimeKind);
+  const [renamingSession, setRenamingSession] = useState<CodexSession | null>(
+    null,
+  );
+  const [renameTitle, setRenameTitle] = useState("");
+  const [managingSession, setManagingSession] = useState<CodexSession | null>(
+    null,
+  );
 
   const runtimeGroups = useMemo<RuntimeGroup[]>(
     () => [
@@ -204,6 +213,36 @@ export function SessionListScreen({
     }
     setCreateModalVisible(false);
     onCreateSession({ cwd, runtimeKind: createRuntimeKind });
+  }
+
+  function openRenameModal(session: CodexSession): void {
+    setRenamingSession(session);
+    setRenameTitle(session.title);
+  }
+
+  function confirmRenameSession(): void {
+    const title = renameTitle.trim();
+    if (!renamingSession || !title) {
+      return;
+    }
+
+    onRenameSession(renamingSession, title);
+    setRenamingSession(null);
+    setRenameTitle("");
+  }
+
+  function handlePrimarySessionAction(
+    session: CodexSession,
+    capabilities: ReturnType<typeof getSessionCapabilities>,
+  ): void {
+    if (capabilities.canOpen) {
+      onOpenSession(session);
+      return;
+    }
+
+    if (capabilities.canRecover) {
+      onRecoverSession(session);
+    }
   }
 
   const visibleGroups = runtimeGroups.filter((group) => {
@@ -304,10 +343,6 @@ export function SessionListScreen({
                     );
                     const external = session.origin === "external";
                     const registered = session.registered !== false;
-                    const provider = getAgentProviderDefinition(
-                      getRuntimeGroupKind(session, providers),
-                      providers,
-                    );
                     const capabilities = getSessionCapabilities(session, {
                       closing,
                       killing,
@@ -315,6 +350,8 @@ export function SessionListScreen({
                     const statusColors = getStatusColors(
                       capabilities.statusTone,
                     );
+                    const canUsePrimaryAction =
+                      capabilities.canOpen || capabilities.canRecover;
                     return (
                       <Card key={session.session_id} style={styles.sessionCard}>
                         <Pressable
@@ -329,124 +366,59 @@ export function SessionListScreen({
                             <Text numberOfLines={1} style={styles.sessionTitle}>
                               {session.title}
                             </Text>
-                            <Text
-                              style={[
-                                styles.openHint,
-                                !capabilities.canOpen && styles.openHintMuted,
-                              ]}
-                            >
-                              {capabilities.primaryActionLabel}
-                            </Text>
-                          </View>
-                          <View style={styles.badgeRow}>
-                            <Badge
-                              backgroundColor={colors.successSoft}
-                              color="#d7ffe9"
-                              style={styles.compactBadge}
-                            >
-                              {getSessionRuntimeLabel(session, providers)}
-                            </Badge>
-                            {provider ? (
-                              <Badge
-                                backgroundColor={colors.surfaceRaised}
-                                color={colors.textSecondary}
-                                style={styles.compactBadge}
-                              >
-                                {provider.capability}
-                              </Badge>
-                            ) : null}
-                            {external ? (
-                              <Badge
-                                backgroundColor={colors.warningSoft}
-                                color={colors.warning}
-                                style={styles.compactBadge}
-                              >
-                                {registered ? "Attached tmux" : "Existing tmux"}
-                              </Badge>
-                            ) : null}
                             <Badge
                               backgroundColor={statusColors.backgroundColor}
                               color={statusColors.color}
-                              style={styles.compactBadge}
+                              style={styles.statusBadge}
                             >
                               {capabilities.statusLabel}
                             </Badge>
                           </View>
-                          <Text
-                            ellipsizeMode="middle"
-                            numberOfLines={1}
-                            style={styles.sessionMetaText}
-                          >
-                            {session.cwd}
-                          </Text>
-                          <View style={styles.sessionDetails}>
+                          <View style={styles.sessionMetaRow}>
                             <Text
-                              style={[
-                                styles.sessionStatus,
-                                { color: statusColors.color },
-                              ]}
+                              ellipsizeMode="middle"
+                              numberOfLines={1}
+                              style={styles.sessionMetaText}
                             >
-                              {capabilities.statusLabel}
+                              {formatCompactPath(session.cwd)}
                             </Text>
+                            <Text style={styles.sessionMetaDivider}>·</Text>
                             <Text style={styles.sessionTime}>
                               Active{" "}
                               {formatRelativeTime(session.last_active_at)}
                             </Text>
                           </View>
-                          <Text style={styles.sessionCreated}>
-                            Created {formatAbsoluteTime(session.created_at)}
-                          </Text>
+                          {external ? (
+                            <Text style={styles.sessionSource}>
+                              External tmux
+                              {registered ? "" : " · tap Open to attach"}
+                            </Text>
+                          ) : null}
                           {capabilities.unavailableReason ? (
                             <Text style={styles.unavailableReason}>
                               {capabilities.unavailableReason}
                             </Text>
                           ) : null}
                         </Pressable>
-                        {capabilities.canRecover &&
-                        capabilities.recoveryActionLabel ? (
-                          <View style={styles.recoveryActionRow}>
-                            <Button
-                              accessibilityLabel={`${capabilities.recoveryActionLabel} session`}
-                              style={styles.recoveryButton}
-                              tone="primary"
-                              onPress={() => onRecoverSession(session)}
-                            >
-                              {capabilities.recoveryActionLabel}
-                            </Button>
-                            <Text style={styles.recoveryHint}>
-                              {getRecoveryHint(session)}
-                            </Text>
-                          </View>
-                        ) : null}
                         <View style={styles.sessionActions}>
-                          {registered ? (
-                            <Button
-                              disabled={!capabilities.canClose}
-                              style={styles.closeButton}
-                              tone="danger"
-                              onPress={() => onCloseSession(session)}
-                            >
-                              {closing
-                                ? "Closing..."
-                                : external
-                                  ? "Forget tmux"
-                                  : getCloseActionLabel(session)}
-                            </Button>
-                          ) : (
-                            <View style={styles.closeButton}>
-                              <Text style={styles.attachHint}>
-                                Tap card to attach
-                              </Text>
-                            </View>
-                          )}
                           <Button
-                            disabled={!capabilities.canKill}
-                            accessibilityLabel="Kill tmux session"
-                            style={styles.killSessionButton}
-                            tone="danger"
-                            onPress={() => onKillTmuxSession(session)}
+                            disabled={!canUsePrimaryAction}
+                            style={styles.primarySessionButton}
+                            tone="primary"
+                            onPress={() =>
+                              handlePrimarySessionAction(session, capabilities)
+                            }
                           >
-                            {killing ? "Killing..." : "Kill tmux"}
+                            {capabilities.canRecover &&
+                            capabilities.recoveryActionLabel
+                              ? capabilities.recoveryActionLabel
+                              : capabilities.primaryActionLabel}
+                          </Button>
+                          <Button
+                            style={styles.moreButton}
+                            onPress={() => setManagingSession(session)}
+                          >
+                            More
                           </Button>
                         </View>
                       </Card>
@@ -512,6 +484,197 @@ export function SessionListScreen({
             </Card>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={Boolean(renamingSession)}
+        onRequestClose={() => setRenamingSession(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalAvoidingView}
+        >
+          <View
+            style={styles.modalBackdrop}
+            onStartShouldSetResponderCapture={() => {
+              Keyboard.dismiss();
+              return false;
+            }}
+          >
+            <Card style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Rename Session</Text>
+              <Text style={styles.modalDescription}>
+                Use a short task-focused name. The original tmux name stays
+                unchanged.
+              </Text>
+              <TextInput
+                value={renameTitle}
+                onChangeText={setRenameTitle}
+                autoCapitalize="sentences"
+                autoCorrect
+                maxLength={80}
+                placeholder="Session title"
+                placeholderTextColor="#66727c"
+                style={styles.cwdInput}
+              />
+              <View style={styles.modalActions}>
+                <Button
+                  style={styles.modalSecondaryButton}
+                  onPress={() => setRenamingSession(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!renameTitle.trim()}
+                  style={styles.modalPrimaryButton}
+                  tone="primary"
+                  onPress={confirmRenameSession}
+                >
+                  Save
+                </Button>
+              </View>
+            </Card>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={Boolean(managingSession)}
+        onRequestClose={() => setManagingSession(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Card style={styles.modalCard}>
+            {managingSession ? (
+              <>
+                {(() => {
+                  const session = managingSession;
+                  const external = session.origin === "external";
+                  const registered = session.registered !== false;
+                  const closing = closingSessionIds.includes(
+                    session.session_id,
+                  );
+                  const killing = killingSessionIds.includes(
+                    session.session_id,
+                  );
+                  const provider = getAgentProviderDefinition(
+                    getRuntimeGroupKind(session, providers),
+                    providers,
+                  );
+                  const capabilities = getSessionCapabilities(session, {
+                    closing,
+                    killing,
+                  });
+                  const statusColors = getStatusColors(
+                    capabilities.statusTone,
+                  );
+                  return (
+                    <>
+                      <View style={styles.manageHeader}>
+                        <Text numberOfLines={2} style={styles.modalTitle}>
+                          {session.title}
+                        </Text>
+                        <Badge
+                          backgroundColor={statusColors.backgroundColor}
+                          color={statusColors.color}
+                          style={styles.statusBadge}
+                        >
+                          {capabilities.statusLabel}
+                        </Badge>
+                      </View>
+                      <View style={styles.manageDetails}>
+                        <DetailRow
+                          label="Provider"
+                          value={getSessionRuntimeLabel(session, providers)}
+                        />
+                        <DetailRow
+                          label="Folder"
+                          value={formatCompactPath(session.cwd)}
+                        />
+                        <DetailRow label="Command" value={session.command} />
+                        <DetailRow
+                          label="Created"
+                          value={formatAbsoluteTime(session.created_at)}
+                        />
+                        <DetailRow
+                          label="Tmux"
+                          value={session.tmux_session_name}
+                        />
+                        {provider ? (
+                          <DetailRow
+                            label="Capability"
+                            value={provider.capability}
+                          />
+                        ) : null}
+                        {external ? (
+                          <DetailRow
+                            label="Origin"
+                            value={registered ? "Attached tmux" : "Existing tmux"}
+                          />
+                        ) : null}
+                      </View>
+                      {capabilities.unavailableReason ? (
+                        <Text style={styles.unavailableReason}>
+                          {capabilities.unavailableReason}
+                        </Text>
+                      ) : null}
+                      <View style={styles.manageActions}>
+                        <Button
+                          style={styles.manageActionButton}
+                          onPress={() => {
+                            setManagingSession(null);
+                            openRenameModal(session);
+                          }}
+                        >
+                          Rename
+                        </Button>
+                        {registered ? (
+                          <Button
+                            disabled={!capabilities.canClose}
+                            style={styles.manageActionButton}
+                            tone="danger"
+                            onPress={() => {
+                              setManagingSession(null);
+                              onCloseSession(session);
+                            }}
+                          >
+                            {closing
+                              ? "Closing..."
+                              : external
+                                ? "Forget tmux"
+                                : getCloseActionLabel(session)}
+                          </Button>
+                        ) : null}
+                        <Button
+                          disabled={!capabilities.canKill}
+                          style={styles.manageActionButton}
+                          tone="danger"
+                          onPress={() => {
+                            setManagingSession(null);
+                            onKillTmuxSession(session);
+                          }}
+                        >
+                          {killing ? "Killing..." : "Kill tmux"}
+                        </Button>
+                      </View>
+                    </>
+                  );
+                })()}
+                <View style={styles.modalActions}>
+                  <Button
+                    style={styles.modalSecondaryButton}
+                    onPress={() => setManagingSession(null)}
+                  >
+                    Done
+                  </Button>
+                </View>
+              </>
+            ) : null}
+          </Card>
+        </View>
       </Modal>
 
       <Modal
@@ -780,6 +943,23 @@ const styles = StyleSheet.create({
     borderTopColor: colors.borderSubtle,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  primarySessionButton: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.success,
+  },
+  moreButton: {
+    minHeight: 38,
+    minWidth: 86,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   recoveryActionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -801,6 +981,7 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     flex: 1,
+    minWidth: 132,
     minHeight: 38,
     borderColor: colors.border,
     borderWidth: 1,
@@ -810,6 +991,7 @@ const styles = StyleSheet.create({
   },
   killSessionButton: {
     flex: 1,
+    minWidth: 112,
     minHeight: 38,
     borderColor: colors.dangerBorder,
     borderWidth: 1,
@@ -829,21 +1011,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     flex: 1,
   },
-  openHint: {
-    color: colors.success,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  openHintMuted: {
-    color: colors.textDim,
-  },
-  badgeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  compactBadge: {
+  statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
@@ -871,30 +1039,27 @@ const styles = StyleSheet.create({
   },
   sessionMetaText: {
     color: colors.textMuted,
-    marginTop: spacing.xs,
-    width: "100%",
+    flex: 1,
   },
-  sessionStatus: {
-    color: colors.success,
-    fontWeight: "700",
-    textTransform: "capitalize",
-  },
-  sessionDetails: {
+  sessionMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
     marginTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  sessionMetaDivider: {
+    color: colors.textDim,
   },
   sessionTime: {
     color: colors.textSecondary,
     fontSize: 12,
     fontWeight: "700",
   },
-  sessionCreated: {
-    color: colors.textDim,
+  sessionSource: {
+    color: colors.warning,
     fontSize: 12,
-    marginTop: 6,
+    fontWeight: "700",
+    marginTop: spacing.xs,
   },
   unavailableReason: {
     color: colors.warning,
@@ -913,6 +1078,35 @@ const styles = StyleSheet.create({
   attachHint: {
     color: colors.success,
     fontWeight: "800",
+  },
+  manageHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+  manageDetails: {
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  detailRow: {
+    gap: 3,
+  },
+  detailLabel: {
+    color: colors.textDim,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  detailValue: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  manageActions: {
+    gap: spacing.sm,
+  },
+  manageActionButton: {
+    minHeight: 40,
   },
   modalAvoidingView: {
     flex: 1,
@@ -1009,6 +1203,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
 });
+
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string;
+}): JSX.Element | null {
+  if (!value) {
+    return null;
+  }
+
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text ellipsizeMode="middle" numberOfLines={1} style={styles.detailValue}>
+        {value}
+      </Text>
+    </View>
+  );
+}
 
 function getProviderPreferencesStorageKey(scope: string): string {
   return `${PROVIDER_PREFERENCES_STORAGE_PREFIX}.${scope || "default"}`;
@@ -1122,6 +1337,23 @@ function formatAbsoluteTime(value: string): string {
     minute: "2-digit",
   }).format(timestamp);
 }
+
+function formatCompactPath(path: string): string {
+  const trimmedPath = path.trim();
+  if (!trimmedPath) {
+    return "";
+  }
+
+  const normalizedPath = trimmedPath.replace(/\/+$/g, "") || "/";
+  const parts = normalizedPath.split("/").filter(Boolean);
+  if (parts.length <= 2) {
+    return normalizedPath;
+  }
+
+  const prefix = normalizedPath.startsWith("/") ? `/${parts[0]}` : parts[0];
+  return `${prefix}/.../${parts[parts.length - 1]}`;
+}
+
 
 function getRuntimeGroupKind(
   session: CodexSession,

@@ -16,6 +16,18 @@ export function closeSessionRequest(deviceId: string, sessionId: string) {
   );
 }
 
+export function renameSessionRequest(
+  deviceId: string,
+  sessionId: string,
+  title: string,
+) {
+  return createMessage(
+    "session.rename",
+    { session_id: sessionId, title },
+    { device_id: deviceId, session_id: sessionId },
+  );
+}
+
 export function killTmuxSessionRequest(deviceId: string, sessionId: string) {
   return createMessage(
     "session.kill_tmux",

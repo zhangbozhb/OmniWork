@@ -28,6 +28,7 @@ import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import type { PairingConfig } from "../features/auth/types";
 import {
   closeSessionRequest,
+  renameSessionRequest,
   recoverSessionRequest,
   restartSessionRequest,
   retrySessionRequest,
@@ -466,6 +467,33 @@ function AppContent(): JSX.Element {
     sendToRelay(closeSessionRequest(pairing.deviceId, session.session_id));
   }
 
+  function handleRenameSession(session: CodexSession, title: string): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+
+    const nextTitle = title.trim();
+    if (!nextTitle || nextTitle === session.title) {
+      return;
+    }
+
+    setSessions((current) =>
+      current.map((item) =>
+        item.session_id === session.session_id
+          ? { ...item, title: nextTitle }
+          : item,
+      ),
+    );
+    setSelectedSession((current) =>
+      current?.session_id === session.session_id
+        ? { ...current, title: nextTitle }
+        : current,
+    );
+    sendToRelay(
+      renameSessionRequest(pairing.deviceId, session.session_id, nextTitle),
+    );
+  }
+
   async function handleKillTmuxSession(session: CodexSession): Promise<void> {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
@@ -837,6 +865,7 @@ function AppContent(): JSX.Element {
             onCreateSession={handleCreateSession}
             onOpenSession={handleOpenSession}
             onCloseSession={handleCloseSession}
+            onRenameSession={handleRenameSession}
             onRecoverSession={handleRecoverSession}
             onKillTmuxSession={handleKillTmuxSession}
           />

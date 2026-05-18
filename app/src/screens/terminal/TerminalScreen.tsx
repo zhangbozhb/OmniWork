@@ -291,6 +291,9 @@ export function TerminalScreen({
           style={styles.sessionMetaArea}
           onPress={Keyboard.dismiss}
         >
+          <Text numberOfLines={1} style={styles.sessionTitle}>
+            {session.title}
+          </Text>
           <Text numberOfLines={1} style={styles.meta}>
             {runtimeLabel} · {formatCompactPath(session.cwd)}
           </Text>
@@ -559,9 +562,8 @@ const styles = StyleSheet.create({
   },
   sessionMetaArea: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
+    minWidth: 0,
+    paddingRight: 32,
   },
   backButton: {
     borderColor: colors.border,
@@ -575,11 +577,20 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: "700",
   },
+  sessionTitle: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: "800",
+  },
   meta: {
     color: colors.textMuted,
-    flex: 1,
+    fontSize: 12,
+    marginTop: 2,
   },
   statusIcon: {
+    position: "absolute",
+    right: 0,
+    top: 8,
     fontSize: 18,
     fontWeight: "800",
     minWidth: 24,
