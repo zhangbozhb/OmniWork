@@ -58,25 +58,42 @@ type TerminalConnectionStatus =
   | "authenticated"
   | "failed";
 
-const PRIMARY_QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
+type QuickKeyItem = { label: string; key: TerminalControlKey };
+
+const ALWAYS_VISIBLE_QUICK_KEYS: QuickKeyItem[] = [
   { label: "Esc", key: "escape" },
   { label: "Tab", key: "tab" },
+  { label: "Ctrl+C", key: "ctrlC" },
   { label: "Enter", key: "enter" },
   { label: "⌫", key: "backspace" },
-  { label: "↑", key: "arrowUp" },
-  { label: "↓", key: "arrowDown" },
   { label: "←", key: "arrowLeft" },
   { label: "→", key: "arrowRight" },
+  { label: "↑", key: "arrowUp" },
+  { label: "↓", key: "arrowDown" },
 ];
 
-const ADVANCED_QUICK_KEYS: Array<{ label: string; key: TerminalControlKey }> = [
-  { label: "Ctrl+C", key: "ctrlC" },
+const OVERFLOW_QUICK_KEYS: QuickKeyItem[] = [
   { label: "Ctrl+D", key: "ctrlD" },
   { label: "Ctrl+L", key: "ctrlL" },
 ];
 
+const FULL_QUICK_KEYS: QuickKeyItem[] = [
+  { label: "Esc", key: "escape" },
+  { label: "Tab", key: "tab" },
+  { label: "Ctrl+C", key: "ctrlC" },
+  { label: "Ctrl+D", key: "ctrlD" },
+  { label: "Ctrl+L", key: "ctrlL" },
+  { label: "Enter", key: "enter" },
+  { label: "⌫", key: "backspace" },
+  { label: "←", key: "arrowLeft" },
+  { label: "→", key: "arrowRight" },
+  { label: "↑", key: "arrowUp" },
+  { label: "↓", key: "arrowDown" },
+];
+
 const BOTTOM_DOCK_BOTTOM_MARGIN = 12;
-const INITIAL_BOTTOM_DOCK_HEIGHT = 178;
+const INITIAL_BOTTOM_DOCK_HEIGHT = 156;
+const ESTIMATED_FULL_QUICK_KEYS_WIDTH = 760;
 const TERMINAL_PROFILE_STORAGE_KEY = "omniwork.terminal.displayProfile";
 const PROFILE_OPTIONS: Array<{ key: TerminalDisplayProfile; label: string }> = [
   { key: "readableScroll", label: "Readable" },
@@ -116,6 +133,9 @@ export function TerminalScreen({
     INITIAL_BOTTOM_DOCK_HEIGHT,
   );
   const [advancedKeysVisible, setAdvancedKeysVisible] = useState(false);
+  const [quickKeysWidth, setQuickKeysWidth] = useState(
+    Dimensions.get("window").width,
+  );
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [terminalViewport, setTerminalViewport] = useState<TerminalViewport>({
@@ -132,6 +152,12 @@ export function TerminalScreen({
   const hasDraft = draft.trim().length > 0;
   const canHideKeyboard = keyboardVisible && !hasDraft;
   const readOnly = !canInput;
+  const canShowAllQuickKeys = quickKeysWidth >= ESTIMATED_FULL_QUICK_KEYS_WIDTH;
+  const quickKeys = canShowAllQuickKeys
+    ? FULL_QUICK_KEYS
+    : advancedKeysVisible
+      ? [...ALWAYS_VISIBLE_QUICK_KEYS, ...OVERFLOW_QUICK_KEYS]
+      : ALWAYS_VISIBLE_QUICK_KEYS;
   const terminalLayout = useMemo(
     () => computeTerminalLayout(terminalViewport, profile),
     [profile, terminalViewport],
@@ -247,6 +273,13 @@ export function TerminalScreen({
     );
   }
 
+  function handleQuickKeysLayout(event: LayoutChangeEvent): void {
+    setQuickKeysWidth(event.nativeEvent.layout.width);
+    if (event.nativeEvent.layout.width >= ESTIMATED_FULL_QUICK_KEYS_WIDTH) {
+      setAdvancedKeysVisible(false);
+    }
+  }
+
   return (
     <View style={styles.screen}>
       <View style={styles.toolbar}>
@@ -328,8 +361,9 @@ export function TerminalScreen({
           showsHorizontalScrollIndicator={false}
           style={styles.quickKeys}
           contentContainerStyle={styles.quickKeysContent}
+          onLayout={handleQuickKeysLayout}
         >
-          {PRIMARY_QUICK_KEYS.map((item) => (
+          {quickKeys.map((item) => (
             <Pressable
               key={item.key}
               disabled={readOnly}
@@ -339,22 +373,6 @@ export function TerminalScreen({
               <Text style={styles.keyButtonText}>{item.label}</Text>
             </Pressable>
           ))}
-          {advancedKeysVisible
-            ? ADVANCED_QUICK_KEYS.map((item) => (
-                <Pressable
-                  key={item.key}
-                  disabled={readOnly}
-                  style={[
-                    styles.keyButton,
-                    styles.advancedKeyButton,
-                    readOnly && styles.disabled,
-                  ]}
-                  onPress={() => onInput(createControlInput(item.key))}
-                >
-                  <Text style={styles.keyButtonText}>{item.label}</Text>
-                </Pressable>
-              ))
-            : null}
           <Pressable
             disabled={!draft}
             style={[styles.keyButton, !draft && styles.disabled]}
@@ -362,14 +380,16 @@ export function TerminalScreen({
           >
             <Text style={styles.keyButtonText}>Clear</Text>
           </Pressable>
-          <Pressable
-            style={styles.keyButton}
-            onPress={() => setAdvancedKeysVisible((visible) => !visible)}
-          >
-            <Text style={styles.keyButtonText}>
-              {advancedKeysVisible ? "Less" : "More"}
-            </Text>
-          </Pressable>
+          {!canShowAllQuickKeys ? (
+            <Pressable
+              style={styles.keyButton}
+              onPress={() => setAdvancedKeysVisible((visible) => !visible)}
+            >
+              <Text style={styles.keyButtonText}>
+                {advancedKeysVisible ? "Less" : "More"}
+              </Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
 
         <View style={styles.profileRow}>
@@ -412,11 +432,6 @@ export function TerminalScreen({
         ) : null}
 
         <View style={styles.composer}>
-          <Text style={styles.composerHint}>
-            {readOnly
-              ? "Input is disabled until this session becomes interactive."
-              : `Compose prompt, then send it to ${runtimeLabel} TUI`}
-          </Text>
           <View style={styles.inputRow}>
             <TextInput
               value={draft}
@@ -533,8 +548,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 12,
     right: 12,
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
     backgroundColor: colors.background,
   },
   toolbar: {
@@ -635,10 +650,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.surface,
   },
-  advancedKeyButton: {
-    borderColor: colors.borderSubtle,
-    backgroundColor: colors.background,
-  },
   keyButtonText: {
     color: colors.textSecondary,
     fontWeight: "700",
@@ -679,13 +690,7 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontSize: 12,
   },
-  composer: {
-    gap: 6,
-  },
-  composerHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-  },
+  composer: {},
   inputRow: {
     flexDirection: "row",
     gap: spacing.sm,
