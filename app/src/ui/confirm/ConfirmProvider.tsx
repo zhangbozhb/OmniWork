@@ -83,12 +83,14 @@ export function ConfirmProvider({
               </View>
               <View style={styles.actions}>
                 <Button
+                  icon="close"
                   style={styles.actionButton}
                   onPress={() => resolve(false)}
                 >
                   {pendingConfirm?.cancelText ?? "Cancel"}
                 </Button>
                 <Button
+                  icon={pendingConfirm?.tone === "primary" ? "check" : "trash"}
                   style={styles.actionButton}
                   tone={
                     pendingConfirm?.tone === "primary" ? "primary" : "danger"

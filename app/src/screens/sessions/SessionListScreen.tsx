@@ -249,19 +249,26 @@ export function SessionListScreen({
     if (group.hidden) {
       return false;
     }
-    if (group.creatable) {
-      return true;
-    }
-
-    return sessions.some(
+    const hasSessions = sessions.some(
       (session) => getRuntimeGroupKind(session, providers) === group.kind,
     );
+    if (group.creatable) {
+      return hasSessions || (sessions.length === 0 && group.default);
+    }
+
+    return hasSessions;
   });
 
   return (
     <View style={styles.screen}>
       <View style={styles.actions}>
-        <Button style={styles.toolbarButton} onPress={onBack}>
+        <Button
+          accessibilityLabel="Back to devices"
+          icon="arrowLeft"
+          iconOnly
+          style={styles.backButton}
+          onPress={onBack}
+        >
           Devices
         </Button>
         <View style={styles.toolbarTitleArea}>
@@ -270,24 +277,23 @@ export function SessionListScreen({
             {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
           </Text>
         </View>
-        <Button style={styles.toolbarButton} onPress={onRefreshSessions}>
+        <Button
+          accessibilityLabel="Refresh sessions"
+          icon="refresh"
+          iconOnly
+          style={styles.toolbarIconButton}
+          onPress={onRefreshSessions}
+        >
           Refresh
         </Button>
         <Button
-          style={styles.toolbarButton}
+          accessibilityLabel="Manage providers"
+          icon="provider"
+          iconOnly
+          style={styles.toolbarIconButton}
           onPress={() => setProvidersModalVisible(true)}
         >
           Providers
-        </Button>
-        <Button
-          disabled={
-            !isCreatableRuntimeKind(preferredCreateRuntimeKind, enabledProviders)
-          }
-          style={styles.toolbarButton}
-          tone="primary"
-          onPress={() => openCreateModal(preferredCreateRuntimeKind)}
-        >
-          New
         </Button>
       </View>
 
@@ -299,22 +305,34 @@ export function SessionListScreen({
           return (
             <View key={group.kind} style={styles.runtimeSection}>
               <View style={styles.sectionHeader}>
-                <View>
-                  <Text style={styles.sectionTitle}>{group.label}</Text>
-                  <Text style={styles.sectionMeta}>
-                    {groupSessions.length}{" "}
-                    {groupSessions.length === 1 ? "session" : "sessions"}
-                  </Text>
+                <View style={styles.sectionTitleArea}>
+                  <View style={styles.sectionTitleRow}>
+                    <Text style={styles.sectionTitle}>{group.label}</Text>
+                    <Text style={styles.sectionMeta}>
+                      {groupSessions.length}
+                    </Text>
+                    {group.default ? (
+                      <Badge
+                        backgroundColor={colors.successSoft}
+                        color={colors.success}
+                        style={styles.defaultBadge}
+                      >
+                        Default
+                      </Badge>
+                    ) : null}
+                  </View>
                   {group.default ? (
-                    <Text style={styles.sectionDefault}>Default provider</Text>
+                    <Text style={styles.sectionDescription}>
+                      {group.summary}
+                    </Text>
                   ) : null}
-                  <Text style={styles.sectionDescription}>
-                    {group.summary}
-                  </Text>
                 </View>
                 {group.creatable ? (
                   <Button
+                    accessibilityLabel={`New ${group.label} session`}
                     disabled={creating}
+                    icon="add"
+                    iconOnly
                     style={styles.sectionCreateButton}
                     tone="primary"
                     onPress={() => {
@@ -331,7 +349,7 @@ export function SessionListScreen({
               </View>
 
               {groupSessions.length === 0 ? (
-                <Text style={styles.empty}>No {group.label} sessions yet.</Text>
+                <Text style={styles.empty}>No sessions yet.</Text>
               ) : (
                 <View style={styles.sessionStack}>
                   {groupSessions.map((session) => {
@@ -403,8 +421,10 @@ export function SessionListScreen({
                         <View style={styles.sessionActions}>
                           <Button
                             disabled={!canUsePrimaryAction}
+                            icon={
+                              capabilities.canRecover ? "refresh" : "terminal"
+                            }
                             style={styles.primarySessionButton}
-                            tone="primary"
                             onPress={() =>
                               handlePrimarySessionAction(session, capabilities)
                             }
@@ -415,6 +435,9 @@ export function SessionListScreen({
                               : capabilities.primaryActionLabel}
                           </Button>
                           <Button
+                            accessibilityLabel={`Manage ${session.title}`}
+                            icon="more"
+                            iconOnly
                             style={styles.moreButton}
                             onPress={() => setManagingSession(session)}
                           >
@@ -430,6 +453,18 @@ export function SessionListScreen({
           );
         })}
       </ScrollView>
+      <Button
+        accessibilityLabel="New session"
+        disabled={
+          !isCreatableRuntimeKind(preferredCreateRuntimeKind, enabledProviders)
+        }
+        icon="add"
+        style={styles.floatingCreateButton}
+        tone="primary"
+        onPress={() => openCreateModal(preferredCreateRuntimeKind)}
+      >
+        New Session
+      </Button>
 
       <Modal
         transparent
@@ -467,6 +502,7 @@ export function SessionListScreen({
               />
               <View style={styles.modalActions}>
                 <Button
+                  icon="close"
                   style={styles.modalSecondaryButton}
                   onPress={() => setCreateModalVisible(false)}
                 >
@@ -474,6 +510,7 @@ export function SessionListScreen({
                 </Button>
                 <Button
                   disabled={!createCwd.trim() || creating}
+                  icon={creating ? "refresh" : "add"}
                   style={styles.modalPrimaryButton}
                   tone="primary"
                   onPress={confirmCreateSession}
@@ -521,6 +558,7 @@ export function SessionListScreen({
               />
               <View style={styles.modalActions}>
                 <Button
+                  icon="close"
                   style={styles.modalSecondaryButton}
                   onPress={() => setRenamingSession(null)}
                 >
@@ -528,6 +566,7 @@ export function SessionListScreen({
                 </Button>
                 <Button
                   disabled={!renameTitle.trim()}
+                  icon="save"
                   style={styles.modalPrimaryButton}
                   tone="primary"
                   onPress={confirmRenameSession}
@@ -623,6 +662,7 @@ export function SessionListScreen({
                       ) : null}
                       <View style={styles.manageActions}>
                         <Button
+                          icon="edit"
                           style={styles.manageActionButton}
                           onPress={() => {
                             setManagingSession(null);
@@ -634,6 +674,7 @@ export function SessionListScreen({
                         {registered ? (
                           <Button
                             disabled={!capabilities.canClose}
+                            icon={external ? "eyeOff" : "close"}
                             style={styles.manageActionButton}
                             tone="danger"
                             onPress={() => {
@@ -650,6 +691,7 @@ export function SessionListScreen({
                         ) : null}
                         <Button
                           disabled={!capabilities.canKill}
+                          icon="trash"
                           style={styles.manageActionButton}
                           tone="danger"
                           onPress={() => {
@@ -665,6 +707,7 @@ export function SessionListScreen({
                 })()}
                 <View style={styles.modalActions}>
                   <Button
+                    icon="check"
                     style={styles.modalSecondaryButton}
                     onPress={() => setManagingSession(null)}
                   >
@@ -685,10 +728,10 @@ export function SessionListScreen({
       >
         <View style={styles.modalBackdrop}>
           <Card style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Agent Providers</Text>
+            <Text style={styles.modalTitle}>Provider Preferences</Text>
             <Text style={styles.modalDescription}>
-              Providers are configured on the Mac Agent. This device can hide,
-              reorder, and choose a default provider locally.
+              Choose which Agent CLIs appear in this app. The default provider is
+              used by the floating New Session button.
             </Text>
             <ScrollView contentContainerStyle={styles.providerStack}>
               {orderedProviders.map((provider, index) => {
@@ -698,45 +741,80 @@ export function SessionListScreen({
                 const isDefault =
                   provider.kind === effectiveDefaultKind;
                 return (
-                  <View key={provider.kind} style={styles.providerRow}>
+                  <View
+                    key={provider.kind}
+                    style={[
+                      styles.providerRow,
+                      hidden && styles.providerRowHidden,
+                    ]}
+                  >
                     <View style={styles.providerInfo}>
-                      <Text style={styles.providerTitle}>
-                        {provider.displayName}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {provider.kind} · {provider.capability}
-                      </Text>
+                      <View style={styles.providerTitleRow}>
+                        <Text style={styles.providerTitle}>
+                          {provider.displayName}
+                        </Text>
+                        {isDefault ? (
+                          <Badge
+                            backgroundColor={colors.successSoft}
+                            color={colors.success}
+                            style={styles.defaultBadge}
+                          >
+                            Default
+                          </Badge>
+                        ) : null}
+                        {hidden ? (
+                          <Badge
+                            backgroundColor={colors.neutralSoft}
+                            color={colors.textMuted}
+                            style={styles.defaultBadge}
+                          >
+                            Hidden
+                          </Badge>
+                        ) : null}
+                      </View>
                       <Text style={styles.providerSummary}>
                         {provider.summary}
                       </Text>
-                      <Text style={styles.providerCommand}>
-                        {provider.defaultCommand}
+                      <Text style={styles.providerMeta}>
+                        {hidden
+                          ? "Hidden from the session list and new-session shortcuts."
+                          : isDefault
+                            ? "Used when you tap New Session."
+                            : "Available when creating sessions."}
                       </Text>
                     </View>
                     <View style={styles.providerActions}>
                       <Button
+                        accessibilityLabel={`Move ${provider.displayName} up`}
                         disabled={index === 0}
+                        icon="chevronUp"
+                        iconOnly
                         style={styles.providerActionButton}
                         onPress={() => moveProvider(provider.kind, -1)}
                       >
                         Up
                       </Button>
                       <Button
+                        accessibilityLabel={`Move ${provider.displayName} down`}
                         disabled={index === orderedProviders.length - 1}
+                        icon="chevronDown"
+                        iconOnly
                         style={styles.providerActionButton}
                         onPress={() => moveProvider(provider.kind, 1)}
                       >
                         Down
                       </Button>
                       <Button
-                        style={styles.providerActionButton}
+                        icon={hidden ? "eye" : "eyeOff"}
+                        style={styles.providerToggleButton}
                         onPress={() => toggleProviderHidden(provider.kind)}
                       >
                         {hidden ? "Show" : "Hide"}
                       </Button>
                       <Button
                         disabled={hidden || isDefault || !provider.creatable}
-                        style={styles.providerActionButton}
+                        icon="check"
+                        style={styles.providerDefaultButton}
                         tone={isDefault ? "primary" : "secondary"}
                         onPress={() => setDefaultProvider(provider.kind)}
                       >
@@ -749,12 +827,14 @@ export function SessionListScreen({
             </ScrollView>
             <View style={styles.modalActions}>
               <Button
+                icon="refresh"
                 style={styles.modalSecondaryButton}
                 onPress={resetProviderPreferences}
               >
                 Reset
               </Button>
               <Button
+                icon="check"
                 style={styles.modalPrimaryButton}
                 tone="primary"
                 onPress={() => setProvidersModalVisible(false)}
@@ -827,28 +907,34 @@ export function SessionListScreen({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    padding: spacing.xxl,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
   },
   actions: {
     flexDirection: "row",
-    flexWrap: "wrap",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
-    marginBottom: spacing.lg,
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
   },
   toolbarTitleArea: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
   },
-  toolbarButton: {
-    minHeight: 38,
-    minWidth: 86,
+  backButton: {
+    minHeight: 40,
+    width: 40,
+    paddingHorizontal: 0,
+    borderRadius: 20,
+  },
+  toolbarIconButton: {
+    minHeight: 40,
+    width: 44,
+    paddingHorizontal: 0,
+    borderRadius: radii.md,
   },
   toolbarTitle: {
     color: colors.textPrimary,
-    fontSize: 17,
+    fontSize: 22,
     fontWeight: "800",
   },
   toolbarMeta: {
@@ -878,32 +964,40 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   list: {
-    gap: spacing.xxl,
+    gap: spacing.xl,
+    paddingBottom: 96,
   },
   runtimeSection: {
     gap: spacing.md,
   },
   sectionHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.lg,
+    gap: spacing.md,
+  },
+  sectionTitleArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   sectionTitle: {
     color: colors.textPrimary,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "800",
   },
   sectionMeta: {
     color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  sectionDefault: {
-    color: colors.success,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
-    marginTop: 3,
+  },
+  defaultBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
   sectionDescription: {
     color: colors.textDim,
@@ -913,9 +1007,10 @@ const styles = StyleSheet.create({
     maxWidth: 420,
   },
   sectionCreateButton: {
-    minHeight: 38,
-    minWidth: 72,
-    borderRadius: radii.sm,
+    minHeight: 40,
+    width: 40,
+    paddingHorizontal: 0,
+    borderRadius: radii.pill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.success,
@@ -928,35 +1023,40 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSubtle,
     borderWidth: 1,
     borderRadius: radii.sm,
-    padding: 14,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    fontSize: 13,
   },
   sessionCard: {
     overflow: "hidden",
   },
   sessionMain: {
-    padding: 14,
+    padding: spacing.xl,
   },
   sessionActions: {
     flexDirection: "row",
     gap: spacing.sm,
-    padding: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
     borderTopColor: colors.borderSubtle,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   primarySessionButton: {
     flex: 1,
-    minHeight: 38,
-    borderRadius: radii.sm,
+    minHeight: 42,
+    borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.success,
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
   },
   moreButton: {
-    minHeight: 38,
-    minWidth: 86,
+    minHeight: 42,
+    width: 46,
     borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: radii.sm,
+    borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1007,7 +1107,7 @@ const styles = StyleSheet.create({
   },
   sessionTitle: {
     color: colors.textPrimary,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
     flex: 1,
   },
@@ -1040,6 +1140,7 @@ const styles = StyleSheet.create({
   sessionMetaText: {
     color: colors.textMuted,
     flex: 1,
+    fontSize: 14,
   },
   sessionMetaRow: {
     flexDirection: "row",
@@ -1052,12 +1153,12 @@ const styles = StyleSheet.create({
   },
   sessionTime: {
     color: colors.textSecondary,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
   },
   sessionSource: {
     color: colors.warning,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
     marginTop: spacing.xs,
   },
@@ -1107,6 +1208,18 @@ const styles = StyleSheet.create({
   },
   manageActionButton: {
     minHeight: 40,
+  },
+  floatingCreateButton: {
+    position: "absolute",
+    right: spacing.xl,
+    bottom: spacing.xl,
+    minHeight: 52,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.pill,
+    shadowColor: colors.success,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
   },
   modalAvoidingView: {
     flex: 1,
@@ -1168,30 +1281,36 @@ const styles = StyleSheet.create({
   providerRow: {
     borderColor: colors.borderSubtle,
     borderWidth: 1,
-    borderRadius: radii.sm,
-    padding: spacing.md,
+    borderRadius: radii.md,
+    padding: spacing.lg,
     gap: spacing.md,
   },
+  providerRowHidden: {
+    opacity: 0.62,
+  },
   providerInfo: {
-    gap: 3,
+    gap: spacing.xs,
+  },
+  providerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
   },
   providerTitle: {
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: "800",
   },
   providerMeta: {
     color: colors.textMuted,
     fontSize: 12,
+    lineHeight: 17,
   },
   providerSummary: {
     color: colors.textSecondary,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  providerCommand: {
-    color: colors.textDim,
-    fontSize: 12,
+    fontSize: 13,
+    lineHeight: 18,
   },
   providerActions: {
     flexDirection: "row",
@@ -1199,8 +1318,18 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   providerActionButton: {
-    minHeight: 34,
-    paddingHorizontal: 10,
+    minHeight: 38,
+    width: 42,
+    paddingHorizontal: 0,
+  },
+  providerToggleButton: {
+    minHeight: 38,
+    minWidth: 92,
+  },
+  providerDefaultButton: {
+    flex: 1,
+    minHeight: 38,
+    minWidth: 132,
   },
 });
 

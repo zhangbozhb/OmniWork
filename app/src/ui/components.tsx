@@ -10,13 +10,18 @@ import {
 } from "react-native";
 
 import { colors, radii, spacing, typography } from "./theme";
+import { Icon, type IconName } from "./icons";
 
 export type ButtonTone = "primary" | "secondary" | "danger";
+export type ButtonVariant = "solid" | "outline" | "ghost";
 
 export interface ButtonProps {
   accessibilityLabel?: string;
   children: ReactNode;
   disabled?: boolean;
+  icon?: IconName;
+  iconOnly?: boolean;
+  variant?: ButtonVariant;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   tone?: ButtonTone;
@@ -27,6 +32,9 @@ export function Button({
   accessibilityLabel,
   children,
   disabled,
+  icon,
+  iconOnly,
+  variant = "outline",
   style,
   textStyle,
   tone = "secondary",
@@ -34,29 +42,57 @@ export function Button({
 }: ButtonProps): JSX.Element {
   return (
     <Pressable
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={
+        accessibilityLabel ?? (typeof children === "string" ? children : undefined)
+      }
+      accessibilityRole="button"
       disabled={disabled}
       style={[
         styles.button,
-        tone === "primary" && styles.primaryButton,
-        tone === "danger" && styles.dangerButton,
+        iconOnly && styles.iconOnlyButton,
+        variant === "ghost" && styles.ghostButton,
+        tone === "primary" && variant !== "ghost" && styles.primaryButton,
+        tone === "danger" && variant !== "ghost" && styles.dangerButton,
         disabled && styles.disabled,
         style,
       ]}
       onPress={onPress}
     >
-      <Text
-        style={[
-          styles.buttonText,
-          tone === "primary" && styles.primaryButtonText,
-          tone === "danger" && styles.dangerButtonText,
-          textStyle,
-        ]}
-      >
-        {children}
-      </Text>
+      {icon ? (
+        <Icon
+          name={icon}
+          size={iconOnly ? 21 : 18}
+          color={getButtonIconColor(tone, variant)}
+        />
+      ) : null}
+      {!iconOnly ? (
+        <Text
+          style={[
+            styles.buttonText,
+            tone === "primary" &&
+              variant !== "ghost" &&
+              styles.primaryButtonText,
+            tone === "danger" &&
+              variant !== "ghost" &&
+              styles.dangerButtonText,
+            textStyle,
+          ]}
+        >
+          {children}
+        </Text>
+      ) : null}
     </Pressable>
   );
+}
+
+function getButtonIconColor(tone: ButtonTone, variant: ButtonVariant): string {
+  if (tone === "primary" && variant !== "ghost") {
+    return colors.successText;
+  }
+  if (tone === "danger") {
+    return colors.danger;
+  }
+  return colors.textSecondary;
 }
 
 export interface CardProps {
@@ -113,8 +149,18 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
     borderColor: colors.border,
     borderWidth: 1,
+  },
+  iconOnlyButton: {
+    width: 42,
+    paddingHorizontal: 0,
+  },
+  ghostButton: {
+    borderColor: "transparent",
+    backgroundColor: "transparent",
   },
   primaryButton: {
     borderColor: colors.success,

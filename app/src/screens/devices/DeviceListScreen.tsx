@@ -30,7 +30,10 @@ export function DeviceListScreen({
 }: DeviceListScreenProps): JSX.Element {
   const ready = connectionStatus === "authenticated";
   const failed = connectionStatus === "failed";
-  const activeStatus = getDeviceStatusPresentation(connectionStatus, connectionMessage);
+  const activeStatus = getDeviceStatusPresentation(
+    connectionStatus,
+    connectionMessage,
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
@@ -38,7 +41,8 @@ export function DeviceListScreen({
         <View>
           <Text style={styles.summaryEyebrow}>Device Center</Text>
           <Text style={styles.summaryTitle}>
-            {pairings.length} linked {pairings.length === 1 ? "device" : "devices"}
+            {pairings.length} linked{" "}
+            {pairings.length === 1 ? "device" : "devices"}
           </Text>
         </View>
         <Badge
@@ -52,17 +56,21 @@ export function DeviceListScreen({
       {pairings.length === 0 ? (
         <Card style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No linked devices</Text>
-          <Text style={styles.emptyText}>Add a Mac Agent link to start using OmniWork.</Text>
+          <Text style={styles.emptyText}>
+            Add a Mac Agent link to start using OmniWork.
+          </Text>
         </Card>
       ) : (
         pairings.map((pairing) => {
           const active = Boolean(
             activePairing &&
-              pairing.deviceId === activePairing.deviceId &&
-              pairing.relayUrl === activePairing.relayUrl,
+            pairing.deviceId === activePairing.deviceId &&
+            pairing.relayUrl === activePairing.relayUrl,
           );
           const canOpen = !active || ready;
-          const status = active ? activeStatus : getSavedDeviceStatusPresentation();
+          const status = active
+            ? activeStatus
+            : getSavedDeviceStatusPresentation();
           const primaryActionLabel = active
             ? ready
               ? "Open Sessions"
@@ -71,7 +79,8 @@ export function DeviceListScreen({
                 : "Connecting..."
             : "Connect Device";
           const primaryActionDisabled = active && !ready && !failed;
-          const primaryAction = active && !ready ? onRefreshSessions : () => onOpenDevice(pairing);
+          const primaryAction =
+            active && !ready ? onRefreshSessions : () => onOpenDevice(pairing);
           return (
             <Card
               key={`${pairing.relayUrl}:${pairing.deviceId}`}
@@ -107,6 +116,7 @@ export function DeviceListScreen({
               </Pressable>
               <View style={styles.deviceActions}>
                 <Button
+                  icon={ready ? "terminal" : failed ? "refresh" : "plug"}
                   disabled={primaryActionDisabled}
                   style={styles.devicePrimaryAction}
                   tone="primary"
@@ -115,12 +125,18 @@ export function DeviceListScreen({
                   {primaryActionLabel}
                 </Button>
                 <Button
+                  accessibilityLabel={`Edit ${pairing.deviceId}`}
+                  icon="edit"
+                  iconOnly
                   style={styles.smallButton}
                   onPress={() => onEditDevice(pairing)}
                 >
                   Edit
                 </Button>
                 <Button
+                  accessibilityLabel={`Delete ${pairing.deviceId}`}
+                  icon="trash"
+                  iconOnly
                   style={styles.smallButton}
                   tone="danger"
                   onPress={() => onDeleteDevice(pairing)}
@@ -133,12 +149,12 @@ export function DeviceListScreen({
         })
       )}
 
-      <Button tone="primary" onPress={onAddDevice}>
+      <Button icon="add" tone="primary" onPress={onAddDevice}>
         Add Link
       </Button>
 
       {pairings.length > 0 ? (
-        <Button onPress={onRefreshSessions}>
+        <Button icon="refresh" onPress={onRefreshSessions}>
           {ready ? "Refresh Sessions" : "Retry Active Device"}
         </Button>
       ) : null}
@@ -230,7 +246,8 @@ const styles = StyleSheet.create({
   },
   smallButton: {
     minHeight: 36,
-    paddingHorizontal: spacing.lg,
+    width: 42,
+    paddingHorizontal: 0,
     borderRadius: radii.sm,
   },
   disabled: {
@@ -260,7 +277,10 @@ function getSavedDeviceStatusPresentation(): DeviceStatusPresentation {
   };
 }
 
-function getDeviceStatusPresentation(status: string, message?: string): DeviceStatusPresentation {
+function getDeviceStatusPresentation(
+  status: string,
+  message?: string,
+): DeviceStatusPresentation {
   switch (status) {
     case "authenticated":
       return {

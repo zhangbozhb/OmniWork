@@ -16,6 +16,7 @@ import {
 import { isValidSessionKey } from "../../features/auth/keyProof";
 import { appConfig } from "../../app/appConfig";
 import { Button, Card } from "../../ui/components";
+import { Icon } from "../../ui/icons";
 import { KeyboardAwareScrollView } from "../../ui/KeyboardAwareScrollView";
 import { colors, radii, spacing, typography } from "../../ui/theme";
 import {
@@ -122,6 +123,7 @@ export function PairingScreen({
           <Button
             accessibilityLabel="Scan Mac Agent QR code"
             disabled={submitting}
+            icon="qr"
             style={styles.scanButton}
             tone="primary"
             onPress={() => setScannerVisible(true)}
@@ -203,13 +205,18 @@ export function PairingScreen({
 
       <Button
         disabled={submitting}
+        icon={submitting ? "refresh" : "save"}
         style={styles.primaryButton}
         tone="primary"
         onPress={submit}
       >
         {submitting ? "Saving..." : submitLabel}
       </Button>
-      {onCancel ? <Button onPress={onCancel}>Cancel</Button> : null}
+      {onCancel ? (
+        <Button icon="close" onPress={onCancel}>
+          Cancel
+        </Button>
+      ) : null}
 
       {scannerVisible ? (
         <PairingQrScannerModal
@@ -235,17 +242,26 @@ function TransportOption({
 }): JSX.Element {
   return (
     <Pressable
+      accessibilityLabel={`Use ${label}`}
+      accessibilityRole="button"
       style={[styles.transportOption, active && styles.transportOptionActive]}
       onPress={onPress}
     >
-      <Text
-        style={[
-          styles.transportOptionLabel,
-          active && styles.transportOptionLabelActive,
-        ]}
-      >
-        {label}
-      </Text>
+      <View style={styles.transportOptionHeader}>
+        <Icon
+          name={active ? "check" : "plug"}
+          size={16}
+          color={active ? colors.success : colors.textDim}
+        />
+        <Text
+          style={[
+            styles.transportOptionLabel,
+            active && styles.transportOptionLabelActive,
+          ]}
+        >
+          {label}
+        </Text>
+      </View>
       <Text style={styles.transportOptionDescription}>{description}</Text>
     </Pressable>
   );
@@ -328,6 +344,11 @@ const styles = StyleSheet.create({
   transportOptionActive: {
     borderColor: colors.success,
     backgroundColor: colors.surfaceSuccess,
+  },
+  transportOptionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   transportOptionLabel: {
     color: colors.textSecondary,

@@ -3,7 +3,6 @@ import {
   Modal,
   PermissionsAndroid,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -104,9 +103,15 @@ export function PairingQrScannerModal({
               Use the QR code printed in the Agent terminal.
             </Text>
           </View>
-          <Pressable style={styles.scannerCloseButton} onPress={onClose}>
-            <Text style={styles.scannerCloseText}>Close</Text>
-          </Pressable>
+          <Button
+            accessibilityLabel="Close QR scanner"
+            icon="close"
+            iconOnly
+            style={styles.scannerCloseButton}
+            onPress={onClose}
+          >
+            Close
+          </Button>
         </View>
 
         <View style={styles.cameraPanel}>
@@ -138,6 +143,7 @@ export function PairingQrScannerModal({
                   : "Initializing the camera scanner..."}
               </Text>
               <Button
+                icon={cameraPermissionDenied ? "qr" : "refresh"}
                 tone="primary"
                 onPress={() => {
                   void requestCameraPermission().then(

@@ -12,6 +12,7 @@ browser access without introducing a second UI stack.
 - Compact Session list and session creation through the Mac Agent, grouped by Agent Provider, with secondary management actions moved behind a `More` dialog.
 - User-editable session titles, with Terminal screens using the session title as the primary header.
 - Terminal screen with native React Native terminal snapshot surface, polling refresh, and quick keys.
+- Shared SVG icon system through `react-native-svg`, used by icon-first buttons across pairing, devices, sessions, terminal, scanner, and confirmation flows.
 - Shared TypeScript protocol and terminal input helpers.
 - Configured Agent Provider metadata from the Mac Agent for capability display and session creation, with App-local hide, sort, and default-provider preferences.
 - Shared ConfirmDialog UI for destructive actions across Android, iOS, and Web.

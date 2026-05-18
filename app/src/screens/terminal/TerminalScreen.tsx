@@ -33,6 +33,7 @@ import {
   type TerminalViewport,
 } from "../../features/terminal/terminalLayout";
 import { NativeTerminalView } from "../../terminal/NativeTerminalView";
+import { Button } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 
 export interface TerminalScreenProps {
@@ -138,6 +139,9 @@ export function TerminalScreen({
   );
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [toolbarHidden, setToolbarHidden] = useState(false);
+  const [displayControlsVisible, setDisplayControlsVisible] = useState(false);
   const [terminalViewport, setTerminalViewport] = useState<TerminalViewport>({
     width: Dimensions.get("window").width,
     height: Math.max(260, Dimensions.get("window").height - 260),
@@ -162,6 +166,11 @@ export function TerminalScreen({
     () => computeTerminalLayout(terminalViewport, profile),
     [profile, terminalViewport],
   );
+  const floatingControlsBottom =
+    bottomDockHeight +
+    keyboardBottomInset +
+    BOTTOM_DOCK_BOTTOM_MARGIN +
+    spacing.md;
 
   useEffect(() => {
     const showEvent =
@@ -282,34 +291,41 @@ export function TerminalScreen({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.toolbar}>
-        <Pressable style={styles.backButton} onPress={onBack}>
-          <Text style={styles.backText}>Sessions</Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel={statusLabel ?? agentStatus.accessibilityLabel}
-          style={styles.sessionMetaArea}
-          onPress={Keyboard.dismiss}
-        >
-          <Text numberOfLines={1} style={styles.sessionTitle}>
-            {session.title}
-          </Text>
-          <Text numberOfLines={1} style={styles.meta}>
-            {runtimeLabel} · {formatCompactPath(session.cwd)}
-          </Text>
-          <Text style={[styles.statusIcon, { color: agentStatus.color }]}>
-            {agentStatus.icon}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="Kill tmux session"
-          disabled={!canKillTmux}
-          style={[styles.killButton, !canKillTmux && styles.disabled]}
-          onPress={onKillTmux}
-        >
-          <Text style={styles.killText}>×</Text>
-        </Pressable>
-      </View>
+      {!focusMode && !toolbarHidden ? (
+        <View style={styles.toolbar}>
+          <Button
+            accessibilityLabel="Back to sessions"
+            icon="arrowLeft"
+            iconOnly
+            style={styles.backButton}
+            onPress={onBack}
+          >
+            Sessions
+          </Button>
+          <Pressable
+            accessibilityLabel={statusLabel ?? agentStatus.accessibilityLabel}
+            style={styles.sessionMetaArea}
+            onPress={Keyboard.dismiss}
+          >
+            <Text
+              numberOfLines={1}
+              style={[styles.sessionTitle, { color: agentStatus.color }]}
+            >
+              {session.title}
+            </Text>
+          </Pressable>
+          <Button
+            accessibilityLabel="Kill tmux session"
+            disabled={!canKillTmux}
+            icon="trash"
+            iconOnly
+            style={[styles.killButton, !canKillTmux && styles.disabled]}
+            onPress={onKillTmux}
+          >
+            Kill
+          </Button>
+        </View>
+      ) : null}
 
       <View
         style={[
@@ -346,94 +362,107 @@ export function TerminalScreen({
         ]}
         onLayout={handleBottomDockLayout}
       >
-        {readOnly && readOnlyReason ? (
+        {!focusMode && readOnly && readOnlyReason ? (
           <View style={styles.readOnlyBanner}>
             <Text style={styles.readOnlyTitle}>Session is read-only</Text>
             <Text style={styles.readOnlyText}>{readOnlyReason}</Text>
-            <Pressable
+            <Button
+              icon="refresh"
               style={styles.readOnlyAction}
               onPress={onRefreshSessions}
             >
-              <Text style={styles.readOnlyActionText}>Refresh Sessions</Text>
-            </Pressable>
+              Refresh Sessions
+            </Button>
           </View>
         ) : null}
-        <ScrollView
-          horizontal
-          keyboardShouldPersistTaps="always"
-          showsHorizontalScrollIndicator={false}
-          style={styles.quickKeys}
-          contentContainerStyle={styles.quickKeysContent}
-          onLayout={handleQuickKeysLayout}
-        >
-          {quickKeys.map((item) => (
-            <Pressable
-              key={item.key}
-              disabled={readOnly}
-              style={[styles.keyButton, readOnly && styles.disabled]}
-              onPress={() => onInput(createControlInput(item.key))}
-            >
-              <Text style={styles.keyButtonText}>{item.label}</Text>
-            </Pressable>
-          ))}
-          <Pressable
-            disabled={!draft}
-            style={[styles.keyButton, !draft && styles.disabled]}
-            onPress={() => setDraft("")}
+        {!focusMode ? (
+          <ScrollView
+            horizontal
+            keyboardShouldPersistTaps="always"
+            showsHorizontalScrollIndicator={false}
+            style={styles.quickKeys}
+            contentContainerStyle={styles.quickKeysContent}
+            onLayout={handleQuickKeysLayout}
           >
-            <Text style={styles.keyButtonText}>Clear</Text>
-          </Pressable>
-          {!canShowAllQuickKeys ? (
-            <Pressable
-              style={styles.keyButton}
-              onPress={() => setAdvancedKeysVisible((visible) => !visible)}
-            >
-              <Text style={styles.keyButtonText}>
-                {advancedKeysVisible ? "Less" : "More"}
-              </Text>
-            </Pressable>
-          ) : null}
-        </ScrollView>
-
-        <View style={styles.profileRow}>
-          {PROFILE_OPTIONS.map((item) => {
-            const selected = profile === item.key;
-            return (
+            {quickKeys.map((item) => (
               <Pressable
+                accessibilityLabel={`Send ${item.label} key`}
+                accessibilityRole="button"
                 key={item.key}
-                style={[
-                  styles.profileButton,
-                  selected && styles.profileSelected,
-                ]}
-                onPress={() => setProfile(item.key)}
+                disabled={readOnly}
+                style={[styles.keyButton, readOnly && styles.disabled]}
+                onPress={() => onInput(createControlInput(item.key))}
               >
-                <Text
-                  style={[
-                    styles.profileButtonText,
-                    selected && styles.profileSelectedText,
-                  ]}
-                >
-                  {item.label}
-                </Text>
+                <Text style={styles.keyButtonText}>{item.label}</Text>
               </Pressable>
-            );
-          })}
-          <Text style={styles.gridMeta}>
-            {terminalLayout.terminalSize.cols}x
-            {terminalLayout.terminalSize.rows}
-            {" · "}
-            {Math.round(terminalLayout.fontSize * 10) / 10}
-            {Platform.OS === "ios" ? "pt" : "sp"}
-          </Text>
-        </View>
-
-        {terminalLayout.fitLimited ? (
-          <Text style={styles.fitNotice}>
-            Fit would make text too small; horizontal scrolling keeps it
-            readable.
-          </Text>
+            ))}
+            <Button
+              disabled={!draft}
+              icon="close"
+              iconOnly
+              style={[styles.keyButton, !draft && styles.disabled]}
+              onPress={() => setDraft("")}
+            >
+              Clear
+            </Button>
+            {!canShowAllQuickKeys ? (
+              <Button
+                icon={advancedKeysVisible ? "chevronUp" : "more"}
+                iconOnly
+                style={styles.keyButton}
+                onPress={() => setAdvancedKeysVisible((visible) => !visible)}
+              >
+                {advancedKeysVisible ? "Less" : "More"}
+              </Button>
+            ) : null}
+          </ScrollView>
         ) : null}
 
+        {!focusMode && displayControlsVisible ? (
+          <View style={styles.displayPanel}>
+            <View style={styles.displayPanelHeader}>
+              <Text style={styles.displayPanelTitle}>Display</Text>
+              <Text style={styles.gridMeta}>
+                {terminalLayout.terminalSize.cols}x
+                {terminalLayout.terminalSize.rows}
+                {" · "}
+                {Math.round(terminalLayout.fontSize * 10) / 10}
+                {Platform.OS === "ios" ? "pt" : "sp"}
+              </Text>
+            </View>
+            <View style={styles.profileRow}>
+              {PROFILE_OPTIONS.map((item) => {
+                const selected = profile === item.key;
+                return (
+                  <Pressable
+                    accessibilityLabel={`Use ${item.label} terminal profile`}
+                    accessibilityRole="button"
+                    key={item.key}
+                    style={[
+                      styles.profileButton,
+                      selected && styles.profileSelected,
+                    ]}
+                    onPress={() => setProfile(item.key)}
+                  >
+                    <Text
+                      style={[
+                        styles.profileButtonText,
+                        selected && styles.profileSelectedText,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              {terminalLayout.fitLimited ? (
+                <Text numberOfLines={1} style={styles.fitPill}>
+                  Fit limited
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
         <View style={styles.composer}>
           <View style={styles.inputRow}>
             <TextInput
@@ -450,8 +479,9 @@ export function TerminalScreen({
               submitBehavior="newline"
               style={styles.input}
             />
-            <Pressable
+            <Button
               disabled={readOnly || (!hasDraft && !canHideKeyboard)}
+              icon={canHideKeyboard ? "keyboard" : "send"}
               style={[
                 styles.sendButton,
                 canHideKeyboard && styles.sendButtonSecondary,
@@ -460,69 +490,95 @@ export function TerminalScreen({
               ]}
               onPress={handlePrimaryComposerAction}
             >
-              <Text
-                style={[
-                  styles.sendText,
-                  canHideKeyboard && styles.sendTextSecondary,
-                ]}
-              >
-                {canHideKeyboard ? "Hide" : "Send"}
-              </Text>
-            </Pressable>
+              {canHideKeyboard ? "Hide" : "Send"}
+            </Button>
           </View>
         </View>
+      </View>
+      <View
+        style={[
+          styles.floatingControls,
+          {
+            bottom: floatingControlsBottom,
+          },
+        ]}
+      >
+        <Button
+          accessibilityLabel={
+            focusMode ? "Exit focus mode" : "Enter focus mode"
+          }
+          icon={focusMode ? "minimize" : "maximize"}
+          iconOnly
+          style={styles.floatingControlButton}
+          onPress={() => {
+            setFocusMode((current) => !current);
+            setDisplayControlsVisible(false);
+          }}
+        >
+          {focusMode ? "Exit focus" : "Focus"}
+        </Button>
+        {!focusMode ? (
+          <>
+            <Button
+              accessibilityLabel={
+                displayControlsVisible
+                  ? "Hide display controls"
+                  : "Show display controls"
+              }
+              icon="settings"
+              iconOnly
+              style={[
+                styles.floatingControlButton,
+                displayControlsVisible && styles.floatingControlButtonActive,
+              ]}
+              onPress={() => setDisplayControlsVisible((visible) => !visible)}
+            >
+              Display
+            </Button>
+            <Button
+              accessibilityLabel={
+                toolbarHidden ? "Show top toolbar" : "Hide top toolbar"
+              }
+              icon={toolbarHidden ? "eye" : "eyeOff"}
+              iconOnly
+              style={styles.floatingControlButton}
+              onPress={() => setToolbarHidden((hidden) => !hidden)}
+            >
+              Toolbar
+            </Button>
+          </>
+        ) : null}
       </View>
     </View>
   );
 }
 
-function formatCompactPath(path: string): string {
-  const trimmedPath = path.trim();
-  if (!trimmedPath) {
-    return "";
-  }
-
-  const normalizedPath = trimmedPath.replace(/\/+$/g, "") || "/";
-  const parts = normalizedPath.split("/").filter(Boolean);
-  if (parts.length <= 2) {
-    return normalizedPath;
-  }
-
-  const prefix = normalizedPath.startsWith("/") ? `/${parts[0]}` : parts[0];
-  return `${prefix}/…/${parts[parts.length - 1]}`;
-}
-
 function getAgentStatusPresentation(status: TerminalConnectionStatus): {
   accessibilityLabel: string;
   color: string;
-  icon: string;
 } {
   switch (status) {
     case "authenticated":
       return {
         accessibilityLabel: "Agent connected",
         color: colors.success,
-        icon: "●",
       };
     case "connecting":
     case "authenticating":
       return {
         accessibilityLabel: "Agent connecting",
         color: colors.warning,
-        icon: "◐",
       };
     case "failed":
       return {
         accessibilityLabel: "Agent disconnected",
         color: colors.danger,
-        icon: "×",
       };
     case "idle":
     default:
       return {
         accessibilityLabel: "Agent idle",
         color: colors.textDim,
-        icon: "○",
       };
   }
 }
@@ -563,38 +619,22 @@ const styles = StyleSheet.create({
   sessionMetaArea: {
     flex: 1,
     minWidth: 0,
-    paddingRight: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   backButton: {
     borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: radii.sm,
+    borderRadius: 19,
+    width: 38,
     minHeight: 38,
     justifyContent: "center",
-    paddingHorizontal: 12,
-  },
-  backText: {
-    color: colors.textSecondary,
-    fontWeight: "700",
+    paddingHorizontal: 0,
   },
   sessionTitle: {
-    color: colors.textPrimary,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
-  },
-  meta: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  statusIcon: {
-    position: "absolute",
-    right: 0,
-    top: 8,
-    fontSize: 18,
-    fontWeight: "800",
-    minWidth: 24,
-    textAlign: "right",
+    textAlign: "center",
   },
   killButton: {
     width: 38,
@@ -605,12 +645,6 @@ const styles = StyleSheet.create({
     borderColor: colors.dangerBorder,
     borderWidth: 1,
     backgroundColor: colors.dangerSurface,
-  },
-  killText: {
-    color: colors.danger,
-    fontSize: 22,
-    fontWeight: "800",
-    lineHeight: 24,
   },
   quickKeys: {
     flexGrow: 0,
@@ -642,11 +676,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 7,
   },
-  readOnlyActionText: {
-    color: colors.warning,
-    fontSize: 12,
-    fontWeight: "800",
-  },
   quickKeysContent: {
     gap: spacing.sm,
     paddingRight: spacing.xs,
@@ -667,8 +696,28 @@ const styles = StyleSheet.create({
   },
   profileRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: spacing.sm,
+  },
+  displayPanel: {
+    gap: spacing.sm,
+    borderColor: colors.borderSubtle,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    backgroundColor: colors.surfaceRaised,
+  },
+  displayPanelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  displayPanelTitle: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "800",
   },
   profileButton: {
     minHeight: 30,
@@ -697,9 +746,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: "right",
   },
-  fitNotice: {
+  fitPill: {
     color: colors.warning,
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: "800",
+    borderColor: colors.warning,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   composer: {},
   inputRow: {
@@ -734,14 +789,29 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
   },
+  floatingControls: {
+    position: "absolute",
+    right: spacing.lg,
+    zIndex: 3,
+    gap: spacing.sm,
+    borderColor: colors.borderSubtle,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    padding: 5,
+    backgroundColor: "rgba(17, 24, 29, 0.92)",
+  },
+  floatingControlButton: {
+    width: 40,
+    minHeight: 40,
+    borderRadius: 20,
+    paddingHorizontal: 0,
+    backgroundColor: colors.surface,
+  },
+  floatingControlButtonActive: {
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
+  },
   disabled: {
     opacity: 0.45,
-  },
-  sendText: {
-    color: colors.successText,
-    fontWeight: "800",
-  },
-  sendTextSecondary: {
-    color: colors.textSecondary,
   },
 });

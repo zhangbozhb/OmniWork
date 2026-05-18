@@ -17,7 +17,7 @@ added without App code changes.
 
 Mobile packaging guidance for APK/IPA installation lives in [docs/app-installation.md](docs/app-installation.md).
 
-The app surface keeps one React Native technology stack across Android, iOS, and Web. Web is a static SPA built with `react-native-web`; it reuses the same screens, does not implement QR scanning, and uses manual or URL-based pairing.
+The app surface keeps one React Native technology stack across Android, iOS, and Web. Web is a static SPA built with `react-native-web`; it reuses the same screens, does not implement QR scanning, and uses manual or URL-based pairing. App actions use a shared SVG icon system built on `react-native-svg` so the three targets can share the same icon-first interaction language.
 
 Useful local commands:
 
