@@ -555,80 +555,45 @@ export function SessionListScreen({
                 No workspaces from this Mac Agent yet.
               </Text>
             ) : (
-              <View style={styles.workspaceStack}>
+              <View style={styles.workspaceList}>
                 {realWorkspaceGroups.map(
                   ({ workspace, sessions: workspaceSessions }) => (
-                    <Card key={workspace.path} style={styles.workspaceCard}>
-                      <Pressable
-                        style={styles.workspaceCardMain}
-                        onPress={() => openWorkspace(workspace)}
-                      >
-                        <View style={styles.workspaceTitleRow}>
+                    <Pressable
+                      key={workspace.path}
+                      style={styles.workspaceRow}
+                      onPress={() => openWorkspace(workspace)}
+                    >
+                      <View style={styles.workspaceRowIcon}>
+                        <Text style={styles.workspaceRowIconText}>
+                          {getWorkspaceDisplayName(workspace).charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.workspaceRowContent}>
+                        <View style={styles.workspaceRowTitleLine}>
                           <Text
                             numberOfLines={1}
-                            style={styles.workspaceCardTitle}
+                            style={styles.workspaceRowName}
                           >
                             {getWorkspaceDisplayName(workspace)}
                           </Text>
                           {workspace.isGitRepository ? (
-                            <Badge
-                              backgroundColor={colors.successSoft}
-                              color={colors.success}
-                              style={styles.defaultBadge}
-                            >
-                              Git
-                            </Badge>
+                            <View style={styles.gitDot} />
                           ) : null}
                         </View>
                         <Text
                           ellipsizeMode="middle"
                           numberOfLines={1}
-                          style={styles.workspacePath}
+                          style={styles.workspaceRowPath}
                         >
                           {workspace.path}
                         </Text>
-                        <Text style={styles.workspaceSummary}>
-                          {formatProviderSummary(workspaceSessions, providers)}
-                        </Text>
-                        {workspaceSessions[0] ? (
-                          <Text numberOfLines={1} style={styles.workspaceRecent}>
-                            Recent {workspaceSessions[0].title} ·{" "}
-                            {formatRelativeTime(
-                              workspaceSessions[0].last_active_at,
-                            )}
-                          </Text>
-                        ) : null}
-                      </Pressable>
-                      <View style={styles.workspaceCardActions}>
-                        <Button
-                          icon="terminal"
-                          style={styles.workspaceCardActionButton}
-                          onPress={() => openWorkspace(workspace)}
-                        >
-                          Open
-                        </Button>
-                        <Button
-                          disabled={
-                            creating ||
-                            !isCreatableRuntimeKind(
-                              preferredCreateRuntimeKind,
-                              enabledProviders,
-                            )
-                          }
-                          icon="add"
-                          style={styles.workspaceCardActionButton}
-                          tone="primary"
-                          onPress={() =>
-                            openCreateModal(
-                              preferredCreateRuntimeKind,
-                              workspace,
-                            )
-                          }
-                        >
-                          New
-                        </Button>
                       </View>
-                    </Card>
+                      <Text style={styles.workspaceRowMeta}>
+                        {workspaceSessions.length > 0
+                          ? `${workspaceSessions.length}`
+                          : ""}
+                      </Text>
+                    </Pressable>
                   ),
                 )}
               </View>
@@ -637,10 +602,6 @@ export function SessionListScreen({
             {unassignedSessions.length > 0 ? (
               <View style={styles.runtimeSection}>
                 <Text style={styles.sectionTitle}>Unassigned Sessions</Text>
-                <Text style={styles.sectionDescription}>
-                  External or legacy sessions that do not match a discovered
-                  workspace.
-                </Text>
                 <View style={styles.sessionStack}>
                   {unassignedSessions.map((session) =>
                     renderSessionCard(session),
@@ -691,16 +652,20 @@ export function SessionListScreen({
 
       {!activeWorkspace ? (
         <Button
-          accessibilityLabel="New session"
-          disabled={
-            !isCreatableRuntimeKind(preferredCreateRuntimeKind, enabledProviders)
-          }
+          accessibilityLabel="New workspace"
           icon="add"
+          iconOnly
           style={styles.floatingCreateButton}
           tone="primary"
-          onPress={() => openCreateModal(preferredCreateRuntimeKind)}
+          onPress={() => {
+            setCreateWorkspaceLocked(false);
+            setCreateWorkspacePath(undefined);
+            setCreateCwd("");
+            setCreateRuntimeKind(preferredCreateRuntimeKind);
+            setCreateModalVisible(true);
+          }}
         >
-          New Session
+          New Workspace
         </Button>
       ) : null}
 
@@ -723,7 +688,7 @@ export function SessionListScreen({
           >
             <Card style={styles.modalCard}>
               <Text style={styles.modalTitle}>
-                New Session
+                {createWorkspaceLocked ? "New Session" : "New Workspace"}
               </Text>
               <ScrollView
                 horizontal
@@ -1325,51 +1290,67 @@ const styles = StyleSheet.create({
   sessionStack: {
     gap: spacing.md,
   },
-  workspaceStack: {
-    gap: spacing.lg,
-  },
-  workspaceSection: {
-    gap: spacing.md,
-  },
-  workspaceHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
+  workspaceList: {
     borderColor: colors.borderSubtle,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radii.md,
-    padding: spacing.md,
-    backgroundColor: colors.surfaceRaised,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
   },
-  workspaceTitleArea: {
-    flex: 1,
-    minWidth: 0,
-  },
-  workspaceTitleRow: {
+  workspaceRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    borderBottomColor: colors.borderSubtle,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  workspaceTitle: {
-    color: colors.textPrimary,
-    flex: 1,
+  workspaceRowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.successSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  workspaceRowIconText: {
+    color: colors.success,
     fontSize: 15,
     fontWeight: "800",
   },
-  workspacePath: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
+  workspaceRowContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
-  workspaceActions: {
+  workspaceRowTitleLine: {
     flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
   },
-  workspaceActionButton: {
-    width: 38,
-    minHeight: 38,
-    paddingHorizontal: 0,
-    borderRadius: 19,
+  workspaceRowName: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: "700",
+    flexShrink: 1,
+  },
+  gitDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+  },
+  workspaceRowPath: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  workspaceRowMeta: {
+    color: colors.textDim,
+    fontSize: 13,
+    fontWeight: "700",
+    minWidth: 20,
+    textAlign: "right",
   },
   workspaceDetail: {
     gap: spacing.lg,
@@ -1391,43 +1372,6 @@ const styles = StyleSheet.create({
   },
   providerSessionGroup: {
     gap: spacing.md,
-  },
-  workspaceCard: {
-    overflow: "hidden",
-  },
-  workspaceCardMain: {
-    padding: spacing.xl,
-    gap: spacing.sm,
-  },
-  workspaceCardTitle: {
-    color: colors.textPrimary,
-    flex: 1,
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  workspaceSummary: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  workspaceRecent: {
-    color: colors.textMuted,
-    fontSize: 12,
-  },
-  workspaceCardActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
-    paddingTop: spacing.sm,
-    borderTopColor: colors.borderSubtle,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  workspaceCardActionButton: {
-    flex: 1,
-    minHeight: 40,
-    minWidth: 86,
   },
   sectionActionButton: {
     minHeight: 40,
@@ -1651,9 +1595,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: spacing.xl,
     bottom: spacing.xl,
+    width: 52,
+    height: 52,
     minHeight: 52,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radii.pill,
+    paddingHorizontal: 0,
+    borderRadius: 26,
     shadowColor: colors.success,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.28,
@@ -2020,23 +1966,6 @@ function groupSessionsByProvider(
       ),
     }))
     .filter((group) => group.sessions.length > 0);
-}
-
-function formatProviderSummary(
-  sessions: readonly CodexSession[],
-  providers: readonly AgentProviderDefinition[],
-): string {
-  if (sessions.length === 0) {
-    return "No sessions yet";
-  }
-  const counts = new Map<string, number>();
-  for (const session of sessions) {
-    const label = getSessionRuntimeLabel(session, providers);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .map(([label, count]) => `${label} ${count}`)
-    .join(" · ");
 }
 
 function findSessionWorkspace(

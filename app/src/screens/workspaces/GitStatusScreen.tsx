@@ -8,6 +8,24 @@ import type {
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 
+type FileStatus = "modified" | "added" | "deleted" | "renamed" | "untracked";
+
+const STATUS_COLOR: Record<FileStatus, string> = {
+  modified: colors.warning,
+  added: colors.success,
+  deleted: colors.danger,
+  renamed: "#7eb8f7",
+  untracked: colors.textMuted,
+};
+
+const STATUS_ORDER: FileStatus[] = [
+  "modified",
+  "added",
+  "deleted",
+  "renamed",
+  "untracked",
+];
+
 export interface GitStatusScreenProps {
   workspace: WorkspaceDefinition;
   status?: WorkspaceGitStatus;
@@ -105,18 +123,56 @@ export function GitStatusScreen({
             </Card>
 
             <View style={styles.fileStack}>
-              {(status?.files ?? []).map((file) => (
-                <Pressable
-                  key={file.path}
-                  style={styles.fileRow}
-                  onPress={() => onOpenDiff(file.path)}
-                >
-                  <Badge style={styles.statusBadge}>{file.status}</Badge>
-                  <Text numberOfLines={1} style={styles.filePath}>
-                    {file.path}
-                  </Text>
-                </Pressable>
-              ))}
+              {status && status.files.length > 0
+                ? STATUS_ORDER.filter((s) =>
+                    status.files.some((f) => f.status === s),
+                  ).map((groupStatus) => {
+                    const groupFiles = status.files.filter(
+                      (f) => f.status === groupStatus,
+                    );
+                    const groupColor = STATUS_COLOR[groupStatus];
+                    return (
+                      <View key={groupStatus} style={styles.fileGroup}>
+                        <View style={styles.groupHeader}>
+                          <View
+                            style={[
+                              styles.groupDot,
+                              { backgroundColor: groupColor },
+                            ]}
+                          />
+                          <Text
+                            style={[styles.groupLabel, { color: groupColor }]}
+                          >
+                            {groupStatus}
+                          </Text>
+                          <Text style={styles.groupCount}>
+                            {groupFiles.length}
+                          </Text>
+                        </View>
+                        {groupFiles.map((file) => (
+                          <Pressable
+                            key={file.path}
+                            style={styles.fileRow}
+                            onPress={() => onOpenDiff(file.path)}
+                          >
+                            <View
+                              style={[
+                                styles.fileIndicator,
+                                { backgroundColor: groupColor },
+                              ]}
+                            />
+                            <Text
+                              numberOfLines={1}
+                              style={[styles.filePath, { color: groupColor }]}
+                            >
+                              {file.path}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    );
+                  })
+                : null}
               {status && status.files.length === 0 ? (
                 <Text style={styles.empty}>No changed files.</Text>
               ) : null}
@@ -217,26 +273,59 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   fileStack: {
+    gap: spacing.lg,
+  },
+  fileGroup: {
+    gap: 0,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
+  },
+  groupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surfaceRaised,
+  },
+  groupDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  groupLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  groupCount: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
   },
   fileRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    borderColor: colors.borderSubtle,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    padding: spacing.lg,
-    backgroundColor: colors.surface,
+    minHeight: 40,
+    paddingRight: spacing.lg,
+    borderTopColor: colors.borderSubtle,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  statusBadge: {
-    minWidth: 78,
+  fileIndicator: {
+    width: 3,
+    alignSelf: "stretch",
   },
   filePath: {
-    color: colors.textSecondary,
     flex: 1,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "600",
+    fontFamily: "Menlo",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   empty: {
     color: colors.textMuted,
