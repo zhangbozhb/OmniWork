@@ -6,6 +6,10 @@ import type {
   AgentHelloPayload,
   AuthVerifyPayload,
   CodexSession,
+  FilesListRequestPayload,
+  FilesReadRequestPayload,
+  GitDiffRequestPayload,
+  GitStatusRequestPayload,
   SessionCreatePayload,
   SessionListPayload,
   SessionRenamePayload,
@@ -31,6 +35,9 @@ import {
   TmuxTargetMissingError,
 } from "../tmux-manager/tmuxManager.ts";
 import { Logger } from "../telemetry/logger.ts";
+import { FileService } from "../files/fileService.ts";
+import { GitService } from "../git/gitService.ts";
+import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 import {
   createPairingQrDetails,
   printPairingDetailsWithoutRelay,
@@ -41,6 +48,9 @@ export class AgentService {
   private readonly logger = new Logger("omniwork-agent");
   private readonly tmux = new TmuxManager();
   private readonly runtimes: RuntimeRegistry;
+  private readonly workspaces: WorkspaceManager;
+  private readonly files = new FileService();
+  private readonly git = new GitService();
   private readonly sessionManager: SessionManager;
   private readonly terminalBridge: TerminalBridge;
   private readonly config: AgentConfig;
@@ -52,10 +62,14 @@ export class AgentService {
     this.runtimes = new RuntimeRegistry({
       providers: config.agentProviders,
     });
+    this.workspaces = new WorkspaceManager({
+      defaultCwd: config.defaultCwd,
+    });
     this.sessionManager = new SessionManager(
       new JsonSessionStore(config.sessionStorePath),
       this.tmux,
       this.runtimes,
+      this.workspaces,
       {
         cwd: config.defaultCwd,
         terminalSize: config.terminalSize,
@@ -137,12 +151,16 @@ export class AgentService {
           platform: "darwin",
           agent_version: this.config.agentVersion,
           providers: this.runtimes.providers(),
+          workspaces: await this.workspaces.list(),
           capabilities: [
             "terminal.tui",
             "terminal.snapshot",
             "session.tmux",
             "session.tmux.attach",
             "session.tmux.kill",
+            "workspace.list",
+            "files.read",
+            "git.read",
             ...this.runtimes.capabilities(),
           ],
         },
@@ -194,6 +212,29 @@ export class AgentService {
           await this.sessionManager.killTmux(message.session_id);
           await this.handleSessionList(message);
         }
+        break;
+      case "workspace.list":
+        await this.handleWorkspaceList(message);
+        break;
+      case "files.list":
+        await this.handleFilesList(
+          message as MessageEnvelope<FilesListRequestPayload>,
+        );
+        break;
+      case "files.read":
+        await this.handleFilesRead(
+          message as MessageEnvelope<FilesReadRequestPayload>,
+        );
+        break;
+      case "git.status":
+        await this.handleGitStatus(
+          message as MessageEnvelope<GitStatusRequestPayload>,
+        );
+        break;
+      case "git.diff":
+        await this.handleGitDiff(
+          message as MessageEnvelope<GitDiffRequestPayload>,
+        );
         break;
       case "terminal.input":
         await this.handleTerminalInput(
@@ -251,10 +292,12 @@ export class AgentService {
   }
 
   private async handleSessionList(message: MessageEnvelope): Promise<void> {
+    const sessions = await this.sessionManager.list();
     const payload: SessionListPayload = {
       default_cwd: this.config.defaultCwd,
       providers: this.runtimes.providers(),
-      sessions: await this.sessionManager.list(),
+      workspaces: await this.workspaces.list(sessions),
+      sessions,
     };
     this.send(
       createMessage("session.list", payload, {
@@ -264,13 +307,103 @@ export class AgentService {
     );
   }
 
+  private async handleWorkspaceList(message: MessageEnvelope): Promise<void> {
+    this.send(
+      createMessage(
+        "workspace.list",
+        {
+          workspaces: await this.workspaces.list(await this.sessionManager.list()),
+        },
+        {
+          device_id: this.config.deviceId,
+          id: message.id,
+        },
+      ),
+    );
+  }
+
+  private async handleFilesList(
+    message: MessageEnvelope<FilesListRequestPayload>,
+  ): Promise<void> {
+    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    this.send(
+      createMessage(
+        "files.list",
+        await this.files.list(workspace, message.payload.relativePath),
+        {
+          device_id: this.config.deviceId,
+          id: message.id,
+        },
+      ),
+    );
+  }
+
+  private async handleFilesRead(
+    message: MessageEnvelope<FilesReadRequestPayload>,
+  ): Promise<void> {
+    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    this.send(
+      createMessage(
+        "files.read",
+        await this.files.read(workspace, message.payload.relativePath),
+        {
+          device_id: this.config.deviceId,
+          id: message.id,
+        },
+      ),
+    );
+  }
+
+  private async handleGitStatus(
+    message: MessageEnvelope<GitStatusRequestPayload>,
+  ): Promise<void> {
+    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    this.send(
+      createMessage("git.status", await this.git.status(workspace), {
+        device_id: this.config.deviceId,
+        id: message.id,
+      }),
+    );
+  }
+
+  private async handleGitDiff(
+    message: MessageEnvelope<GitDiffRequestPayload>,
+  ): Promise<void> {
+    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    this.send(
+      createMessage(
+        "git.diff",
+        await this.git.diff(workspace, message.payload.relativePath),
+        {
+          device_id: this.config.deviceId,
+          id: message.id,
+        },
+      ),
+    );
+  }
+
   private async handleSessionCreate(
     message: MessageEnvelope<SessionCreatePayload>,
   ): Promise<void> {
-    const session = await this.sessionManager.create(
-      message.payload ?? {},
-      (nextSession) => this.sendSessionStatus(nextSession),
-    );
+    let session;
+    try {
+      session = await this.sessionManager.create(
+        message.payload ?? {},
+        (nextSession) => this.sendSessionStatus(nextSession),
+      );
+    } catch (error) {
+      this.send(
+        createMessage<TerminalErrorPayload>(
+          "terminal.error",
+          {
+            code: "SESSION_CREATE_FAILED",
+            message: formatRelayConnectionError(error),
+          },
+          { device_id: this.config.deviceId },
+        ),
+      );
+      return;
+    }
     this.sendSessionStatus(session);
     if (session.status !== "running" && session.status !== "detached") {
       return;
@@ -492,6 +625,14 @@ export class AgentService {
         },
       ),
     );
+  }
+
+  private async requireWorkspace(workspacePath: string) {
+    const workspace = await this.workspaces.get(workspacePath);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${workspacePath}`);
+    }
+    return workspace;
   }
 
   private requireKeyRecord(): SessionKeyRecord {

@@ -5,11 +5,13 @@ import type {
   RuntimeKind,
   SessionCreatePayload,
   TerminalSize,
+  WorkspaceDefinition,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import { clampTerminalSize } from "../../../../packages/terminal-core/src/index.ts";
 import { JsonSessionStore } from "../session-store/sessionStore.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
 import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
+import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 
 type SessionStatusListener = (session: CodexSession) => void | Promise<void>;
 
@@ -17,6 +19,7 @@ export class SessionManager {
   private readonly store: JsonSessionStore;
   private readonly tmux: TmuxManager;
   private readonly runtimes: RuntimeRegistry;
+  private readonly workspaces?: WorkspaceManager;
   private readonly defaults: {
     cwd: string;
     terminalSize: TerminalSize;
@@ -26,6 +29,7 @@ export class SessionManager {
     store: JsonSessionStore,
     tmux: TmuxManager,
     runtimes: RuntimeRegistry,
+    workspaces: WorkspaceManager | undefined,
     defaults: {
       cwd: string;
       terminalSize: TerminalSize;
@@ -34,6 +38,7 @@ export class SessionManager {
     this.store = store;
     this.tmux = tmux;
     this.runtimes = runtimes;
+    this.workspaces = workspaces;
     this.defaults = defaults;
   }
 
@@ -60,7 +65,13 @@ export class SessionManager {
       .filter((session) => !storedTmuxNames.has(session.name))
       .map((session) => this.createExternalSession(session));
 
-    return [...reconciledStoredSessions, ...externalSessions].sort(
+    const sessions = [...reconciledStoredSessions, ...externalSessions];
+    const workspaces = this.workspaces ? await this.workspaces.list(sessions) : [];
+    const annotatedSessions = await Promise.all(
+      sessions.map((session) => this.annotateWorkspace(session, workspaces)),
+    );
+
+    return annotatedSessions.sort(
       compareSessionsByRecentTime,
     );
   }
@@ -73,7 +84,10 @@ export class SessionManager {
     const tmuxSessionName = toTmuxSessionName(sessionId);
     const now = new Date().toISOString();
     const runtime = this.runtimes.get(payload.runtime_kind);
-    const cwd = payload.cwd ?? this.defaults.cwd;
+    const resolvedWorkspace = this.workspaces
+      ? await this.workspaces.resolveCreateCwd(payload)
+      : { cwd: payload.cwd ?? this.defaults.cwd, workspace: undefined };
+    const cwd = resolvedWorkspace.cwd;
     const command = payload.command ?? runtime.buildTuiCommand();
     const size = clampTerminalSize(payload.terminal_size ?? this.defaults.terminalSize);
     const runtimeSessionCount = await this.countSessionsForRuntime(runtime.kind);
@@ -90,6 +104,9 @@ export class SessionManager {
       last_active_at: now,
       terminal_size: size,
       tmux_session_name: tmuxSessionName,
+      workspace_path: resolvedWorkspace.workspace?.path,
+      workspace_name: resolvedWorkspace.workspace?.name,
+      git_repository: resolvedWorkspace.workspace?.isGitRepository,
       origin: "managed",
       registered: true,
     };
@@ -343,6 +360,21 @@ export class SessionManager {
       tmux_session_name: session.name,
       origin: "external",
       registered: false,
+    };
+  }
+
+  private async annotateWorkspace(
+    session: CodexSession,
+    workspaces: readonly WorkspaceDefinition[],
+  ): Promise<CodexSession> {
+    const workspace = this.workspaces
+      ? await this.workspaces.resolveSessionWorkspace(session, workspaces)
+      : undefined;
+    return {
+      ...session,
+      workspace_path: workspace?.path ?? session.workspace_path,
+      workspace_name: workspace?.name ?? session.workspace_name,
+      git_repository: workspace?.isGitRepository ?? session.git_repository,
     };
   }
 }

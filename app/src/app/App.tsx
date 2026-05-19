@@ -6,6 +6,10 @@ import type {
   AgentProviderDefinition,
   AuthFailedPayload,
   CodexSession,
+  FilesListPayload,
+  FilesReadPayload,
+  GitDiffPayload,
+  GitStatusPayload,
   MessageEnvelope,
   RuntimeKind,
   SessionListPayload,
@@ -14,6 +18,10 @@ import type {
   TerminalInputPayload,
   TerminalResizePayload,
   TerminalSnapshotPayload,
+  WorkspaceDefinition,
+  WorkspaceFileEntry,
+  WorkspaceGitStatus,
+  WorkspaceListPayload,
 } from "../../../packages/protocol-ts/src/index.ts";
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
@@ -42,6 +50,13 @@ import {
   terminalResizeRequest,
   terminalSnapshotRequest,
 } from "../features/terminal/terminalMessages";
+import {
+  gitDiffRequest,
+  gitStatusRequest,
+  listFilesRequest,
+  listWorkspacesRequest,
+  readFileRequest,
+} from "../features/workspaces/workspaceMessages";
 import { computeInitialTerminalSize } from "../features/terminal/terminalLayout";
 import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
 import { AppWebRtcTunnelSession } from "../lib/tunnel-client/appWebRtcTunnelSession";
@@ -99,6 +114,15 @@ function AppContent(): JSX.Element {
   const [agentProviders, setAgentProviders] = useState<
     AgentProviderDefinition[]
   >([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceDefinition[]>([]);
+  const [selectedWorkspace, setSelectedWorkspace] =
+    useState<WorkspaceDefinition | null>(null);
+  const [fileEntries, setFileEntries] = useState<WorkspaceFileEntry[]>([]);
+  const [fileRelativePath, setFileRelativePath] = useState("");
+  const [selectedFile, setSelectedFile] = useState<FilesReadPayload>();
+  const [gitStatus, setGitStatus] = useState<WorkspaceGitStatus>();
+  const [gitDiff, setGitDiff] = useState<GitDiffPayload>();
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [defaultSessionCwd, setDefaultSessionCwd] = useState("");
   const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
     {},
@@ -123,7 +147,7 @@ function AppContent(): JSX.Element {
   const title = useMemo(() => {
     if (view === "pairing") return editingPairing ? "Edit Device" : "Pair Mac";
     if (view === "terminal") return selectedSession?.title ?? "Terminal";
-    if (view === "sessions") return "Sessions";
+    if (view === "sessions") return "Workspaces";
     return "Devices";
   }, [editingPairing, selectedSession?.title, view]);
 
@@ -351,7 +375,9 @@ function AppContent(): JSX.Element {
     const nextPairings = await removeSavedPairing(targetPairing);
     setSessions([]);
     setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+    setWorkspaces([]);
     setSelectedSession(null);
+    setSelectedWorkspace(null);
     setTerminalFrames({});
     setClosingSessionIds([]);
     setKillingSessionIds([]);
@@ -387,7 +413,9 @@ function AppContent(): JSX.Element {
       setPairing(nextPairing);
       setSessions([]);
       setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+      setWorkspaces([]);
       setSelectedSession(null);
+      setSelectedWorkspace(null);
       setTerminalFrames({});
       setClosingSessionIds([]);
       setKillingSessionIds([]);
@@ -415,6 +443,7 @@ function AppContent(): JSX.Element {
   function handleCreateSession(input: {
     cwd: string;
     runtimeKind: RuntimeKind;
+    workspacePath?: string;
   }): void {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
@@ -424,8 +453,96 @@ function AppContent(): JSX.Element {
     sendToRelay(
       createSessionRequest(pairing.deviceId, {
         cwd: input.cwd,
+        workspace_path: input.workspacePath,
         runtime_kind: input.runtimeKind,
         terminal_size: computeInitialTerminalSize(),
+      }),
+    );
+  }
+
+  function handleOpenWorkspaceFiles(workspace: WorkspaceDefinition): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+    setSelectedWorkspace(workspace);
+    setFileRelativePath("");
+    setSelectedFile(undefined);
+    setFileEntries([]);
+    setWorkspaceLoading(true);
+    sendToRelay(
+      listFilesRequest(pairing.deviceId, {
+        workspacePath: workspace.path,
+        relativePath: "",
+      }),
+    );
+  }
+
+  function handleOpenWorkspaceGit(workspace: WorkspaceDefinition): void {
+    if (
+      !pairing ||
+      connectionStatus !== "authenticated" ||
+      !workspace.isGitRepository
+    ) {
+      return;
+    }
+    setSelectedWorkspace(workspace);
+    setGitStatus(undefined);
+    setGitDiff(undefined);
+    setWorkspaceLoading(true);
+    sendToRelay(
+      gitStatusRequest(pairing.deviceId, { workspacePath: workspace.path }),
+    );
+  }
+
+  function handleOpenDirectory(relativePath: string): void {
+    if (
+      !pairing ||
+      !selectedWorkspace ||
+      connectionStatus !== "authenticated"
+    ) {
+      return;
+    }
+    setFileRelativePath(relativePath);
+    setSelectedFile(undefined);
+    setWorkspaceLoading(true);
+    sendToRelay(
+      listFilesRequest(pairing.deviceId, {
+        workspacePath: selectedWorkspace.path,
+        relativePath,
+      }),
+    );
+  }
+
+  function handleReadFile(relativePath: string): void {
+    if (
+      !pairing ||
+      !selectedWorkspace ||
+      connectionStatus !== "authenticated"
+    ) {
+      return;
+    }
+    setWorkspaceLoading(true);
+    sendToRelay(
+      readFileRequest(pairing.deviceId, {
+        workspacePath: selectedWorkspace.path,
+        relativePath,
+      }),
+    );
+  }
+
+  function handleOpenGitDiff(relativePath?: string): void {
+    if (
+      !pairing ||
+      !selectedWorkspace ||
+      connectionStatus !== "authenticated"
+    ) {
+      return;
+    }
+    setWorkspaceLoading(true);
+    sendToRelay(
+      gitDiffRequest(pairing.deviceId, {
+        workspacePath: selectedWorkspace.path,
+        relativePath,
       }),
     );
   }
@@ -668,6 +785,7 @@ function AppContent(): JSX.Element {
         setConnectionStatus("authenticated");
         setConnectionMessage("Connected to Mac Agent.");
         relay.send(listSessionsRequest(activePairing.deviceId));
+        relay.send(listWorkspacesRequest(activePairing.deviceId));
         if (pendingAutoOpenSessionsRef.current) {
           pendingAutoOpenSessionsRef.current = false;
           setView("sessions");
@@ -699,6 +817,16 @@ function AppContent(): JSX.Element {
             ? payload.providers
             : [...DEFAULT_AGENT_PROVIDER_DEFINITIONS],
         );
+        if (payload.workspaces?.length) {
+          setWorkspaces(payload.workspaces);
+          setSelectedWorkspace((current) =>
+            current
+              ? (payload.workspaces?.find(
+                  (workspace) => workspace.path === current.path,
+                ) ?? current)
+              : current,
+          );
+        }
         setSessions(payload.sessions);
         setSelectedSession((current) => {
           if (!current) {
@@ -770,6 +898,34 @@ function AppContent(): JSX.Element {
         }
         break;
       }
+      case "workspace.list": {
+        const payload = message.payload as WorkspaceListPayload;
+        setWorkspaces(payload.workspaces);
+        break;
+      }
+      case "files.list": {
+        const payload = message.payload as FilesListPayload;
+        setFileRelativePath(payload.relativePath);
+        setFileEntries(payload.entries);
+        setWorkspaceLoading(false);
+        break;
+      }
+      case "files.read": {
+        setSelectedFile(message.payload as FilesReadPayload);
+        setWorkspaceLoading(false);
+        break;
+      }
+      case "git.status": {
+        const payload = message.payload as GitStatusPayload;
+        setGitStatus(payload.status);
+        setWorkspaceLoading(false);
+        break;
+      }
+      case "git.diff": {
+        setGitDiff(message.payload as GitDiffPayload);
+        setWorkspaceLoading(false);
+        break;
+      }
       case "terminal.snapshot": {
         const payload = message.payload as TerminalSnapshotPayload;
         if (message.session_id) {
@@ -792,6 +948,9 @@ function AppContent(): JSX.Element {
       }
       case "terminal.error": {
         const payload = message.payload as TerminalErrorPayload;
+        setCreatingSession(false);
+        pendingCreateRef.current = false;
+        setWorkspaceLoading(false);
         setConnectionMessage(
           payload.message || "Terminal error from Mac Agent.",
         );
@@ -855,14 +1014,26 @@ function AppContent(): JSX.Element {
           <SessionListScreen
             sessions={sessions}
             providers={agentProviders}
+            workspaces={workspaces}
             providerPreferenceScope={pairing?.deviceId ?? "default"}
             creating={creatingSession}
             closingSessionIds={closingSessionIds}
             killingSessionIds={killingSessionIds}
             defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
+            fileRelativePath={fileRelativePath}
+            fileEntries={fileEntries}
+            selectedFile={selectedFile}
+            gitStatus={gitStatus}
+            gitDiff={gitDiff}
+            workspaceLoading={workspaceLoading}
             onBack={() => setView("devices")}
             onRefreshSessions={handleRefreshSessions}
             onCreateSession={handleCreateSession}
+            onOpenWorkspaceFiles={handleOpenWorkspaceFiles}
+            onOpenWorkspaceGit={handleOpenWorkspaceGit}
+            onOpenDirectory={handleOpenDirectory}
+            onReadFile={handleReadFile}
+            onOpenGitDiff={handleOpenGitDiff}
             onOpenSession={handleOpenSession}
             onCloseSession={handleCloseSession}
             onRenameSession={handleRenameSession}

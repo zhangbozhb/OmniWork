@@ -19,6 +19,14 @@ Mobile packaging guidance for APK/IPA installation lives in [docs/app-installati
 
 The app surface keeps one React Native technology stack across Android, iOS, and Web. Web is a static SPA built with `react-native-web`; it reuses the same screens, does not implement QR scanning, and uses manual or URL-based pairing. App actions use a shared SVG icon system built on `react-native-svg` so the three targets can share the same icon-first interaction language.
 
+Workspace metadata is discovered by the Mac Agent from managed and external
+tmux session working directories, then sent to the App together with sessions.
+The App uses Workspace as the primary project object, groups sessions inside
+each Workspace by provider, and uses a Workspace Detail bottom-tab layout for
+`Sessions`, `Git`, and `Files`. `Git` appears only when the discovered workspace
+path is inside a Git repository; `Files` is a read-only browser scoped to the
+workspace boundary.
+
 Useful local commands:
 
 ```sh

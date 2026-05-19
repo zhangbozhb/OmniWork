@@ -17,7 +17,12 @@ import type {
   AgentCapability,
   AgentProviderDefinition,
   CodexSession,
+  FilesReadPayload,
+  GitDiffPayload,
   RuntimeKind,
+  WorkspaceDefinition,
+  WorkspaceFileEntry,
+  WorkspaceGitStatus,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import {
   getAgentProviderDefinition,
@@ -28,8 +33,11 @@ import {
 import { getSessionCapabilities } from "../../features/sessions/sessionCapabilities";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";
+import { FileBrowserScreen } from "../workspaces/FileBrowserScreen";
+import { GitStatusScreen } from "../workspaces/GitStatusScreen";
 
 type CreatableRuntimeKind = RuntimeKind;
+type WorkspaceTab = "sessions" | "git" | "files";
 
 type RuntimeGroup = {
   kind: RuntimeKind;
@@ -44,17 +52,30 @@ type RuntimeGroup = {
 export interface SessionListScreenProps {
   sessions: CodexSession[];
   providers: AgentProviderDefinition[];
+  workspaces: WorkspaceDefinition[];
   providerPreferenceScope: string;
   creating: boolean;
   closingSessionIds?: string[];
   killingSessionIds?: string[];
   defaultCwd: string;
+  fileRelativePath: string;
+  fileEntries: WorkspaceFileEntry[];
+  selectedFile?: FilesReadPayload;
+  gitStatus?: WorkspaceGitStatus;
+  gitDiff?: GitDiffPayload;
+  workspaceLoading?: boolean;
   onBack(): void;
   onRefreshSessions(): void;
   onCreateSession(input: {
     cwd: string;
     runtimeKind: CreatableRuntimeKind;
+    workspacePath?: string;
   }): void;
+  onOpenWorkspaceFiles(workspace: WorkspaceDefinition): void;
+  onOpenWorkspaceGit(workspace: WorkspaceDefinition): void;
+  onOpenDirectory(relativePath: string): void;
+  onReadFile(relativePath: string): void;
+  onOpenGitDiff(relativePath?: string): void;
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
   onRenameSession(session: CodexSession, title: string): void;
@@ -75,18 +96,31 @@ const EMPTY_PROVIDER_PREFERENCES: ProviderPreferences = {
 
 const PROVIDER_PREFERENCES_STORAGE_PREFIX =
   "omniwork.session.providerPreferences";
+const UNASSIGNED_WORKSPACE_PATH = "__unassigned__";
 
 export function SessionListScreen({
   sessions,
   providers,
+  workspaces,
   providerPreferenceScope,
   creating,
   closingSessionIds = [],
   killingSessionIds = [],
   defaultCwd,
+  fileRelativePath,
+  fileEntries,
+  selectedFile,
+  gitStatus,
+  gitDiff,
+  workspaceLoading,
   onBack,
   onRefreshSessions,
   onCreateSession,
+  onOpenWorkspaceFiles,
+  onOpenWorkspaceGit,
+  onOpenDirectory,
+  onReadFile,
+  onOpenGitDiff,
   onOpenSession,
   onCloseSession,
   onRenameSession,
@@ -121,6 +155,8 @@ export function SessionListScreen({
   const effectiveDefaultKind = preferredCreateRuntimeKind;
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createCwd, setCreateCwd] = useState(defaultCwd);
+  const [createWorkspacePath, setCreateWorkspacePath] = useState<string | undefined>();
+  const [createWorkspaceLocked, setCreateWorkspaceLocked] = useState(false);
   const [createRuntimeKind, setCreateRuntimeKind] =
     useState<CreatableRuntimeKind>(preferredCreateRuntimeKind);
   const [renamingSession, setRenamingSession] = useState<CodexSession | null>(
@@ -130,6 +166,10 @@ export function SessionListScreen({
   const [managingSession, setManagingSession] = useState<CodexSession | null>(
     null,
   );
+  const [selectedWorkspace, setSelectedWorkspace] =
+    useState<WorkspaceDefinition | null>(null);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] =
+    useState<WorkspaceTab>("sessions");
 
   const runtimeGroups = useMemo<RuntimeGroup[]>(
     () => [
@@ -200,9 +240,16 @@ export function SessionListScreen({
     );
   }, [providers]);
 
-  function openCreateModal(runtimeKind: CreatableRuntimeKind): void {
+  function openCreateModal(
+    runtimeKind: CreatableRuntimeKind,
+    preferredWorkspace?: WorkspaceDefinition,
+    lockedWorkspace = Boolean(preferredWorkspace),
+  ): void {
     setCreateRuntimeKind(runtimeKind);
-    setCreateCwd(defaultCwd);
+    const workspace = preferredWorkspace ?? workspaces[0];
+    setCreateWorkspacePath(workspace?.path);
+    setCreateCwd(workspace?.path ?? defaultCwd);
+    setCreateWorkspaceLocked(lockedWorkspace);
     setCreateModalVisible(true);
   }
 
@@ -212,7 +259,11 @@ export function SessionListScreen({
       return;
     }
     setCreateModalVisible(false);
-    onCreateSession({ cwd, runtimeKind: createRuntimeKind });
+    onCreateSession({
+      cwd: createWorkspaceLocked && createWorkspacePath ? createWorkspacePath : cwd,
+      runtimeKind: createRuntimeKind,
+      workspacePath: createWorkspacePath,
+    });
   }
 
   function openRenameModal(session: CodexSession): void {
@@ -245,226 +296,413 @@ export function SessionListScreen({
     }
   }
 
-  const visibleGroups = runtimeGroups.filter((group) => {
-    if (group.hidden) {
-      return false;
+  function openWorkspace(workspace: WorkspaceDefinition): void {
+    setSelectedWorkspace(workspace);
+    setActiveWorkspaceTab("sessions");
+  }
+
+  function openWorkspaceTab(
+    workspace: WorkspaceDefinition,
+    tab: WorkspaceTab,
+  ): void {
+    setSelectedWorkspace(workspace);
+    setActiveWorkspaceTab(tab);
+    if (tab === "files") {
+      onOpenWorkspaceFiles(workspace);
     }
-    const hasSessions = sessions.some(
-      (session) => getRuntimeGroupKind(session, providers) === group.kind,
+    if (tab === "git" && workspace.isGitRepository) {
+      onOpenWorkspaceGit(workspace);
+    }
+  }
+
+  function renderSessionCard(session: CodexSession): JSX.Element {
+    const closing = closingSessionIds.includes(session.session_id);
+    const killing = killingSessionIds.includes(session.session_id);
+    const external = session.origin === "external";
+    const registered = session.registered !== false;
+    const capabilities = getSessionCapabilities(session, {
+      closing,
+      killing,
+    });
+    const statusColors = getStatusColors(capabilities.statusTone);
+    const canUsePrimaryAction = capabilities.canOpen || capabilities.canRecover;
+
+    return (
+      <Card key={session.session_id} style={styles.sessionCard}>
+        <Pressable
+          disabled={!capabilities.canOpen}
+          style={[styles.sessionMain, !capabilities.canOpen && styles.disabled]}
+          onPress={() => onOpenSession(session)}
+        >
+          <View style={styles.sessionTitleRow}>
+            <Text numberOfLines={1} style={styles.sessionTitle}>
+              {session.title}
+            </Text>
+            <Badge
+              backgroundColor={statusColors.backgroundColor}
+              color={statusColors.color}
+              style={styles.statusBadge}
+            >
+              {capabilities.statusLabel}
+            </Badge>
+          </View>
+          <View style={styles.sessionMetaRow}>
+            <Text
+              ellipsizeMode="middle"
+              numberOfLines={1}
+              style={styles.sessionMetaText}
+            >
+              {formatCompactPath(session.cwd)}
+            </Text>
+            <Text style={styles.sessionMetaDivider}>·</Text>
+            <Text style={styles.sessionTime}>
+              Active {formatRelativeTime(session.last_active_at)}
+            </Text>
+          </View>
+          {external ? (
+            <Text style={styles.sessionSource}>
+              External tmux{registered ? "" : " · tap Open to attach"}
+            </Text>
+          ) : null}
+          {capabilities.unavailableReason ? (
+            <Text style={styles.unavailableReason}>
+              {capabilities.unavailableReason}
+            </Text>
+          ) : null}
+        </Pressable>
+        <View style={styles.sessionActions}>
+          <Button
+            disabled={!canUsePrimaryAction}
+            icon={capabilities.canRecover ? "refresh" : "terminal"}
+            style={styles.primarySessionButton}
+            onPress={() => handlePrimarySessionAction(session, capabilities)}
+          >
+            {capabilities.canRecover && capabilities.recoveryActionLabel
+              ? capabilities.recoveryActionLabel
+              : capabilities.primaryActionLabel}
+          </Button>
+          <Button
+            accessibilityLabel={`Manage ${session.title}`}
+            icon="more"
+            iconOnly
+            style={styles.moreButton}
+            onPress={() => setManagingSession(session)}
+          >
+            More
+          </Button>
+        </View>
+      </Card>
     );
-    if (group.creatable) {
-      return hasSessions || (sessions.length === 0 && group.default);
-    }
+  }
 
-    return hasSessions;
-  });
-
+  const workspaceGroups = useMemo(
+    () => groupSessionsByWorkspace(sessions, workspaces),
+    [sessions, workspaces],
+  );
+  const realWorkspaceGroups = workspaceGroups.filter(
+    (group) => group.workspace.path !== UNASSIGNED_WORKSPACE_PATH,
+  );
+  const unassignedSessions =
+    workspaceGroups.find((group) => group.workspace.path === UNASSIGNED_WORKSPACE_PATH)?.sessions ?? [];
+  const activeWorkspace = selectedWorkspace
+    ? (workspaces.find((workspace) => workspace.path === selectedWorkspace.path) ??
+      selectedWorkspace)
+    : null;
+  const activeWorkspaceSessions = activeWorkspace
+    ? sessions.filter(
+        (session) =>
+          findSessionWorkspace(session, workspaces).path === activeWorkspace.path,
+      )
+    : [];
+  const activeProviderGroups = activeWorkspace
+    ? groupSessionsByProvider(activeWorkspaceSessions, runtimeGroups, providers)
+    : [];
   return (
     <View style={styles.screen}>
       <View style={styles.actions}>
         <Button
-          accessibilityLabel="Back to devices"
+          accessibilityLabel={activeWorkspace ? "Back to workspaces" : "Back to devices"}
           icon="arrowLeft"
           iconOnly
           style={styles.backButton}
-          onPress={onBack}
+          onPress={activeWorkspace ? () => setSelectedWorkspace(null) : onBack}
         >
-          Devices
+          Back
         </Button>
         <View style={styles.toolbarTitleArea}>
-          <Text style={styles.toolbarTitle}>Sessions</Text>
-          <Text style={styles.toolbarMeta}>
-            {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
+          <Text style={styles.toolbarTitle}>
+            {activeWorkspace ? getWorkspaceDisplayName(activeWorkspace) : "Workspaces"}
+          </Text>
+          <Text numberOfLines={1} style={styles.toolbarMeta}>
+            {activeWorkspace
+              ? activeWorkspace.path
+              : `${realWorkspaceGroups.length} workspaces · ${sessions.length} sessions`}
           </Text>
         </View>
-        <Button
-          accessibilityLabel="Refresh sessions"
-          icon="refresh"
-          iconOnly
-          style={styles.toolbarIconButton}
-          onPress={onRefreshSessions}
-        >
-          Refresh
-        </Button>
-        <Button
-          accessibilityLabel="Manage providers"
-          icon="provider"
-          iconOnly
-          style={styles.toolbarIconButton}
-          onPress={() => setProvidersModalVisible(true)}
-        >
-          Providers
-        </Button>
+        {!activeWorkspace ? (
+          <>
+            <Button
+              accessibilityLabel="Refresh sessions"
+              icon="refresh"
+              iconOnly
+              style={styles.toolbarIconButton}
+              onPress={onRefreshSessions}
+            >
+              Refresh
+            </Button>
+            <Button
+              accessibilityLabel="Manage providers"
+              icon="provider"
+              iconOnly
+              style={styles.toolbarIconButton}
+              onPress={() => setProvidersModalVisible(true)}
+            >
+              Providers
+            </Button>
+          </>
+        ) : null}
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {visibleGroups.map((group) => {
-          const groupSessions = sessions.filter(
-            (session) => getRuntimeGroupKind(session, providers) === group.kind,
-          );
-          return (
-            <View key={group.kind} style={styles.runtimeSection}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleArea}>
-                  <View style={styles.sectionTitleRow}>
-                    <Text style={styles.sectionTitle}>{group.label}</Text>
-                    <Text style={styles.sectionMeta}>
-                      {groupSessions.length}
-                    </Text>
-                    {group.default ? (
-                      <Badge
-                        backgroundColor={colors.successSoft}
-                        color={colors.success}
-                        style={styles.defaultBadge}
-                      >
-                        Default
-                      </Badge>
-                    ) : null}
+        {activeWorkspace ? (
+          <View style={styles.workspaceDetail}>
+            {activeWorkspaceTab === "sessions" ? (
+              <View style={styles.runtimeSection}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleArea}>
+                    <Text style={styles.sectionTitle}>Sessions</Text>
                   </View>
-                  {group.default ? (
-                    <Text style={styles.sectionDescription}>
-                      {group.summary}
-                    </Text>
-                  ) : null}
-                </View>
-                {group.creatable ? (
                   <Button
-                    accessibilityLabel={`New ${group.label} session`}
-                    disabled={creating}
+                    disabled={
+                      creating ||
+                      !isCreatableRuntimeKind(
+                        preferredCreateRuntimeKind,
+                        enabledProviders,
+                      )
+                    }
                     icon="add"
-                    iconOnly
-                    style={styles.sectionCreateButton}
+                    style={styles.sectionActionButton}
                     tone="primary"
-                    onPress={() => {
-                      if (isCreatableRuntimeKind(group.kind, providers)) {
-                        openCreateModal(group.kind);
-                      }
-                    }}
+                    onPress={() =>
+                      openCreateModal(preferredCreateRuntimeKind, activeWorkspace)
+                    }
                   >
-                    {creating && createRuntimeKind === group.kind
-                      ? "Starting..."
-                      : "New"}
+                    New Session
                   </Button>
-                ) : null}
-              </View>
-
-              {groupSessions.length === 0 ? (
-                <Text style={styles.empty}>No sessions yet.</Text>
-              ) : (
-                <View style={styles.sessionStack}>
-                  {groupSessions.map((session) => {
-                    const closing = closingSessionIds.includes(
-                      session.session_id,
-                    );
-                    const killing = killingSessionIds.includes(
-                      session.session_id,
-                    );
-                    const external = session.origin === "external";
-                    const registered = session.registered !== false;
-                    const capabilities = getSessionCapabilities(session, {
-                      closing,
-                      killing,
-                    });
-                    const statusColors = getStatusColors(
-                      capabilities.statusTone,
-                    );
-                    const canUsePrimaryAction =
-                      capabilities.canOpen || capabilities.canRecover;
-                    return (
-                      <Card key={session.session_id} style={styles.sessionCard}>
-                        <Pressable
-                          disabled={!capabilities.canOpen}
-                          style={[
-                            styles.sessionMain,
-                            !capabilities.canOpen && styles.disabled,
-                          ]}
-                          onPress={() => onOpenSession(session)}
-                        >
-                          <View style={styles.sessionTitleRow}>
-                            <Text numberOfLines={1} style={styles.sessionTitle}>
-                              {session.title}
-                            </Text>
-                            <Badge
-                              backgroundColor={statusColors.backgroundColor}
-                              color={statusColors.color}
-                              style={styles.statusBadge}
-                            >
-                              {capabilities.statusLabel}
-                            </Badge>
-                          </View>
-                          <View style={styles.sessionMetaRow}>
-                            <Text
-                              ellipsizeMode="middle"
-                              numberOfLines={1}
-                              style={styles.sessionMetaText}
-                            >
-                              {formatCompactPath(session.cwd)}
-                            </Text>
-                            <Text style={styles.sessionMetaDivider}>·</Text>
-                            <Text style={styles.sessionTime}>
-                              Active{" "}
-                              {formatRelativeTime(session.last_active_at)}
-                            </Text>
-                          </View>
-                          {external ? (
-                            <Text style={styles.sessionSource}>
-                              External tmux
-                              {registered ? "" : " · tap Open to attach"}
-                            </Text>
-                          ) : null}
-                          {capabilities.unavailableReason ? (
-                            <Text style={styles.unavailableReason}>
-                              {capabilities.unavailableReason}
-                            </Text>
-                          ) : null}
-                        </Pressable>
-                        <View style={styles.sessionActions}>
-                          <Button
-                            disabled={!canUsePrimaryAction}
-                            icon={
-                              capabilities.canRecover ? "refresh" : "terminal"
-                            }
-                            style={styles.primarySessionButton}
-                            onPress={() =>
-                              handlePrimarySessionAction(session, capabilities)
-                            }
-                          >
-                            {capabilities.canRecover &&
-                            capabilities.recoveryActionLabel
-                              ? capabilities.recoveryActionLabel
-                              : capabilities.primaryActionLabel}
-                          </Button>
-                          <Button
-                            accessibilityLabel={`Manage ${session.title}`}
-                            icon="more"
-                            iconOnly
-                            style={styles.moreButton}
-                            onPress={() => setManagingSession(session)}
-                          >
-                            More
-                          </Button>
-                        </View>
-                      </Card>
-                    );
-                  })}
                 </View>
-              )}
-            </View>
-          );
-        })}
+                {activeProviderGroups.length === 0 ? (
+                  <Text style={styles.empty}>
+                    No sessions in this workspace yet.
+                  </Text>
+                ) : (
+                  activeProviderGroups.map((group) => (
+                    <View key={group.kind} style={styles.providerSessionGroup}>
+                      <View style={styles.sectionHeader}>
+                        <View style={styles.sectionTitleArea}>
+                          <View style={styles.sectionTitleRow}>
+                            <Text style={styles.sectionTitle}>{group.label}</Text>
+                            <Text style={styles.sectionMeta}>
+                              {group.sessions.length}
+                            </Text>
+                          </View>
+                          <Text style={styles.sectionDescription}>
+                            {group.summary}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.sessionStack}>
+                        {group.sessions.map((session) =>
+                          renderSessionCard(session),
+                        )}
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
+            ) : null}
+
+            {activeWorkspaceTab === "git" && activeWorkspace.isGitRepository ? (
+              <GitStatusScreen
+                embedded
+                workspace={activeWorkspace}
+                status={gitStatus}
+                diff={gitDiff?.diff}
+                selectedPath={gitDiff?.relativePath}
+                loading={workspaceLoading}
+                onRefresh={() => onOpenWorkspaceGit(activeWorkspace)}
+                onOpenDiff={onOpenGitDiff}
+              />
+            ) : null}
+
+            {activeWorkspaceTab === "files" ? (
+              <FileBrowserScreen
+                embedded
+                workspace={activeWorkspace}
+                relativePath={fileRelativePath}
+                entries={fileEntries}
+                file={selectedFile}
+                loading={workspaceLoading}
+                onRefresh={() => onOpenDirectory(fileRelativePath)}
+                onOpenDirectory={onOpenDirectory}
+                onReadFile={onReadFile}
+              />
+            ) : null}
+          </View>
+        ) : (
+          <>
+            {realWorkspaceGroups.length === 0 ? (
+              <Text style={styles.empty}>
+                No workspaces from this Mac Agent yet.
+              </Text>
+            ) : (
+              <View style={styles.workspaceStack}>
+                {realWorkspaceGroups.map(
+                  ({ workspace, sessions: workspaceSessions }) => (
+                    <Card key={workspace.path} style={styles.workspaceCard}>
+                      <Pressable
+                        style={styles.workspaceCardMain}
+                        onPress={() => openWorkspace(workspace)}
+                      >
+                        <View style={styles.workspaceTitleRow}>
+                          <Text
+                            numberOfLines={1}
+                            style={styles.workspaceCardTitle}
+                          >
+                            {getWorkspaceDisplayName(workspace)}
+                          </Text>
+                          {workspace.isGitRepository ? (
+                            <Badge
+                              backgroundColor={colors.successSoft}
+                              color={colors.success}
+                              style={styles.defaultBadge}
+                            >
+                              Git
+                            </Badge>
+                          ) : null}
+                        </View>
+                        <Text
+                          ellipsizeMode="middle"
+                          numberOfLines={1}
+                          style={styles.workspacePath}
+                        >
+                          {workspace.path}
+                        </Text>
+                        <Text style={styles.workspaceSummary}>
+                          {formatProviderSummary(workspaceSessions, providers)}
+                        </Text>
+                        {workspaceSessions[0] ? (
+                          <Text numberOfLines={1} style={styles.workspaceRecent}>
+                            Recent {workspaceSessions[0].title} ·{" "}
+                            {formatRelativeTime(
+                              workspaceSessions[0].last_active_at,
+                            )}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                      <View style={styles.workspaceCardActions}>
+                        <Button
+                          icon="terminal"
+                          style={styles.workspaceCardActionButton}
+                          onPress={() => openWorkspace(workspace)}
+                        >
+                          Open
+                        </Button>
+                        <Button
+                          disabled={
+                            creating ||
+                            !isCreatableRuntimeKind(
+                              preferredCreateRuntimeKind,
+                              enabledProviders,
+                            )
+                          }
+                          icon="add"
+                          style={styles.workspaceCardActionButton}
+                          tone="primary"
+                          onPress={() =>
+                            openCreateModal(
+                              preferredCreateRuntimeKind,
+                              workspace,
+                            )
+                          }
+                        >
+                          New
+                        </Button>
+                      </View>
+                    </Card>
+                  ),
+                )}
+              </View>
+            )}
+
+            {unassignedSessions.length > 0 ? (
+              <View style={styles.runtimeSection}>
+                <Text style={styles.sectionTitle}>Unassigned Sessions</Text>
+                <Text style={styles.sectionDescription}>
+                  External or legacy sessions that do not match a discovered
+                  workspace.
+                </Text>
+                <View style={styles.sessionStack}>
+                  {unassignedSessions.map((session) =>
+                    renderSessionCard(session),
+                  )}
+                </View>
+              </View>
+            ) : null}
+          </>
+        )}
       </ScrollView>
-      <Button
-        accessibilityLabel="New session"
-        disabled={
-          !isCreatableRuntimeKind(preferredCreateRuntimeKind, enabledProviders)
-        }
-        icon="add"
-        style={styles.floatingCreateButton}
-        tone="primary"
-        onPress={() => openCreateModal(preferredCreateRuntimeKind)}
-      >
-        New Session
-      </Button>
+
+      {activeWorkspace ? (
+        <View style={styles.workspaceTabBar}>
+          <Button
+            icon="terminal"
+            style={[
+              styles.workspaceTabButton,
+              activeWorkspaceTab === "sessions" && styles.workspaceTabButtonActive,
+            ]}
+            onPress={() => setActiveWorkspaceTab("sessions")}
+          >
+            Sessions
+          </Button>
+          {activeWorkspace.isGitRepository ? (
+            <Button
+              icon="git"
+              style={[
+                styles.workspaceTabButton,
+                activeWorkspaceTab === "git" && styles.workspaceTabButtonActive,
+              ]}
+              onPress={() => openWorkspaceTab(activeWorkspace, "git")}
+            >
+              Git
+            </Button>
+          ) : null}
+          <Button
+            icon="folder"
+            style={[
+              styles.workspaceTabButton,
+              activeWorkspaceTab === "files" && styles.workspaceTabButtonActive,
+            ]}
+            onPress={() => openWorkspaceTab(activeWorkspace, "files")}
+          >
+            Files
+          </Button>
+        </View>
+      ) : null}
+
+      {!activeWorkspace ? (
+        <Button
+          accessibilityLabel="New session"
+          disabled={
+            !isCreatableRuntimeKind(preferredCreateRuntimeKind, enabledProviders)
+          }
+          icon="add"
+          style={styles.floatingCreateButton}
+          tone="primary"
+          onPress={() => openCreateModal(preferredCreateRuntimeKind)}
+        >
+          New Session
+        </Button>
+      ) : null}
 
       <Modal
         transparent
@@ -485,21 +723,90 @@ export function SessionListScreen({
           >
             <Card style={styles.modalCard}>
               <Text style={styles.modalTitle}>
-                New {getRuntimeLabel(createRuntimeKind, providers)} Session
+                New Session
               </Text>
-              <Text style={styles.modalDescription}>
-                {getProviderSummary(createRuntimeKind, providers)} Confirm or
-                edit the working directory before creating.
-              </Text>
-              <TextInput
-                value={createCwd}
-                onChangeText={setCreateCwd}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="Working directory"
-                placeholderTextColor="#66727c"
-                style={styles.cwdInput}
-              />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.workspacePicker}
+              >
+                {creatableProviders.map((provider) => {
+                  const selected = provider.kind === createRuntimeKind;
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      key={provider.kind}
+                      style={[
+                        styles.workspaceChip,
+                        selected && styles.workspaceChipSelected,
+                      ]}
+                      onPress={() => setCreateRuntimeKind(provider.kind)}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.workspaceChipText,
+                          selected && styles.workspaceChipTextSelected,
+                        ]}
+                      >
+                        {provider.displayName}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              {!createWorkspaceLocked && workspaces.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.workspacePicker}
+                >
+                  {workspaces.map((workspace) => {
+                      const selected = workspace.path === createWorkspacePath;
+                      return (
+                        <Pressable
+                          accessibilityRole="button"
+                          key={workspace.path}
+                          style={[
+                            styles.workspaceChip,
+                            selected && styles.workspaceChipSelected,
+                          ]}
+                          onPress={() => {
+                            setCreateWorkspacePath(workspace.path);
+                            setCreateCwd(workspace.path);
+                          }}
+                        >
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.workspaceChipText,
+                              selected && styles.workspaceChipTextSelected,
+                            ]}
+                          >
+                            {getWorkspaceDisplayName(workspace)}
+                          </Text>
+                          {workspace.isGitRepository ? (
+                            <Text style={styles.workspaceChipMeta}>Git</Text>
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                </ScrollView>
+              ) : null}
+              {!createWorkspaceLocked ? (
+                <TextInput
+                  value={createCwd}
+                  onChangeText={(value) => {
+                    setCreateWorkspacePath(undefined);
+                    setCreateCwd(value);
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="Working directory"
+                  placeholderTextColor="#66727c"
+                  style={styles.cwdInput}
+                />
+              ) : null}
               <View style={styles.modalActions}>
                 <Button
                   icon="close"
@@ -965,7 +1272,7 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing.xl,
-    paddingBottom: 96,
+    paddingBottom: 84,
   },
   runtimeSection: {
     gap: spacing.md,
@@ -1017,6 +1324,137 @@ const styles = StyleSheet.create({
   },
   sessionStack: {
     gap: spacing.md,
+  },
+  workspaceStack: {
+    gap: spacing.lg,
+  },
+  workspaceSection: {
+    gap: spacing.md,
+  },
+  workspaceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    borderColor: colors.borderSubtle,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    backgroundColor: colors.surfaceRaised,
+  },
+  workspaceTitleArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+  workspaceTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  workspaceTitle: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  workspacePath: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  workspaceActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  workspaceActionButton: {
+    width: 38,
+    minHeight: 38,
+    paddingHorizontal: 0,
+    borderRadius: 19,
+  },
+  workspaceDetail: {
+    gap: spacing.lg,
+  },
+  workspaceHeroTitle: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  workspaceHeroActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  workspaceHeroActionButton: {
+    minHeight: 40,
+    minWidth: 108,
+  },
+  providerSessionGroup: {
+    gap: spacing.md,
+  },
+  workspaceCard: {
+    overflow: "hidden",
+  },
+  workspaceCardMain: {
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  workspaceCardTitle: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  workspaceSummary: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  workspaceRecent: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  workspaceCardActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
+    borderTopColor: colors.borderSubtle,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  workspaceCardActionButton: {
+    flex: 1,
+    minHeight: 40,
+    minWidth: 86,
+  },
+  sectionActionButton: {
+    minHeight: 40,
+    minWidth: 126,
+    borderRadius: radii.pill,
+  },
+  workspaceTabBar: {
+    alignSelf: "center",
+    flexDirection: "row",
+    gap: 4,
+    marginBottom: spacing.sm,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.pill,
+    padding: 3,
+    backgroundColor: "rgba(17, 24, 29, 0.82)",
+  },
+  workspaceTabButton: {
+    minHeight: 36,
+    minWidth: 82,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    backgroundColor: "transparent",
+  },
+  workspaceTabButtonActive: {
+    borderColor: colors.success,
+    backgroundColor: "rgba(32, 211, 145, 0.14)",
   },
   empty: {
     color: colors.textMuted,
@@ -1251,6 +1689,40 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     paddingHorizontal: spacing.lg,
     backgroundColor: colors.background,
+  },
+  workspacePicker: {
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  workspaceChip: {
+    minWidth: 104,
+    maxWidth: 156,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    alignItems: "center",
+    backgroundColor: colors.surfaceRaised,
+  },
+  workspaceChipSelected: {
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
+  },
+  workspaceChipText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  workspaceChipTextSelected: {
+    color: colors.success,
+  },
+  workspaceChipMeta: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 2,
   },
   modalActions: {
     flexDirection: "row",
@@ -1511,6 +1983,104 @@ function getProviderSummary(
     getAgentProviderDefinition(runtimeKind, providers)?.summary ??
     "Agent session."
   );
+}
+
+function groupSessionsByWorkspace(
+  sessions: readonly CodexSession[],
+  workspaces: readonly WorkspaceDefinition[],
+): Array<{ workspace: WorkspaceDefinition; sessions: CodexSession[] }> {
+  const groups = new Map<string, { workspace: WorkspaceDefinition; sessions: CodexSession[] }>();
+  for (const session of sessions) {
+    const workspace = findSessionWorkspace(session, workspaces);
+    const existing = groups.get(workspace.path);
+    if (existing) {
+      existing.sessions.push(session);
+    } else {
+      groups.set(workspace.path, { workspace, sessions: [session] });
+    }
+  }
+  return Array.from(groups.values()).sort((left, right) =>
+    getWorkspaceDisplayName(left.workspace).localeCompare(
+      getWorkspaceDisplayName(right.workspace),
+    ),
+  );
+}
+
+function groupSessionsByProvider(
+  sessions: readonly CodexSession[],
+  runtimeGroups: readonly RuntimeGroup[],
+  providers: readonly AgentProviderDefinition[],
+): Array<RuntimeGroup & { sessions: CodexSession[] }> {
+  return runtimeGroups
+    .filter((group) => !group.hidden)
+    .map((group) => ({
+      ...group,
+      sessions: sessions.filter(
+        (session) => getRuntimeGroupKind(session, providers) === group.kind,
+      ),
+    }))
+    .filter((group) => group.sessions.length > 0);
+}
+
+function formatProviderSummary(
+  sessions: readonly CodexSession[],
+  providers: readonly AgentProviderDefinition[],
+): string {
+  if (sessions.length === 0) {
+    return "No sessions yet";
+  }
+  const counts = new Map<string, number>();
+  for (const session of sessions) {
+    const label = getSessionRuntimeLabel(session, providers);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => `${label} ${count}`)
+    .join(" · ");
+}
+
+function findSessionWorkspace(
+  session: CodexSession,
+  workspaces: readonly WorkspaceDefinition[],
+): WorkspaceDefinition {
+  if (session.workspace_path) {
+    const exact = workspaces.find((workspace) => workspace.path === session.workspace_path);
+    if (exact) {
+      return exact;
+    }
+  }
+  const matched = workspaces
+    .filter((workspace) => isPathInside(session.cwd, workspace.path))
+    .sort((left, right) => right.path.length - left.path.length)[0];
+  if (matched) {
+    return matched;
+  }
+  return {
+    name: session.workspace_name ?? "Other Workspace",
+    path: UNASSIGNED_WORKSPACE_PATH,
+    isGitRepository: Boolean(session.git_repository),
+    status: "available",
+    source: "session",
+  };
+}
+
+function isPathInside(path: string, parent: string): boolean {
+  const normalizedPath = path.replace(/\/+$/g, "");
+  const normalizedParent = parent.replace(/\/+$/g, "");
+  return (
+    normalizedPath === normalizedParent ||
+    normalizedPath.startsWith(`${normalizedParent}/`)
+  );
+}
+
+function getWorkspaceDisplayName(workspace: WorkspaceDefinition): string {
+  return workspace.name?.trim() || basename(workspace.path);
+}
+
+function basename(path: string): string {
+  const normalized = path.replace(/\/+$/g, "");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.at(-1) ?? "Workspace";
 }
 
 function getCloseActionLabel(session: CodexSession): string {

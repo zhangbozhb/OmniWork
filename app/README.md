@@ -9,7 +9,11 @@ browser access without introducing a second UI stack.
 - Pairing screen for Relay URL, Mac device ID, and the 32-character temporary key.
 - Secure pairing persistence through platform secure storage.
 - Relay-driven device connection and HMAC key proof.
-- Compact Session list and session creation through the Mac Agent, grouped by Agent Provider, with secondary management actions moved behind a `More` dialog.
+- Workspace-first session management through the Mac Agent, with a Workspace Detail bottom-tab layout for `Sessions`, `Git`, and `Files`.
+- Sessions are grouped by Agent Provider inside each Workspace, with secondary management actions moved behind a `More` dialog.
+- Workspace picker for new sessions, using Mac Agent discovered remote project directories instead of requiring users to type common working directories.
+- Read-only workspace file browser for viewing files inside the selected workspace boundary.
+- Read-only Git status and diff views, shown only for workspaces that the Mac Agent reports as Git repositories.
 - User-editable session titles, with Terminal screens using the session title as the primary header.
 - Terminal screen with native React Native terminal snapshot surface, polling refresh, and quick keys.
 - Shared SVG icon system through `react-native-svg`, used by icon-first buttons across pairing, devices, sessions, terminal, scanner, and confirmation flows.

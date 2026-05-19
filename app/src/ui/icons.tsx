@@ -13,6 +13,9 @@ export type IconName =
   | "edit"
   | "eye"
   | "eyeOff"
+  | "file"
+  | "folder"
+  | "git"
   | "keyboard"
   | "maximize"
   | "minimize"
@@ -114,6 +117,29 @@ function renderIcon(name: IconName, color: string): JSX.Element {
           <Path d="M10.6 10.6a3 3 0 0 0 2.8 2.8" />
           <Path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a18.7 18.7 0 0 1-2.1 3.1" />
           <Path d="M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7a10.8 10.8 0 0 0 4.1-.8" />
+        </>
+      );
+    case "file":
+      return (
+        <>
+          <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+          <Path d="M14 2v6h6" />
+        </>
+      );
+    case "folder":
+      return (
+        <>
+          <Path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+        </>
+      );
+    case "git":
+      return (
+        <>
+          <Circle cx={6} cy={6} r={2} />
+          <Circle cx={18} cy={18} r={2} />
+          <Circle cx={6} cy={18} r={2} />
+          <Path d="M8 6h3a3 3 0 0 1 3 3v7" />
+          <Path d="M6 8v8" />
         </>
       );
     case "keyboard":

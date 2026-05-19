@@ -21,6 +21,12 @@ export type MessageType =
   | "session.attach"
   | "session.detach"
   | "session.status"
+  | "workspace.list"
+  | "workspace.status"
+  | "files.list"
+  | "files.read"
+  | "git.status"
+  | "git.diff"
   | "terminal.frame"
   | "terminal.input"
   | "terminal.resize"
@@ -63,6 +69,7 @@ export interface AgentHelloPayload {
   platform: "darwin";
   agent_version: string;
   providers?: AgentProviderDefinition[];
+  workspaces?: WorkspaceDefinition[];
   capabilities: AgentCapability[];
 }
 
@@ -72,6 +79,9 @@ export type KnownAgentCapability =
   | "session.tmux"
   | "session.tmux.attach"
   | "session.tmux.kill"
+  | "workspace.list"
+  | "files.read"
+  | "git.read"
   | "codex.cli"
   | "codex.app_server"
   | "claude.cli"
@@ -283,6 +293,9 @@ export interface CodexSession {
   last_active_at: string;
   terminal_size: TerminalSize;
   tmux_session_name: string;
+  workspace_path?: string;
+  workspace_name?: string;
+  git_repository?: boolean;
   origin?: SessionOrigin;
   registered?: boolean;
 }
@@ -291,12 +304,14 @@ export interface SessionListPayload {
   sessions: CodexSession[];
   default_cwd?: string;
   providers?: AgentProviderDefinition[];
+  workspaces?: WorkspaceDefinition[];
 }
 
 export interface SessionCreatePayload {
   runtime_kind?: RuntimeKind;
   title?: string;
   cwd?: string;
+  workspace_path?: string;
   command?: string;
   terminal_size?: TerminalSize;
 }
@@ -359,6 +374,94 @@ export interface TerminalAckPayload {
 export interface TerminalErrorPayload {
   code: string;
   message: string;
+}
+
+export type WorkspaceStatus = "available" | "missing" | "permission_denied";
+
+export type WorkspaceSource = "tmux" | "session" | "recent" | "default";
+
+export interface WorkspaceDefinition {
+  name?: string;
+  path: string;
+  isGitRepository: boolean;
+  gitRoot?: string;
+  status: WorkspaceStatus;
+  source: WorkspaceSource;
+}
+
+export interface WorkspaceListPayload {
+  workspaces: WorkspaceDefinition[];
+}
+
+export interface WorkspaceStatusPayload {
+  workspace: WorkspaceDefinition;
+}
+
+export interface FilesListRequestPayload {
+  workspacePath: string;
+  relativePath?: string;
+}
+
+export interface WorkspaceFileEntry {
+  name: string;
+  path: string;
+  relativePath: string;
+  type: "file" | "directory";
+  size?: number;
+  modifiedAt?: string;
+}
+
+export interface FilesListPayload {
+  workspacePath: string;
+  relativePath: string;
+  entries: WorkspaceFileEntry[];
+}
+
+export interface FilesReadRequestPayload {
+  workspacePath: string;
+  relativePath: string;
+}
+
+export interface FilesReadPayload {
+  workspacePath: string;
+  relativePath: string;
+  content?: string;
+  encoding: "utf8" | "binary" | "too_large";
+  size: number;
+}
+
+export interface WorkspaceGitStatus {
+  workspacePath: string;
+  isGitRepository: boolean;
+  branch?: string;
+  headSha?: string;
+  ahead?: number;
+  behind?: number;
+  hasChanges: boolean;
+  files: Array<{
+    path: string;
+    status: "modified" | "added" | "deleted" | "renamed" | "untracked";
+  }>;
+}
+
+export interface GitStatusRequestPayload {
+  workspacePath: string;
+}
+
+export interface GitStatusPayload {
+  workspacePath: string;
+  status: WorkspaceGitStatus;
+}
+
+export interface GitDiffRequestPayload {
+  workspacePath: string;
+  relativePath?: string;
+}
+
+export interface GitDiffPayload {
+  workspacePath: string;
+  relativePath?: string;
+  diff: string;
 }
 
 export function createMessage<TPayload>(
