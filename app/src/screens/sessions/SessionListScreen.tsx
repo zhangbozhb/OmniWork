@@ -27,7 +27,6 @@ import type {
 import {
   getAgentProviderDefinition,
   getCreatableAgentProviders,
-  getRuntimeLabel,
   isCreatableRuntimeKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import { getSessionCapabilities } from "../../features/sessions/sessionCapabilities";
@@ -155,7 +154,9 @@ export function SessionListScreen({
   const effectiveDefaultKind = preferredCreateRuntimeKind;
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createCwd, setCreateCwd] = useState(defaultCwd);
-  const [createWorkspacePath, setCreateWorkspacePath] = useState<string | undefined>();
+  const [createWorkspacePath, setCreateWorkspacePath] = useState<
+    string | undefined
+  >();
   const [createWorkspaceLocked, setCreateWorkspaceLocked] = useState(false);
   const [createRuntimeKind, setCreateRuntimeKind] =
     useState<CreatableRuntimeKind>(preferredCreateRuntimeKind);
@@ -187,7 +188,7 @@ export function SessionListScreen({
         label: "Other",
         summary:
           "Existing tmux sessions that do not match a configured Agent CLI",
-        creatable: false,
+        creatable: true,
       },
     ],
     [effectiveDefaultKind, orderedProviders, providerPreferences],
@@ -195,7 +196,9 @@ export function SessionListScreen({
 
   useEffect(() => {
     setProviderPreferencesLoaded(false);
-    AsyncStorage.getItem(getProviderPreferencesStorageKey(providerPreferenceScope))
+    AsyncStorage.getItem(
+      getProviderPreferencesStorageKey(providerPreferenceScope),
+    )
       .then((value) => {
         setProviderPreferences(parseProviderPreferences(value));
       })
@@ -260,7 +263,10 @@ export function SessionListScreen({
     }
     setCreateModalVisible(false);
     onCreateSession({
-      cwd: createWorkspaceLocked && createWorkspacePath ? createWorkspacePath : cwd,
+      cwd:
+        createWorkspaceLocked && createWorkspacePath
+          ? createWorkspacePath
+          : cwd,
       runtimeKind: createRuntimeKind,
       workspacePath: createWorkspacePath,
     });
@@ -282,20 +288,6 @@ export function SessionListScreen({
     setRenameTitle("");
   }
 
-  function handlePrimarySessionAction(
-    session: CodexSession,
-    capabilities: ReturnType<typeof getSessionCapabilities>,
-  ): void {
-    if (capabilities.canOpen) {
-      onOpenSession(session);
-      return;
-    }
-
-    if (capabilities.canRecover) {
-      onRecoverSession(session);
-    }
-  }
-
   function openWorkspace(workspace: WorkspaceDefinition): void {
     setSelectedWorkspace(workspace);
     setActiveWorkspaceTab("sessions");
@@ -315,83 +307,44 @@ export function SessionListScreen({
     }
   }
 
-  function renderSessionCard(session: CodexSession): JSX.Element {
+  function renderSessionRow(session: CodexSession): JSX.Element {
     const closing = closingSessionIds.includes(session.session_id);
     const killing = killingSessionIds.includes(session.session_id);
     const external = session.origin === "external";
-    const registered = session.registered !== false;
     const capabilities = getSessionCapabilities(session, {
       closing,
       killing,
     });
     const statusColors = getStatusColors(capabilities.statusTone);
-    const canUsePrimaryAction = capabilities.canOpen || capabilities.canRecover;
 
     return (
-      <Card key={session.session_id} style={styles.sessionCard}>
-        <Pressable
-          disabled={!capabilities.canOpen}
-          style={[styles.sessionMain, !capabilities.canOpen && styles.disabled]}
-          onPress={() => onOpenSession(session)}
-        >
-          <View style={styles.sessionTitleRow}>
-            <Text numberOfLines={1} style={styles.sessionTitle}>
-              {session.title}
-            </Text>
-            <Badge
-              backgroundColor={statusColors.backgroundColor}
-              color={statusColors.color}
-              style={styles.statusBadge}
-            >
-              {capabilities.statusLabel}
-            </Badge>
-          </View>
-          <View style={styles.sessionMetaRow}>
-            <Text
-              ellipsizeMode="middle"
-              numberOfLines={1}
-              style={styles.sessionMetaText}
-            >
-              {formatCompactPath(session.cwd)}
-            </Text>
-            <Text style={styles.sessionMetaDivider}>·</Text>
-            <Text style={styles.sessionTime}>
-              Active {formatRelativeTime(session.last_active_at)}
-            </Text>
-          </View>
-          {external ? (
-            <Text style={styles.sessionSource}>
-              External tmux{registered ? "" : " · tap Open to attach"}
-            </Text>
-          ) : null}
-          {capabilities.unavailableReason ? (
-            <Text style={styles.unavailableReason}>
-              {capabilities.unavailableReason}
-            </Text>
-          ) : null}
-        </Pressable>
-        <View style={styles.sessionActions}>
-          <Button
-            disabled={!canUsePrimaryAction}
-            icon={capabilities.canRecover ? "refresh" : "terminal"}
-            style={styles.primarySessionButton}
-            onPress={() => handlePrimarySessionAction(session, capabilities)}
-          >
-            {capabilities.canRecover && capabilities.recoveryActionLabel
-              ? capabilities.recoveryActionLabel
-              : capabilities.primaryActionLabel}
-          </Button>
-          <Button
-            accessibilityLabel={`Manage ${session.title}`}
-            icon="more"
-            iconOnly
-            style={styles.moreButton}
-            onPress={() => setManagingSession(session)}
-          >
-            More
-          </Button>
+      <Pressable
+        key={session.session_id}
+        disabled={!capabilities.canOpen}
+        style={[styles.sessionRow, !capabilities.canOpen && styles.disabled]}
+        onPress={() => onOpenSession(session)}
+      >
+        <View
+          style={[styles.sessionDot, { backgroundColor: statusColors.color }]}
+        />
+        <View style={styles.sessionRowContent}>
+          <Text numberOfLines={1} style={styles.sessionRowTitle}>
+            {session.title}
+          </Text>
+          <Text numberOfLines={1} style={styles.sessionRowMeta}>
+            {formatRelativeTime(session.last_active_at)}
+            {external ? " · ext" : ""}
+          </Text>
         </View>
-      </Card>
+        <Pressable
+          accessibilityLabel={`Manage ${session.title}`}
+          hitSlop={8}
+          style={styles.sessionRowMore}
+          onPress={() => setManagingSession(session)}
+        >
+          <Text style={styles.sessionRowMoreText}>···</Text>
+        </Pressable>
+      </Pressable>
     );
   }
 
@@ -403,15 +356,19 @@ export function SessionListScreen({
     (group) => group.workspace.path !== UNASSIGNED_WORKSPACE_PATH,
   );
   const unassignedSessions =
-    workspaceGroups.find((group) => group.workspace.path === UNASSIGNED_WORKSPACE_PATH)?.sessions ?? [];
+    workspaceGroups.find(
+      (group) => group.workspace.path === UNASSIGNED_WORKSPACE_PATH,
+    )?.sessions ?? [];
   const activeWorkspace = selectedWorkspace
-    ? (workspaces.find((workspace) => workspace.path === selectedWorkspace.path) ??
-      selectedWorkspace)
+    ? (workspaces.find(
+        (workspace) => workspace.path === selectedWorkspace.path,
+      ) ?? selectedWorkspace)
     : null;
   const activeWorkspaceSessions = activeWorkspace
     ? sessions.filter(
         (session) =>
-          findSessionWorkspace(session, workspaces).path === activeWorkspace.path,
+          findSessionWorkspace(session, workspaces).path ===
+          activeWorkspace.path,
       )
     : [];
   const activeProviderGroups = activeWorkspace
@@ -421,7 +378,9 @@ export function SessionListScreen({
     <View style={styles.screen}>
       <View style={styles.actions}>
         <Button
-          accessibilityLabel={activeWorkspace ? "Back to workspaces" : "Back to devices"}
+          accessibilityLabel={
+            activeWorkspace ? "Back to workspaces" : "Back to devices"
+          }
           icon="arrowLeft"
           iconOnly
           style={styles.backButton}
@@ -431,7 +390,9 @@ export function SessionListScreen({
         </Button>
         <View style={styles.toolbarTitleArea}>
           <Text style={styles.toolbarTitle}>
-            {activeWorkspace ? getWorkspaceDisplayName(activeWorkspace) : "Workspaces"}
+            {activeWorkspace
+              ? getWorkspaceDisplayName(activeWorkspace)
+              : "Workspaces"}
           </Text>
           <Text numberOfLines={1} style={styles.toolbarMeta}>
             {activeWorkspace
@@ -468,55 +429,62 @@ export function SessionListScreen({
           <View style={styles.workspaceDetail}>
             {activeWorkspaceTab === "sessions" ? (
               <View style={styles.runtimeSection}>
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionTitleArea}>
-                    <Text style={styles.sectionTitle}>Sessions</Text>
-                  </View>
-                  <Button
-                    disabled={
-                      creating ||
-                      !isCreatableRuntimeKind(
-                        preferredCreateRuntimeKind,
-                        enabledProviders,
-                      )
-                    }
-                    icon="add"
-                    style={styles.sectionActionButton}
-                    tone="primary"
-                    onPress={() =>
-                      openCreateModal(preferredCreateRuntimeKind, activeWorkspace)
-                    }
-                  >
-                    New Session
-                  </Button>
-                </View>
                 {activeProviderGroups.length === 0 ? (
-                  <Text style={styles.empty}>
-                    No sessions in this workspace yet.
-                  </Text>
+                  <View style={styles.sessionsEmptyState}>
+                    <Text style={styles.empty}>
+                      No sessions in this workspace yet.
+                    </Text>
+                    <Button
+                      disabled={
+                        creating ||
+                        !isCreatableRuntimeKind(
+                          preferredCreateRuntimeKind,
+                          enabledProviders,
+                        )
+                      }
+                      icon="add"
+                      style={styles.emptyCreateButton}
+                      tone="primary"
+                      onPress={() =>
+                        openCreateModal(
+                          preferredCreateRuntimeKind,
+                          activeWorkspace,
+                        )
+                      }
+                    >
+                      New Session
+                    </Button>
+                  </View>
                 ) : (
-                  activeProviderGroups.map((group) => (
-                    <View key={group.kind} style={styles.providerSessionGroup}>
-                      <View style={styles.sectionHeader}>
-                        <View style={styles.sectionTitleArea}>
-                          <View style={styles.sectionTitleRow}>
-                            <Text style={styles.sectionTitle}>{group.label}</Text>
-                            <Text style={styles.sectionMeta}>
-                              {group.sessions.length}
-                            </Text>
-                          </View>
-                          <Text style={styles.sectionDescription}>
-                            {group.summary}
+                  <View style={styles.sessionsList}>
+                    {activeProviderGroups.map((group) => (
+                      <View key={group.kind} style={styles.sessionGroup}>
+                        <View style={styles.sessionGroupHeader}>
+                          <Text style={styles.sessionGroupLabel}>
+                            {group.label} · {group.sessions.length}
                           </Text>
+                          <Button
+                            accessibilityLabel={`New ${group.label} session`}
+                            disabled={creating || !group.creatable}
+                            icon="add"
+                            iconOnly
+                            style={styles.sessionGroupAdd}
+                            onPress={() =>
+                              openCreateModal(
+                                group.kind as CreatableRuntimeKind,
+                                activeWorkspace,
+                              )
+                            }
+                          >
+                            Add
+                          </Button>
                         </View>
-                      </View>
-                      <View style={styles.sessionStack}>
                         {group.sessions.map((session) =>
-                          renderSessionCard(session),
+                          renderSessionRow(session),
                         )}
                       </View>
-                    </View>
-                  ))
+                    ))}
+                  </View>
                 )}
               </View>
             ) : null}
@@ -565,7 +533,9 @@ export function SessionListScreen({
                     >
                       <View style={styles.workspaceRowIcon}>
                         <Text style={styles.workspaceRowIconText}>
-                          {getWorkspaceDisplayName(workspace).charAt(0).toUpperCase()}
+                          {getWorkspaceDisplayName(workspace)
+                            .charAt(0)
+                            .toUpperCase()}
                         </Text>
                       </View>
                       <View style={styles.workspaceRowContent}>
@@ -601,10 +571,10 @@ export function SessionListScreen({
 
             {unassignedSessions.length > 0 ? (
               <View style={styles.runtimeSection}>
-                <Text style={styles.sectionTitle}>Unassigned Sessions</Text>
-                <View style={styles.sessionStack}>
+                <Text style={styles.sessionGroupLabel}>Unassigned</Text>
+                <View style={styles.sessionGroup}>
                   {unassignedSessions.map((session) =>
-                    renderSessionCard(session),
+                    renderSessionRow(session),
                   )}
                 </View>
               </View>
@@ -619,7 +589,8 @@ export function SessionListScreen({
             icon="terminal"
             style={[
               styles.workspaceTabButton,
-              activeWorkspaceTab === "sessions" && styles.workspaceTabButtonActive,
+              activeWorkspaceTab === "sessions" &&
+                styles.workspaceTabButtonActive,
             ]}
             onPress={() => setActiveWorkspaceTab("sessions")}
           >
@@ -679,54 +650,55 @@ export function SessionListScreen({
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalAvoidingView}
         >
-          <View
+          <Pressable
             style={styles.modalBackdrop}
-            onStartShouldSetResponderCapture={() => {
+            onPress={() => {
               Keyboard.dismiss();
-              return false;
+              setCreateModalVisible(false);
             }}
           >
-            <Card style={styles.modalCard}>
-              <Text style={styles.modalTitle}>
-                {createWorkspaceLocked ? "New Session" : "New Workspace"}
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.workspacePicker}
-              >
-                {creatableProviders.map((provider) => {
-                  const selected = provider.kind === createRuntimeKind;
-                  return (
-                    <Pressable
-                      accessibilityRole="button"
-                      key={provider.kind}
-                      style={[
-                        styles.workspaceChip,
-                        selected && styles.workspaceChipSelected,
-                      ]}
-                      onPress={() => setCreateRuntimeKind(provider.kind)}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.workspaceChipText,
-                          selected && styles.workspaceChipTextSelected,
-                        ]}
-                      >
-                        {provider.displayName}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-              {!createWorkspaceLocked && workspaces.length > 0 ? (
+            <Pressable onPress={() => {}}>
+              <Card style={styles.modalCard}>
+                <Text style={styles.modalTitle}>
+                  {createWorkspaceLocked ? "New Session" : "New Workspace"}
+                </Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.workspacePicker}
                 >
-                  {workspaces.map((workspace) => {
+                  {creatableProviders.map((provider) => {
+                    const selected = provider.kind === createRuntimeKind;
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        key={provider.kind}
+                        style={[
+                          styles.workspaceChip,
+                          selected && styles.workspaceChipSelected,
+                        ]}
+                        onPress={() => setCreateRuntimeKind(provider.kind)}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.workspaceChipText,
+                            selected && styles.workspaceChipTextSelected,
+                          ]}
+                        >
+                          {provider.displayName}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+                {!createWorkspaceLocked && workspaces.length > 0 ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.workspacePicker}
+                  >
+                    {workspaces.map((workspace) => {
                       const selected = workspace.path === createWorkspacePath;
                       return (
                         <Pressable
@@ -756,42 +728,43 @@ export function SessionListScreen({
                         </Pressable>
                       );
                     })}
-                </ScrollView>
-              ) : null}
-              {!createWorkspaceLocked ? (
-                <TextInput
-                  value={createCwd}
-                  onChangeText={(value) => {
-                    setCreateWorkspacePath(undefined);
-                    setCreateCwd(value);
-                  }}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  placeholder="Working directory"
-                  placeholderTextColor="#66727c"
-                  style={styles.cwdInput}
-                />
-              ) : null}
-              <View style={styles.modalActions}>
-                <Button
-                  icon="close"
-                  style={styles.modalSecondaryButton}
-                  onPress={() => setCreateModalVisible(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  disabled={!createCwd.trim() || creating}
-                  icon={creating ? "refresh" : "add"}
-                  style={styles.modalPrimaryButton}
-                  tone="primary"
-                  onPress={confirmCreateSession}
-                >
-                  {creating ? "Starting..." : "Create"}
-                </Button>
-              </View>
-            </Card>
-          </View>
+                  </ScrollView>
+                ) : null}
+                {!createWorkspaceLocked ? (
+                  <TextInput
+                    value={createCwd}
+                    onChangeText={(value) => {
+                      setCreateWorkspacePath(undefined);
+                      setCreateCwd(value);
+                    }}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="Working directory"
+                    placeholderTextColor="#66727c"
+                    style={styles.cwdInput}
+                  />
+                ) : null}
+                <View style={styles.modalActions}>
+                  <Button
+                    icon="close"
+                    style={styles.modalSecondaryButton}
+                    onPress={() => setCreateModalVisible(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={!createCwd.trim() || creating}
+                    icon={creating ? "refresh" : "add"}
+                    style={styles.modalPrimaryButton}
+                    tone="primary"
+                    onPress={confirmCreateSession}
+                  >
+                    {creating ? "Starting..." : "Create"}
+                  </Button>
+                </View>
+              </Card>
+            </Pressable>
+          </Pressable>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -805,49 +778,47 @@ export function SessionListScreen({
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalAvoidingView}
         >
-          <View
+          <Pressable
             style={styles.modalBackdrop}
-            onStartShouldSetResponderCapture={() => {
+            onPress={() => {
               Keyboard.dismiss();
-              return false;
+              setRenamingSession(null);
             }}
           >
-            <Card style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Rename Session</Text>
-              <Text style={styles.modalDescription}>
-                Use a short task-focused name. The original tmux name stays
-                unchanged.
-              </Text>
-              <TextInput
-                value={renameTitle}
-                onChangeText={setRenameTitle}
-                autoCapitalize="sentences"
-                autoCorrect
-                maxLength={80}
-                placeholder="Session title"
-                placeholderTextColor="#66727c"
-                style={styles.cwdInput}
-              />
-              <View style={styles.modalActions}>
-                <Button
-                  icon="close"
-                  style={styles.modalSecondaryButton}
-                  onPress={() => setRenamingSession(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  disabled={!renameTitle.trim()}
-                  icon="save"
-                  style={styles.modalPrimaryButton}
-                  tone="primary"
-                  onPress={confirmRenameSession}
-                >
-                  Save
-                </Button>
-              </View>
-            </Card>
-          </View>
+            <Pressable onPress={() => {}}>
+              <Card style={styles.modalCard}>
+                <Text style={styles.modalTitle}>Rename Session</Text>
+                <TextInput
+                  value={renameTitle}
+                  onChangeText={setRenameTitle}
+                  autoCapitalize="sentences"
+                  autoCorrect
+                  maxLength={80}
+                  placeholder="Session title"
+                  placeholderTextColor="#66727c"
+                  style={styles.cwdInput}
+                />
+                <View style={styles.modalActions}>
+                  <Button
+                    icon="close"
+                    style={styles.modalSecondaryButton}
+                    onPress={() => setRenamingSession(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={!renameTitle.trim()}
+                    icon="save"
+                    style={styles.modalPrimaryButton}
+                    tone="primary"
+                    onPress={confirmRenameSession}
+                  >
+                    Save
+                  </Button>
+                </View>
+              </Card>
+            </Pressable>
+          </Pressable>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -857,139 +828,112 @@ export function SessionListScreen({
         visible={Boolean(managingSession)}
         onRequestClose={() => setManagingSession(null)}
       >
-        <View style={styles.modalBackdrop}>
-          <Card style={styles.modalCard}>
-            {managingSession ? (
-              <>
-                {(() => {
-                  const session = managingSession;
-                  const external = session.origin === "external";
-                  const registered = session.registered !== false;
-                  const closing = closingSessionIds.includes(
-                    session.session_id,
-                  );
-                  const killing = killingSessionIds.includes(
-                    session.session_id,
-                  );
-                  const provider = getAgentProviderDefinition(
-                    getRuntimeGroupKind(session, providers),
-                    providers,
-                  );
-                  const capabilities = getSessionCapabilities(session, {
-                    closing,
-                    killing,
-                  });
-                  const statusColors = getStatusColors(
-                    capabilities.statusTone,
-                  );
-                  return (
-                    <>
-                      <View style={styles.manageHeader}>
-                        <Text numberOfLines={2} style={styles.modalTitle}>
-                          {session.title}
-                        </Text>
-                        <Badge
-                          backgroundColor={statusColors.backgroundColor}
-                          color={statusColors.color}
-                          style={styles.statusBadge}
-                        >
-                          {capabilities.statusLabel}
-                        </Badge>
-                      </View>
-                      <View style={styles.manageDetails}>
-                        <DetailRow
-                          label="Provider"
-                          value={getSessionRuntimeLabel(session, providers)}
-                        />
-                        <DetailRow
-                          label="Folder"
-                          value={formatCompactPath(session.cwd)}
-                        />
-                        <DetailRow label="Command" value={session.command} />
-                        <DetailRow
-                          label="Created"
-                          value={formatAbsoluteTime(session.created_at)}
-                        />
-                        <DetailRow
-                          label="Tmux"
-                          value={session.tmux_session_name}
-                        />
-                        {provider ? (
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setManagingSession(null)}
+        >
+          <Pressable onPress={() => {}}>
+            <Card style={styles.modalCard}>
+              {managingSession ? (
+                <>
+                  {(() => {
+                    const session = managingSession;
+                    const external = session.origin === "external";
+                    const registered = session.registered !== false;
+                    const closing = closingSessionIds.includes(
+                      session.session_id,
+                    );
+                    const killing = killingSessionIds.includes(
+                      session.session_id,
+                    );
+                    const capabilities = getSessionCapabilities(session, {
+                      closing,
+                      killing,
+                    });
+                    const statusColors = getStatusColors(
+                      capabilities.statusTone,
+                    );
+                    return (
+                      <>
+                        <View style={styles.manageHeader}>
+                          <Text numberOfLines={2} style={styles.modalTitle}>
+                            {session.title}
+                          </Text>
+                          <Badge
+                            backgroundColor={statusColors.backgroundColor}
+                            color={statusColors.color}
+                            style={styles.statusBadge}
+                          >
+                            {capabilities.statusLabel}
+                          </Badge>
+                        </View>
+                        <View style={styles.manageDetails}>
                           <DetailRow
-                            label="Capability"
-                            value={provider.capability}
+                            label="Folder"
+                            value={formatCompactPath(session.cwd)}
                           />
-                        ) : null}
-                        {external ? (
                           <DetailRow
-                            label="Origin"
-                            value={registered ? "Attached tmux" : "Existing tmux"}
+                            label="Created"
+                            value={formatAbsoluteTime(session.created_at)}
                           />
+                        </View>
+                        {capabilities.unavailableReason ? (
+                          <Text style={styles.unavailableReason}>
+                            {capabilities.unavailableReason}
+                          </Text>
                         ) : null}
-                      </View>
-                      {capabilities.unavailableReason ? (
-                        <Text style={styles.unavailableReason}>
-                          {capabilities.unavailableReason}
-                        </Text>
-                      ) : null}
-                      <View style={styles.manageActions}>
-                        <Button
-                          icon="edit"
-                          style={styles.manageActionButton}
-                          onPress={() => {
-                            setManagingSession(null);
-                            openRenameModal(session);
-                          }}
-                        >
-                          Rename
-                        </Button>
-                        {registered ? (
+                        <View style={styles.manageActions}>
                           <Button
-                            disabled={!capabilities.canClose}
-                            icon={external ? "eyeOff" : "close"}
+                            icon="edit"
                             style={styles.manageActionButton}
+                            onPress={() => {
+                              setManagingSession(null);
+                              openRenameModal(session);
+                            }}
+                          >
+                            Rename
+                          </Button>
+                        </View>
+                        <View style={styles.manageDangerRow}>
+                          {registered ? (
+                            <Button
+                              disabled={!capabilities.canClose}
+                              icon={external ? "eyeOff" : "close"}
+                              style={styles.manageDangerButton}
+                              tone="danger"
+                              onPress={() => {
+                                setManagingSession(null);
+                                onCloseSession(session);
+                              }}
+                            >
+                              {closing
+                                ? "Closing..."
+                                : external
+                                  ? "Forget"
+                                  : getCloseActionLabel(session)}
+                            </Button>
+                          ) : null}
+                          <Button
+                            disabled={!capabilities.canKill}
+                            icon="trash"
+                            style={styles.manageDangerButton}
                             tone="danger"
                             onPress={() => {
                               setManagingSession(null);
-                              onCloseSession(session);
+                              onKillTmuxSession(session);
                             }}
                           >
-                            {closing
-                              ? "Closing..."
-                              : external
-                                ? "Forget tmux"
-                                : getCloseActionLabel(session)}
+                            {killing ? "Killing..." : "Kill tmux"}
                           </Button>
-                        ) : null}
-                        <Button
-                          disabled={!capabilities.canKill}
-                          icon="trash"
-                          style={styles.manageActionButton}
-                          tone="danger"
-                          onPress={() => {
-                            setManagingSession(null);
-                            onKillTmuxSession(session);
-                          }}
-                        >
-                          {killing ? "Killing..." : "Kill tmux"}
-                        </Button>
-                      </View>
-                    </>
-                  );
-                })()}
-                <View style={styles.modalActions}>
-                  <Button
-                    icon="check"
-                    style={styles.modalSecondaryButton}
-                    onPress={() => setManagingSession(null)}
-                  >
-                    Done
-                  </Button>
-                </View>
-              </>
-            ) : null}
-          </Card>
-        </View>
+                        </View>
+                      </>
+                    );
+                  })()}
+                </>
+              ) : null}
+            </Card>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <Modal
@@ -998,124 +942,128 @@ export function SessionListScreen({
         visible={providersModalVisible}
         onRequestClose={() => setProvidersModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <Card style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Provider Preferences</Text>
-            <Text style={styles.modalDescription}>
-              Choose which Agent CLIs appear in this app. The default provider is
-              used by the floating New Session button.
-            </Text>
-            <ScrollView contentContainerStyle={styles.providerStack}>
-              {orderedProviders.map((provider, index) => {
-                const hidden = providerPreferences.hiddenKinds.includes(
-                  provider.kind,
-                );
-                const isDefault =
-                  provider.kind === effectiveDefaultKind;
-                return (
-                  <View
-                    key={provider.kind}
-                    style={[
-                      styles.providerRow,
-                      hidden && styles.providerRowHidden,
-                    ]}
-                  >
-                    <View style={styles.providerInfo}>
-                      <View style={styles.providerTitleRow}>
-                        <Text style={styles.providerTitle}>
-                          {provider.displayName}
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setProvidersModalVisible(false)}
+        >
+          <Pressable onPress={() => {}}>
+            <Card style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Provider Preferences</Text>
+              <Text style={styles.modalDescription}>
+                Choose which Agent CLIs appear in this app. The default provider
+                is used by the floating New Session button.
+              </Text>
+              <ScrollView contentContainerStyle={styles.providerStack}>
+                {orderedProviders.map((provider, index) => {
+                  const hidden = providerPreferences.hiddenKinds.includes(
+                    provider.kind,
+                  );
+                  const isDefault = provider.kind === effectiveDefaultKind;
+                  return (
+                    <View
+                      key={provider.kind}
+                      style={[
+                        styles.providerRow,
+                        hidden && styles.providerRowHidden,
+                      ]}
+                    >
+                      <View style={styles.providerInfo}>
+                        <View style={styles.providerTitleRow}>
+                          <Text style={styles.providerTitle}>
+                            {provider.displayName}
+                          </Text>
+                          {isDefault ? (
+                            <Badge
+                              backgroundColor={colors.successSoft}
+                              color={colors.success}
+                              style={styles.defaultBadge}
+                            >
+                              Default
+                            </Badge>
+                          ) : null}
+                          {hidden ? (
+                            <Badge
+                              backgroundColor={colors.neutralSoft}
+                              color={colors.textMuted}
+                              style={styles.defaultBadge}
+                            >
+                              Hidden
+                            </Badge>
+                          ) : null}
+                        </View>
+                        <Text style={styles.providerSummary}>
+                          {provider.summary}
                         </Text>
-                        {isDefault ? (
-                          <Badge
-                            backgroundColor={colors.successSoft}
-                            color={colors.success}
-                            style={styles.defaultBadge}
-                          >
-                            Default
-                          </Badge>
-                        ) : null}
-                        {hidden ? (
-                          <Badge
-                            backgroundColor={colors.neutralSoft}
-                            color={colors.textMuted}
-                            style={styles.defaultBadge}
-                          >
-                            Hidden
-                          </Badge>
-                        ) : null}
+                        <Text style={styles.providerMeta}>
+                          {hidden
+                            ? "Hidden from the session list and new-session shortcuts."
+                            : isDefault
+                              ? "Used when you tap New Session."
+                              : "Available when creating sessions."}
+                        </Text>
                       </View>
-                      <Text style={styles.providerSummary}>
-                        {provider.summary}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {hidden
-                          ? "Hidden from the session list and new-session shortcuts."
-                          : isDefault
-                            ? "Used when you tap New Session."
-                            : "Available when creating sessions."}
-                      </Text>
+                      <View style={styles.providerActions}>
+                        <Button
+                          accessibilityLabel={`Move ${provider.displayName} up`}
+                          disabled={index === 0}
+                          icon="chevronUp"
+                          iconOnly
+                          style={styles.providerActionButton}
+                          onPress={() => moveProvider(provider.kind, -1)}
+                        >
+                          Up
+                        </Button>
+                        <Button
+                          accessibilityLabel={`Move ${provider.displayName} down`}
+                          disabled={index === orderedProviders.length - 1}
+                          icon="chevronDown"
+                          iconOnly
+                          style={styles.providerActionButton}
+                          onPress={() => moveProvider(provider.kind, 1)}
+                        >
+                          Down
+                        </Button>
+                        <Button
+                          icon={hidden ? "eye" : "eyeOff"}
+                          style={styles.providerToggleButton}
+                          onPress={() => toggleProviderHidden(provider.kind)}
+                        >
+                          {hidden ? "Show" : "Hide"}
+                        </Button>
+                        <Button
+                          disabled={hidden || isDefault || !provider.creatable}
+                          icon="check"
+                          style={styles.providerDefaultButton}
+                          tone={isDefault ? "primary" : "secondary"}
+                          onPress={() => setDefaultProvider(provider.kind)}
+                        >
+                          {isDefault ? "Default" : "Set Default"}
+                        </Button>
+                      </View>
                     </View>
-                    <View style={styles.providerActions}>
-                      <Button
-                        accessibilityLabel={`Move ${provider.displayName} up`}
-                        disabled={index === 0}
-                        icon="chevronUp"
-                        iconOnly
-                        style={styles.providerActionButton}
-                        onPress={() => moveProvider(provider.kind, -1)}
-                      >
-                        Up
-                      </Button>
-                      <Button
-                        accessibilityLabel={`Move ${provider.displayName} down`}
-                        disabled={index === orderedProviders.length - 1}
-                        icon="chevronDown"
-                        iconOnly
-                        style={styles.providerActionButton}
-                        onPress={() => moveProvider(provider.kind, 1)}
-                      >
-                        Down
-                      </Button>
-                      <Button
-                        icon={hidden ? "eye" : "eyeOff"}
-                        style={styles.providerToggleButton}
-                        onPress={() => toggleProviderHidden(provider.kind)}
-                      >
-                        {hidden ? "Show" : "Hide"}
-                      </Button>
-                      <Button
-                        disabled={hidden || isDefault || !provider.creatable}
-                        icon="check"
-                        style={styles.providerDefaultButton}
-                        tone={isDefault ? "primary" : "secondary"}
-                        onPress={() => setDefaultProvider(provider.kind)}
-                      >
-                        {isDefault ? "Default" : "Set Default"}
-                      </Button>
-                    </View>
-                  </View>
-                );
-              })}
-            </ScrollView>
-            <View style={styles.modalActions}>
-              <Button
-                icon="refresh"
-                style={styles.modalSecondaryButton}
-                onPress={resetProviderPreferences}
-              >
-                Reset
-              </Button>
-              <Button
-                icon="check"
-                style={styles.modalPrimaryButton}
-                tone="primary"
-                onPress={() => setProvidersModalVisible(false)}
-              >
-                Done
-              </Button>
-            </View>
-          </Card>
-        </View>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.modalActions}>
+                <Button
+                  icon="refresh"
+                  style={styles.modalSecondaryButton}
+                  onPress={resetProviderPreferences}
+                >
+                  Reset
+                </Button>
+                <Button
+                  icon="check"
+                  style={styles.modalPrimaryButton}
+                  tone="primary"
+                  onPress={() => setProvidersModalVisible(false)}
+                >
+                  Done
+                </Button>
+              </View>
+            </Card>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -1287,9 +1235,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.success,
   },
-  sessionStack: {
-    gap: spacing.md,
-  },
   workspaceList: {
     borderColor: colors.borderSubtle,
     borderWidth: StyleSheet.hairlineWidth,
@@ -1373,6 +1318,89 @@ const styles = StyleSheet.create({
   providerSessionGroup: {
     gap: spacing.md,
   },
+  sessionsEmptyState: {
+    alignItems: "center",
+    gap: spacing.lg,
+    paddingVertical: spacing.xl,
+  },
+  emptyCreateButton: {
+    minHeight: 40,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.xl,
+  },
+  sessionsList: {
+    gap: spacing.lg,
+  },
+  sessionGroup: {
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
+  },
+  sessionGroupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surfaceRaised,
+  },
+  sessionGroupLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  sessionGroupAdd: {
+    width: 28,
+    height: 28,
+    minHeight: 28,
+    paddingHorizontal: 0,
+    borderRadius: 14,
+  },
+  sessionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    borderTopColor: colors.borderSubtle,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  sessionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  sessionRowContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  sessionRowTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  sessionRowMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  sessionRowMore: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+  },
+  sessionRowMoreText: {
+    color: colors.textDim,
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
   sectionActionButton: {
     minHeight: 40,
     minWidth: 126,
@@ -1409,140 +1437,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     fontSize: 13,
   },
-  sessionCard: {
-    overflow: "hidden",
-  },
-  sessionMain: {
-    padding: spacing.xl,
-  },
-  sessionActions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
-    paddingTop: spacing.sm,
-    borderTopColor: colors.borderSubtle,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  primarySessionButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: radii.md,
-    alignItems: "center",
-    justifyContent: "center",
-    borderColor: colors.success,
-    backgroundColor: colors.successSoft,
-  },
-  moreButton: {
-    minHeight: 42,
-    width: 46,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recoveryActionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  recoveryButton: {
-    minHeight: 36,
-    minWidth: 92,
-    borderRadius: radii.sm,
-    backgroundColor: colors.success,
-  },
-  recoveryHint: {
-    color: colors.textMuted,
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  closeButton: {
-    flex: 1,
-    minWidth: 132,
-    minHeight: 38,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.sm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  killSessionButton: {
-    flex: 1,
-    minWidth: 112,
-    minHeight: 38,
-    borderColor: colors.dangerBorder,
-    borderWidth: 1,
-    borderRadius: radii.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.dangerSurface,
-  },
-  sessionTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  sessionTitle: {
-    color: colors.textPrimary,
-    fontSize: 18,
-    fontWeight: "700",
-    flex: 1,
-  },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-  },
-  runtimeBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-    color: "#d7ffe9",
-    fontSize: 11,
-    fontWeight: "800",
-    backgroundColor: colors.successSoft,
-  },
-  originBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-    color: colors.warning,
-    fontSize: 11,
-    fontWeight: "800",
-    backgroundColor: colors.warningSoft,
-  },
-  sessionMetaText: {
-    color: colors.textMuted,
-    flex: 1,
-    fontSize: 14,
-  },
-  sessionMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: spacing.sm,
-    gap: spacing.sm,
-  },
-  sessionMetaDivider: {
-    color: colors.textDim,
-  },
-  sessionTime: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  sessionSource: {
-    color: colors.warning,
-    fontSize: 13,
-    fontWeight: "700",
-    marginTop: spacing.xs,
   },
   unavailableReason: {
     color: colors.warning,
@@ -1590,6 +1487,15 @@ const styles = StyleSheet.create({
   },
   manageActionButton: {
     minHeight: 40,
+  },
+  manageDangerRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  manageDangerButton: {
+    flex: 1,
+    minHeight: 38,
   },
   floatingCreateButton: {
     position: "absolute",
@@ -1901,7 +1807,6 @@ function formatCompactPath(path: string): string {
   return `${prefix}/.../${parts[parts.length - 1]}`;
 }
 
-
 function getRuntimeGroupKind(
   session: CodexSession,
   providers: readonly AgentProviderDefinition[],
@@ -1911,31 +1816,14 @@ function getRuntimeGroupKind(
     : "other";
 }
 
-function getSessionRuntimeLabel(
-  session: CodexSession,
-  providers: readonly AgentProviderDefinition[],
-): string {
-  return (
-    session.runtime_label ||
-    getRuntimeLabel(getRuntimeGroupKind(session, providers), providers)
-  );
-}
-
-function getProviderSummary(
-  runtimeKind: RuntimeKind,
-  providers: readonly AgentProviderDefinition[],
-): string {
-  return (
-    getAgentProviderDefinition(runtimeKind, providers)?.summary ??
-    "Agent session."
-  );
-}
-
 function groupSessionsByWorkspace(
   sessions: readonly CodexSession[],
   workspaces: readonly WorkspaceDefinition[],
 ): Array<{ workspace: WorkspaceDefinition; sessions: CodexSession[] }> {
-  const groups = new Map<string, { workspace: WorkspaceDefinition; sessions: CodexSession[] }>();
+  const groups = new Map<
+    string,
+    { workspace: WorkspaceDefinition; sessions: CodexSession[] }
+  >();
   for (const session of sessions) {
     const workspace = findSessionWorkspace(session, workspaces);
     const existing = groups.get(workspace.path);
@@ -1973,7 +1861,9 @@ function findSessionWorkspace(
   workspaces: readonly WorkspaceDefinition[],
 ): WorkspaceDefinition {
   if (session.workspace_path) {
-    const exact = workspaces.find((workspace) => workspace.path === session.workspace_path);
+    const exact = workspaces.find(
+      (workspace) => workspace.path === session.workspace_path,
+    );
     if (exact) {
       return exact;
     }
@@ -2022,19 +1912,6 @@ function getCloseActionLabel(session: CodexSession): string {
   }
 
   return "Close Session";
-}
-
-function getRecoveryHint(session: CodexSession): string {
-  switch (session.status) {
-    case "error":
-      return "Starts the saved command in a fresh tmux session.";
-    case "recovering":
-      return "Checks whether the tmux target is back online.";
-    case "exited":
-      return "Restarts the saved command and keeps the session history.";
-    default:
-      return "Attempts to make this session interactive again.";
-  }
 }
 
 function getStatusColors(tone: "success" | "warning" | "danger" | "neutral"): {

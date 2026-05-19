@@ -1,5 +1,14 @@
 import type { JSX } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useState, useCallback } from "react";
+import {
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import type { PairingConfig } from "../../features/auth/types";
 import { Badge, Button, Card } from "../../ui/components";
@@ -29,29 +38,53 @@ export function DeviceListScreen({
   onRefreshSessions,
 }: DeviceListScreenProps): JSX.Element {
   const ready = connectionStatus === "authenticated";
-  const failed = connectionStatus === "failed";
   const activeStatus = getDeviceStatusPresentation(
     connectionStatus,
     connectionMessage,
   );
 
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    onRefreshSessions();
+    setTimeout(() => setRefreshing(false), 1000);
+  }, [onRefreshSessions]);
+
+  const [expandedDevice, setExpandedDevice] = useState<string | null>(null);
+
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
-      <Card elevated style={styles.summaryCard}>
+    <ScrollView
+      contentContainerStyle={styles.screen}
+      refreshControl={
+        Platform.OS !== "web"
+          ? (
+              <RefreshControl
+                refreshing={refreshing}
+                tintColor={colors.success}
+                onRefresh={handleRefresh}
+              />
+            )
+          : undefined
+      }
+    >
+      <View style={styles.header}>
         <View>
-          <Text style={styles.summaryEyebrow}>Device Center</Text>
-          <Text style={styles.summaryTitle}>
+          <Text style={styles.headerEyebrow}>Device Center</Text>
+          <Text style={styles.headerTitle}>
             {pairings.length} linked{" "}
             {pairings.length === 1 ? "device" : "devices"}
           </Text>
         </View>
-        <Badge
-          backgroundColor={activeStatus.backgroundColor}
-          color={activeStatus.color}
+        <Button
+          accessibilityLabel="Refresh"
+          icon="refresh"
+          iconOnly
+          style={styles.headerRefresh}
+          onPress={handleRefresh}
         >
-          {activeStatus.label}
-        </Badge>
-      </Card>
+          Refresh
+        </Button>
+      </View>
 
       {pairings.length === 0 ? (
         <Card style={styles.emptyCard}>
@@ -62,102 +95,102 @@ export function DeviceListScreen({
         </Card>
       ) : (
         pairings.map((pairing) => {
+          const pairingKey = `${pairing.relayUrl}:${pairing.deviceId}`;
           const active = Boolean(
             activePairing &&
-            pairing.deviceId === activePairing.deviceId &&
-            pairing.relayUrl === activePairing.relayUrl,
+              pairing.deviceId === activePairing.deviceId &&
+              pairing.relayUrl === activePairing.relayUrl,
           );
           const canOpen = !active || ready;
           const status = active
             ? activeStatus
             : getSavedDeviceStatusPresentation();
-          const primaryActionLabel = active
-            ? ready
-              ? "Open Sessions"
-              : failed
-                ? "Retry Connection"
-                : "Connecting..."
-            : "Connect Device";
-          const primaryActionDisabled = active && !ready && !failed;
           const primaryAction =
-            active && !ready ? onRefreshSessions : () => onOpenDevice(pairing);
+            active && !ready
+              ? onRefreshSessions
+              : () => onOpenDevice(pairing);
+          const expanded = expandedDevice === pairingKey;
+
           return (
-            <Card
-              key={`${pairing.relayUrl}:${pairing.deviceId}`}
-              style={styles.deviceCard}
+            <Pressable
+              key={pairingKey}
+              disabled={!canOpen}
+              style={[styles.deviceCard, !canOpen && styles.disabled]}
+              onPress={primaryAction}
             >
-              <Pressable
-                disabled={!canOpen}
-                style={[styles.deviceMain, !canOpen && styles.disabled]}
-                onPress={() => onOpenDevice(pairing)}
-              >
-                <View style={styles.deviceText}>
-                  <View style={styles.deviceTitleRow}>
-                    <Text numberOfLines={1} style={styles.deviceName}>
-                      {pairing.deviceId}
-                    </Text>
-                    <Badge
-                      backgroundColor={status.backgroundColor}
-                      color={status.color}
-                    >
-                      {status.label}
-                    </Badge>
-                  </View>
-                  <Text numberOfLines={1} style={styles.deviceMeta}>
-                    {formatRelayUrl(pairing.relayUrl)}
-                  </Text>
-                  <Text style={styles.deviceTransport}>
-                    {formatTransportLabel(pairing.transport)}
-                  </Text>
-                  <Text numberOfLines={2} style={styles.deviceStatus}>
-                    {active ? status.detail : "Ready to connect when selected."}
-                  </Text>
-                </View>
-              </Pressable>
-              <View style={styles.deviceActions}>
-                <Button
-                  icon={ready ? "terminal" : failed ? "refresh" : "plug"}
-                  disabled={primaryActionDisabled}
-                  style={styles.devicePrimaryAction}
-                  tone="primary"
-                  onPress={primaryAction}
+              <View style={styles.deviceRow1}>
+                <Text numberOfLines={1} style={styles.deviceName}>
+                  {pairing.deviceId}
+                </Text>
+                <Badge
+                  backgroundColor={status.backgroundColor}
+                  color={status.color}
                 >
-                  {primaryActionLabel}
-                </Button>
+                  {status.label}
+                </Badge>
+              </View>
+
+              <Text numberOfLines={1} style={styles.deviceUrl}>
+                {formatRelayUrl(pairing.relayUrl)}
+              </Text>
+
+              <View style={styles.deviceRow3}>
+                <Text style={styles.deviceTransport}>
+                  {formatTransportLabel(pairing.transport)}
+                </Text>
                 <Button
-                  accessibilityLabel={`Edit ${pairing.deviceId}`}
-                  icon="edit"
+                  accessibilityLabel="More actions"
+                  icon="more"
                   iconOnly
-                  style={styles.smallButton}
-                  onPress={() => onEditDevice(pairing)}
+                  style={styles.moreButton}
+                  onPress={() =>
+                    setExpandedDevice(expanded ? null : pairingKey)
+                  }
                 >
-                  Edit
-                </Button>
-                <Button
-                  accessibilityLabel={`Delete ${pairing.deviceId}`}
-                  icon="trash"
-                  iconOnly
-                  style={styles.smallButton}
-                  tone="danger"
-                  onPress={() => onDeleteDevice(pairing)}
-                >
-                  Delete
+                  More
                 </Button>
               </View>
-            </Card>
+
+              {expanded ? (
+                <View style={styles.expandedActions}>
+                  <Button
+                    icon="edit"
+                    style={styles.actionButton}
+                    onPress={() => {
+                      setExpandedDevice(null);
+                      onEditDevice(pairing);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    icon="trash"
+                    style={styles.actionButton}
+                    tone="danger"
+                    onPress={() => {
+                      setExpandedDevice(null);
+                      onDeleteDevice(pairing);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </View>
+              ) : null}
+            </Pressable>
           );
         })
       )}
 
-      <Button icon="add" tone="primary" onPress={onAddDevice}>
+      <Button
+        accessibilityLabel="Add Link"
+        icon="add"
+        iconOnly
+        style={styles.fab}
+        tone="primary"
+        onPress={onAddDevice}
+      >
         Add Link
       </Button>
-
-      {pairings.length > 0 ? (
-        <Button icon="refresh" onPress={onRefreshSessions}>
-          {ready ? "Refresh Sessions" : "Retry Active Device"}
-        </Button>
-      ) : null}
     </ScrollView>
   );
 }
@@ -168,20 +201,25 @@ const styles = StyleSheet.create({
     padding: spacing.xxl,
     gap: spacing.lg,
   },
-  summaryCard: {
-    padding: spacing.xl,
+  header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.lg,
+    alignItems: "center",
   },
-  summaryEyebrow: {
+  headerEyebrow: {
     color: colors.textDim,
     ...typography.eyebrow,
   },
-  summaryTitle: {
+  headerTitle: {
     color: colors.textPrimary,
     ...typography.title,
     marginTop: spacing.xs,
+  },
+  headerRefresh: {
+    minHeight: 36,
+    width: 36,
+    paddingHorizontal: 0,
+    borderRadius: radii.pill,
   },
   emptyCard: {
     padding: spacing.xxl,
@@ -196,62 +234,68 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   deviceCard: {
-    overflow: "hidden",
+    padding: spacing.lg,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    gap: 6,
   },
-  deviceMain: {
-    padding: spacing.xl,
+  deviceRow1: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  deviceText: {
-    flex: 1,
-  },
-  deviceTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: spacing.md,
   },
   deviceName: {
     color: colors.textPrimary,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "700",
     flex: 1,
   },
-  deviceMeta: {
+  deviceUrl: {
     color: colors.textMuted,
-    marginTop: 6,
+    fontSize: 13,
+  },
+  deviceRow3: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   deviceTransport: {
     color: colors.textDim,
     fontSize: 12,
     fontWeight: "700",
-    marginTop: 4,
   },
-  deviceStatus: {
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-    lineHeight: 19,
+  moreButton: {
+    minHeight: 28,
+    width: 28,
+    paddingHorizontal: 0,
+    borderRadius: radii.pill,
   },
-  deviceActions: {
+  expandedActions: {
     flexDirection: "row",
     gap: spacing.sm,
-    padding: spacing.md,
+    paddingTop: spacing.sm,
     borderTopColor: colors.borderSubtle,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  devicePrimaryAction: {
-    flex: 1,
+  actionButton: {
     minHeight: 36,
-  },
-  smallButton: {
-    minHeight: 36,
-    width: 42,
-    paddingHorizontal: 0,
     borderRadius: radii.sm,
+    flex: 1,
   },
   disabled: {
     opacity: 0.55,
+  },
+  fab: {
+    position: "absolute",
+    bottom: spacing.xxl,
+    right: spacing.xxl,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    paddingHorizontal: 0,
   },
 });
 
