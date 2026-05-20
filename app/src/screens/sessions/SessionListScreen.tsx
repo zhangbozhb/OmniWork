@@ -949,10 +949,6 @@ export function SessionListScreen({
           <Pressable onPress={() => {}}>
             <Card style={styles.modalCard}>
               <Text style={styles.modalTitle}>Provider Preferences</Text>
-              <Text style={styles.modalDescription}>
-                Choose which Agent CLIs appear in this app. The default provider
-                is used by the floating New Session button.
-              </Text>
               <ScrollView contentContainerStyle={styles.providerStack}>
                 {orderedProviders.map((provider, index) => {
                   const hidden = providerPreferences.hiddenKinds.includes(
@@ -991,15 +987,8 @@ export function SessionListScreen({
                             </Badge>
                           ) : null}
                         </View>
-                        <Text style={styles.providerSummary}>
+                        <Text numberOfLines={1} style={styles.providerSummary}>
                           {provider.summary}
-                        </Text>
-                        <Text style={styles.providerMeta}>
-                          {hidden
-                            ? "Hidden from the session list and new-session shortcuts."
-                            : isDefault
-                              ? "Used when you tap New Session."
-                              : "Available when creating sessions."}
                         </Text>
                       </View>
                       <View style={styles.providerActions}>
@@ -1025,7 +1014,8 @@ export function SessionListScreen({
                         </Button>
                         <Button
                           icon={hidden ? "eye" : "eyeOff"}
-                          style={styles.providerToggleButton}
+                          iconOnly
+                          style={styles.providerActionButton}
                           onPress={() => toggleProviderHidden(provider.kind)}
                         >
                           {hidden ? "Show" : "Hide"}
@@ -1033,11 +1023,15 @@ export function SessionListScreen({
                         <Button
                           disabled={hidden || isDefault || !provider.creatable}
                           icon="check"
-                          style={styles.providerDefaultButton}
+                          iconOnly
+                          style={[
+                            styles.providerActionButton,
+                            isDefault && styles.providerDefaultActive,
+                          ]}
                           tone={isDefault ? "primary" : "secondary"}
                           onPress={() => setDefaultProvider(provider.kind)}
                         >
-                          {isDefault ? "Default" : "Set Default"}
+                          Default
                         </Button>
                       </View>
                     </View>
@@ -1236,11 +1230,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success,
   },
   workspaceList: {
-    borderColor: colors.borderSubtle,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radii.md,
-    overflow: "hidden",
-    backgroundColor: colors.surface,
+    gap: spacing.md,
   },
   workspaceRow: {
     flexDirection: "row",
@@ -1248,8 +1238,10 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
-    borderBottomColor: colors.borderSubtle,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
   },
   workspaceRowIcon: {
     width: 36,
@@ -1626,11 +1618,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "800",
   },
-  providerMeta: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 17,
-  },
   providerSummary: {
     color: colors.textSecondary,
     fontSize: 13,
@@ -1638,22 +1625,16 @@ const styles = StyleSheet.create({
   },
   providerActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: spacing.sm,
   },
   providerActionButton: {
-    minHeight: 38,
-    width: 42,
+    minHeight: 36,
+    width: 36,
     paddingHorizontal: 0,
+    borderRadius: radii.pill,
   },
-  providerToggleButton: {
-    minHeight: 38,
-    minWidth: 92,
-  },
-  providerDefaultButton: {
-    flex: 1,
-    minHeight: 38,
-    minWidth: 132,
+  providerDefaultActive: {
+    backgroundColor: colors.successSoft,
   },
 });
 

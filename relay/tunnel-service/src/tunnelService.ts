@@ -37,8 +37,14 @@ export class TunnelService {
   private readonly config: TunnelServiceConfig;
   private readonly relaysByDevice = new Map<string, RelayRegistration>();
   private readonly sessionsById = new Map<string, TunnelSession>();
-  private readonly sessionsByMobile = new Map<WebSocketConnection, Set<string>>();
-  private readonly sessionsByRelay = new Map<WebSocketConnection, Set<string>>();
+  private readonly sessionsByMobile = new Map<
+    WebSocketConnection,
+    Set<string>
+  >();
+  private readonly sessionsByRelay = new Map<
+    WebSocketConnection,
+    Set<string>
+  >();
 
   constructor(config: TunnelServiceConfig) {
     this.config = config;
@@ -141,7 +147,10 @@ export class TunnelService {
     message: MessageEnvelope,
   ): void {
     if (message.type === "tunnel.mobile.join") {
-      this.handleMobileJoin(socket, message as MessageEnvelope<TunnelMobileJoinPayload>);
+      this.handleMobileJoin(
+        socket,
+        message as MessageEnvelope<TunnelMobileJoinPayload>,
+      );
       return;
     }
 
@@ -274,7 +283,10 @@ function parseEnvelope(raw: string): MessageEnvelope | null {
   }
 }
 
-function sendEnvelope(socket: WebSocketConnection, message: MessageEnvelope): void {
+function sendEnvelope(
+  socket: WebSocketConnection,
+  message: MessageEnvelope,
+): void {
   socket.sendText(JSON.stringify(message));
 }
 

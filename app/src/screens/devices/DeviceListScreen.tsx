@@ -1,5 +1,5 @@
-import type { JSX } from "react";
-import { useState, useCallback } from "react";
+import type { JSX, RefObject } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Platform,
   Pressable,
@@ -13,6 +13,9 @@ import {
 import type { PairingConfig } from "../../features/auth/types";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";
+
+const WEB_PULL_THRESHOLD = 60;
+const WEB_PULL_MAX = 120;
 
 export interface DeviceListScreenProps {
   pairings: PairingConfig[];
@@ -50,23 +53,56 @@ export function DeviceListScreen({
     setTimeout(() => setRefreshing(false), 1000);
   }, [onRefreshSessions]);
 
+  const scrollRef = useRef<ScrollView | null>(null);
+  const webPullOffset = useWebPullToRefresh(
+    scrollRef,
+    refreshing,
+    handleRefresh,
+  );
+
   const [expandedDevice, setExpandedDevice] = useState<string | null>(null);
 
   return (
     <ScrollView
-      contentContainerStyle={styles.screen}
+      ref={scrollRef}
+      contentContainerStyle={[
+        styles.screen,
+        Platform.OS === "web" && webPullOffset > 0
+          ? { transform: [{ translateY: webPullOffset }] }
+          : null,
+      ]}
       refreshControl={
-        Platform.OS !== "web"
-          ? (
-              <RefreshControl
-                refreshing={refreshing}
-                tintColor={colors.success}
-                onRefresh={handleRefresh}
-              />
-            )
-          : undefined
+        Platform.OS !== "web" ? (
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={colors.success}
+            onRefresh={handleRefresh}
+          />
+        ) : undefined
       }
     >
+      {Platform.OS === "web" && (refreshing || webPullOffset > 0) ? (
+        <View
+          style={[
+            styles.webRefreshIndicator,
+            {
+              opacity: refreshing
+                ? 1
+                : Math.min(1, webPullOffset / WEB_PULL_THRESHOLD),
+              top: -28 + (refreshing ? WEB_PULL_THRESHOLD : webPullOffset),
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <Text style={styles.webRefreshIndicatorText}>
+            {refreshing
+              ? "Refreshing..."
+              : webPullOffset >= WEB_PULL_THRESHOLD
+                ? "Release to refresh"
+                : "Pull to refresh"}
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerEyebrow}>Device Center</Text>
@@ -98,17 +134,15 @@ export function DeviceListScreen({
           const pairingKey = `${pairing.relayUrl}:${pairing.deviceId}`;
           const active = Boolean(
             activePairing &&
-              pairing.deviceId === activePairing.deviceId &&
-              pairing.relayUrl === activePairing.relayUrl,
+            pairing.deviceId === activePairing.deviceId &&
+            pairing.relayUrl === activePairing.relayUrl,
           );
           const canOpen = !active || ready;
           const status = active
             ? activeStatus
             : getSavedDeviceStatusPresentation();
           const primaryAction =
-            active && !ready
-              ? onRefreshSessions
-              : () => onOpenDevice(pairing);
+            active && !ready ? onRefreshSessions : () => onOpenDevice(pairing);
           const expanded = expandedDevice === pairingKey;
 
           return (
@@ -297,6 +331,20 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     paddingHorizontal: 0,
   },
+  webRefreshIndicator: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  webRefreshIndicatorText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
 });
 
 function formatRelayUrl(relayUrl: string): string {
@@ -316,8 +364,8 @@ function getSavedDeviceStatusPresentation(): DeviceStatusPresentation {
   return {
     backgroundColor: "rgba(148, 163, 173, 0.16)",
     color: colors.textMuted,
-    detail: "Ready to connect when selected.",
-    label: "Saved",
+    detail: "Tap to connect.",
+    label: "Idle",
   };
 }
 
@@ -363,4 +411,100 @@ interface DeviceStatusPresentation {
   color: string;
   detail: string;
   label: string;
+}
+
+function useWebPullToRefresh(
+  scrollRef: RefObject<ScrollView | null>,
+  refreshing: boolean,
+  onRefresh: () => void,
+): number {
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      return;
+    }
+
+    const scrollNode = (
+      scrollRef.current as unknown as { getScrollableNode?: () => HTMLElement }
+    )?.getScrollableNode?.();
+    if (!scrollNode) {
+      return;
+    }
+
+    let startY: number | null = null;
+    let currentOffset = 0;
+    let pulling = false;
+
+    const handleTouchStart = (event: TouchEvent): void => {
+      if (
+        refreshing ||
+        scrollNode.scrollTop > 0 ||
+        event.touches.length !== 1
+      ) {
+        startY = null;
+        return;
+      }
+      startY = event.touches[0].clientY;
+      pulling = false;
+    };
+
+    const handleTouchMove = (event: TouchEvent): void => {
+      if (startY === null || refreshing) {
+        return;
+      }
+      const delta = event.touches[0].clientY - startY;
+      if (delta <= 0) {
+        if (pulling) {
+          pulling = false;
+          currentOffset = 0;
+          setOffset(0);
+        }
+        return;
+      }
+      if (scrollNode.scrollTop > 0) {
+        startY = null;
+        return;
+      }
+      pulling = true;
+      // Resistance curve so the indicator slows as it grows.
+      currentOffset = Math.min(WEB_PULL_MAX, delta * 0.5);
+      setOffset(currentOffset);
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    const handleTouchEnd = (): void => {
+      if (startY === null) {
+        return;
+      }
+      const triggered = pulling && currentOffset >= WEB_PULL_THRESHOLD;
+      startY = null;
+      pulling = false;
+      currentOffset = 0;
+      setOffset(0);
+      if (triggered) {
+        onRefresh();
+      }
+    };
+
+    scrollNode.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+    scrollNode.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    scrollNode.addEventListener("touchend", handleTouchEnd);
+    scrollNode.addEventListener("touchcancel", handleTouchEnd);
+
+    return () => {
+      scrollNode.removeEventListener("touchstart", handleTouchStart);
+      scrollNode.removeEventListener("touchmove", handleTouchMove);
+      scrollNode.removeEventListener("touchend", handleTouchEnd);
+      scrollNode.removeEventListener("touchcancel", handleTouchEnd);
+    };
+  }, [onRefresh, refreshing, scrollRef]);
+
+  return offset;
 }
