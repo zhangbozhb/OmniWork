@@ -965,12 +965,229 @@ Agent 期望状态：
 - App 报 `agent_not_online`：Relay 没有向 Tunnel Server 注册对应 `device_id`，或 Agent 尚未连接 Relay。
 - App 一直连接中但无 `agent_not_online`：signaling 可能已通，但 WebRTC DataChannel 没打通，优先更换 STUN 或换网络验证。
 
+## Cloudflare Tunnel 暴露内网 Relay Runbook
+
+本章节说明如何在没有公网服务器、也不部署独立 Tunnel Service 的场景下，使用 Cloudflare Tunnel 把内网 Relay 的 `/mobile` 端点直接暴露成 `wss://...`。该模式与 [公网 Tunnel Service 联调 Runbook](#公网-tunnel-service-联调-runbook) 互斥，二选一即可。
+
+### 1. 适用范围
+
+适合下列场景：
+
+- 用户没有独立公网服务器，只能在内网 Mac 本机运行 Relay 与 Agent。
+- 用户不希望维护 Tunnel Service 进程，只想给 Relay `/mobile` 加一个公网入口。
+- 公网链路只承担 signaling 与 WebRTC TLS 握手；WebRTC DataChannel 建联完成后，业务数据仍尽量走 ICE 直连，DataChannel 失败时回退到经 TLS 的 signaling 通道仍由 Cloudflare 边缘转发。
+
+不在范围内：
+
+- 多 Relay、多区域、生产级灰度。
+- App、Agent、Relay、protocol 代码层面任何修改 —— 当前实现已直接支持 `wss://*.trycloudflare.com/mobile` 与 `wss://relay.example.com/mobile`，因此该模式只需运维与文档配置。
+
+### 2. 公网链路
+
+```text
+Mac Agent --WebSocket--> Local Relay (127.0.0.1:8787)
+cloudflared --outbound HTTPS--> Cloudflare Edge
+Mobile App --wss://<edge-host>/mobile--> Cloudflare Edge --HTTP/WebSocket--> Local Relay /mobile
+Mobile App --wss://<edge-host>/tunnel/mobile--> Cloudflare Edge --HTTP/WebSocket--> Local Relay /tunnel/mobile
+Mobile App <==WebRTC DataChannel==> Local Relay
+```
+
+关键点：
+
+- `cloudflared` 由内网 Mac 主动出站连接 Cloudflare 边缘，不需要公网服务器，也不需要本机入站端口。
+- App 配对二维码里的 `relay_url` 直接写 Cloudflare 边缘地址，例如 `wss://omniwork-foo.trycloudflare.com/mobile`。
+- App 内部会基于该 URL 自动派生 `/tunnel/mobile` 作为 WebRTC signaling 地址，无需额外配置。
+- 业务数据建联成功后走 WebRTC DataChannel；如果 ICE 全部失败、且未来开启 TURN fallback 前，仍然依赖 Cloudflare 边缘转发 signaling 通道，因此 Cloudflare 仅充当 TLS 公网入口，不是数据面长期承载方。
+
+### 3. 准备 cloudflared
+
+按 Cloudflare 官方文档安装，例如 macOS：
+
+```bash
+brew install cloudflared
+cloudflared --version
+```
+
+不建议把 cloudflared 嵌进 Agent 进程托管，原因是：
+
+- cloudflared 已经是成熟独立进程，没必要在 Agent 里再做一层进程编排。
+- 用户有可能直接走 Named Tunnel + 自有域名，托管化反而限制能力。
+
+### 4. 启动内网 Relay
+
+终端 1：
+
+```bash
+OMNIWORK_RELAY_HOST=127.0.0.1 \
+OMNIWORK_RELAY_PORT=8787 \
+OMNIWORK_TUNNEL_STUN_URLS=stun:stun.cloudflare.com:3478 \
+pnpm dev:relay
+```
+
+成功标准：
+
+```text
+[omniwork-relay] listening on 127.0.0.1:8787
+```
+
+说明：
+
+- `OMNIWORK_RELAY_HOST=127.0.0.1` 即可，因为 cloudflared 与 Relay 都在本机；不要写 `0.0.0.0`，避免无关公开。
+- 不需要设置 `OMNIWORK_TUNNEL_SERVICE_RELAY_URL`；该变量只属于公网 Tunnel Service 模式。
+
+### 5. 启动 cloudflared (二选一)
+
+#### 5.1 Quick Tunnel（无 Cloudflare 账号、无固定域名）
+
+终端 2：
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8787
+```
+
+成功标准：
+
+```text
++--------------------------------------------------------------------------------------------+
+|  Your quick Tunnel has been created! Visit it at (it may take a few moments to be reachable):
+|  https://omniwork-foo.trycloudflare.com
++--------------------------------------------------------------------------------------------+
+```
+
+记录该域名作为后续配对地址使用。Quick Tunnel 每次重启会换新域名，仅用于开发与体验。
+
+#### 5.2 Named Tunnel（已有 Cloudflare 账号与域名）
+
+按 [Cloudflare Tunnel 文档](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) 完成 `cloudflared login`、`cloudflared tunnel create omniwork-relay`，并在 `~/.cloudflared/config.yml` 写入：
+
+```yaml
+tunnel: <tunnel-id>
+credentials-file: /Users/<you>/.cloudflared/<tunnel-id>.json
+
+ingress:
+  - hostname: relay.example.com
+    service: http://127.0.0.1:8787
+  - service: http_status:404
+```
+
+启动：
+
+```bash
+cloudflared tunnel run omniwork-relay
+```
+
+DNS 配置：
+
+```bash
+cloudflared tunnel route dns omniwork-relay relay.example.com
+```
+
+成功标准：浏览器或 `curl` 访问 `https://relay.example.com/healthz` 返回 `{"ok":true}`。
+
+### 6. 公网可达性检查
+
+任意外网终端：
+
+```bash
+curl https://omniwork-foo.trycloudflare.com/healthz
+```
+
+或：
+
+```bash
+curl https://relay.example.com/healthz
+```
+
+期望返回：
+
+```json
+{"ok":true}
+```
+
+如果 `/healthz` 不通：
+
+- 检查 cloudflared 进程是否仍在运行。
+- 检查 Quick Tunnel 是否被关闭、被换链接。
+- Named Tunnel 模式检查 `ingress` 是否指向 `http://127.0.0.1:8787`。
+
+### 7. 启动 Agent
+
+终端 3：
+
+```bash
+OMNIWORK_DEVICE_ID=my-mac \
+OMNIWORK_RELAY_URL=ws://127.0.0.1:8787/agent \
+OMNIWORK_PAIRING_RELAY_URL=wss://omniwork-foo.trycloudflare.com/mobile \
+OMNIWORK_PAIRING_TRANSPORT=webrtc \
+pnpm dev:mac
+```
+
+Named Tunnel 模式则把 `OMNIWORK_PAIRING_RELAY_URL` 改成 `wss://relay.example.com/mobile`。
+
+成功标准：
+
+- Agent 输出 `connected to relay`。
+- Agent 输出二维码。
+- 配对信息中的 `relay_url` 严格等于 `OMNIWORK_PAIRING_RELAY_URL`，没有被本地 IP 替换。
+- 配对信息中的 `transport` 是 `webrtc`。
+
+说明：
+
+- `OMNIWORK_RELAY_URL` 只用于 Agent 自己连接本机 Relay，不会出现在二维码里。
+- `OMNIWORK_PAIRING_RELAY_URL` 是非 `0.0.0.0`/`127.0.0.1`/`localhost` 的普通公网 URL，Agent 不会替换 hostname。
+- 如果同时设置了 `OMNIWORK_TUNNEL_SERVICE_RELAY_URL`，相当于走 Tunnel Service 模式，应避免与 Cloudflare Tunnel 模式同时启用。
+
+### 8. App 端验证
+
+1. 手机切到任意可访问公网的网络（移动数据或非内网 Wi-Fi）。
+2. 打开 OmniWork App 并扫描 Agent 二维码。
+3. 确认配对页 Relay URL 是 `wss://...trycloudflare.com/mobile` 或 `wss://relay.example.com/mobile`。
+4. 选择 transport `WebRTC` 或 `WebSocket Relay`：
+   - `WebRTC`：App 通过 `wss://<edge>/tunnel/mobile` 走 signaling，DataChannel 建立后业务数据走 ICE。
+   - `WebSocket Relay`：App 通过 `wss://<edge>/mobile` 全量走 Cloudflare 边缘，无 P2P。
+5. 点击连接。
+
+### 9. Cloudflare Tunnel 模式成功标准
+
+需要同时满足：
+
+- 公网 `/healthz` 可访问。
+- App 配对页能完成连接，进入会话列表或终端入口。
+- Agent 终端没有 `tunnel.session.failed`。
+- Relay 终端没有 `RTCPeerConnection is not available`。
+- 业务消息触发后 Agent 终端有相应日志，说明已穿越 Cloudflare 边缘到达 Relay 再到 Agent。
+
+### 10. Cloudflare Tunnel 模式排查
+
+如果 App 报 `agent_not_online`：
+
+- 确认 Agent 已启动并连接本机 Relay。
+- 确认 `OMNIWORK_DEVICE_ID` 与二维码中的 `device_id` 一致。
+- 确认 cloudflared 转发的是同一个 Relay 实例。
+
+如果 App 卡在连接中但没有 `agent_not_online`：
+
+- 优先排查 WebRTC DataChannel：尝试切换网络（手机热点、家庭 Wi-Fi、移动数据），排除 NAT 与运营商 UDP 限制。
+- 再次确认 Relay 端未输出 `RTCPeerConnection is not available`。
+- 没有 TURN fallback，对称 NAT 与禁 UDP 网络下可能直连失败；此时改用 transport `WebSocket Relay`，所有数据走 Cloudflare TLS 边缘。
+
+如果 cloudflared 报 `connection refused`：
+
+- 检查 Relay 是否在 `127.0.0.1:8787` 监听。
+- Named Tunnel 模式检查 `ingress.service` 是否拼写正确。
+
+如果 Cloudflare 边缘对 WebSocket 升级失败：
+
+- Cloudflare 默认允许 WebSocket，但如果使用了 Cloudflare 仪表板的 SSL/TLS、Cache、WAF 自定义规则，需要确认未阻断 `Upgrade: websocket`。
+- 如果使用自有域名走 Cloudflare CDN（橙云模式），保留默认 WebSocket 即可；如果用 Cloudflare One Tunnel + Access，需要给 `relay.example.com` 单独开放无认证策略，或在 App 与 Cloudflare Access token 之间提前完成认证。
+
 ## 当前 MVP 的限制
 
 - 当前真实设备 P2P 是 `Mobile App <-> Relay` 的 WebRTC DataChannel，不是 `Mobile App <-> Agent` 直连。
-- 本地 `/tunnel/mobile` signaling 要求 Mobile 能访问 Relay；公网模式可改为访问独立 Tunnel Service。
-- 没有 TURN fallback，复杂 NAT 或禁 UDP 网络下可能失败。
+- 本地 `/tunnel/mobile` signaling 要求 Mobile 能访问 Relay；公网模式可改为访问独立 Tunnel Service 或 Cloudflare Tunnel 暴露的内网 Relay。
+- 没有 TURN fallback，复杂 NAT 或禁 UDP 网络下可能失败；Cloudflare Tunnel 模式可作为兜底，让 App 改用 transport `WebSocket Relay` 全程走 TLS 边缘。
 - 公网 Tunnel Service MVP 尚未加入注册 token、设备级授权、限流和审计，生产化前必须补齐。
+- Cloudflare Tunnel 模式默认不带账号绑定与设备授权，仅依赖现有临时 key + HMAC proof；如果对外暴露需补齐 Cloudflare Access、IP 限制或自有 token。
 - 没有专门的 WebRTC 连接质量 UI 和 Relay ready 日志，后续需要补充可观测性。
 - 没有多 Relay、多区域或多 Tunnel Service 编排。
 
