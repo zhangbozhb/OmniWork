@@ -77,9 +77,6 @@ def envVersionName = (System.getenv("OMNIWORK_APP_VERSION") ?: project.findPrope
 def envVersionCode = (System.getenv("OMNIWORK_ANDROID_VERSION_CODE") ?: project.findProperty("OMNIWORK_ANDROID_VERSION_CODE")) ?: "1"
 def envApplicationId = (System.getenv("OMNIWORK_ANDROID_PACKAGE") ?: project.findProperty("OMNIWORK_ANDROID_PACKAGE")) ?: "com.omniwork.mobile"
 
-// 仅在 debug 构建中允许明文 ws://，release 强制 wss://。
-def releaseAllowCleartext = (System.getenv("OMNIWORK_ALLOW_CLEARTEXT_RELEASE") ?: "false").toString().equalsIgnoreCase("true")
-
 // release keystore 配置：通过环境变量注入，避免提交到仓库。
 def releaseKeystorePath = System.getenv("OMNIWORK_RELEASE_KEYSTORE")
 def releaseKeystorePassword = System.getenv("OMNIWORK_RELEASE_KEYSTORE_PASSWORD")
@@ -99,8 +96,6 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode envVersionCode.toInteger()
         versionName envVersionName
-        // 默认 release 关闭明文流量；如需在内网联调，导出 OMNIWORK_ALLOW_CLEARTEXT_RELEASE=true。
-        manifestPlaceholders = [usesCleartextTraffic: releaseAllowCleartext ? "true" : "false"]
     }
     signingConfigs {
         debug {
@@ -123,8 +118,6 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
-            // debug 构建保留明文 ws:// 用于本地联调。
-            manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
         release {
             if (hasReleaseSigning) {

@@ -74,9 +74,10 @@ The Android Gradle build reads `OMNIWORK_APP_VERSION`,
 `OMNIWORK_RELEASE_KEYSTORE`, `OMNIWORK_RELEASE_KEYSTORE_PASSWORD`,
 `OMNIWORK_RELEASE_KEY_ALIAS`, and `OMNIWORK_RELEASE_KEY_PASSWORD` for a real
 release signature; missing values fall back to the debug signing config (only
-useful for CI smoke artifacts, not for distribution). Set
-`OMNIWORK_ALLOW_CLEARTEXT_RELEASE=true` only when you need plaintext `ws://`
-during internal testing — production builds must keep it `false`.
+useful for CI smoke artifacts, not for distribution). The current
+`AndroidManifest.xml` hard-codes `usesCleartextTraffic="true"` so release builds
+can pair against `ws://` relays during testing — flip it back to `"false"` and
+switch the relay to `wss://` before shipping.
 
 iOS release build (signed):
 
