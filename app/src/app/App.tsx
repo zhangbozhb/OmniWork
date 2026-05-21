@@ -139,6 +139,9 @@ function AppContent(): JSX.Element {
   const pendingAutoOpenSessionsRef = useRef(false);
   const pairingsRef = useRef<PairingConfig[]>([]);
   const selectedSessionRef = useRef<CodexSession | null>(null);
+  // 标记当前失败状态是否已经在交互流程中提示过用户，避免重复弹出
+  // "Connection lost" 对话框（例如重试再次失败时立刻又弹一次）。
+  const failureDialogActiveRef = useRef(false);
   const confirm = useConfirm();
 
   const canUseWorkspace = pairings.length > 0;
@@ -285,6 +288,41 @@ function AppContent(): JSX.Element {
     requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
     return undefined;
   }, [connectionStatus, pairing, selectedSession, view]);
+
+  useEffect(() => {
+    // 仅在用户已经进入到依赖 Agent 数据的页面时弹出重连提示，
+    // 避免在 devices 页（已有连接状态条）上重复打扰用户。
+    if (
+      connectionStatus !== "failed" ||
+      !pairing ||
+      (view !== "sessions" && view !== "terminal") ||
+      failureDialogActiveRef.current
+    ) {
+      return;
+    }
+
+    failureDialogActiveRef.current = true;
+    const message = connectionMessage || "Lost connection to the Mac Agent.";
+    confirm({
+      title: "Connection lost",
+      message: `${message}\n\nRetry now or return to the device list?`,
+      confirmText: "Retry",
+      cancelText: "Back to devices",
+      tone: "primary",
+    })
+      .then((retry) => {
+        failureDialogActiveRef.current = false;
+        if (retry) {
+          reconnectActivePairing();
+        } else {
+          setSelectedSession(null);
+          setView("devices");
+        }
+      })
+      .catch(() => {
+        failureDialogActiveRef.current = false;
+      });
+  }, [confirm, connectionMessage, connectionStatus, pairing, view]);
 
   async function handlePair(nextPairing: PairingConfig): Promise<void> {
     setPairingError(undefined);
@@ -460,7 +498,31 @@ function AppContent(): JSX.Element {
     if (connectionStatus === "authenticated") {
       setView("sessions");
       sendToRelay(listSessionsRequest(nextPairing.deviceId));
+      return;
     }
+
+    // 用户主动进入设备时若连接已经失败/空闲，主动触发一次重连，
+    // 避免列表页一直停留在 "Waiting for ... data" 状态。
+    if (connectionStatus === "failed" || connectionStatus === "idle") {
+      reconnectActivePairing();
+      setView("sessions");
+    }
+  }
+
+  function reconnectActivePairing(): void {
+    if (!pairing) {
+      return;
+    }
+    failureDialogActiveRef.current = false;
+    setConnectionStatus("connecting");
+    setConnectionMessage(
+      pairing.transport === "webrtc"
+        ? "Reconnecting via WebRTC P2P tunnel..."
+        : "Reconnecting to Relay...",
+    );
+    // 通过创建一个新的 pairing 引用强制触发上面的连接 useEffect
+    // （依赖 pairing 引用变化），从而重建 transport。
+    setPairing({ ...pairing });
   }
 
   function handleRefreshSessions(): void {
@@ -468,7 +530,7 @@ function AppContent(): JSX.Element {
       return;
     }
     if (connectionStatus !== "authenticated") {
-      setPairing({ ...pairing });
+      reconnectActivePairing();
       return;
     }
     sendToRelay(listSessionsRequest(pairing.deviceId));
@@ -709,9 +771,16 @@ function AppContent(): JSX.Element {
       return;
     }
 
+    // 连接掉线时直接进终端会让用户面对 "Waiting for snapshot..."，
+    // 改为先发起重连，由 connectionStatus 的 effect 提示用户。
+    if (connectionStatus !== "authenticated") {
+      reconnectActivePairing();
+      return;
+    }
+
     setSelectedSession(session);
     setView("terminal");
-    if (pairing && connectionStatus === "authenticated") {
+    if (pairing) {
       sendToRelay(
         createMessage(
           "session.attach",
@@ -804,6 +873,7 @@ function AppContent(): JSX.Element {
       case "auth.ok":
         setConnectionStatus("authenticated");
         setConnectionMessage("Connected to Mac Agent.");
+        failureDialogActiveRef.current = false;
         relay.send(listSessionsRequest(activePairing.deviceId));
         relay.send(listWorkspacesRequest(activePairing.deviceId));
         if (pendingAutoOpenSessionsRef.current) {
