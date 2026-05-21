@@ -343,6 +343,7 @@ Mac Agent 的本地端口策略：
 - 后台运行交给 `tmux`。
 - WebSocket 慢客户端不能拖垮 PTY 读取，需要缓冲和丢弃策略。
 - 对每个会话维护最后 N 秒输出和当前屏幕快照。
+- 终端帧由 Mac Agent 主动推送：`mac/agent/src/core/agentService.ts` 为每个 attached session 启动一个 ~450ms 的定时器，对当前 PTY 内容做 SHA-1 哈希，仅当哈希变化时下发 `terminal.frame`，避免无变化空帧；App 不再做 3 秒 idle 全量轮询或输入后多次轮询，进入终端页时只主动拉取一次 `terminal.snapshot` 作为初始画面。
 
 ## 协议设计
 
@@ -603,6 +604,7 @@ stateDiagram-v2
 - Mac Agent 使用本地 key 校验 proof。
 - Relay 不保存完整 key。
 - 审计只记录 `key_id`，不记录 key。
+- App 收到 `auth.failed` 时立即关闭 relay 连接，并按 [auth-key-design.md](./auth-key-design.md) 的「App 收到 `auth.failed` 后的具体清理动作」清除本地失效 pairing 与会话状态，引导用户重新扫码或输入新的临时 key。
 
 ### 授权
 

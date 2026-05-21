@@ -31,14 +31,27 @@ Useful local commands:
 
 ```sh
 pnpm dev:relay
+pnpm dev:tunnel
 pnpm dev:mac
 pnpm dev:app
 pnpm dev:web
 pnpm app:build:android:apk
+pnpm app:build:android:aab
 pnpm app:build:ios
+pnpm app:build:ios:dev
 pnpm app:build:web
 pnpm verify:app:targets
 pnpm verify:app-auth
 pnpm verify:relay
+pnpm verify:tunnel
 pnpm verify:mac-key
 ```
+
+Mobile signing and packaging environment variables (Android keystore, iOS team
+and provisioning profile, version metadata) live in
+[app/.env.example](app/.env.example) and are documented in
+[docs/app-installation.md](docs/app-installation.md) and
+[app/README.md](app/README.md). Relay TLS and `auth.proof` rate-limiting
+settings (`OMNIWORK_RELAY_TRUST_FORWARDED_TLS`,
+`OMNIWORK_RELAY_AUTH_RATE_*`) are documented in
+[relay/server/README.md](relay/server/README.md).

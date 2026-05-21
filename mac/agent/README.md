@@ -15,6 +15,7 @@ TypeScript/Node.js Mac Agent for managing Agent CLI TUI sessions.
 - Persists user-edited session titles through the `session.rename` protocol message.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.
 - Provides read-only workspace file listing/reading and read-only Git status/diff messages.
+- Server-driven terminal frames: each attached session runs a ~450ms pusher in `src/core/agentService.ts` that captures the current PTY snapshot, hashes it with SHA-1, and emits `terminal.frame` only when the hash changes. The App no longer polls the snapshot on a 3s idle interval or after each input.
 
 ## Run
 

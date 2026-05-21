@@ -89,8 +89,6 @@ interface AppSessionTransport {
 }
 
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
-const TERMINAL_IDLE_SNAPSHOT_INTERVAL_MS = 3000;
-const TERMINAL_INPUT_SNAPSHOT_DELAYS_MS = [120, 350, 800, 1600] as const;
 
 export default function App(): JSX.Element {
   return (
@@ -283,12 +281,9 @@ function AppContent(): JSX.Element {
       return undefined;
     }
 
+    // 进入终端页时主动拉取一次 snapshot；后续帧由 Mac Agent 按内容变化主动 push（terminal.frame）。
     requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
-    const timer = setInterval(() => {
-      requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
-    }, TERMINAL_IDLE_SNAPSHOT_INTERVAL_MS);
-
-    return () => clearInterval(timer);
+    return undefined;
   }, [connectionStatus, pairing, selectedSession, view]);
 
   async function handlePair(nextPairing: PairingConfig): Promise<void> {
@@ -389,6 +384,45 @@ function AppContent(): JSX.Element {
     }
 
     setView(nextPairings.length > 0 ? "devices" : "pairing");
+  }
+
+  /**
+   * 处理鉴权失败后的本地清理：
+   * - 清除已失效的 pairing（Mac Agent 重启后 sessionKey 不再有效）；
+   * - 把当前会话/工作区状态全部置空，避免误用旧数据；
+   * - 引导用户回到设备列表或配对页重新录入新 key。
+   */
+  async function handleAuthFailureCleanup(
+    targetPairing: PairingConfig,
+    reason: string,
+  ): Promise<void> {
+    const nextPairings = await removeSavedPairing(targetPairing);
+    setSessions([]);
+    setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+    setWorkspaces([]);
+    setSelectedSession(null);
+    setSelectedWorkspace(null);
+    setTerminalFrames({});
+    setClosingSessionIds([]);
+    setKillingSessionIds([]);
+
+    if (pairing && isSamePairing(pairing, targetPairing)) {
+      setPairing(nextPairings[0] ?? null);
+    }
+
+    if (nextPairings.length > 0) {
+      setEditingPairing(undefined);
+      setView("devices");
+      setPairingError(
+        `Saved key for device "${targetPairing.deviceId}" was rejected by Mac Agent (${reason}). Please re-pair the device.`,
+      );
+    } else {
+      setEditingPairing(targetPairing);
+      setView("pairing");
+      setPairingError(
+        `Authentication failed: ${reason}. Please scan a fresh QR code or paste a new key.`,
+      );
+    }
   }
 
   async function removeSavedPairing(
@@ -711,10 +745,7 @@ function AppContent(): JSX.Element {
     sendToRelay(
       terminalInputRequest(pairing.deviceId, selectedSession.session_id, input),
     );
-    requestTerminalSnapshotsAfterInput(
-      pairing.deviceId,
-      selectedSession.session_id,
-    );
+    // Mac Agent 会基于 PTY 内容哈希自动 push terminal.frame，App 不再做事后多次轮询。
   }
 
   function handleTerminalResize(size: TerminalResizePayload): void {
@@ -751,17 +782,6 @@ function AppContent(): JSX.Element {
     sendToRelay(terminalSnapshotRequest(deviceId, sessionId));
   }
 
-  function requestTerminalSnapshotsAfterInput(
-    deviceId: string,
-    sessionId: string,
-  ): void {
-    for (const delayMs of TERMINAL_INPUT_SNAPSHOT_DELAYS_MS) {
-      setTimeout(() => {
-        requestTerminalSnapshot(deviceId, sessionId);
-      }, delayMs);
-    }
-  }
-
   function sendToRelay(message: MessageEnvelope): void {
     try {
       relayRef.current?.send(message);
@@ -795,8 +815,11 @@ function AppContent(): JSX.Element {
         const payload = message.payload as AuthFailedPayload;
         setConnectionStatus("failed");
         setConnectionMessage(`Authentication failed: ${payload.reason}`);
-        setPairingError(undefined);
         pendingAutoOpenSessionsRef.current = false;
+        // 鉴权失败说明 Mac Agent 重启或 key 已失效，按 engineering-requirements.md
+        // 中 "App 认证失败后清理旧 key" 的要求清除本地 pairing，并跳回配对页让用户输入新 key。
+        relay.close();
+        void handleAuthFailureCleanup(activePairing, payload.reason);
         break;
       }
       case "session.list": {

@@ -34,6 +34,7 @@ import {
 
 import type { RelayServerConfig } from "./config.ts";
 import { DataChannelSocket } from "./dataChannelSocket.ts";
+import { TokenBucketLimiter } from "./tokenBucket.ts";
 import { acceptWebSocket, WebSocketConnection } from "./websocket.ts";
 import { createDefaultPeerConnectionFactory } from "./webrtcFactory.ts";
 
@@ -55,6 +56,8 @@ interface RelayConnection {
   deviceId?: string;
   keyId?: string;
   authenticated: boolean;
+  /** Remote address used as the secondary key for auth.proof rate limiting. */
+  remoteIp: string;
 }
 
 interface TunnelSession {
@@ -84,6 +87,7 @@ export class RelayServer {
   private readonly pendingAuth = new Map<string, PendingAuth>();
   private readonly mobilesByDevice = new Map<string, Set<RelayConnection>>();
   private readonly tunnelSessions = new Map<string, TunnelSession>();
+  private readonly authLimiter: TokenBucketLimiter;
   private publicTunnelClient: RelayClient | null = null;
   private publicTunnelReconnectTimer: ReturnType<typeof setTimeout> | null =
     null;
@@ -93,6 +97,11 @@ export class RelayServer {
     this.peerConnectionFactory = createDefaultPeerConnectionFactory(
       config.webrtc.iceServers,
     );
+    this.authLimiter = new TokenBucketLimiter({
+      capacity: config.authRateLimit.capacity,
+      refillPerSecond: config.authRateLimit.refillPerSecond,
+      blockMs: config.authRateLimit.blockMs,
+    });
   }
 
   async start(): Promise<void> {
@@ -101,6 +110,7 @@ export class RelayServer {
     );
     server.on("upgrade", (request, socket) => {
       const endpoint = parseRelayUpgradeEndpoint(request);
+      const remoteIp = resolveRemoteIp(request, socket as Socket);
       if (endpoint === "tunnel-mobile") {
         const connection = acceptWebSocket(request, socket as Socket);
         if (connection) {
@@ -119,7 +129,7 @@ export class RelayServer {
 
       const connection = acceptWebSocket(request, socket as Socket);
       if (connection) {
-        this.register(connection, endpoint);
+        this.register(connection, endpoint, remoteIp);
       }
     });
 
@@ -145,13 +155,18 @@ export class RelayServer {
     response.end(JSON.stringify({ error: "not_found" }));
   }
 
-  private register(socket: RelaySocket, endpoint: RelayEndpoint): void {
+  private register(
+    socket: RelaySocket,
+    endpoint: RelayEndpoint,
+    remoteIp = "unknown",
+  ): void {
     const connection: RelayConnection = {
       id: `conn_${randomUUID()}`,
       endpoint,
       role: "unknown",
       socket,
       authenticated: false,
+      remoteIp,
     };
     this.connections.set(connection.id, connection);
 
@@ -380,6 +395,34 @@ export class RelayServer {
     message: MessageEnvelope<AuthProofPayload>,
   ): void {
     const pending = this.pendingAuth.get(connection.id);
+    const limiterKey = buildAuthRateLimitKey(
+      message.payload.key_id,
+      pending?.deviceId ?? connection.deviceId,
+      connection.remoteIp,
+    );
+
+    if (!this.authLimiter.consume(limiterKey)) {
+      console.warn("[omniwork-relay] auth rate limit hit", {
+        key_id: message.payload.key_id,
+        device_id: pending?.deviceId ?? connection.deviceId,
+        remote_ip: connection.remoteIp,
+      });
+      this.send(
+        connection,
+        createMessage<AuthFailedPayload>(
+          "auth.failed",
+          {
+            reason: "too_many_attempts",
+            connection_id: connection.id,
+            retry_after_ms: this.config.authRateLimit.blockMs,
+          },
+          { device_id: connection.deviceId },
+        ),
+      );
+      connection.socket.close(1008, "auth rate limit");
+      return;
+    }
+
     if (
       !pending ||
       message.payload.nonce !== pending.nonce ||
@@ -449,9 +492,14 @@ export class RelayServer {
       return;
     }
 
+    const pending = this.pendingAuth.get(mobile.id);
     this.pendingAuth.delete(mobile.id);
     if (message.type === "auth.ok") {
       mobile.authenticated = true;
+      // 鉴权成功后释放限流计数，避免合法重连被旧失败拖累。
+      this.authLimiter.reset(
+        buildAuthRateLimitKey(pending?.keyId, mobile.deviceId, mobile.remoteIp),
+      );
       if (mobile.deviceId) {
         const mobiles =
           this.mobilesByDevice.get(mobile.deviceId) ??
@@ -806,6 +854,39 @@ function createTunnelRelayRegisterMessage(
     },
     { device_id: deviceId },
   );
+}
+
+/**
+ * 构造 auth.proof 限流键：(key_id, device_id, remote_ip)。
+ * 任一字段缺失时使用 "_" 占位，确保未携带身份的连接也会被限流。
+ */
+function buildAuthRateLimitKey(
+  keyId: string | undefined,
+  deviceId: string | undefined,
+  remoteIp: string | undefined,
+): string {
+  return [keyId ?? "_", deviceId ?? "_", remoteIp ?? "_"].join("|");
+}
+
+/**
+ * 优先从 X-Forwarded-For 获取真实客户端 IP（在前置 reverse proxy / TLS 终端时），
+ * 退化到底层 socket.remoteAddress；空值返回 "unknown" 以保证限流键稳定。
+ */
+function resolveRemoteIp(request: IncomingMessage, socket: Socket): string {
+  const forwarded = request.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.length > 0) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) {
+      return first;
+    }
+  }
+  if (Array.isArray(forwarded) && forwarded.length > 0) {
+    const first = forwarded[0]?.split(",")[0]?.trim();
+    if (first) {
+      return first;
+    }
+  }
+  return socket.remoteAddress ?? "unknown";
 }
 
 type RelayUpgradeEndpoint = RelayEndpoint | "tunnel-mobile";

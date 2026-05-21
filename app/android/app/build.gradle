@@ -72,6 +72,21 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// 版本号优先读取环境变量（CI 注入），回退到 gradle.properties / 默认值。
+def envVersionName = (System.getenv("OMNIWORK_APP_VERSION") ?: project.findProperty("OMNIWORK_APP_VERSION")) ?: "0.1.0"
+def envVersionCode = (System.getenv("OMNIWORK_ANDROID_VERSION_CODE") ?: project.findProperty("OMNIWORK_ANDROID_VERSION_CODE")) ?: "1"
+def envApplicationId = (System.getenv("OMNIWORK_ANDROID_PACKAGE") ?: project.findProperty("OMNIWORK_ANDROID_PACKAGE")) ?: "com.omniwork.mobile"
+
+// 仅在 debug 构建中允许明文 ws://，release 强制 wss://。
+def releaseAllowCleartext = (System.getenv("OMNIWORK_ALLOW_CLEARTEXT_RELEASE") ?: "false").toString().equalsIgnoreCase("true")
+
+// release keystore 配置：通过环境变量注入，避免提交到仓库。
+def releaseKeystorePath = System.getenv("OMNIWORK_RELEASE_KEYSTORE")
+def releaseKeystorePassword = System.getenv("OMNIWORK_RELEASE_KEYSTORE_PASSWORD")
+def releaseKeyAlias = System.getenv("OMNIWORK_RELEASE_KEY_ALIAS")
+def releaseKeyPassword = System.getenv("OMNIWORK_RELEASE_KEY_PASSWORD")
+def hasReleaseSigning = releaseKeystorePath != null && releaseKeystorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -79,14 +94,13 @@ android {
 
     namespace "com.omniwork"
     defaultConfig {
-        applicationId "com.omniwork.mobile"
+        applicationId envApplicationId
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
-        // OmniWork connects to the local Relay via ws:// LAN URLs during pairing.
-        // Keep this enabled until the Relay supports a production wss:// endpoint.
-        manifestPlaceholders = [usesCleartextTraffic: "true"]
+        versionCode envVersionCode.toInteger()
+        versionName envVersionName
+        // 默认 release 关闭明文流量；如需在内网联调，导出 OMNIWORK_ALLOW_CLEARTEXT_RELEASE=true。
+        manifestPlaceholders = [usesCleartextTraffic: releaseAllowCleartext ? "true" : "false"]
     }
     signingConfigs {
         debug {
@@ -95,15 +109,33 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                v1SigningEnabled true
+                v2SigningEnabled true
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // debug 构建保留明文 ws:// 用于本地联调。
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            } else {
+                // 没有提供 release keystore 时回退到 debug 签名，仅用于 CI 冒烟产物，
+                // 不应分发到 Play Store / 公司 MDM。
+                signingConfig signingConfigs.debug
+                logger.warn("[OmniWork] Falling back to debug signing for release build. " +
+                        "Set OMNIWORK_RELEASE_KEYSTORE / _PASSWORD / _KEY_ALIAS / _KEY_PASSWORD for distributable builds.")
+            }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

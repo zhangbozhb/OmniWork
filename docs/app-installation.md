@@ -30,7 +30,29 @@ Android package: com.omniwork.mobile
 OMNIWORK_IOS_BUNDLE_ID=com.company.omniwork
 OMNIWORK_ANDROID_PACKAGE=com.company.omniwork
 OMNIWORK_APP_VERSION=0.1.0
+OMNIWORK_IOS_BUILD_NUMBER=1
+OMNIWORK_ANDROID_VERSION_CODE=1
 OMNIWORK_DEFAULT_RELAY_URL=wss://relay.company.example/mobile
+```
+
+iOS Release 签名（CI 注入；本地冒烟可走 `pnpm app:build:ios:dev` 跳过签名）：
+
+```text
+OMNIWORK_IOS_DEVELOPMENT_TEAM=ABCDE12345
+OMNIWORK_IOS_PROVISIONING_PROFILE=OmniWork Distribution
+OMNIWORK_IOS_CODE_SIGN_STYLE=Manual
+OMNIWORK_IOS_CODE_SIGN_IDENTITY=Apple Distribution
+```
+
+Android Release 签名（CI 注入；缺失任一变量会回退到 debug 签名并打印告警，不应分发）：
+
+```text
+OMNIWORK_RELEASE_KEYSTORE=/path/to/omniwork-release.keystore
+OMNIWORK_RELEASE_KEYSTORE_PASSWORD=
+OMNIWORK_RELEASE_KEY_ALIAS=omniwork-release
+OMNIWORK_RELEASE_KEY_PASSWORD=
+# 仅在内网联调时设为 true，正式分发必须保持 false
+OMNIWORK_ALLOW_CLEARTEXT_RELEASE=false
 ```
 
 示例文件：[app/.env.example](../app/.env.example)
@@ -40,19 +62,27 @@ OMNIWORK_DEFAULT_RELAY_URL=wss://relay.company.example/mobile
 生成 APK：
 
 ```sh
-pnpm app:build:android
+pnpm app:build:android:apk
+```
+
+生成 AAB（Play Store / 公司 MDM 分发）：
+
+```sh
+pnpm app:build:android:aab
 ```
 
 或在 app package 内执行：
 
 ```sh
-pnpm --filter @omniwork/app build:android
+pnpm --filter @omniwork/app build:android:apk
+pnpm --filter @omniwork/app build:android:aab
 ```
 
 产物：
 
-- Gradle 会生成 APK。
-- APK 可安装到 Android 真机。
+- Gradle 会读取 `OMNIWORK_APP_VERSION` / `OMNIWORK_ANDROID_VERSION_CODE` / `OMNIWORK_ANDROID_PACKAGE` 环境变量注入 versionName / versionCode / applicationId。
+- 当同时提供 `OMNIWORK_RELEASE_KEYSTORE`、`OMNIWORK_RELEASE_KEYSTORE_PASSWORD`、`OMNIWORK_RELEASE_KEY_ALIAS`、`OMNIWORK_RELEASE_KEY_PASSWORD` 时使用 release 签名；否则回退到 debug 签名（仅供 CI 冒烟产物，不可分发）。
+- 默认 release 不允许明文 `ws://` 流量；只有在内网联调时显式设置 `OMNIWORK_ALLOW_CLEARTEXT_RELEASE=true` 才会临时开放。
 
 本地调试：
 
@@ -68,7 +98,7 @@ pnpm --filter @omniwork/app android
 
 ## iOS IPA 安装
 
-生成 IPA：
+生成已签名 Release IPA：
 
 ```sh
 pnpm app:build:ios
@@ -80,15 +110,23 @@ pnpm app:build:ios
 pnpm --filter @omniwork/app build:ios
 ```
 
+该入口对应 `app/scripts/buildIosRelease.mjs`：会先 `pod install`，再调用 `react-native build-ios`，并校验 `OMNIWORK_IOS_DEVELOPMENT_TEAM`、`OMNIWORK_IOS_PROVISIONING_PROFILE` 必填，缺失时直接退出避免静默产出无签名 IPA。`OMNIWORK_IOS_CODE_SIGN_STYLE`（默认 `Manual`）、`OMNIWORK_IOS_CODE_SIGN_IDENTITY`（默认 `Apple Distribution`）、`OMNIWORK_IOS_BUNDLE_ID`、`OMNIWORK_APP_VERSION`、`OMNIWORK_IOS_BUILD_NUMBER` 会以 xcconfig 形式透传给 Xcode。
+
+无签名冒烟构建（仅用于本地或 CI 编译可达性自检）：
+
+```sh
+pnpm app:build:ios:dev
+```
+
 产物：
 
-- Xcode archive 可导出可安装到 iOS 真机的 IPA。
-- IPA 可用于内部测试、企业分发或后续 TestFlight/App Store 流程。
+- Release：Xcode archive 可导出可安装到 iOS 真机的 IPA，并已经过 CI 注入的签名身份签署。
+- Dev：以 `CODE_SIGNING_ALLOWED=NO` 编译，仅产出未签名构件，不能用于真机分发或 TestFlight。
 
 要求：
 
 - Apple Developer Team。
-- 已在 Xcode 中配置 signing、certificate 和 provisioning profile。
+- 已在 Xcode 中配置 signing、certificate 和 provisioning profile，并通过环境变量注入。
 - 真机 UDID 需要加入 provisioning profile，或使用企业分发/TestFlight。
 
 本地调试：

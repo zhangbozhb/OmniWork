@@ -1,4 +1,13 @@
-export const PROTOCOL_VERSION = 1 as const;
+export {
+  PAIRING_LINK_HOST,
+  PAIRING_LINK_SCHEME,
+  PROTOCOL_VERSION,
+} from "./constants.ts";
+import {
+  PAIRING_LINK_HOST,
+  PAIRING_LINK_SCHEME,
+  PROTOCOL_VERSION,
+} from "./constants.ts";
 
 export type MessageType =
   | "agent.hello"
@@ -198,9 +207,6 @@ export interface TunnelSessionClosePayload {
   device_id: string;
   reason?: string;
 }
-
-export const PAIRING_LINK_SCHEME = "omniwork" as const;
-export const PAIRING_LINK_HOST = "pair" as const;
 
 export type SessionStatus =
   | "created"
@@ -609,3 +615,5 @@ function searchParam(
 ): string | undefined {
   return params[key]?.trim() || undefined;
 }
+
+export * from "./schemas.ts";

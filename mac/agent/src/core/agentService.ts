@@ -14,9 +14,11 @@ import type {
   SessionListPayload,
   SessionRenamePayload,
   TerminalErrorPayload,
+  TerminalFramePayload,
   TerminalInputPayload,
   TerminalResizePayload,
 } from "../../../../packages/protocol-ts/src/index.ts";
+import { createHash } from "node:crypto";
 
 import type { AgentConfig } from "../config/config.ts";
 import {
@@ -56,6 +58,12 @@ export class AgentService {
   private readonly config: AgentConfig;
   private keyRecord: SessionKeyRecord | null = null;
   private relay: AgentRelayClient | null = null;
+  /**
+   * 每个 session 的终端推流定时器：基于内容哈希去重，仅在变化时推送 terminal.frame，
+   * 取代 App 端 3s 全量轮询 + 输入后多次轮询。
+   */
+  private readonly terminalPushers = new Map<string, NodeJS.Timeout>();
+  private readonly terminalLastFrameHash = new Map<string, string>();
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -198,6 +206,7 @@ export class AgentService {
         break;
       case "session.close":
         if (message.session_id) {
+          this.stopTerminalPusher(message.session_id);
           await this.sessionManager.close(message.session_id);
           await this.handleSessionList(message);
         }
@@ -209,6 +218,7 @@ export class AgentService {
         break;
       case "session.kill_tmux":
         if (message.session_id) {
+          this.stopTerminalPusher(message.session_id);
           await this.sessionManager.killTmux(message.session_id);
           await this.handleSessionList(message);
         }
@@ -413,6 +423,7 @@ export class AgentService {
       ...message,
       session_id: session.session_id,
     });
+    this.startTerminalPusher(session.session_id);
   }
 
   private async handleSessionRename(
@@ -457,6 +468,7 @@ export class AgentService {
       ...message,
       session_id: session.session_id,
     });
+    this.startTerminalPusher(session.session_id);
   }
 
   private async handleSessionRecovery(
@@ -488,6 +500,9 @@ export class AgentService {
         ...message,
         session_id: session.session_id,
       });
+      this.startTerminalPusher(session.session_id);
+    } else {
+      this.stopTerminalPusher(session.session_id);
     }
   }
 
@@ -567,12 +582,17 @@ export class AgentService {
         session_id: session.session_id,
       }),
     );
+    this.terminalLastFrameHash.set(
+      session.session_id,
+      createHash("sha1").update(snapshot.data).digest("hex"),
+    );
   }
 
   private async handleMissingTmuxTarget(
     sessionId: string,
     error: TmuxTargetMissingError,
   ): Promise<void> {
+    this.stopTerminalPusher(sessionId);
     this.logger.warn("tmux target no longer exists; removing stale session", {
       session_id: sessionId,
       tmux_target: error.tmuxTarget,
@@ -600,6 +620,68 @@ export class AgentService {
           device_id: this.config.deviceId,
         },
       ),
+    );
+  }
+
+  private startTerminalPusher(sessionId: string): void {
+    if (this.terminalPushers.has(sessionId)) {
+      return;
+    }
+    const intervalMs = 450;
+    const timer = setInterval(() => {
+      void this.pushTerminalFrameIfChanged(sessionId);
+    }, intervalMs);
+    if (typeof timer.unref === "function") {
+      timer.unref();
+    }
+    this.terminalPushers.set(sessionId, timer);
+  }
+
+  private stopTerminalPusher(sessionId: string): void {
+    const timer = this.terminalPushers.get(sessionId);
+    if (timer) {
+      clearInterval(timer);
+      this.terminalPushers.delete(sessionId);
+    }
+    this.terminalLastFrameHash.delete(sessionId);
+  }
+
+  private async pushTerminalFrameIfChanged(sessionId: string): Promise<void> {
+    const session = await this.sessionManager.get(sessionId);
+    if (!session) {
+      this.stopTerminalPusher(sessionId);
+      return;
+    }
+    if (session.status !== "running" && session.status !== "detached") {
+      return;
+    }
+
+    let frame: TerminalFramePayload;
+    try {
+      frame = await this.terminalBridge.frame(session);
+    } catch (error) {
+      if (error instanceof TmuxTargetMissingError) {
+        await this.handleMissingTmuxTarget(sessionId, error);
+        return;
+      }
+      this.logger.warn("terminal frame capture failed", {
+        session_id: sessionId,
+        error: String(error),
+      });
+      return;
+    }
+
+    const hash = createHash("sha1").update(frame.data).digest("hex");
+    if (this.terminalLastFrameHash.get(sessionId) === hash) {
+      return;
+    }
+    this.terminalLastFrameHash.set(sessionId, hash);
+
+    this.send(
+      createMessage<TerminalFramePayload>("terminal.frame", frame, {
+        device_id: this.config.deviceId,
+        session_id: sessionId,
+      }),
     );
   }
 

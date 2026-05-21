@@ -419,7 +419,17 @@ relay/
 |   |   |-- main.ts
 |   |   |-- config.ts
 |   |   |-- relayServer.ts
+|   |   |-- tokenBucket.ts
+|   |   |-- dataChannelSocket.ts
+|   |   |-- webrtcFactory.ts
 |   |   |-- websocket.ts
+|-- tunnel-service/
+|   |-- package.json
+|   |-- tsconfig.json
+|   |-- src/
+|   |   |-- main.ts
+|   |   |-- config.ts
+|   |   |-- tunnelService.ts
 ```
 
 后续如果公司决定用 Go/Rust 重写生产 Relay，可保留同样的协议边界。完整企业结构可演进为：
@@ -578,13 +588,36 @@ protocol/
 
 `packages/` 只放 TypeScript 共享包，主要服务 App、Mac Agent 和未来 Web 管理台。
 
-推荐结构：
+当前仓库实际包含：
 
 ```text
 packages/
 |-- protocol-ts/
+|   |-- package.json
+|   |-- tsconfig.json
+|   |-- src/
+|   |   |-- index.ts
+|   |   |-- constants.ts
+|   |   |-- schemas.ts
+|   |-- tests/
+|   |   |-- contract.test.ts
 |-- relay-client/
+|   |-- package.json
+|   |-- tsconfig.json
+|   |-- src/
+|   |   |-- index.ts
+|   |   |-- webrtcTransport.ts
 |-- terminal-core/
+|   |-- package.json
+|   |-- tsconfig.json
+|   |-- src/
+|   |   |-- index.ts
+```
+
+后续可演进的额外目录：
+
+```text
+packages/
 |-- mobile-ui/
 |-- config/
 |-- eslint-config/
@@ -593,12 +626,12 @@ packages/
 
 说明：
 
-- `protocol-ts/`：由 `protocol/` 生成后包装出的 TS SDK。
-- `relay-client/`：可被 `app/` 和 `mac/` 复用的 Relay 客户端核心。
+- `protocol-ts/`：跨端协议的 TypeScript 类型与 zod 运行时校验（`schemas.ts`、`constants.ts`），并通过 `tests/contract.test.ts` 维护契约测试，运行 `pnpm --filter @omniwork/protocol-ts test`。
+- `relay-client/`：可被 `app/` 和 `mac/` 复用的 Relay/Tunnel 客户端核心，包含 WebRTC 传输适配。
 - `terminal-core/`：终端输入、快捷键、frame 合并等纯 TS 逻辑。
-- `mobile-ui/`：React Native 通用 UI 组件，不放业务页面。
-- `config/`：App 和 Mac 可共享的配置 schema，不放环境 secret。
-- `eslint-config`、`tsconfig`：TypeScript 工程规范。
+- `mobile-ui/`：React Native 通用 UI 组件，不放业务页面（暂未实装）。
+- `config/`：App 和 Mac 可共享的配置 schema，不放环境 secret（暂未实装）。
+- `eslint-config`、`tsconfig`：TypeScript 工程规范（暂未实装）。
 
 注意：
 

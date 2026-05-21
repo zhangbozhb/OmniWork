@@ -18,6 +18,7 @@
     "app:build:android:apk": "pnpm --filter @omniwork/app build:android:apk",
     "app:build:android:aab": "pnpm --filter @omniwork/app build:android:aab",
     "app:build:ios": "pnpm --filter @omniwork/app build:ios",
+    "app:build:ios:dev": "pnpm --filter @omniwork/app build:ios:dev",
     "relay:start": "pnpm --filter @omniwork/relay-server start",
     "tunnel:start": "pnpm --filter @omniwork/tunnel-service start",
     "verify:app-auth": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/verify/app-key-proof.test.mjs",

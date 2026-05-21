@@ -75,6 +75,11 @@
 
 当前工程已补齐 `relay/server` 的 TypeScript MVP，用于 App 与 Mac Agent 的公司内网消息中继；正式生产可继续替换为公司统一 Relay 平台，但协议和鉴权流程保持一致。
 
+Relay 安全约束（`relay/server`）：
+
+- 监听非 loopback 地址时必须显式声明 `OMNIWORK_RELAY_TRUST_FORWARDED_TLS=true`，表明已经由前置 HTTPS / `wss://` 反向代理终结 TLS；否则启动会以 `RelayConfigError` 失败，避免明文上线。
+- `auth.proof` 失败按 `(device_id, remote_ip)` 维度做 token bucket 限流，参数由 `OMNIWORK_RELAY_AUTH_RATE_CAPACITY`（默认 5）、`OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC`（默认 1）、`OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS`（默认 60000）控制，超额触发 `auth.failed` 且 `reason=too_many_attempts`，详见 [relay/server/README.md](../relay/server/README.md)。
+
 实现要求：
 
 - Agent 业务逻辑必须写在 TypeScript 中。
@@ -136,6 +141,8 @@ MVP 鉴权模型：
 - Relay 如使用 Go/Rust，也从 `protocol/` 生成对应语言类型。
 - 生成代码只放 `generated/`，不得手工修改。
 - 协议破坏性变更必须升级版本并补 contract test。
+- `packages/protocol-ts/src/schemas.ts` 提供 envelope、`auth.*`、`terminal.*` 等关键报文的 zod schema 作为运行时校验来源；常量（如 `PROTOCOL_VERSION`、pairing link scheme/host）集中维护在 `packages/protocol-ts/src/constants.ts`。
+- `packages/protocol-ts/tests/contract.test.ts` 是协议契约测试，通过 `pnpm --filter @omniwork/protocol-ts test` 运行；新增/调整字段或取值集合时必须同步补充正反例。
 
 ## 共享包要求
 

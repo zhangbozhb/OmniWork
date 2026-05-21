@@ -90,6 +90,13 @@ App 侧要求：
 - 如果为了重连短期保存，必须使用 iOS Keychain / Android Keystore / 安全存储封装。
 - 当 Mac Agent 重启导致认证失败时，App 清理旧 key 并提示重新输入。
 
+App 收到 `auth.failed` 后的具体清理动作（由 `app/src/app/App.tsx` 实现）：
+
+- 立即调用 `relay.close()` 关闭当前会话连接，避免空跑或重复重连。
+- 通过安全存储封装 (`securePairingStore`) 把当前出错的 pairing 从已保存设备列表中移除；只剩唯一一条时退化为 `clearPairing`。
+- 将本地缓存的 sessions、workspaces、terminal frame、provider 列表等会话级状态全部清空，避免误用旧 Mac Agent 的数据。
+- 如果还有其它已保存设备，跳回 `devices` 页并以 `pairingError` 提示该设备需要重新配对；如果没有任何已保存设备，则进入 `pairing` 页并把刚被拒绝的 pairing 作为 `editingPairing` 预填，引导用户扫描新二维码或粘贴新的 32 字符 key。
+
 ## Relay 鉴权流程
 
 Relay 不作为身份系统，只作为连接中继。
@@ -152,6 +159,7 @@ agent_restarted
 key_expired
 device_not_online
 too_many_attempts
+malformed_proof
 ```
 
 ## 安全限制

@@ -68,11 +68,39 @@ Android release AAB:
 pnpm --filter @omniwork/app build:android:aab
 ```
 
-iOS release build:
+The Android Gradle build reads `OMNIWORK_APP_VERSION`,
+`OMNIWORK_ANDROID_VERSION_CODE`, and `OMNIWORK_ANDROID_PACKAGE` for
+`versionName` / `versionCode` / `applicationId`. Provide
+`OMNIWORK_RELEASE_KEYSTORE`, `OMNIWORK_RELEASE_KEYSTORE_PASSWORD`,
+`OMNIWORK_RELEASE_KEY_ALIAS`, and `OMNIWORK_RELEASE_KEY_PASSWORD` for a real
+release signature; missing values fall back to the debug signing config (only
+useful for CI smoke artifacts, not for distribution). Set
+`OMNIWORK_ALLOW_CLEARTEXT_RELEASE=true` only when you need plaintext `ws://`
+during internal testing — production builds must keep it `false`.
+
+iOS release build (signed):
 
 ```sh
-xcodebuild -workspace ios/OmniWork.xcworkspace -scheme OmniWork -configuration Release -sdk iphoneos archive
+pnpm --filter @omniwork/app build:ios
 ```
+
+This wraps `app/scripts/buildIosRelease.mjs`, which runs `pod install` and then
+`react-native build-ios --mode Release`. It requires
+`OMNIWORK_IOS_DEVELOPMENT_TEAM` and `OMNIWORK_IOS_PROVISIONING_PROFILE` (CI
+injected) and exits with a clear error if either is missing.
+`OMNIWORK_IOS_CODE_SIGN_STYLE` (default `Manual`),
+`OMNIWORK_IOS_CODE_SIGN_IDENTITY` (default `Apple Distribution`),
+`OMNIWORK_IOS_BUNDLE_ID`, `OMNIWORK_APP_VERSION`, and
+`OMNIWORK_IOS_BUILD_NUMBER` are forwarded to xcodebuild as build settings.
+
+iOS unsigned smoke build (local / CI compile check, do not distribute):
+
+```sh
+pnpm --filter @omniwork/app build:ios:dev
+```
+
+See [app/.env.example](./.env.example) for the full list of release
+environment variables.
 
 Local native runs:
 
