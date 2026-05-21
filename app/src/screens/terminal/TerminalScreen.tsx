@@ -156,6 +156,11 @@ export function TerminalScreen({
   const hasDraft = draft.trim().length > 0;
   const canHideKeyboard = keyboardVisible && !hasDraft;
   const readOnly = !canInput;
+  // Android uses windowSoftInputMode="adjustResize", so the window is already
+  // resized above the keyboard. Re-applying keyboardBottomInset on Android would
+  // double-shift the dock and leave a gap above the keyboard.
+  const effectiveKeyboardInset =
+    Platform.OS === "android" ? 0 : keyboardBottomInset;
   const canShowAllQuickKeys = quickKeysWidth >= ESTIMATED_FULL_QUICK_KEYS_WIDTH;
   const quickKeys = canShowAllQuickKeys
     ? FULL_QUICK_KEYS
@@ -168,7 +173,7 @@ export function TerminalScreen({
   );
   const floatingControlsBottom =
     bottomDockHeight +
-    keyboardBottomInset +
+    effectiveKeyboardInset +
     BOTTOM_DOCK_BOTTOM_MARGIN +
     spacing.md;
 
@@ -333,7 +338,7 @@ export function TerminalScreen({
           {
             marginBottom:
               bottomDockHeight +
-              keyboardBottomInset +
+              effectiveKeyboardInset +
               BOTTOM_DOCK_BOTTOM_MARGIN,
           },
         ]}
@@ -355,8 +360,8 @@ export function TerminalScreen({
           styles.bottomDock,
           {
             bottom:
-              keyboardBottomInset > 0
-                ? keyboardBottomInset
+              effectiveKeyboardInset > 0
+                ? effectiveKeyboardInset
                 : BOTTOM_DOCK_BOTTOM_MARGIN,
           },
         ]}
