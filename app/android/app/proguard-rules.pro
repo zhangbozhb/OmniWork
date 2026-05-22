@@ -9,8 +9,3 @@
 
 # Add any project specific keep options here:
 
-# Keep WebRTC native bindings used by react-native-webrtc.
--keep class org.webrtc.** { *; }
--dontwarn org.webrtc.**
--keep class com.oney.WebRTCModule.** { *; }
--dontwarn com.oney.WebRTCModule.**

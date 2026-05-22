@@ -120,7 +120,6 @@ The Web target is intentionally kept in the React Native stack:
 - Platform differences live under `src/platform/` or small `.native/.web` components.
 - Web pairing does not use camera scanning; users paste the Relay URL, device ID, and temporary key, or open a URL containing `pairing=` or `relay_url`/`device_id`/`key` query parameters.
 - Native storage continues to use Keychain, while Web uses browser `localStorage`.
-- Native WebRTC continues to use `react-native-webrtc`, while Web uses the browser `RTCPeerConnection`.
 
 ## Native Projects
 

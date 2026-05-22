@@ -64,7 +64,7 @@ mode: 0600
   "key": "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
   "key_id": "sha256:8f2b7d62d9b0",
   "created_at": "2026-05-12T00:00:00Z",
-  "agent_instance_id": "agent_20260512_000001",
+  "agent_instance_id": "agent_20260512000001_a1b2c3d4",
   "relay_url": "wss://relay.company.example/agent"
 }
 ```
@@ -72,8 +72,8 @@ mode: 0600
 说明：
 
 - `key` 是本次 Agent 启动生成的临时共享 key。
-- `key_id` 是 key 的短 hash 标识，只用于日志和排查，不可作为认证凭证。
-- `agent_instance_id` 随 Agent 启动生成，用于区分同一台 Mac 的不同运行实例。
+- `key_id` 是 key 的短 hash 标识（取 `sha256(key)` 前 12 位 hex），只用于日志和排查，不可作为认证凭证。
+- `agent_instance_id` 随 Agent 启动生成，格式 `agent_<YYYYMMDDhhmmss>_<8 位 hex>`（实现见 [authKey.ts](../mac/agent/src/auth-key/authKey.ts)），用于区分同一台 Mac 的不同运行实例。
 - 文件只保存在本机，不提交仓库，不同步到云盘。
 
 ## App 获取 Key
@@ -141,13 +141,14 @@ agent.hello
 mobile.connect
 ```
 
-`auth.proof` payload：
+`auth.proof` payload 的字段定义以 [protocol/auth/auth-proof.schema.json](../protocol/auth/auth-proof.schema.json) 为唯一来源，运行时校验由 [packages/protocol-ts/src/schemas.ts](../packages/protocol-ts/src/schemas.ts) 落地。示例：
 
 ```json
 {
   "key_id": "sha256:8f2b7d62d9b0",
-  "nonce": "nonce_01",
-  "proof": "base64url(hmac_sha256(key, nonce))"
+  "nonce": "nonce_0123456789ab",
+  "proof": "base64url(hmac_sha256(key, nonce))",
+  "connection_id": "conn_..."
 }
 ```
 

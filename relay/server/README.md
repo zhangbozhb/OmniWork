@@ -28,8 +28,6 @@ pnpm verify:relay
 OMNIWORK_RELAY_HOST=127.0.0.1
 OMNIWORK_RELAY_PORT=8787
 OMNIWORK_DEVICE_ID=omniwork-relay
-OMNIWORK_TUNNEL_STUN_URLS=stun:stun.cloudflare.com:3478
-OMNIWORK_TUNNEL_SERVICE_RELAY_URL=
 OMNIWORK_RELAY_TRUST_FORWARDED_TLS=false
 OMNIWORK_RELAY_AUTH_RATE_CAPACITY=5
 OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC=1
@@ -63,3 +61,37 @@ token bucket:
 When the limiter rejects a request, the relay responds with `auth.failed` and
 reason `too_many_attempts`. A successful `auth.ok` resets the corresponding
 bucket so subsequent attempts are not affected by past failures.
+
+### P2P upgrade orchestrator
+
+The relay coordinates optional WebRTC DataChannel upgrades between the App and
+Mac Agent. Configuration:
+
+```text
+OMNIWORK_UPGRADE_ENABLED=true
+OMNIWORK_UPGRADE_ROLLOUT=100
+OMNIWORK_UPGRADE_DEVICE_BLOCKLIST=
+OMNIWORK_UPGRADE_ICE_SERVERS_JSON=[{"urls":"stun:stun.l.google.com:19302"}]
+OMNIWORK_UPGRADE_PROPOSE_DELAY_MS=3000
+```
+
+- `OMNIWORK_UPGRADE_ENABLED` (`true`/`false`, default `true`): global kill switch.
+- `OMNIWORK_UPGRADE_ROLLOUT` (`0..100`, default `100`): percent rollout, hashed by
+  `sha1(device_id)`.
+- `OMNIWORK_UPGRADE_DEVICE_BLOCKLIST`: comma-separated device IDs that must
+  never upgrade.
+- `OMNIWORK_UPGRADE_ICE_SERVERS_JSON`: JSON array of `{ urls, username?,
+  credential? }` sent to clients in `tunnel.upgrade.propose`.
+- `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS` (default `3000`): stable window between
+  mobile auth success and the propose.
+
+Operational endpoints:
+
+- `GET /metrics` — JSON snapshot of `proposed`, `committed`, `failed[reason]`,
+  `downgrade[reason]`, `in_flight`, `active_p2p`, `durations` (p50/p95/max over
+  the last 100 successful upgrades).
+- `POST /debug/upgrade?device_id=<id>` — manually triggers an upgrade for a
+  paired device; included in metrics and logs.
+
+Full architecture, downgrade triggers, and a troubleshooting runbook live in
+[docs/relay-architecture.md](../../docs/relay-architecture.md).

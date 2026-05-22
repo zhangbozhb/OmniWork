@@ -1,0 +1,423 @@
+import { createHash, randomUUID } from "node:crypto";
+
+import {
+  createMessage,
+  type IceServerConfig,
+  type MessageEnvelope,
+  type TunnelUpgradeProposePayload,
+} from "../../../../packages/protocol-ts/src/index.ts";
+
+/**
+ * Orchestrator 关注的最小连接抽象：仅需 connection id 与可选 device id。
+ * 这样 orchestrator 不依赖具体 socket 实现。
+ */
+export interface UpgradeOrchestratorConnection {
+  id: string;
+  deviceId?: string;
+}
+
+/**
+ * Orchestrator 配置。
+ * - enabled: 全局开关；关闭时不会发起任何 upgrade。
+ * - rolloutPercent: 灰度百分比 (0..100)，按 device_id sha1 哈希。
+ * - deviceBlocklist: 永不参与升级的 device_id 集合。
+ * - iceServers: propose 阶段下发给 App/Agent 的 STUN/TURN 列表。
+ * - proposeDelayMs: 鉴权完成后的稳定窗口；默认 3000ms。
+ */
+export interface UpgradeOrchestratorConfig {
+  enabled: boolean;
+  rolloutPercent: number;
+  deviceBlocklist: Set<string>;
+  iceServers: IceServerConfig[];
+  proposeDelayMs: number;
+}
+
+interface BackoffEntry {
+  failures: number;
+  nextAvailableAt: number;
+}
+
+interface InFlightEntry {
+  deviceId: string;
+  mobileConnectionId: string;
+  agentConnectionId: string;
+  startedAt: number;
+  committedCount: number;
+}
+
+interface OrchestratorMetricsState {
+  proposed: number;
+  committed: number;
+  failed: Record<string, number>;
+  downgrade: Record<string, number>;
+}
+
+export interface UpgradeDurationStats {
+  count: number;
+  p50_ms: number;
+  p95_ms: number;
+  max_ms: number;
+}
+
+export interface OrchestratorMetricsSnapshot
+  extends OrchestratorMetricsState {
+  in_flight: number;
+  active_p2p: number;
+  durations: UpgradeDurationStats;
+}
+
+/**
+ * 保留最近 N 次升级耗时（committed 双端确认 - propose 时刻），
+ * 仅用于 /metrics 输出 p50/p95/max；超过窗口大小后丢弃最旧值。
+ */
+const UPGRADE_DURATION_WINDOW = 100;
+
+export interface RelayUpgradeOrchestratorOptions {
+  config: UpgradeOrchestratorConfig;
+  /** 通过外部注入的发送函数，避免 orchestrator 与底层 socket 实现耦合。 */
+  send: (
+    connection: UpgradeOrchestratorConnection,
+    envelope: MessageEnvelope,
+  ) => void;
+  /** 通过 device_id 查找 agent 连接（定时器触发时需要）。 */
+  getAgent: (deviceId: string) => UpgradeOrchestratorConnection | undefined;
+  /** 用于测试注入的时钟。 */
+  now?: () => number;
+}
+
+/**
+ * Relay 端的升级编排器：
+ * - 监听 mobile 鉴权成功事件，按灰度 / 退避 / 黑名单决定是否发起 upgrade
+ * - 透传 committed/downgrade 控制消息更新统计与退避
+ * - 提供 metrics 快照用于 /metrics endpoint
+ */
+export class RelayUpgradeOrchestrator {
+  private readonly config: UpgradeOrchestratorConfig;
+  private readonly sendFn: RelayUpgradeOrchestratorOptions["send"];
+  private readonly getAgent: RelayUpgradeOrchestratorOptions["getAgent"];
+  private readonly nowFn: () => number;
+
+  private readonly sessionTimers = new Map<string, NodeJS.Timeout>();
+  private readonly backoffByDevice = new Map<string, BackoffEntry>();
+  private readonly inFlightUpgrades = new Map<string, InFlightEntry>();
+  /** 当前已完成升级（双端 committed）且尚未降级的 device 集合。 */
+  private readonly activeP2pDevices = new Set<string>();
+  /** 最近 N 次升级耗时（毫秒），FIFO 截断。 */
+  private readonly upgradeSessionDurations: number[] = [];
+  private readonly metrics: OrchestratorMetricsState = {
+    proposed: 0,
+    committed: 0,
+    failed: {},
+    downgrade: {},
+  };
+
+  constructor(options: RelayUpgradeOrchestratorOptions) {
+    this.config = options.config;
+    this.sendFn = options.send;
+    this.getAgent = options.getAgent;
+    this.nowFn = options.now ?? Date.now;
+  }
+
+  /**
+   * mobile 鉴权成功后调用：判定是否在 proposeDelayMs 后触发 upgrade。
+   * 不通过的原因（enabled/灰度/blocklist/退避）会被静默忽略。
+   */
+  notifyMobileAuthenticated(
+    deviceId: string,
+    mobile: UpgradeOrchestratorConnection,
+  ): void {
+    if (!this.config.enabled) {
+      return;
+    }
+    if (this.config.deviceBlocklist.has(deviceId)) {
+      return;
+    }
+    if (!shouldRollout(deviceId, this.config.rolloutPercent)) {
+      return;
+    }
+    const backoff = this.backoffByDevice.get(deviceId);
+    if (backoff && backoff.nextAvailableAt > this.nowFn()) {
+      return;
+    }
+
+    const key = sessionKey(deviceId, mobile.id);
+    const existing = this.sessionTimers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    const timer = setTimeout(() => {
+      this.sessionTimers.delete(key);
+      const agent = this.getAgent(deviceId);
+      if (!agent) {
+        return;
+      }
+      // 触发前再校验一次退避，避免 propose 期间被 recordFailure 推迟。
+      const current = this.backoffByDevice.get(deviceId);
+      if (current && current.nextAvailableAt > this.nowFn()) {
+        return;
+      }
+      this.triggerUpgrade(deviceId, mobile, agent);
+    }, this.config.proposeDelayMs);
+    this.sessionTimers.set(key, timer);
+  }
+
+  /**
+   * mobile 断开：清理 pending timer 与 in-flight 中相关条目。
+   */
+  notifyMobileDisconnected(
+    deviceId: string,
+    mobile: UpgradeOrchestratorConnection,
+  ): void {
+    const key = sessionKey(deviceId, mobile.id);
+    const timer = this.sessionTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.sessionTimers.delete(key);
+    }
+    for (const [upgradeId, entry] of this.inFlightUpgrades) {
+      if (
+        entry.deviceId === deviceId &&
+        entry.mobileConnectionId === mobile.id
+      ) {
+        this.inFlightUpgrades.delete(upgradeId);
+      }
+    }
+    // mobile 断开 = 该 device 的 P2P 链路必然失效；仅清理 active_p2p 状态，
+    // 不计入 downgrade 统计（断线不是协议层降级；下次 mobile 连上后会重新走 propose）。
+    this.activeP2pDevices.delete(deviceId);
+  }
+
+  /**
+   * agent 断开：清理 in-flight 中该 device 的所有条目；
+   * 同时清理还未到期的 mobile pending timers（agent 不在线再 propose 也无意义）。
+   */
+  notifyAgentDisconnected(deviceId: string): void {
+    for (const [upgradeId, entry] of this.inFlightUpgrades) {
+      if (entry.deviceId === deviceId) {
+        this.inFlightUpgrades.delete(upgradeId);
+      }
+    }
+    const prefix = `${deviceId}|`;
+    for (const [key, timer] of this.sessionTimers) {
+      if (key.startsWith(prefix)) {
+        clearTimeout(timer);
+        this.sessionTimers.delete(key);
+      }
+    }
+    this.activeP2pDevices.delete(deviceId);
+  }
+
+  /**
+   * 处理 Relay 透传的 tunnel.upgrade.committed / tunnel.upgrade.downgrade。
+   * 其他升级控制消息（offer/answer/candidate）不会进入 metrics 统计。
+   */
+  handleControlMessage(message: MessageEnvelope): void {
+    if (message.type === "tunnel.upgrade.committed") {
+      const upgradeId = (message.payload as { upgrade_id?: string })?.upgrade_id;
+      if (!upgradeId) {
+        return;
+      }
+      this.metrics.committed += 1;
+      const entry = this.inFlightUpgrades.get(upgradeId);
+      if (!entry) {
+        return;
+      }
+      entry.committedCount += 1;
+      if (entry.committedCount >= 2) {
+        const durationMs = this.nowFn() - entry.startedAt;
+        this.recordDuration(durationMs);
+        this.activeP2pDevices.add(entry.deviceId);
+        this.inFlightUpgrades.delete(upgradeId);
+        // 双端确认升级成功 → 重置该 device 的退避。
+        this.backoffByDevice.delete(entry.deviceId);
+      }
+      return;
+    }
+
+    if (message.type === "tunnel.upgrade.downgrade") {
+      const payload = message.payload as {
+        upgrade_id?: string;
+        reason?: string;
+      };
+      const upgradeId = payload?.upgrade_id;
+      const reason = payload?.reason ?? "unknown";
+      let deviceId: string | undefined = message.device_id;
+      if (upgradeId) {
+        const entry = this.inFlightUpgrades.get(upgradeId);
+        if (entry) {
+          deviceId = entry.deviceId;
+          this.inFlightUpgrades.delete(upgradeId);
+        }
+      }
+      this.metrics.downgrade[reason] =
+        (this.metrics.downgrade[reason] ?? 0) + 1;
+      if (deviceId) {
+        // 既可能是协商期失败、也可能是运行期主动降级；两种情况都要清理 active_p2p。
+        this.activeP2pDevices.delete(deviceId);
+        this.recordFailure(deviceId, reason);
+      }
+    }
+  }
+
+  /**
+   * 记一次失败，并按文档 4.2 的退避表更新 backoffByDevice：
+   * 1 次 → 30s，2 次 → 2min，3 次 → 10min，4+ → MAX_SAFE_INTEGER。
+   *
+   * TODO(阶段 5)：收到 app.network.changed 时清空 backoffByDevice 中的相关条目。
+   */
+  recordFailure(deviceId: string, reason: string): void {
+    this.metrics.failed[reason] = (this.metrics.failed[reason] ?? 0) + 1;
+    const entry =
+      this.backoffByDevice.get(deviceId) ?? {
+        failures: 0,
+        nextAvailableAt: 0,
+      };
+    entry.failures += 1;
+    const now = this.nowFn();
+    if (entry.failures === 1) {
+      entry.nextAvailableAt = now + 30_000;
+    } else if (entry.failures === 2) {
+      entry.nextAvailableAt = now + 120_000;
+    } else if (entry.failures === 3) {
+      entry.nextAvailableAt = now + 600_000;
+    } else {
+      entry.nextAvailableAt = Number.MAX_SAFE_INTEGER;
+    }
+    this.backoffByDevice.set(deviceId, entry);
+  }
+
+  /**
+   * 直接发起一次 upgrade：向 mobile (offerer) + agent (answerer) 同时发 propose。
+   * 返回生成的 upgrade_id；外部 /debug/upgrade 也通过此入口触发以纳入 metrics。
+   */
+  triggerUpgrade(
+    deviceId: string,
+    mobile: UpgradeOrchestratorConnection,
+    agent: UpgradeOrchestratorConnection,
+  ): string {
+    const upgradeId = randomUUID();
+    const iceServers = this.config.iceServers;
+
+    this.sendFn(
+      mobile,
+      createMessage<TunnelUpgradeProposePayload>(
+        "tunnel.upgrade.propose",
+        {
+          upgrade_id: upgradeId,
+          ice_servers: iceServers,
+          role: "offerer",
+        },
+        { device_id: deviceId },
+      ),
+    );
+    this.sendFn(
+      agent,
+      createMessage<TunnelUpgradeProposePayload>(
+        "tunnel.upgrade.propose",
+        {
+          upgrade_id: upgradeId,
+          ice_servers: iceServers,
+          role: "answerer",
+        },
+        { device_id: deviceId },
+      ),
+    );
+
+    this.inFlightUpgrades.set(upgradeId, {
+      deviceId,
+      mobileConnectionId: mobile.id,
+      agentConnectionId: agent.id,
+      startedAt: this.nowFn(),
+      committedCount: 0,
+    });
+    this.metrics.proposed += 1;
+    return upgradeId;
+  }
+
+  /** 返回 metrics 快照（深拷贝），用于 /metrics endpoint。 */
+  getMetrics(): OrchestratorMetricsSnapshot {
+    return {
+      proposed: this.metrics.proposed,
+      committed: this.metrics.committed,
+      failed: { ...this.metrics.failed },
+      downgrade: { ...this.metrics.downgrade },
+      in_flight: this.inFlightUpgrades.size,
+      active_p2p: this.activeP2pDevices.size,
+      durations: this.computeDurationStats(),
+    };
+  }
+
+  /** 释放所有 timer，便于优雅关停或测试。 */
+  dispose(): void {
+    for (const timer of this.sessionTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.sessionTimers.clear();
+    this.inFlightUpgrades.clear();
+    this.activeP2pDevices.clear();
+  }
+
+  private recordDuration(durationMs: number): void {
+    if (!Number.isFinite(durationMs) || durationMs < 0) {
+      return;
+    }
+    this.upgradeSessionDurations.push(durationMs);
+    if (this.upgradeSessionDurations.length > UPGRADE_DURATION_WINDOW) {
+      this.upgradeSessionDurations.shift();
+    }
+  }
+
+  private computeDurationStats(): UpgradeDurationStats {
+    const samples = this.upgradeSessionDurations;
+    if (samples.length === 0) {
+      return { count: 0, p50_ms: 0, p95_ms: 0, max_ms: 0 };
+    }
+    const sorted = [...samples].sort((a, b) => a - b);
+    return {
+      count: sorted.length,
+      p50_ms: percentile(sorted, 0.5),
+      p95_ms: percentile(sorted, 0.95),
+      max_ms: sorted[sorted.length - 1] ?? 0,
+    };
+  }
+}
+
+/**
+ * 在已排序数组上计算分位数：使用最近邻取整，避免引入插值依赖。
+ * sorted 必须升序且非空。
+ */
+function percentile(sorted: number[], q: number): number {
+  if (sorted.length === 0) {
+    return 0;
+  }
+  if (sorted.length === 1) {
+    return sorted[0] ?? 0;
+  }
+  const clamped = Math.min(1, Math.max(0, q));
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil(clamped * sorted.length) - 1),
+  );
+  return sorted[index] ?? 0;
+}
+
+function sessionKey(deviceId: string, mobileConnectionId: string): string {
+  return `${deviceId}|${mobileConnectionId}`;
+}
+
+/**
+ * 灰度判定：sha1(deviceId) 前 4 字节作为 uint32，模 100 后与 percent 比较。
+ * percent=0 → 永远不通过；percent=100 → 永远通过。
+ */
+export function shouldRollout(deviceId: string, percent: number): boolean {
+  if (percent <= 0) {
+    return false;
+  }
+  if (percent >= 100) {
+    return true;
+  }
+  const digest = createHash("sha1").update(deviceId).digest();
+  const bucket = digest.readUInt32BE(0) % 100;
+  return bucket < percent;
+}

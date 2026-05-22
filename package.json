@@ -11,7 +11,6 @@
     "dev:web": "pnpm --filter @omniwork/app web:dev",
     "dev:mac": "pnpm --filter @omniwork/mac-agent dev",
     "dev:relay": "pnpm --filter @omniwork/relay-server dev",
-    "dev:tunnel": "pnpm --filter @omniwork/tunnel-service dev",
     "app:android": "pnpm --filter @omniwork/app android",
     "app:ios": "pnpm --filter @omniwork/app ios",
     "app:build:web": "pnpm --filter @omniwork/app web:build",
@@ -20,17 +19,14 @@
     "app:build:ios": "pnpm --filter @omniwork/app build:ios",
     "app:build:ios:dev": "pnpm --filter @omniwork/app build:ios:dev",
     "relay:start": "pnpm --filter @omniwork/relay-server start",
-    "tunnel:start": "pnpm --filter @omniwork/tunnel-service start",
     "verify:app-auth": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/verify/app-key-proof.test.mjs",
     "verify:app:targets": "pnpm --filter @omniwork/app verify:targets",
     "verify:app:web": "pnpm --filter @omniwork/app verify:web",
     "verify:app:bundle:ios": "pnpm --filter @omniwork/app verify:bundle:ios",
     "verify:app:bundle:android": "pnpm --filter @omniwork/app verify:bundle:android",
-    "verify:app-webrtc:e2e": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/verify/app-webrtc-tunnel.e2e.mjs",
-    "verify:public-tunnel-webrtc:e2e": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/verify/public-tunnel-webrtc.e2e.mjs",
     "verify:relay": "node --experimental-strip-types relay/server/src/main.ts --check",
-    "verify:tunnel": "node --experimental-strip-types relay/tunnel-service/src/main.ts --check",
-    "verify:mac-key": "node --experimental-strip-types mac/agent/tests/auth-key.test.ts"
+    "verify:mac-key": "node --experimental-strip-types mac/agent/tests/auth-key.test.ts",
+    "verify:upgrade:simulator": "node --experimental-strip-types scripts/verify/mobile-upgrade-simulator.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.0"

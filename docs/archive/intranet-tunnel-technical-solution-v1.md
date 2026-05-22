@@ -1,5 +1,7 @@
 # 内网穿透技术方案
 
+> ⚠️ **已弃用 (DEPRECATED)** —— 本文档为历史归档，对应 v1 阶段（包含 tunnel-service 与 Relay 端 WebRTC peer 的方案）。当前架构已回归到 App↔Relay↔Agent 全 WebSocket 的最小可用形态，详见 [`relay-architecture-implementation.md`](../relay-architecture-implementation.md)。
+
 调研时间：2026-05-15
 
 关联文档：

@@ -14,6 +14,7 @@
     "@omniwork/protocol-ts": "workspace:*",
     "@omniwork/relay-client": "workspace:*",
     "@omniwork/terminal-core": "workspace:*",
+    "@roamhq/wrtc": "^0.8.0",
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {

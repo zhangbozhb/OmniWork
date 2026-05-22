@@ -1,5 +1,12 @@
 import { type JSX, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, StatusBar, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  AppState,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import type {
@@ -13,11 +20,18 @@ import type {
   MessageEnvelope,
   RuntimeKind,
   SessionListPayload,
+  SessionTransport,
   TerminalErrorPayload,
   TerminalFramePayload,
   TerminalInputPayload,
   TerminalResizePayload,
   TerminalSnapshotPayload,
+  TunnelUpgradeAnswerPayload,
+  TunnelUpgradeCandidatePayload,
+  TunnelUpgradeCommittedPayload,
+  TunnelUpgradeDowngradePayload,
+  TunnelUpgradeOfferPayload,
+  TunnelUpgradeProposePayload,
   WorkspaceDefinition,
   WorkspaceFileEntry,
   WorkspaceGitStatus,
@@ -26,7 +40,6 @@ import type {
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
   createMessage,
-  parsePairingLink,
 } from "../../../packages/protocol-ts/src/index.ts";
 import type { RelayCloseEvent } from "../../../packages/relay-client/src/index.ts";
 import { PairingScreen } from "../screens/pairing/PairingScreen";
@@ -34,6 +47,7 @@ import { DeviceListScreen } from "../screens/devices/DeviceListScreen";
 import { SessionListScreen } from "../screens/sessions/SessionListScreen";
 import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import type { PairingConfig } from "../features/auth/types";
+import { parsePairingConfig } from "../features/auth/pairingConfig";
 import {
   closeSessionRequest,
   renameSessionRequest,
@@ -59,8 +73,9 @@ import {
 } from "../features/workspaces/workspaceMessages";
 import { computeInitialTerminalSize } from "../features/terminal/terminalLayout";
 import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
-import { AppWebRtcTunnelSession } from "../lib/tunnel-client/appWebRtcTunnelSession";
-import { DEFAULT_PAIRING_TRANSPORT } from "../features/auth/types";
+import { MobileRelayPath, MobileSessionTransport } from "../lib/transport";
+import { UpgradeCoordinator } from "../lib/transport/upgradeCoordinator";
+import { createMobileWebRtcPeerAdapter } from "../lib/transport/webRtcPeerAdapter";
 import {
   addAppUrlListener,
   getInitialAppUrl,
@@ -80,13 +95,17 @@ type ConnectionStatus =
   | "authenticated"
   | "failed";
 
-interface AppSessionTransport {
+type AppSessionTransport = Omit<SessionTransport, "close"> & {
   connect(): Promise<void>;
-  onMessage(handler: (message: MessageEnvelope) => void): () => void;
   onClose(handler: (event: RelayCloseEvent) => void): () => void;
-  send(message: MessageEnvelope): void;
-  close(): void;
-}
+  close(reason?: string): void;
+  /**
+   * 阶段 5：暴露给业务层用于在 AppState 变化、网络变化时主动触发降级，
+   * 以及处理来自 Relay 的 tunnel.upgrade.* 控制消息。
+   */
+  forceDowngrade(reason: string): void;
+  handleUpgradeMessage(message: MessageEnvelope): void;
+};
 
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
 
@@ -226,11 +245,7 @@ function AppContent(): JSX.Element {
     const relay = createAppSessionTransport(pairing);
     relayRef.current = relay;
     setConnectionStatus("connecting");
-    setConnectionMessage(
-      pairing.transport === "webrtc"
-        ? "Connecting with WebRTC P2P tunnel..."
-        : "Connecting to Relay...",
-    );
+    setConnectionMessage("Connecting to Relay...");
 
     const unsubscribe = relay.onMessage((message) => {
       if (closed) {
@@ -273,6 +288,18 @@ function AppContent(): JSX.Element {
       }
     };
   }, [pairing]);
+
+  // 阶段 5：进入后台时主动降级到 relay path（PeerConnection 在后台会被系统挂起），
+  // 回到前台后由下次 propose 周期重新尝试 upgrade。NetInfo 网络变化暂未接入，
+  // TODO(阶段 5)：订阅 NetInfo，发生网络切换时同样调用 forceDowngrade 并清理 backoff。
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next !== "active") {
+        relayRef.current?.forceDowngrade("app_background");
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (
@@ -515,11 +542,7 @@ function AppContent(): JSX.Element {
     }
     failureDialogActiveRef.current = false;
     setConnectionStatus("connecting");
-    setConnectionMessage(
-      pairing.transport === "webrtc"
-        ? "Reconnecting via WebRTC P2P tunnel..."
-        : "Reconnecting to Relay...",
-    );
+    setConnectionMessage("Reconnecting to Relay...");
     // 通过创建一个新的 pairing 引用强制触发上面的连接 useEffect
     // （依赖 pairing 引用变化），从而重建 transport。
     setPairing({ ...pairing });
@@ -865,6 +888,10 @@ function AppContent(): JSX.Element {
     relay: AppSessionTransport,
     activePairing: PairingConfig,
   ): void {
+    if (message.type.startsWith("tunnel.upgrade.")) {
+      relay.handleUpgradeMessage(message);
+      return;
+    }
     switch (message.type) {
       case "auth.challenge":
         setConnectionStatus("authenticating");
@@ -1163,11 +1190,143 @@ function AppContent(): JSX.Element {
 function createAppSessionTransport(
   pairing: PairingConfig,
 ): AppSessionTransport {
-  if (pairing.transport === "webrtc") {
-    return new AppWebRtcTunnelSession(pairing);
-  }
+  const session = new MobileRelaySession(pairing);
+  const relayPath = new MobileRelayPath(session);
+  const transport = new MobileSessionTransport(relayPath);
+  const logTransport =
+    typeof process !== "undefined" &&
+    process.env?.OMNIWORK_LOG_TRANSPORT === "1";
 
-  return new MobileRelaySession(pairing);
+  // App 端固定为 offerer。
+  const coordinator = new UpgradeCoordinator({
+    role: "offerer",
+    deviceId: pairing.deviceId,
+    peerFactory: (opts) =>
+      createMobileWebRtcPeerAdapter({
+        iceServers: opts.iceServers,
+        role: opts.role,
+      }),
+    sendControl: (envelope) => session.send(envelope),
+    onSwitchPath: (path) => {
+      if (path === "p2p") {
+        const peer = coordinator.getPeer();
+        const upgradeId = coordinator.getUpgradeId();
+        if (peer) {
+          transport.attachP2pPeer(peer, {
+            upgradeId: upgradeId ?? undefined,
+            onDowngrade: (reason) => coordinator.downgrade(reason),
+          });
+        }
+      }
+      void transport.switchPath(path);
+    },
+  });
+
+  transport.onEvent((event) => {
+    switch (event.type) {
+      case "path_change":
+        console.info("[omniwork-app] transport path changed", {
+          from: event.from,
+          to: event.to,
+        });
+        break;
+      case "ping_timeout":
+        console.warn("[omniwork-app] transport ping timeout", {
+          seq: event.seq,
+          count: event.count,
+        });
+        break;
+      case "pong_received":
+        if (logTransport) {
+          console.info("[omniwork-app] transport pong received", {
+            seq: event.seq,
+            rtt_ms: event.rtt_ms,
+          });
+        }
+        break;
+      case "downgrade":
+        console.warn("[omniwork-app] transport downgrade", {
+          reason: event.reason,
+        });
+        break;
+    }
+  });
+
+  coordinator.onEvent((event) => {
+    switch (event.type) {
+      case "propose":
+        console.info("[omniwork-app] upgrade propose", {
+          upgrade_id: event.upgrade_id,
+          role: event.role,
+        });
+        break;
+      case "upgrade_success":
+        console.info("[omniwork-app] upgrade success", {
+          upgrade_id: event.upgrade_id,
+        });
+        break;
+      case "upgrade_failed":
+        console.warn("[omniwork-app] upgrade failed", {
+          upgrade_id: event.upgrade_id,
+          reason: event.reason,
+        });
+        break;
+    }
+  });
+
+  return {
+    connect: () => session.connect(),
+    onMessage: (handler) => transport.onMessage(handler),
+    onClose: (handler) => relayPath.onClose(handler),
+    send: (message) => transport.send(message),
+    close: () => {
+      transport.close("client closing");
+      session.close();
+    },
+    getCurrentPath: () => transport.getCurrentPath(),
+    onPathChange: (handler) => transport.onPathChange(handler),
+    forceDowngrade: (reason) => {
+      transport.forceDowngrade(reason);
+      coordinator.downgrade(reason);
+    },
+    handleUpgradeMessage: (message) => {
+      switch (message.type) {
+        case "tunnel.upgrade.propose":
+          void coordinator.propose(
+            (message as MessageEnvelope<TunnelUpgradeProposePayload>).payload,
+          );
+          break;
+        case "tunnel.upgrade.offer":
+          void coordinator.handleOffer(
+            (message as MessageEnvelope<TunnelUpgradeOfferPayload>).payload,
+          );
+          break;
+        case "tunnel.upgrade.answer":
+          void coordinator.handleAnswer(
+            (message as MessageEnvelope<TunnelUpgradeAnswerPayload>).payload,
+          );
+          break;
+        case "tunnel.upgrade.candidate":
+          void coordinator.handleCandidate(
+            (message as MessageEnvelope<TunnelUpgradeCandidatePayload>).payload,
+          );
+          break;
+        case "tunnel.upgrade.committed":
+          coordinator.handleCommitted(
+            (message as MessageEnvelope<TunnelUpgradeCommittedPayload>).payload,
+          );
+          break;
+        case "tunnel.upgrade.downgrade":
+          coordinator.downgrade(
+            (message as MessageEnvelope<TunnelUpgradeDowngradePayload>).payload
+              .reason,
+          );
+          break;
+        default:
+          break;
+      }
+    },
+  };
 }
 
 const styles = StyleSheet.create({
@@ -1230,24 +1389,6 @@ function upsertPairing(
 
 function isSamePairing(left: PairingConfig, right: PairingConfig): boolean {
   return left.relayUrl === right.relayUrl && left.deviceId === right.deviceId;
-}
-
-function parsePairingConfig(input: string): PairingConfig | null {
-  const payload = parsePairingLink(input);
-  if (!payload) {
-    return null;
-  }
-
-  return {
-    relayUrl: payload.relay_url,
-    deviceId: payload.device_id,
-    key: payload.key,
-    keyId: payload.key_id,
-    transport:
-      payload.transport === "websocket" || payload.transport === "webrtc"
-        ? payload.transport
-        : DEFAULT_PAIRING_TRANSPORT,
-  };
 }
 
 function getHeaderSubtitle(

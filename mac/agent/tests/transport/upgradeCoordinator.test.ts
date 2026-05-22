@@ -1,0 +1,252 @@
+import { strict as assert } from "node:assert";
+
+import {
+  type IceCandidateInit,
+  type MessageEnvelope,
+  type PeerState,
+  type TransportPath,
+  type WebRtcPeerAdapter,
+} from "../../../../packages/protocol-ts/src/index.ts";
+import { UpgradeCoordinator } from "../../src/transport/upgradeCoordinator.ts";
+
+class MockPeer implements WebRtcPeerAdapter {
+  public lastRemoteSdp: { sdp: string; type: "offer" | "answer" } | null = null;
+  public iceCandidates: IceCandidateInit[] = [];
+  public sentData: string[] = [];
+  public closed = false;
+  private candidateHandlers = new Set<(c: IceCandidateInit) => void>();
+  private dataHandlers = new Set<(data: string) => void>();
+  private stateHandlers = new Set<(state: PeerState) => void>();
+
+  async createOffer(): Promise<string> {
+    return "v=0\r\nmock-offer";
+  }
+
+  async createAnswer(): Promise<string> {
+    return "v=0\r\nmock-answer";
+  }
+
+  async setRemoteDescription(
+    sdp: string,
+    type: "offer" | "answer",
+  ): Promise<void> {
+    this.lastRemoteSdp = { sdp, type };
+  }
+
+  async addIceCandidate(c: IceCandidateInit): Promise<void> {
+    this.iceCandidates.push(c);
+  }
+
+  onLocalCandidate(handler: (c: IceCandidateInit) => void): () => void {
+    this.candidateHandlers.add(handler);
+    return () => {
+      this.candidateHandlers.delete(handler);
+    };
+  }
+
+  onDataMessage(handler: (data: string) => void): () => void {
+    this.dataHandlers.add(handler);
+    return () => {
+      this.dataHandlers.delete(handler);
+    };
+  }
+
+  onStateChange(handler: (state: PeerState) => void): () => void {
+    this.stateHandlers.add(handler);
+    return () => {
+      this.stateHandlers.delete(handler);
+    };
+  }
+
+  send(data: string): void {
+    this.sentData.push(data);
+  }
+
+  getBufferedAmount(): number {
+    return 0;
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  emitState(state: PeerState): void {
+    for (const handler of this.stateHandlers) {
+      handler(state);
+    }
+  }
+
+  emitLocalCandidate(c: IceCandidateInit): void {
+    for (const handler of this.candidateHandlers) {
+      handler(c);
+    }
+  }
+}
+
+const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+const UPGRADE_ID = "upgrade-test-1";
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// 1. answerer 端：propose -> handleOffer -> handleCommitted -> upgraded
+{
+  const peer = new MockPeer();
+  const sent: MessageEnvelope[] = [];
+  const pathChanges: TransportPath[] = [];
+
+  const coordinator = new UpgradeCoordinator({
+    role: "answerer",
+    deviceId: "device-test",
+    peerFactory: () => peer,
+    sendControl: (env) => sent.push(env),
+    onSwitchPath: (p) => pathChanges.push(p),
+    timeoutMs: 1_000,
+  });
+
+  await coordinator.propose({
+    upgrade_id: UPGRADE_ID,
+    ice_servers: ICE_SERVERS,
+    role: "answerer",
+  });
+  assert.equal(coordinator.getState(), "negotiating");
+
+  await coordinator.handleOffer({ upgrade_id: UPGRADE_ID, sdp: "remote-offer" });
+  assert.equal(peer.lastRemoteSdp?.type, "offer");
+
+  // sendControl 中应已包含 answer
+  const types = sent.map((m) => m.type);
+  assert.ok(types.includes("tunnel.upgrade.answer"), "answer should be sent");
+
+  // 模拟收到对端 candidate
+  await coordinator.handleCandidate({
+    upgrade_id: UPGRADE_ID,
+    candidate: "candidate:1 1 udp 2122260223 1.1.1.1 1234 typ host",
+    sdp_mid: "0",
+    sdp_mline_index: 0,
+  });
+  assert.equal(peer.iceCandidates.length, 1);
+
+  // 本地 candidate 应转发
+  peer.emitLocalCandidate({
+    candidate: "candidate:2 1 udp 1 2.2.2.2 5678 typ host",
+    sdpMid: "0",
+    sdpMLineIndex: 0,
+  });
+  assert.ok(
+    sent.some((m) => m.type === "tunnel.upgrade.candidate"),
+    "local candidate forwarded",
+  );
+
+  // peer 进入 connected -> localCommit
+  peer.emitState("connected");
+  assert.ok(
+    sent.some((m) => m.type === "tunnel.upgrade.committed"),
+    "committed sent on connected",
+  );
+  assert.equal(coordinator.getState(), "committing");
+
+  // 收到对端 committed -> upgraded -> p2p
+  coordinator.handleCommitted({ upgrade_id: UPGRADE_ID });
+  assert.equal(coordinator.getState(), "upgraded");
+  assert.deepEqual(pathChanges, ["p2p"]);
+}
+
+// 2. offerer 端：propose 立即发送 offer，timeout 触发 downgrade
+{
+  const peer = new MockPeer();
+  const sent: MessageEnvelope[] = [];
+  const pathChanges: TransportPath[] = [];
+
+  const coordinator = new UpgradeCoordinator({
+    role: "offerer",
+    deviceId: "device-test",
+    peerFactory: () => peer,
+    sendControl: (env) => sent.push(env),
+    onSwitchPath: (p) => pathChanges.push(p),
+    timeoutMs: 50,
+  });
+
+  await coordinator.propose({
+    upgrade_id: UPGRADE_ID,
+    ice_servers: ICE_SERVERS,
+    role: "offerer",
+  });
+
+  assert.ok(
+    sent.some((m) => m.type === "tunnel.upgrade.offer"),
+    "offer sent immediately",
+  );
+  assert.equal(coordinator.getState(), "negotiating");
+
+  // 等超时
+  await sleep(120);
+  assert.equal(coordinator.getState(), "idle");
+  assert.ok(
+    sent.some((m) => m.type === "tunnel.upgrade.downgrade"),
+    "downgrade sent after timeout",
+  );
+  assert.deepEqual(pathChanges, ["relay"]);
+  assert.equal(peer.closed, true);
+}
+
+// 3. peer factory 返回 null -> failed -> downgrade
+{
+  const sent: MessageEnvelope[] = [];
+  const pathChanges: TransportPath[] = [];
+  const coordinator = new UpgradeCoordinator({
+    role: "offerer",
+    deviceId: "device-test",
+    peerFactory: () => null,
+    sendControl: (env) => sent.push(env),
+    onSwitchPath: (p) => pathChanges.push(p),
+    timeoutMs: 1_000,
+  });
+
+  await coordinator.propose({
+    upgrade_id: UPGRADE_ID,
+    ice_servers: ICE_SERVERS,
+    role: "offerer",
+  });
+
+  assert.equal(coordinator.getState(), "idle");
+  assert.ok(
+    sent.some(
+      (m) =>
+        m.type === "tunnel.upgrade.downgrade" &&
+        (m.payload as { reason: string }).reason === "peer_unavailable",
+    ),
+    "downgrade with peer_unavailable",
+  );
+  assert.deepEqual(pathChanges, ["relay"]);
+}
+
+// 4. 重复 propose 在非 idle 状态被忽略
+{
+  const peer = new MockPeer();
+  const sent: MessageEnvelope[] = [];
+  const coordinator = new UpgradeCoordinator({
+    role: "answerer",
+    deviceId: "device-test",
+    peerFactory: () => peer,
+    sendControl: (env) => sent.push(env),
+    onSwitchPath: () => {},
+    timeoutMs: 5_000,
+  });
+
+  await coordinator.propose({
+    upgrade_id: UPGRADE_ID,
+    ice_servers: ICE_SERVERS,
+    role: "answerer",
+  });
+  const before = sent.length;
+  await coordinator.propose({
+    upgrade_id: "another",
+    ice_servers: ICE_SERVERS,
+    role: "answerer",
+  });
+  // 不应触发额外发送
+  assert.equal(sent.length, before);
+}
+
+console.log("upgrade-coordinator tests passed");

@@ -8,7 +8,15 @@
 
 关联鉴权设计：[auth-key-design.md](./auth-key-design.md)
 
-关联内网穿透方案：[intranet-tunnel-technical-solution.md](./intranet-tunnel-technical-solution.md)
+关联内网穿透方案：[relay-architecture.md](./relay-architecture.md)（终版架构）；[archive/intranet-tunnel-technical-solution-v1.md](./archive/intranet-tunnel-technical-solution-v1.md)（已弃用，仅作历史参考）
+
+## 当前实装状态（2026-05-22）
+
+- 主通道（Codex app-server runtime adapter）：已落地基础适配层，见 [mac/agent/src/runtime/](../mac/agent/src/runtime/)；provider 配置驱动 + `session.list` 下发已对齐。
+- 兼容通道（tmux + node-pty 原生终端快照）：已落地，见 [mac/agent/src/pty-bridge](../mac/agent/src/pty-bridge) 与 [mac/agent/src/tmux-manager](../mac/agent/src/tmux-manager)。
+- Agent Provider 元数据层：`packages/protocol-ts` 定义 + Mac Agent 配置化 provider 已实现。
+- Workspace 只读上下文层：已实现 `workspace.list/status` + `files.list/read` + `git.status/diff`，详见 [mac/agent/src/workspace](../mac/agent/src/workspace) / [files](../mac/agent/src/files) / [git](../mac/agent/src/git)。
+- Relay + P2P 升级：已落地（终版见 [relay-architecture.md](./relay-architecture.md)），不在本文档继续维护。
 
 ## 结论摘要
 

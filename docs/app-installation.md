@@ -176,12 +176,14 @@ pnpm app:build:web
 - 部署时需要将所有路由回退到 `index.html`。
 - Web 端不启用摄像头扫码，只支持粘贴配对信息或 URL 导入。
 
-Web 配对 URL 支持：
+Web 配对 URL 支持（**仅由 Web SPA 自身解析**，浏览器中不会自动唤起 Native App）：
 
 ```text
 https://example.com/?pairing=omniwork%3A%2F%2Fpair%3F...
 https://example.com/?relay_url=wss%3A%2F%2Frelay.example%2Fmobile&device_id=mac&key=...
 ```
+
+> Native App（iOS / Android）唤起只支持 `omniwork://pair?...` custom scheme（见 [app/ios/OmniWork/Info.plist](../app/ios/OmniWork/Info.plist) `CFBundleURLTypes` 与 [app/android/app/src/main/AndroidManifest.xml](../app/android/app/src/main/AndroidManifest.xml) 的 intent-filter）。当前**未配置 iOS Universal Links / Android App Links**，即使把上面 https URL 通过短信、邮件、IM 发给已安装 App 的设备，系统也只会用浏览器打开（由 Web SPA 把参数转换并写到 SPA localStorage）。如需"一键唤起 App"，需要后续补 iOS `com.apple.developer.associated-domains` entitlement + AASA 文件，以及 Android https intent-filter + `assetlinks.json` + `android:autoVerify="true"`。
 
 ## 三端验证
 
@@ -211,12 +213,27 @@ pnpm verify:app:web
 iOS：
 
 - 配置了 `NSLocalNetworkUsageDescription`，用于后续本地 relay 或局域网调试。
+- 配置了 `NSCameraUsageDescription`，用于配对二维码扫码。
 - 设置 `ITSAppUsesNonExemptEncryption=false`，若公司安全策略要求，应在发布前复核。
 
 Android：
 
-- 显式声明 `INTERNET` 权限。
+- 显式声明 `INTERNET`、`CAMERA` 权限。
 - 当前 `usesCleartextTraffic="true"`（联调用），上线分发前请改回 `"false"` 并切到 `wss://`。
+
+## P2P 升级（WebRTC）
+
+App 通过 `react-native-webrtc`（见 [app/package.json](../app/package.json) 与 `app/src/lib/transport/webRtcPeerAdapter.native.ts`）参与 P2P 升级；详细路径切换与降级行为以 [relay-architecture.md](./relay-architecture.md) 为准。
+
+平台支持：
+
+- iOS：`pod install` 会落地 `react-native-webrtc`，使用系统 WebRTC 框架，无需额外权限（不录音不录像）。
+- Android：`react-native-webrtc` 自带 native module，已包含的 `INTERNET` 权限即可满足 ICE/DTLS 通讯。
+- Web：`peerFactory` 返回 null，永远停留在 relay path，不需要额外构建配置。
+
+可观测：
+
+- 设置 `OMNIWORK_LOG_TRANSPORT=1` 启动时，App 会打印 transport 详细事件（path_change / upgrade_proposed / upgrade_committed / downgrade 等），便于排查升级失败原因。
 
 ## 安装前检查
 
@@ -228,6 +245,18 @@ Android：
 - App 不使用 SSO，配对页输入 Mac Agent 当前启动生成的 32 字符临时 key。
 - iOS/Android 真机可以访问 Relay。
 - 移动端交付物是 APK/IPA 安装包；Web 端交付物是静态 SPA，不作为 PWA 或扫码入口。
+
+### Relay URL 环境变量约定
+
+Mac Agent 与 App 各自读取独立的 Relay URL，分别指向 Relay 的 `/agent` 与 `/mobile` 两个 pool；二者不可混用：
+
+| 变量名 | 使用方 | Relay 路径 | 默认/示例 |
+| --- | --- | --- | --- |
+| `OMNIWORK_RELAY_URL` | Mac Agent 自连 | `/agent` | `wss://relay.company.example/agent` |
+| `OMNIWORK_DEFAULT_RELAY_URL` | App（native + web）默认值 | `/mobile` | `wss://relay.company.example/mobile` |
+
+> 配对二维码中的 `relay_url` 由 Agent 端基于 `OMNIWORK_RELAY_URL` 推导（自动改写为兄弟路径 `/mobile`），手机扫码后会覆盖 App 的默认值。
+
 
 ## 当前环境说明
 

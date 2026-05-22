@@ -17,6 +17,12 @@ import type {
   TerminalFramePayload,
   TerminalInputPayload,
   TerminalResizePayload,
+  TunnelUpgradeAnswerPayload,
+  TunnelUpgradeCandidatePayload,
+  TunnelUpgradeCommittedPayload,
+  TunnelUpgradeDowngradePayload,
+  TunnelUpgradeOfferPayload,
+  TunnelUpgradeProposePayload,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import { createHash } from "node:crypto";
 
@@ -45,6 +51,12 @@ import {
   printPairingDetailsWithoutRelay,
   printPairingQr,
 } from "../pairing/pairingQr.ts";
+import {
+  AgentRelayPath,
+  AgentSessionTransport,
+} from "../transport/index.ts";
+import { UpgradeCoordinator } from "../transport/upgradeCoordinator.ts";
+import { createAgentWebRtcPeerAdapter } from "../transport/webRtcPeerAdapter.ts";
 
 export class AgentService {
   private readonly logger = new Logger("omniwork-agent");
@@ -58,6 +70,10 @@ export class AgentService {
   private readonly config: AgentConfig;
   private keyRecord: SessionKeyRecord | null = null;
   private relay: AgentRelayClient | null = null;
+  private transport: AgentSessionTransport | null = null;
+  private upgradeCoordinator: UpgradeCoordinator | null = null;
+  private readonly logTransport =
+    (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
   /**
    * 每个 session 的终端推流定时器：基于内容哈希去重，仅在变化时推送 terminal.frame，
    * 取代 App 端 3s 全量轮询 + 输入后多次轮询。
@@ -127,6 +143,87 @@ export class AgentService {
     const keyRecord = this.requireKeyRecord();
     const relay = new AgentRelayClient(url);
     this.relay = relay;
+    const relayPath = new AgentRelayPath(relay);
+    const transport = new AgentSessionTransport(relayPath);
+    this.transport = transport;
+
+    // Agent 端固定为 answerer（mobile 是 offerer）。
+    const coordinator = new UpgradeCoordinator({
+      role: "answerer",
+      deviceId: this.config.deviceId,
+      peerFactory: (opts) =>
+        createAgentWebRtcPeerAdapter({
+          iceServers: opts.iceServers,
+          role: opts.role,
+        }),
+      sendControl: (envelope) => relay.send(envelope),
+      onSwitchPath: (path) => {
+        if (path === "p2p") {
+          const peer = coordinator.getPeer();
+          const upgradeId = coordinator.getUpgradeId();
+          if (peer) {
+            transport.attachP2pPeer(peer, {
+              upgradeId: upgradeId ?? undefined,
+              onDowngrade: (reason) => coordinator.downgrade(reason),
+            });
+          }
+        }
+        void transport.switchPath(path);
+      },
+    });
+    this.upgradeCoordinator = coordinator;
+
+    // transport 健康事件 → Logger（pong_received 仅在 OMNIWORK_LOG_TRANSPORT=1 时打印）。
+    transport.onEvent((event) => {
+      switch (event.type) {
+        case "path_change":
+          this.logger.info("transport path changed", {
+            from: event.from,
+            to: event.to,
+          });
+          break;
+        case "ping_timeout":
+          this.logger.warn("transport ping timeout", {
+            seq: event.seq,
+            count: event.count,
+          });
+          break;
+        case "pong_received":
+          if (this.logTransport) {
+            this.logger.debug("transport pong received", {
+              seq: event.seq,
+              rtt_ms: event.rtt_ms,
+            });
+          }
+          break;
+        case "downgrade":
+          this.logger.warn("transport downgrade", { reason: event.reason });
+          break;
+      }
+    });
+
+    coordinator.onEvent((event) => {
+      switch (event.type) {
+        case "propose":
+          this.logger.info("upgrade propose", {
+            upgrade_id: event.upgrade_id,
+            role: event.role,
+          });
+          break;
+        case "upgrade_success":
+          this.logger.info("upgrade success", {
+            upgrade_id: event.upgrade_id,
+          });
+          break;
+        case "upgrade_failed":
+          this.logger.warn("upgrade failed", {
+            upgrade_id: event.upgrade_id,
+            reason: event.reason,
+          });
+          break;
+      }
+    });
+
     relay.onMessage((message) => {
       this.handleRelayMessage(message).catch((error: unknown) => {
         this.logger.error("failed to handle relay message", {
@@ -261,6 +358,37 @@ export class AgentService {
         break;
       case "terminal.snapshot":
         await this.handleTerminalSnapshot(message);
+        break;
+      case "tunnel.upgrade.propose":
+        await this.upgradeCoordinator?.propose(
+          (message as MessageEnvelope<TunnelUpgradeProposePayload>).payload,
+        );
+        break;
+      case "tunnel.upgrade.offer":
+        await this.upgradeCoordinator?.handleOffer(
+          (message as MessageEnvelope<TunnelUpgradeOfferPayload>).payload,
+        );
+        break;
+      case "tunnel.upgrade.answer":
+        await this.upgradeCoordinator?.handleAnswer(
+          (message as MessageEnvelope<TunnelUpgradeAnswerPayload>).payload,
+        );
+        break;
+      case "tunnel.upgrade.candidate":
+        await this.upgradeCoordinator?.handleCandidate(
+          (message as MessageEnvelope<TunnelUpgradeCandidatePayload>).payload,
+        );
+        break;
+      case "tunnel.upgrade.committed":
+        this.upgradeCoordinator?.handleCommitted(
+          (message as MessageEnvelope<TunnelUpgradeCommittedPayload>).payload,
+        );
+        break;
+      case "tunnel.upgrade.downgrade":
+        this.upgradeCoordinator?.downgrade(
+          (message as MessageEnvelope<TunnelUpgradeDowngradePayload>).payload
+            .reason,
+        );
         break;
       default:
         this.logger.debug("ignored relay message", {
@@ -686,14 +814,14 @@ export class AgentService {
   }
 
   private send(message: MessageEnvelope): void {
-    if (!this.relay) {
-      this.logger.warn("cannot send without relay", {
+    if (!this.transport) {
+      this.logger.warn("cannot send without transport", {
         message_type: message.type,
       });
       return;
     }
 
-    this.relay.send(message);
+    this.transport.send(message);
   }
 
   private sendSessionStatus(session: CodexSession): void {

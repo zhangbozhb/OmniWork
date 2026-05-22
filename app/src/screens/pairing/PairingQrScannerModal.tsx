@@ -1,1 +1,1 @@
-export * from "./PairingQrScannerModal.native";
+export * from "./PairingQrScannerModal.web";

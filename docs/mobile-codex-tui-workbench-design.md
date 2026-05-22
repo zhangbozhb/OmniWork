@@ -4,6 +4,18 @@
 
 关联鉴权设计：[auth-key-design.md](./auth-key-design.md)
 
+## 当前 MVP 实装状态（2026-05-22）
+
+本文档记录的是设计意图。当前已落地的 App 屏幕（[app/src/screens/](../app/src/screens/)）：
+
+- [DeviceListScreen](../app/src/screens/devices/DeviceListScreen.tsx)：已保存设备列表与切换。
+- [PairingScreen](../app/src/screens/pairing/PairingScreen.tsx) + `PairingQrScannerModal.{native,web}.tsx`：扫码 / URL / 32 字符 key 三种配对方式。
+- [SessionListScreen](../app/src/screens/sessions/SessionListScreen.tsx)：按 workspace + provider 分组。
+- [TerminalScreen](../app/src/screens/terminal/TerminalScreen.tsx)：原始 TUI 快照 + 输入。
+- [FileBrowserScreen](../app/src/screens/workspaces/FileBrowserScreen.tsx) / [GitStatusScreen](../app/src/screens/workspaces/GitStatusScreen.tsx)：workspace 只读上下文。
+
+下文中的页面、交互流转可能与现有 5 屏存在差异；以代码为准，本设计为后续演进的目标态参考。
+
 ## 背景
 
 目标是在公司网络和公司统一管控的 Mac 电脑上，实现一种可以通过手机持续操作电脑端 Codex 命令行的办公能力。用户希望在手机上查看 Codex TUI 的运行结果、继续输入指令，并在多个 TUI 会话之间切换，从而支持长时间、异步、不中断的办公流程。

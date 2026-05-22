@@ -1,3 +1,8 @@
+import {
+  PAIRING_LINK_HOST,
+  PAIRING_LINK_SCHEME,
+} from "../../../../packages/protocol-ts/src/index.ts";
+
 export interface AppLinkSubscription {
   remove(): void;
 }
@@ -31,6 +36,8 @@ export async function openSystemSettings(): Promise<void> {
 }
 
 function getCurrentAppUrl(): string | null {
+  // 优先级：?pairing=<encoded link> > #...?pairing=<encoded link> > 裸 query 中的 pairing 字段。
+  // 加 hashchange 监听是为了兼容 HashRouter / SPA hash 路由场景。
   const directLink = getSearchParam(window.location.search, "pairing");
   if (directLink) {
     return directLink;
@@ -47,7 +54,7 @@ function getCurrentAppUrl(): string | null {
 
   const query = window.location.search || hashQuery;
   if (hasPairingParams(query)) {
-    return `omniwork://pair${query.startsWith("?") ? query : `?${query}`}`;
+    return `${PAIRING_LINK_SCHEME}://${PAIRING_LINK_HOST}${query.startsWith("?") ? query : `?${query}`}`;
   }
 
   return null;
@@ -63,6 +70,8 @@ function getSearchParam(query: string, key: string): string | null {
 }
 
 function hasPairingParams(query: string): boolean {
+  // 仅检查 pairing link 必填的三个字段；`v` 由协议层 parsePairingLink 兜底校验，
+  // 这里保持宽松以便接受 v 缺省的旧版（协议层会拒绝 v 不匹配的入参）。
   const params = new URLSearchParams(query.startsWith("?") ? query : `?${query}`);
   return Boolean(
     params.get("relay_url") && params.get("device_id") && params.get("key"),

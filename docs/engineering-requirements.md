@@ -7,7 +7,9 @@
 - [project-directory-structure.md](./project-directory-structure.md)
 - [auth-key-design.md](./auth-key-design.md)
 - [app-installation.md](./app-installation.md)
-- [intranet-tunnel-technical-solution.md](./intranet-tunnel-technical-solution.md)
+- [relay-architecture.md](./relay-architecture.md)
+- [relay-architecture-implementation.md](./relay-architecture-implementation.md)
+- [archive/intranet-tunnel-technical-solution-v1.md](./archive/intranet-tunnel-technical-solution-v1.md)（已弃用，仅作历史参考）
 
 ## 总体要求
 
@@ -143,6 +145,34 @@ MVP 鉴权模型：
 - 协议破坏性变更必须升级版本并补 contract test。
 - `packages/protocol-ts/src/schemas.ts` 提供 envelope、`auth.*`、`terminal.*` 等关键报文的 zod schema 作为运行时校验来源；常量（如 `PROTOCOL_VERSION`、pairing link scheme/host）集中维护在 `packages/protocol-ts/src/constants.ts`。
 - `packages/protocol-ts/tests/contract.test.ts` 是协议契约测试，通过 `pnpm --filter @omniwork/protocol-ts test` 运行；新增/调整字段或取值集合时必须同步补充正反例。
+
+## 传输与升级要求
+
+业务消息默认走 Relay WS；P2P（WebRTC DataChannel）作为可选优选路径，由 Relay 协调升级、双端按需降级。详细架构以 [relay-architecture.md](./relay-architecture.md) 为单一来源。
+
+依赖与运行时：
+
+- Mac Agent：`@roamhq/wrtc`（Node 端 WebRTC 实现）；运行时为 Node.js 24 + `--experimental-strip-types`。
+- App（React Native）：`react-native-webrtc`；iOS 需 `pod install`，Android 需 `INTERNET` 权限。
+- App（react-native-web）：`peerFactory` 返回 null，永远停留在 relay path。
+
+Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.md](../relay/server/README.md) 与 [relay-architecture.md §5](./relay-architecture.md)）：
+
+- `OMNIWORK_UPGRADE_ENABLED`
+- `OMNIWORK_UPGRADE_ROLLOUT`
+- `OMNIWORK_UPGRADE_DEVICE_BLOCKLIST`
+- `OMNIWORK_UPGRADE_ICE_SERVERS_JSON`
+- `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS`
+
+客户端可观测开关：
+
+- `OMNIWORK_LOG_TRANSPORT=1`：双端打印 transport 详细事件（path_change / ping_timeout / pong_received / downgrade / upgrade_*）。
+
+验证脚本：
+
+- `pnpm verify:relay`：Relay 配置自检。
+- `pnpm verify:mac-key`：Agent 临时 key 写入与权限校验。
+- `pnpm verify:upgrade:simulator`：本地拉起 relay + agent 模拟器 + mobile 模拟器，跑通 propose → committed → switchPath 全链路；产出 proposed / committed / 升级耗时 p50/p95/max。脚本入口 [scripts/verify/mobile-upgrade-simulator.mjs](../scripts/verify/mobile-upgrade-simulator.mjs)。
 
 ## 共享包要求
 

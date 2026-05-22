@@ -6,18 +6,13 @@ import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
   type AgentProviderDefinition,
 } from "../../../../packages/protocol-ts/src/index.ts";
-import type {
-  PairingTransport,
-  TerminalSize,
-} from "../../../../packages/protocol-ts/src/index.ts";
+import type { TerminalSize } from "../../../../packages/protocol-ts/src/index.ts";
 
 export interface AgentConfig {
   agentVersion: string;
   deviceId: string;
   hostname: string;
   relayUrl?: string;
-  pairingRelayUrl?: string;
-  pairingTransport: PairingTransport;
   agentProviders: AgentProviderDefinition[];
   defaultCwd: string;
   appSupportDir: string;
@@ -38,8 +33,6 @@ export function loadAgentConfig(
     deviceId: resolveDeviceId(env.OMNIWORK_DEVICE_ID),
     hostname: hostname(),
     relayUrl: env.OMNIWORK_RELAY_URL,
-    pairingRelayUrl: env.OMNIWORK_PAIRING_RELAY_URL,
-    pairingTransport: parsePairingTransport(env.OMNIWORK_PAIRING_TRANSPORT),
     agentProviders: resolveAgentProviders(
       env,
       readDefaultProviderCommandOverrides(env),
@@ -135,17 +128,6 @@ function readNonEmptyString(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed || undefined;
-}
-
-function parsePairingTransport(value?: string): PairingTransport {
-  const normalized = value?.trim().toLowerCase();
-  if (normalized === "webrtc") {
-    return "webrtc";
-  }
-  if (normalized === "websocket") {
-    return "websocket";
-  }
-  return "websocket";
 }
 
 function resolveDeviceId(value?: string): string {

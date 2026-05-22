@@ -20,6 +20,11 @@ interface QrCodeTerminal {
 export interface PairingQrDetails {
   link: string;
   payload: PairingLinkPayload;
+  /**
+   * 仅用于本地终端日志展示，便于运维确认 relay_url 中的本机 IP 替换是否生效。
+   * pairing link payload 自身已不再携带 host/port 字段。
+   */
+  endpoint: { host: string; port: string } | null;
 }
 
 export function createPairingQrDetails(
@@ -38,14 +43,12 @@ export function createPairingQrDetails(
     device_id: config.deviceId,
     key: keyRecord.key,
     key_id: keyRecord.key_id,
-    transport: config.pairingTransport,
-    host: endpoint?.host,
-    port: endpoint?.port,
   };
 
   return {
     link: createPairingLink(payload),
     payload,
+    endpoint,
   };
 }
 
@@ -80,19 +83,18 @@ export function printPairingDetailsWithoutRelay(
   console.info("  port: -");
   console.info("  relay_url: -");
   console.info(
-    "[omniwork-agent] set OMNIWORK_RELAY_URL or OMNIWORK_PAIRING_RELAY_URL to generate a scannable pairing QR code.",
+    "[omniwork-agent] set OMNIWORK_RELAY_URL to generate a scannable pairing QR code.",
   );
 }
 
 function printPairingSummary(details: PairingQrDetails): void {
-  const { payload } = details;
+  const { payload, endpoint } = details;
   console.info("[omniwork-agent] pairing details");
   console.info(`  key: ${payload.key}`);
   console.info(`  key_id: ${payload.key_id ?? "-"}`);
   console.info(`  device_id: ${payload.device_id}`);
-  console.info(`  host: ${payload.host ?? "-"}`);
-  console.info(`  port: ${payload.port ?? "-"}`);
-  console.info(`  transport: ${payload.transport ?? "websocket"}`);
+  console.info(`  host: ${endpoint?.host ?? "-"}`);
+  console.info(`  port: ${endpoint?.port ?? "-"}`);
   console.info(`  relay_url: ${payload.relay_url}`);
 }
 
@@ -106,11 +108,6 @@ function loadQrCodeTerminal(): QrCodeTerminal | null {
 }
 
 function createPairingRelayUrl(config: AgentConfig): string | null {
-  const explicitPairingUrl = config.pairingRelayUrl?.trim();
-  if (explicitPairingUrl) {
-    return createMobileReachableRelayUrl(explicitPairingUrl);
-  }
-
   const derivedRelayUrl = createMobileRelayUrl(config.relayUrl);
   if (!derivedRelayUrl) {
     return null;
@@ -204,7 +201,17 @@ function toMobilePathname(pathname: string): string {
   if (normalized.endsWith("/agent")) {
     return `${normalized.slice(0, -"/agent".length)}/mobile`;
   }
-  return normalized;
+  if (normalized.endsWith("/mobile")) {
+    return normalized;
+  }
+  // 其它自定义后缀（例如 /custom）一律改写为兄弟路径 /mobile，
+  // 与 Relay `/agent` <-> `/mobile` 双 pool 约定保持一致，避免手机端
+  // 落入仅供 Agent 使用的 path。
+  const lastSlash = normalized.lastIndexOf("/");
+  if (lastSlash <= 0) {
+    return "/mobile";
+  }
+  return `${normalized.slice(0, lastSlash)}/mobile`;
 }
 
 function defaultPort(protocol: string): string | null {

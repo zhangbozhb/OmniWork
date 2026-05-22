@@ -1,0 +1,233 @@
+import type {
+  IceCandidateInit,
+  PeerState,
+  WebRtcPeerAdapter,
+} from "../../../../packages/protocol-ts/src/index";
+
+interface IceServerLike {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+export interface MobileWebRtcPeerAdapterOptions {
+  iceServers: IceServerLike[];
+  role: "offerer" | "answerer";
+}
+
+type CandidateHandler = (c: IceCandidateInit) => void;
+type DataHandler = (data: string) => void;
+type StateHandler = (state: PeerState) => void;
+
+interface WrtcModule {
+  RTCPeerConnection: new (config: { iceServers: IceServerLike[] }) => any;
+  RTCSessionDescription: new (init: { sdp: string; type: "offer" | "answer" }) => any;
+  RTCIceCandidate: new (init: {
+    candidate: string;
+    sdpMid: string | null;
+    sdpMLineIndex: number | null;
+  }) => any;
+}
+
+function loadWrtc(): WrtcModule | null {
+  try {
+    // 通过 require 动态加载，避免在未安装依赖的环境下编译失败。
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require("react-native-webrtc") as WrtcModule;
+    return mod;
+  } catch (error) {
+    console.warn(
+      "[omniwork-app] react-native-webrtc unavailable; P2P upgrade disabled",
+      { error: (error as Error)?.message },
+    );
+    return null;
+  }
+}
+
+class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
+  private readonly pc: any;
+  private readonly mod: WrtcModule;
+  private readonly role: "offerer" | "answerer";
+  private dataChannel: any = null;
+  private readonly candidateHandlers = new Set<CandidateHandler>();
+  private readonly dataHandlers = new Set<DataHandler>();
+  private readonly stateHandlers = new Set<StateHandler>();
+  private closed = false;
+
+  constructor(pc: any, mod: WrtcModule, role: "offerer" | "answerer") {
+    this.pc = pc;
+    this.mod = mod;
+    this.role = role;
+
+    pc.onicecandidate = (event: any) => {
+      const c = event?.candidate;
+      if (!c || !c.candidate) {
+        return;
+      }
+      const init: IceCandidateInit = {
+        candidate: c.candidate,
+        sdpMid: c.sdpMid ?? null,
+        sdpMLineIndex: c.sdpMLineIndex ?? null,
+      };
+      for (const handler of this.candidateHandlers) {
+        handler(init);
+      }
+    };
+
+    const emitState = () => {
+      const state = this.resolveState();
+      for (const handler of this.stateHandlers) {
+        handler(state);
+      }
+    };
+    pc.oniceconnectionstatechange = emitState;
+    pc.onconnectionstatechange = emitState;
+
+    if (this.role === "offerer") {
+      this.attachDataChannel(pc.createDataChannel("omniwork"));
+    } else {
+      pc.ondatachannel = (event: any) => {
+        this.attachDataChannel(event.channel);
+      };
+    }
+  }
+
+  private resolveState(): PeerState {
+    const raw =
+      (this.pc.connectionState as string | undefined) ??
+      (this.pc.iceConnectionState as string | undefined);
+    switch (raw) {
+      case "new":
+        return "new";
+      case "connecting":
+      case "checking":
+        return "connecting";
+      case "connected":
+      case "completed":
+        return "connected";
+      case "disconnected":
+        return "disconnected";
+      case "failed":
+        return "failed";
+      case "closed":
+        return "closed";
+      default:
+        return "new";
+    }
+  }
+
+  private attachDataChannel(channel: any): void {
+    this.dataChannel = channel;
+    channel.onopen = () => {
+      for (const handler of this.stateHandlers) {
+        handler("connected");
+      }
+    };
+    channel.onclose = () => {
+      for (const handler of this.stateHandlers) {
+        handler("closed");
+      }
+    };
+    channel.onmessage = (event: any) => {
+      const data = event?.data;
+      if (typeof data === "string") {
+        for (const handler of this.dataHandlers) {
+          handler(data);
+        }
+      }
+    };
+  }
+
+  async createOffer(): Promise<string> {
+    const offer = await this.pc.createOffer();
+    await this.pc.setLocalDescription(offer);
+    return offer.sdp as string;
+  }
+
+  async createAnswer(): Promise<string> {
+    const answer = await this.pc.createAnswer();
+    await this.pc.setLocalDescription(answer);
+    return answer.sdp as string;
+  }
+
+  async setRemoteDescription(
+    sdp: string,
+    type: "offer" | "answer",
+  ): Promise<void> {
+    const desc = new this.mod.RTCSessionDescription({ sdp, type });
+    await this.pc.setRemoteDescription(desc);
+  }
+
+  async addIceCandidate(c: IceCandidateInit): Promise<void> {
+    const candidate = new this.mod.RTCIceCandidate({
+      candidate: c.candidate,
+      sdpMid: c.sdpMid,
+      sdpMLineIndex: c.sdpMLineIndex,
+    });
+    await this.pc.addIceCandidate(candidate);
+  }
+
+  onLocalCandidate(handler: CandidateHandler): () => void {
+    this.candidateHandlers.add(handler);
+    return () => {
+      this.candidateHandlers.delete(handler);
+    };
+  }
+
+  onDataMessage(handler: DataHandler): () => void {
+    this.dataHandlers.add(handler);
+    return () => {
+      this.dataHandlers.delete(handler);
+    };
+  }
+
+  onStateChange(handler: StateHandler): () => void {
+    this.stateHandlers.add(handler);
+    return () => {
+      this.stateHandlers.delete(handler);
+    };
+  }
+
+  send(data: string): void {
+    if (!this.dataChannel || this.dataChannel.readyState !== "open") {
+      return;
+    }
+    this.dataChannel.send(data);
+  }
+
+  getBufferedAmount(): number {
+    if (!this.dataChannel || this.dataChannel.readyState !== "open") {
+      return 0;
+    }
+    const value = this.dataChannel.bufferedAmount;
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  }
+
+  close(): void {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    try {
+      this.dataChannel?.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      this.pc.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export function createMobileWebRtcPeerAdapter(
+  opts: MobileWebRtcPeerAdapterOptions,
+): WebRtcPeerAdapter | null {
+  const mod = loadWrtc();
+  if (!mod) {
+    return null;
+  }
+  const pc = new mod.RTCPeerConnection({ iceServers: opts.iceServers });
+  return new MobileWebRtcPeerAdapter(pc, mod, opts.role);
+}

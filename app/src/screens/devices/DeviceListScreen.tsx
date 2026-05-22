@@ -169,9 +169,7 @@ export function DeviceListScreen({
               </Text>
 
               <View style={styles.deviceRow3}>
-                <Text style={styles.deviceTransport}>
-                  {formatTransportLabel(pairing.transport)}
-                </Text>
+                <View style={styles.flexFiller} />
                 <Button
                   accessibilityLabel="More actions"
                   icon="more"
@@ -296,10 +294,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  deviceTransport: {
-    color: colors.textDim,
-    fontSize: 12,
-    fontWeight: "700",
+  flexFiller: {
+    flex: 1,
   },
   moreButton: {
     minHeight: 28,
@@ -354,10 +350,6 @@ function formatRelayUrl(relayUrl: string): string {
   } catch {
     return relayUrl;
   }
-}
-
-function formatTransportLabel(transport: string): string {
-  return transport === "webrtc" ? "WebRTC tunnel" : "WebSocket relay";
 }
 
 function getSavedDeviceStatusPresentation(): DeviceStatusPresentation {

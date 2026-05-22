@@ -1,22 +1,10 @@
 import { type JSX, useEffect, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
-import {
-  DEFAULT_PAIRING_TRANSPORT,
-  type PairingConfig,
-  type PairingTransport,
-} from "../../features/auth/types";
+import { type PairingConfig } from "../../features/auth/types";
 import { isValidSessionKey } from "../../features/auth/keyProof";
 import { appConfig } from "../../app/appConfig";
 import { Button, Card } from "../../ui/components";
-import { Icon } from "../../ui/icons";
 import { KeyboardAwareScrollView } from "../../ui/KeyboardAwareScrollView";
 import { colors, radii, spacing, typography } from "../../ui/theme";
 import {
@@ -45,9 +33,6 @@ export function PairingScreen({
   const [deviceId, setDeviceId] = useState(initialPairing?.deviceId ?? "");
   const [key, setKey] = useState(initialPairing?.key ?? "");
   const [keyId, setKeyId] = useState(initialPairing?.keyId ?? "");
-  const [transport, setTransport] = useState<PairingTransport>(
-    initialPairing?.transport ?? DEFAULT_PAIRING_TRANSPORT,
-  );
   const [scannerVisible, setScannerVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -56,7 +41,6 @@ export function PairingScreen({
     setDeviceId(initialPairing?.deviceId ?? "");
     setKey(initialPairing?.key ?? "");
     setKeyId(initialPairing?.keyId ?? "");
-    setTransport(initialPairing?.transport ?? DEFAULT_PAIRING_TRANSPORT);
   }, [initialPairing]);
 
   async function submit(): Promise<void> {
@@ -83,7 +67,6 @@ export function PairingScreen({
         deviceId: deviceId.trim(),
         key: trimmedKey,
         keyId: keyId.trim() || undefined,
-        transport,
       });
     } finally {
       setSubmitting(false);
@@ -100,7 +83,6 @@ export function PairingScreen({
     setDeviceId(pairing.deviceId);
     setKey(pairing.key);
     setKeyId(pairing.keyId ?? "");
-    setTransport(pairing.transport);
     setScannerVisible(false);
     setSubmitting(true);
     try {
@@ -185,22 +167,6 @@ export function PairingScreen({
         style={styles.input}
       />
 
-      <Text style={styles.label}>Connection Mode</Text>
-      <View style={styles.transportRow}>
-        <TransportOption
-          active={transport === "websocket"}
-          description="Stable server relay"
-          label="WebSocket Relay"
-          onPress={() => setTransport("websocket")}
-        />
-        <TransportOption
-          active={transport === "webrtc"}
-          description="WebRTC tunnel"
-          label="WebRTC"
-          onPress={() => setTransport("webrtc")}
-        />
-      </View>
-
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
       <Button
@@ -226,44 +192,6 @@ export function PairingScreen({
         />
       ) : null}
     </KeyboardAwareScrollView>
-  );
-}
-
-function TransportOption({
-  active,
-  description,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  description: string;
-  label: string;
-  onPress(): void;
-}): JSX.Element {
-  return (
-    <Pressable
-      accessibilityLabel={`Use ${label}`}
-      accessibilityRole="button"
-      style={[styles.transportOption, active && styles.transportOptionActive]}
-      onPress={onPress}
-    >
-      <View style={styles.transportOptionHeader}>
-        <Icon
-          name={active ? "check" : "plug"}
-          size={16}
-          color={active ? colors.success : colors.textDim}
-        />
-        <Text
-          style={[
-            styles.transportOptionLabel,
-            active && styles.transportOptionLabelActive,
-          ]}
-        >
-          {label}
-        </Text>
-      </View>
-      <Text style={styles.transportOptionDescription}>{description}</Text>
-    </Pressable>
   );
 }
 
@@ -326,41 +254,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     paddingHorizontal: spacing.lg,
     backgroundColor: colors.surface,
-  },
-  transportRow: {
-    flexDirection: "row",
-    gap: spacing.md,
-  },
-  transportOption: {
-    flex: 1,
-    minHeight: 62,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    justifyContent: "center",
-  },
-  transportOptionActive: {
-    borderColor: colors.success,
-    backgroundColor: colors.surfaceSuccess,
-  },
-  transportOptionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  transportOptionLabel: {
-    color: colors.textSecondary,
-    fontWeight: "800",
-  },
-  transportOptionLabelActive: {
-    color: colors.success,
-  },
-  transportOptionDescription: {
-    color: colors.textDim,
-    fontSize: 12,
-    marginTop: 4,
   },
   primaryButton: {
     minHeight: 48,

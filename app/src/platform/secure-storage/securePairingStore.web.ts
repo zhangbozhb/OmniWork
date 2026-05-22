@@ -1,8 +1,4 @@
-import {
-  DEFAULT_PAIRING_TRANSPORT,
-  type PairingConfig,
-  type PairingTransport,
-} from "../../features/auth/types";
+import { type PairingConfig } from "../../features/auth/types";
 
 const PAIRING_KEY = "omniwork.pairings";
 
@@ -43,13 +39,5 @@ function normalizePairingConfig(
     deviceId: pairing.deviceId ?? "",
     key: pairing.key ?? "",
     keyId: pairing.keyId,
-    transport: normalizePairingTransport(pairing.transport),
   };
-}
-
-function normalizePairingTransport(value: unknown): PairingTransport {
-  if (value === "webrtc" || value === "websocket") {
-    return value;
-  }
-  return DEFAULT_PAIRING_TRANSPORT;
 }

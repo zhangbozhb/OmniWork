@@ -9,8 +9,8 @@ import {
 } from "react-native";
 import { Camera as CameraKitCamera, CameraType } from "react-native-camera-kit";
 
-import { parsePairingLink } from "../../../../packages/protocol-ts/src/index.ts";
-import { DEFAULT_PAIRING_TRANSPORT, type PairingConfig } from "../../features/auth/types";
+import { type PairingConfig } from "../../features/auth/types";
+import { parsePairingConfig } from "../../features/auth/pairingConfig";
 import { Button } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 import { openSystemSettings } from "../../platform/linking/appLinking";
@@ -167,21 +167,6 @@ export function PairingQrScannerModal({
       </View>
     </Modal>
   );
-}
-
-function parsePairingConfig(input: string): PairingConfig | null {
-  const payload = parsePairingLink(input);
-  if (!payload) {
-    return null;
-  }
-
-  return {
-    relayUrl: payload.relay_url,
-    deviceId: payload.device_id,
-    key: payload.key,
-    keyId: payload.key_id,
-    transport: payload.transport ?? DEFAULT_PAIRING_TRANSPORT,
-  };
 }
 
 function formatErrorMessage(error: unknown): string {

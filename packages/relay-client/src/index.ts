@@ -1,15 +1,19 @@
 import type { MessageEnvelope } from "../../protocol-ts/src/index.ts";
 
-export * from "./webrtcTransport.ts";
-
 type WebSocketLike = {
   readyState: number;
   send(data: string): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: "open", listener: () => void): void;
-  addEventListener(type: "close", listener: (event: RelayCloseEvent) => void): void;
+  addEventListener(
+    type: "close",
+    listener: (event: RelayCloseEvent) => void,
+  ): void;
   addEventListener(type: "error", listener: (event: unknown) => void): void;
-  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
+  addEventListener(
+    type: "message",
+    listener: (event: { data: unknown }) => void,
+  ): void;
 };
 
 export interface RelayCloseEvent {
@@ -57,7 +61,9 @@ export class RelayClient {
         }
         this.handleClose(event);
       });
-      socket.addEventListener("message", (event) => this.handleMessage(event.data));
+      socket.addEventListener("message", (event) =>
+        this.handleMessage(event.data),
+      );
     });
   }
 

@@ -49,7 +49,6 @@ const baseConfig: AgentConfig = {
   deviceId: "test-mac",
   hostname: "test.local",
   relayUrl: "wss://relay.example/agent",
-  pairingTransport: "websocket",
   agentProviders: [...DEFAULT_AGENT_PROVIDER_DEFINITIONS],
   defaultCwd: dir,
   appSupportDir: dir,
@@ -63,43 +62,11 @@ assert.equal(
   "wss://relay.example/mobile",
 );
 assert.equal(
-  createPairingQrDetails(baseConfig, record)?.payload.transport,
-  "websocket",
-);
-assert.equal(
   parsePairingLink(createPairingQrDetails(baseConfig, record)?.link ?? "")
-    ?.transport,
-  "websocket",
-);
-assert.equal(
-  parsePairingLink(
-    "omniwork://pair?relay_url=ws%3A%2F%2Frelay.example%2Fmobile&device_id=test&key=abc&transport=relay",
-  )?.transport,
-  undefined,
+    ?.relay_url,
+  "wss://relay.example/mobile",
 );
 
-const publicWebRtcPairing = createPairingQrDetails(
-  {
-    ...baseConfig,
-    pairingRelayUrl: "ws://public.example:8790/mobile",
-    pairingTransport: "webrtc",
-  },
-  record,
-);
-assert.equal(
-  publicWebRtcPairing?.payload.relay_url,
-  "ws://public.example:8790/mobile",
-);
-assert.equal(publicWebRtcPairing?.payload.transport, "webrtc");
-
-assert.equal(
-  loadAgentConfig({ OMNIWORK_PAIRING_TRANSPORT: "websocket" }).pairingTransport,
-  "websocket",
-);
-assert.equal(
-  loadAgentConfig({ OMNIWORK_PAIRING_TRANSPORT: "webrtc" }).pairingTransport,
-  "webrtc",
-);
 assert.equal(
   loadAgentConfig({ OMNIWORK_DEVICE_ID: "" }).deviceId.includes(".local"),
   false,

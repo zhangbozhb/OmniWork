@@ -16,6 +16,7 @@ types and fallback presets, while custom providers such as `opencode` can be
 added without App code changes.
 
 Mobile packaging guidance for APK/IPA installation lives in [docs/app-installation.md](docs/app-installation.md).
+Relay 与 P2P 升级架构（升级流程、降级触发清单、`/metrics` 字段、运维 runbook）见 [docs/relay-architecture.md](docs/relay-architecture.md)。
 
 The app surface keeps one React Native technology stack across Android, iOS, and Web. Web is a static SPA built with `react-native-web`; it reuses the same screens, does not implement QR scanning, and uses manual or URL-based pairing. App actions use a shared SVG icon system built on `react-native-svg` so the three targets can share the same icon-first interaction language.
 
@@ -31,7 +32,6 @@ Useful local commands:
 
 ```sh
 pnpm dev:relay
-pnpm dev:tunnel
 pnpm dev:mac
 pnpm dev:app
 pnpm dev:web
@@ -43,7 +43,6 @@ pnpm app:build:web
 pnpm verify:app:targets
 pnpm verify:app-auth
 pnpm verify:relay
-pnpm verify:tunnel
 pnpm verify:mac-key
 ```
 

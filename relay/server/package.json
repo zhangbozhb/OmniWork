@@ -12,8 +12,7 @@
     "test": "node --experimental-strip-types src/main.ts --check"
   },
   "dependencies": {
-    "@omniwork/protocol-ts": "workspace:*",
-    "@roamhq/wrtc": "^0.10.0"
+    "@omniwork/protocol-ts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.19.19",

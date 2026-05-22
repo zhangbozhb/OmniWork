@@ -13,7 +13,9 @@ import {
   authOkPayloadSchema,
   authVerifyPayloadSchema,
   createMessage,
+  createPairingLink,
   messageEnvelopeSchema,
+  parsePairingLink,
   terminalFramePayloadSchema,
   terminalInputPayloadSchema,
   terminalSnapshotPayloadSchema,
@@ -118,5 +120,105 @@ describe("terminal payload schemas", () => {
       captured_at: new Date().toISOString(),
     });
     assert.equal(result.success, false);
+  });
+});
+
+describe("pairing link round-trip", () => {
+  const samplePayload = {
+    v: PROTOCOL_VERSION,
+    relay_url: "wss://relay.example/mobile",
+    device_id: "mac-host-01",
+    key: "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
+    key_id: "sha256:8f2b7d62d9b0",
+  } as const;
+
+  it("encodes and decodes all fields losslessly", () => {
+    const link = createPairingLink(samplePayload);
+    assert.match(link, /^omniwork:\/\/pair\?/);
+    const parsed = parsePairingLink(link);
+    assert.deepEqual(parsed, samplePayload);
+  });
+
+  it("decodes payload without optional key_id", () => {
+    const { key_id: _omit, ...minimal } = samplePayload;
+    const link = createPairingLink(minimal);
+    const parsed = parsePairingLink(link);
+    assert.equal(parsed?.key_id, undefined);
+    assert.equal(parsed?.relay_url, minimal.relay_url);
+    assert.equal(parsed?.device_id, minimal.device_id);
+    assert.equal(parsed?.key, minimal.key);
+  });
+
+  it("preserves URL-encoded characters in relay_url and device_id", () => {
+    const tricky = {
+      ...samplePayload,
+      relay_url: "wss://relay.example/path with space?x=1&y=2",
+      device_id: "host name#tag",
+    };
+    const link = createPairingLink(tricky);
+    const parsed = parsePairingLink(link);
+    assert.equal(parsed?.relay_url, tricky.relay_url);
+    assert.equal(parsed?.device_id, tricky.device_id);
+  });
+
+  it("accepts the alternate omniwork:pair and omniwork:/pair prefixes", () => {
+    const canonical = createPairingLink(samplePayload);
+    const query = canonical.slice("omniwork://pair".length);
+    for (const prefix of ["omniwork:pair", "omniwork:/pair"]) {
+      const parsed = parsePairingLink(`${prefix}${query}`);
+      assert.equal(parsed?.relay_url, samplePayload.relay_url);
+    }
+  });
+
+  it("strips trailing fragment from query", () => {
+    const link = `${createPairingLink(samplePayload)}#section`;
+    const parsed = parsePairingLink(link);
+    assert.equal(parsed?.relay_url, samplePayload.relay_url);
+  });
+
+  it("rejects unknown protocol version", () => {
+    const link = createPairingLink(samplePayload).replace(
+      `v=${PROTOCOL_VERSION}`,
+      "v=999",
+    );
+    assert.equal(parsePairingLink(link), null);
+  });
+
+  it("rejects link missing required fields", () => {
+    assert.equal(
+      parsePairingLink(`omniwork://pair?v=${PROTOCOL_VERSION}&device_id=mac`),
+      null,
+    );
+  });
+
+  it("rejects unrelated input", () => {
+    assert.equal(parsePairingLink("https://example.com/?key=abc"), null);
+    assert.equal(parsePairingLink("not-a-link"), null);
+    assert.equal(parsePairingLink(""), null);
+  });
+
+  it("rejects misspelled scheme", () => {
+    const link = createPairingLink(samplePayload).replace(
+      "omniwork://",
+      "omniwor://",
+    );
+    assert.equal(parsePairingLink(link), null);
+  });
+
+  it("rejects link with non-pair host", () => {
+    const link = createPairingLink(samplePayload).replace(
+      "omniwork://pair",
+      "omniwork://device",
+    );
+    assert.equal(parsePairingLink(link), null);
+  });
+
+  it("accepts upper-case scheme and host", () => {
+    const link = createPairingLink(samplePayload).replace(
+      "omniwork://pair",
+      "OMNIWORK://PAIR",
+    );
+    const parsed = parsePairingLink(link);
+    assert.deepEqual(parsed, samplePayload);
   });
 });

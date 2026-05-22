@@ -1,7 +1,11 @@
 const path = require("path");
+const webpack = require("webpack");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 
 const workspaceRoot = path.resolve(__dirname, "..");
+
+const defaultRelayUrl =
+  process.env.OMNIWORK_DEFAULT_RELAY_URL ?? "wss://relay.company.example/mobile";
 
 module.exports = {
   entry: path.resolve(__dirname, "index.web.tsx"),
@@ -65,6 +69,12 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, "web/index.html"),
+      templateParameters: {
+        omniworkDefaultRelayUrl: defaultRelayUrl,
+      },
+    }),
+    new webpack.DefinePlugin({
+      "process.env.OMNIWORK_DEFAULT_RELAY_URL": JSON.stringify(defaultRelayUrl),
     }),
   ],
   devServer: {
