@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#101417" />
     <title>OmniWork</title>
     <style>
@@ -23,6 +26,19 @@
       #root {
         display: flex;
         min-height: 100vh;
+      }
+
+      @supports (height: 100dvh) {
+        html,
+        body,
+        #root {
+          height: 100dvh;
+          min-height: 100dvh;
+        }
+
+        #root {
+          min-height: 100dvh;
+        }
       }
     </style>
   </head>

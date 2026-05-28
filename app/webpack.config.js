@@ -5,7 +5,8 @@ const HtmlWebpackPlugin = require("html-webpack-plugin");
 const workspaceRoot = path.resolve(__dirname, "..");
 
 const defaultRelayUrl =
-  process.env.OMNIWORK_DEFAULT_RELAY_URL ?? "wss://relay.company.example/mobile";
+  process.env.OMNIWORK_DEFAULT_RELAY_URL ??
+  "wss://relay.company.example/mobile";
 
 module.exports = {
   entry: path.resolve(__dirname, "index.web.tsx"),
@@ -63,6 +64,10 @@ module.exports = {
       {
         test: /\.(png|jpe?g|gif|webp|svg)$/i,
         type: "asset/resource",
+      },
+      {
+        test: /\.css$/i,
+        use: ["style-loader", "css-loader"],
       },
     ],
   },

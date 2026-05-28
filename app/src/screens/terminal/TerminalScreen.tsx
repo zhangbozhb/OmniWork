@@ -93,6 +93,8 @@ const FULL_QUICK_KEYS: QuickKeyItem[] = [
 ];
 
 const BOTTOM_DOCK_BOTTOM_MARGIN = 12;
+const WEB_SAFE_AREA_BOTTOM_MARGIN =
+  `calc(env(safe-area-inset-bottom, 0px) + ${BOTTOM_DOCK_BOTTOM_MARGIN}px)` as unknown as number;
 const INITIAL_BOTTOM_DOCK_HEIGHT = 156;
 const ESTIMATED_FULL_QUICK_KEYS_WIDTH = 760;
 const TERMINAL_PROFILE_STORAGE_KEY = "omniwork.terminal.displayProfile";
@@ -176,6 +178,16 @@ export function TerminalScreen({
     effectiveKeyboardInset +
     BOTTOM_DOCK_BOTTOM_MARGIN +
     spacing.md;
+  const terminalAreaBottomSpace =
+    Platform.OS === "web" && effectiveKeyboardInset <= 0
+      ? (`calc(${bottomDockHeight + BOTTOM_DOCK_BOTTOM_MARGIN}px + env(safe-area-inset-bottom, 0px))` as unknown as number)
+      : bottomDockHeight + effectiveKeyboardInset + BOTTOM_DOCK_BOTTOM_MARGIN;
+  const bottomDockBottom =
+    effectiveKeyboardInset > 0
+      ? effectiveKeyboardInset
+      : Platform.OS === "web"
+        ? WEB_SAFE_AREA_BOTTOM_MARGIN
+        : BOTTOM_DOCK_BOTTOM_MARGIN;
 
   useEffect(() => {
     const showEvent =
@@ -197,62 +209,6 @@ export function TerminalScreen({
       hideSubscription.remove();
     };
   }, []);
-
-  // Web 端：监听全局键盘，把按键直接转发到 tmux，避免 PC 浏览器没有可见输入框
-  // 时无法交互的问题。当焦点位于 composer 等表单控件上时不拦截，保留兜底。
-  useEffect(() => {
-    if (Platform.OS !== "web" || readOnly) {
-      return undefined;
-    }
-
-    const handler = (event: Event) => {
-      const keyEvent = event as unknown as {
-        key: string;
-        ctrlKey: boolean;
-        metaKey: boolean;
-        altKey: boolean;
-        shiftKey: boolean;
-        target: EventTarget | null;
-        preventDefault: () => void;
-        stopPropagation: () => void;
-        isComposing?: boolean;
-      };
-      if (keyEvent.isComposing) {
-        return;
-      }
-      const target = keyEvent.target as
-        | (HTMLElement & { isContentEditable?: boolean })
-        | null;
-      if (target) {
-        const tag = target.tagName;
-        if (
-          tag === "INPUT" ||
-          tag === "TEXTAREA" ||
-          tag === "SELECT" ||
-          target.isContentEditable
-        ) {
-          return;
-        }
-      }
-      // 让浏览器原生处理刷新/开发者工具/标签页切换等系统快捷键。
-      if (keyEvent.metaKey) {
-        return;
-      }
-
-      const payload = mapWebKeyEventToTerminalInput(keyEvent);
-      if (!payload) {
-        return;
-      }
-      keyEvent.preventDefault();
-      keyEvent.stopPropagation();
-      onInput(payload);
-    };
-
-    window.addEventListener("keydown", handler, true);
-    return () => {
-      window.removeEventListener("keydown", handler, true);
-    };
-  }, [onInput, readOnly]);
 
   useEffect(() => {
     AsyncStorage.getItem(TERMINAL_PROFILE_STORAGE_KEY)
@@ -289,6 +245,9 @@ export function TerminalScreen({
   }, []);
 
   useEffect(() => {
+    if (Platform.OS === "web") {
+      return undefined;
+    }
     const size = terminalLayout.terminalSize;
     const resizeKey = `${session.session_id}:${size.cols}x${size.rows}`;
     if (lastResizeKeyRef.current === resizeKey) {
@@ -351,7 +310,12 @@ export function TerminalScreen({
   }
 
   return (
-    <View style={styles.screen}>
+    <View
+      style={[
+        styles.screen,
+        Platform.OS === "web" ? styles.webSafeAreaScreen : null,
+      ]}
+    >
       {!focusMode && !toolbarHidden ? (
         <View style={styles.toolbar}>
           <Button
@@ -392,10 +356,7 @@ export function TerminalScreen({
         style={[
           styles.terminalArea,
           {
-            marginBottom:
-              bottomDockHeight +
-              effectiveKeyboardInset +
-              BOTTOM_DOCK_BOTTOM_MARGIN,
+            marginBottom: terminalAreaBottomSpace,
           },
         ]}
         onLayout={handleTerminalAreaLayout}
@@ -408,6 +369,9 @@ export function TerminalScreen({
           frame={frame}
           layout={terminalLayout}
           terminalSize={terminalLayout.terminalSize}
+          readOnly={readOnly}
+          onInput={onInput}
+          onResize={onResize}
         />
       </View>
 
@@ -415,10 +379,7 @@ export function TerminalScreen({
         style={[
           styles.bottomDock,
           {
-            bottom:
-              effectiveKeyboardInset > 0
-                ? effectiveKeyboardInset
-                : BOTTOM_DOCK_BOTTOM_MARGIN,
+            bottom: bottomDockBottom,
           },
         ]}
         onLayout={handleBottomDockLayout}
@@ -654,51 +615,16 @@ function isTerminalDisplayProfile(
   );
 }
 
-const WEB_CONTROL_KEY_MAP: Record<string, TerminalControlKey> = {
-  Enter: "enter",
-  Tab: "tab",
-  Backspace: "backspace",
-  Escape: "escape",
-  ArrowUp: "arrowUp",
-  ArrowDown: "arrowDown",
-  ArrowLeft: "arrowLeft",
-  ArrowRight: "arrowRight",
-};
-
-function mapWebKeyEventToTerminalInput(event: {
-  key: string;
-  ctrlKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-}): TerminalInputPayload | null {
-  const { key, ctrlKey, altKey } = event;
-
-  if (ctrlKey && !altKey && key.length === 1) {
-    const lower = key.toLowerCase();
-    if (lower >= "a" && lower <= "z") {
-      const code = lower.charCodeAt(0) - 96;
-      return { kind: "key", data: String.fromCharCode(code) };
-    }
-  }
-
-  const controlKey = WEB_CONTROL_KEY_MAP[key];
-  if (controlKey) {
-    return createControlInput(controlKey);
-  }
-
-  if (key.length === 1 && !ctrlKey && !altKey) {
-    return createTextInput(key);
-  }
-
-  return null;
-}
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     gap: spacing.md,
+  },
+  webSafeAreaScreen: {
+    paddingTop:
+      `calc(env(safe-area-inset-top, 0px) + ${spacing.lg}px)` as unknown as number,
   },
   terminalArea: {
     flex: 1,

@@ -28,6 +28,7 @@ const TERMINAL_VERTICAL_PADDING = 24;
 const PORTRAIT_MIN_TUI_COLS = 80;
 const LANDSCAPE_MIN_TUI_COLS = 100;
 const LANDSCAPE_MAX_TUI_COLS = 120;
+const WEB_MAX_TUI_ROWS = 120;
 
 export function getDefaultTerminalDisplayProfile(
   viewport: TerminalViewport,
@@ -47,6 +48,17 @@ export function computeTerminalLayout(
   const baseLineHeight = baseFontSize * platformMetrics.lineHeightRatio;
   const visibleCols = Math.max(1, Math.floor(availableWidth / baseCellWidth));
   const visibleRows = Math.max(1, Math.floor(availableHeight / baseLineHeight));
+
+  if (Platform.OS === "web") {
+    return computeWebTerminalLayout({
+      availableWidth,
+      availableHeight,
+      baseFontSize,
+      metrics: platformMetrics,
+      profile,
+      visibleCols,
+    });
+  }
 
   if (profile === "fitPreview") {
     const targetCols = Math.max(PORTRAIT_MIN_TUI_COLS, visibleCols);
@@ -141,6 +153,15 @@ function getPlatformTerminalMetrics(): {
   lineHeightRatio: number;
 } {
   const fontScale = PixelRatio.getFontScale();
+  if (Platform.OS === "web") {
+    return {
+      readableFontSize: 14,
+      balancedFontSize: 13,
+      minReadableFontSize: 7,
+      charWidthRatio: 0.6,
+      lineHeightRatio: 1.2,
+    };
+  }
   if (Platform.OS === "ios") {
     return {
       readableFontSize: 14,
@@ -164,6 +185,57 @@ function getPlatformTerminalMetrics(): {
     minReadableFontSize,
     charWidthRatio: 0.6,
     lineHeightRatio: 1.38,
+  };
+}
+
+function computeWebTerminalLayout({
+  availableWidth,
+  availableHeight,
+  baseFontSize,
+  metrics,
+  profile,
+  visibleCols,
+}: {
+  availableWidth: number;
+  availableHeight: number;
+  baseFontSize: number;
+  metrics: ReturnType<typeof getPlatformTerminalMetrics>;
+  profile: TerminalDisplayProfile;
+  visibleCols: number;
+}): TerminalLayout {
+  const terminalCols =
+    profile === "landscapeWide"
+      ? clampInteger(
+          Math.max(LANDSCAPE_MIN_TUI_COLS, visibleCols),
+          LANDSCAPE_MIN_TUI_COLS,
+          LANDSCAPE_MAX_TUI_COLS,
+        )
+      : Math.max(PORTRAIT_MIN_TUI_COLS, visibleCols);
+  const fitFontSize =
+    availableWidth / (terminalCols * metrics.charWidthRatio);
+  const fontSize = Math.max(
+    metrics.minReadableFontSize,
+    Math.min(baseFontSize, fitFontSize),
+  );
+  const fitLimited = fitFontSize < metrics.minReadableFontSize;
+  const cellWidth = fontSize * metrics.charWidthRatio;
+  const lineHeight = fontSize * metrics.lineHeightRatio;
+  const visibleRows = Math.max(1, Math.floor(availableHeight / lineHeight));
+
+  return {
+    profile,
+    terminalSize: {
+      cols: terminalCols,
+      rows: clampInteger(visibleRows, 20, WEB_MAX_TUI_ROWS),
+    },
+    visibleCols: Math.max(1, Math.floor(availableWidth / cellWidth)),
+    visibleRows,
+    fontSize,
+    lineHeight,
+    cellWidth,
+    horizontalScroll:
+      fitLimited || terminalCols * cellWidth > availableWidth + 1,
+    fitLimited,
   };
 }
 
