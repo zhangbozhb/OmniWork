@@ -35,7 +35,7 @@ OMNIWORK_APP_SUPPORT_DIR=/tmp/omniwork-agent
 
 `OMNIWORK_AGENT_PROVIDERS` is the primary way to choose and extend Agent CLI
 providers. When it is unset, the Mac Agent falls back to the default Codex,
-Claude, and Gemini presets. The legacy `OMNIWORK_CODEX_COMMAND`,
+Claude, and Gemini presets. The `OMNIWORK_CODEX_COMMAND`,
 `OMNIWORK_CLAUDE_COMMAND`, and `OMNIWORK_GEMINI_COMMAND` variables only override
 those fallback preset commands.
 

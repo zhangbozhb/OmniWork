@@ -51,10 +51,7 @@ import {
   printPairingDetailsWithoutRelay,
   printPairingQr,
 } from "../pairing/pairingQr.ts";
-import {
-  AgentRelayPath,
-  AgentSessionTransport,
-} from "../transport/index.ts";
+import { AgentRelayPath, AgentSessionTransport } from "../transport/index.ts";
 import { UpgradeCoordinator } from "../transport/upgradeCoordinator.ts";
 import { createAgentWebRtcPeerAdapter } from "../transport/webRtcPeerAdapter.ts";
 
@@ -129,6 +126,10 @@ export class AgentService {
       );
     }
 
+    // 对历史 sessions.json 做一次性补丁（清理已废弃的 status 等），与运行期
+    // reconcile 的职责分离；具体规则集中在 SessionManager.applyStartupPatches。
+    await this.sessionManager.applyStartupPatches();
+
     if (!this.config.relayUrl) {
       this.logger.info(
         "OMNIWORK_RELAY_URL is not set; running without relay connection",
@@ -169,6 +170,12 @@ export class AgentService {
           }
         }
         void transport.switchPath(path);
+      },
+      onForceClose: (reason) => {
+        // 严格 P2P 模式下协商或运行期失败：关闭 mobile-agent 会话，让 mobile
+        // 端通过 force_close 事件感知，下次重连由 mobile 主动发起。
+        this.logger.warn("strict_p2p_disconnect", { reason });
+        transport.forceClose(reason);
       },
     });
     this.upgradeCoordinator = coordinator;
@@ -224,7 +231,10 @@ export class AgentService {
       }
     });
 
-    relay.onMessage((message) => {
+    // 通过 transport 订阅业务消息，覆盖 relay path + P2P path 两条通道；
+    // P2P 升级成功后 mobile 端的业务消息只会出现在 DataChannel 上，
+    // 直接订阅 relay.onMessage 会漏掉这部分流量（终端永远拿不到 snapshot）。
+    transport.onMessage((message) => {
       this.handleRelayMessage(message).catch((error: unknown) => {
         this.logger.error("failed to handle relay message", {
           message_type: message.type,
@@ -292,15 +302,6 @@ export class AgentService {
           message as MessageEnvelope<SessionCreatePayload>,
         );
         break;
-      case "session.retry":
-        await this.handleSessionRecovery(message, "retry");
-        break;
-      case "session.recover":
-        await this.handleSessionRecovery(message, "recover");
-        break;
-      case "session.restart":
-        await this.handleSessionRecovery(message, "restart");
-        break;
       case "session.close":
         if (message.session_id) {
           this.stopTerminalPusher(message.session_id);
@@ -359,11 +360,22 @@ export class AgentService {
       case "terminal.snapshot":
         await this.handleTerminalSnapshot(message);
         break;
-      case "tunnel.upgrade.propose":
-        await this.upgradeCoordinator?.propose(
-          (message as MessageEnvelope<TunnelUpgradeProposePayload>).payload,
+      case "tunnel.upgrade.propose": {
+        const payload = (
+          message as MessageEnvelope<TunnelUpgradeProposePayload>
+        ).payload;
+        // strict 标记由 Relay 在 mobile.connect.transport_preference="prefer_p2p"
+        // 时设置；agent transport 实例横跨多次 mobile 连接复用，因此每次 propose
+        // 都需要重新 configure 一次（含上一轮强制关闭后的状态重置）。
+        this.transport?.configureStrictP2p(
+          payload.strict === true,
+          (reason) => {
+            this.logger.warn("strict_p2p_disconnect", { reason });
+          },
         );
+        await this.upgradeCoordinator?.propose(payload);
         break;
+      }
       case "tunnel.upgrade.offer":
         await this.upgradeCoordinator?.handleOffer(
           (message as MessageEnvelope<TunnelUpgradeOfferPayload>).payload,
@@ -450,7 +462,9 @@ export class AgentService {
       createMessage(
         "workspace.list",
         {
-          workspaces: await this.workspaces.list(await this.sessionManager.list()),
+          workspaces: await this.workspaces.list(
+            await this.sessionManager.list(),
+          ),
         },
         {
           device_id: this.config.deviceId,
@@ -463,7 +477,9 @@ export class AgentService {
   private async handleFilesList(
     message: MessageEnvelope<FilesListRequestPayload>,
   ): Promise<void> {
-    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    const workspace = await this.requireWorkspace(
+      message.payload.workspacePath,
+    );
     this.send(
       createMessage(
         "files.list",
@@ -479,7 +495,9 @@ export class AgentService {
   private async handleFilesRead(
     message: MessageEnvelope<FilesReadRequestPayload>,
   ): Promise<void> {
-    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    const workspace = await this.requireWorkspace(
+      message.payload.workspacePath,
+    );
     this.send(
       createMessage(
         "files.read",
@@ -495,7 +513,9 @@ export class AgentService {
   private async handleGitStatus(
     message: MessageEnvelope<GitStatusRequestPayload>,
   ): Promise<void> {
-    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    const workspace = await this.requireWorkspace(
+      message.payload.workspacePath,
+    );
     this.send(
       createMessage("git.status", await this.git.status(workspace), {
         device_id: this.config.deviceId,
@@ -507,7 +527,9 @@ export class AgentService {
   private async handleGitDiff(
     message: MessageEnvelope<GitDiffRequestPayload>,
   ): Promise<void> {
-    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    const workspace = await this.requireWorkspace(
+      message.payload.workspacePath,
+    );
     this.send(
       createMessage(
         "git.diff",
@@ -597,41 +619,6 @@ export class AgentService {
       session_id: session.session_id,
     });
     this.startTerminalPusher(session.session_id);
-  }
-
-  private async handleSessionRecovery(
-    message: MessageEnvelope,
-    action: "retry" | "recover" | "restart",
-  ): Promise<void> {
-    if (!message.session_id) {
-      return;
-    }
-
-    const session =
-      action === "retry"
-        ? await this.sessionManager.retry(message.session_id, (nextSession) =>
-            this.sendSessionStatus(nextSession),
-          )
-        : action === "recover"
-          ? await this.sessionManager.recover(message.session_id)
-          : await this.sessionManager.restart(message.session_id, (nextSession) =>
-              this.sendSessionStatus(nextSession),
-            );
-    if (!session) {
-      return;
-    }
-
-    this.sendSessionStatus(session);
-    await this.handleSessionList(message);
-    if (session.status === "running" || session.status === "detached") {
-      await this.handleTerminalSnapshot({
-        ...message,
-        session_id: session.session_id,
-      });
-      this.startTerminalPusher(session.session_id);
-    } else {
-      this.stopTerminalPusher(session.session_id);
-    }
   }
 
   private async handleTerminalInput(

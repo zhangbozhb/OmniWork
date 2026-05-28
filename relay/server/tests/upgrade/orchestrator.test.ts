@@ -26,6 +26,7 @@ const buildBaseConfig = (
   deviceBlocklist: new Set(),
   iceServers: [{ urls: "stun:stun.example:19302" }],
   proposeDelayMs: 5,
+  respectClientPreference: true,
   ...overrides,
 });
 
@@ -197,6 +198,206 @@ const makeAgent = (id = "conn_agent"): UpgradeOrchestratorConnection => ({
   assert.equal(final.failed.ice_failed, 1);
   assert.equal(final.in_flight, 0);
   orchestrator.dispose();
+}
+
+// 7. transport_preference=relay_only → 跳过 propose，不入退避，metrics 累计
+{
+  const sends: SendCall[] = [];
+  const orchestrator = new RelayUpgradeOrchestrator({
+    config: buildBaseConfig(),
+    send: (connection, envelope) => sends.push({ connection, envelope }),
+    getAgent: () => makeAgent(),
+  });
+  const mobile: UpgradeOrchestratorConnection = {
+    ...makeMobile(),
+    transportPreference: "relay_only",
+  };
+  orchestrator.notifyMobileAuthenticated("device-123", mobile);
+  await wait(30);
+  assert.equal(sends.length, 0, "relay_only must skip propose");
+  const metrics = orchestrator.getMetrics();
+  assert.equal(metrics.proposed, 0);
+  assert.equal(metrics.prefs.relay_only, 1);
+  assert.equal(metrics.skipped_by_pref, 1);
+  assert.equal(
+    Object.keys(metrics.failed).length,
+    0,
+    "relay_only must not record any failure",
+  );
+  orchestrator.dispose();
+}
+
+// 8. transport_preference=prefer_p2p → 跳过 rollout 灰度（仍受 enabled/blocklist/backoff）
+{
+  // rolloutPercent=0 时 auto 不会触发，prefer_p2p 仍应触发
+  const sends: SendCall[] = [];
+  const orchestrator = new RelayUpgradeOrchestrator({
+    config: buildBaseConfig({ rolloutPercent: 0 }),
+    send: (connection, envelope) => sends.push({ connection, envelope }),
+    getAgent: () => makeAgent(),
+  });
+  const mobile: UpgradeOrchestratorConnection = {
+    ...makeMobile(),
+    transportPreference: "prefer_p2p",
+  };
+  orchestrator.notifyMobileAuthenticated("device-123", mobile);
+  await wait(30);
+  assert.equal(sends.length, 2, "prefer_p2p must bypass rollout");
+  assert.equal(orchestrator.getMetrics().prefs.prefer_p2p, 1);
+  // strict 标记必须透传到双端 propose
+  for (const call of sends) {
+    const payload = call.envelope.payload as { strict?: boolean };
+    assert.equal(
+      payload.strict,
+      true,
+      "prefer_p2p must propagate strict=true on propose payload",
+    );
+  }
+
+  // 但 enabled=false 时 strict 不能静默吞掉：应主动下发 strict_unavailable
+  // 让 mobile 立即触发 forceClose，避免业务消息持续暂存超时。
+  const sends2: SendCall[] = [];
+  const orchestrator2 = new RelayUpgradeOrchestrator({
+    config: buildBaseConfig({ enabled: false }),
+    send: (connection, envelope) => sends2.push({ connection, envelope }),
+    getAgent: () => makeAgent(),
+  });
+  orchestrator2.notifyMobileAuthenticated("device-123", {
+    ...makeMobile(),
+    transportPreference: "prefer_p2p",
+  });
+  await wait(20);
+  assert.equal(
+    sends2.length,
+    1,
+    "prefer_p2p + enabled=false must emit strict_unavailable downgrade",
+  );
+  assert.equal(sends2[0]?.envelope.type, "tunnel.upgrade.downgrade");
+  assert.equal(
+    (sends2[0]?.envelope.payload as { reason: string }).reason,
+    "strict_unavailable:relay_disabled",
+  );
+
+  // blocklist 命中：同样要主动 downgrade。
+  const sends3: SendCall[] = [];
+  const orchestrator3 = new RelayUpgradeOrchestrator({
+    config: buildBaseConfig({
+      deviceBlocklist: new Set(["device-123"]),
+    }),
+    send: (connection, envelope) => sends3.push({ connection, envelope }),
+    getAgent: () => makeAgent(),
+  });
+  orchestrator3.notifyMobileAuthenticated("device-123", {
+    ...makeMobile(),
+    transportPreference: "prefer_p2p",
+  });
+  await wait(20);
+  assert.equal(
+    sends3.length,
+    1,
+    "prefer_p2p + blocklist must emit strict_unavailable downgrade",
+  );
+  assert.equal(
+    (sends3[0]?.envelope.payload as { reason: string }).reason,
+    "strict_unavailable:blocklisted",
+  );
+
+  // backoff 命中：prefer_p2p 触发过失败、还在退避窗口内时也要主动 downgrade。
+  let fakeNow = 1_000_000;
+  const sends4: SendCall[] = [];
+  const orchestrator4 = new RelayUpgradeOrchestrator({
+    config: buildBaseConfig(),
+    send: (connection, envelope) => sends4.push({ connection, envelope }),
+    getAgent: () => makeAgent(),
+    now: () => fakeNow,
+  });
+  orchestrator4.recordFailure("device-123", "ice_failed");
+  // 第一次失败 → 30s 退避；推进 5s 仍在窗内。
+  fakeNow += 5_000;
+  orchestrator4.notifyMobileAuthenticated("device-123", {
+    ...makeMobile(),
+    transportPreference: "prefer_p2p",
+  });
+  await wait(20);
+  assert.equal(
+    sends4.length,
+    1,
+    "prefer_p2p + backoff must emit strict_unavailable downgrade",
+  );
+  assert.equal(
+    (sends4[0]?.envelope.payload as { reason: string }).reason,
+    "strict_unavailable:backoff_active",
+  );
+
+  orchestrator.dispose();
+  orchestrator2.dispose();
+  orchestrator3.dispose();
+  orchestrator4.dispose();
+}
+
+// 9. respectClientPreference=false → 客户端偏好被忽略，统一按 auto 处理
+{
+  // relay_only 在 respectClientPreference=false 时应仍然发起 propose
+  const sends: SendCall[] = [];
+  const orchestrator = new RelayUpgradeOrchestrator({
+    config: buildBaseConfig({ respectClientPreference: false }),
+    send: (connection, envelope) => sends.push({ connection, envelope }),
+    getAgent: () => makeAgent(),
+  });
+  orchestrator.notifyMobileAuthenticated("device-123", {
+    ...makeMobile(),
+    transportPreference: "relay_only",
+  });
+  await wait(30);
+  assert.equal(
+    sends.length,
+    2,
+    "respectClientPreference=false must override relay_only",
+  );
+  // 当 respectClientPreference=false 时，preference 被强制视为 auto，propose
+  // 不应携带 strict=true（即使 mobile 上送了 prefer_p2p）。
+  for (const call of sends) {
+    const payload = call.envelope.payload as { strict?: boolean };
+    assert.notEqual(
+      payload.strict,
+      true,
+      "respectClientPreference=false must drop strict flag",
+    );
+  }
+  const metrics = orchestrator.getMetrics();
+  assert.equal(
+    metrics.skipped_by_pref,
+    0,
+    "no preference skip when respectClientPreference=false",
+  );
+  // 计数仍按 auto 累计
+  assert.equal(metrics.prefs.auto, 1);
+  assert.equal(metrics.prefs.relay_only, 0);
+
+  // prefer_p2p 在 respectClientPreference=false 时也按 auto 处理：rolloutPercent=0 应当不触发
+  const sends2: SendCall[] = [];
+  const orchestrator2 = new RelayUpgradeOrchestrator({
+    config: buildBaseConfig({
+      respectClientPreference: false,
+      rolloutPercent: 0,
+    }),
+    send: (connection, envelope) => sends2.push({ connection, envelope }),
+    getAgent: () => makeAgent(),
+  });
+  orchestrator2.notifyMobileAuthenticated("device-123", {
+    ...makeMobile(),
+    transportPreference: "prefer_p2p",
+  });
+  await wait(20);
+  assert.equal(
+    sends2.length,
+    0,
+    "prefer_p2p must fall back to auto rollout when override disabled",
+  );
+  assert.equal(orchestrator2.getMetrics().prefs.auto, 1);
+
+  orchestrator.dispose();
+  orchestrator2.dispose();
 }
 
 console.log("relay-orchestrator tests passed");

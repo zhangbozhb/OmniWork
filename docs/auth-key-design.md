@@ -93,9 +93,10 @@ App 侧要求：
 App 收到 `auth.failed` 后的具体清理动作（由 `app/src/app/App.tsx` 实现）：
 
 - 立即调用 `relay.close()` 关闭当前会话连接，避免空跑或重复重连。
-- 通过安全存储封装 (`securePairingStore`) 把当前出错的 pairing 从已保存设备列表中移除；只剩唯一一条时退化为 `clearPairing`。
 - 将本地缓存的 sessions、workspaces、terminal frame、provider 列表等会话级状态全部清空，避免误用旧 Mac Agent 的数据。
-- 如果还有其它已保存设备，跳回 `devices` 页并以 `pairingError` 提示该设备需要重新配对；如果没有任何已保存设备，则进入 `pairing` 页并把刚被拒绝的 pairing 作为 `editingPairing` 预填，引导用户扫描新二维码或粘贴新的 32 字符 key。
+- **保留** 已保存的 pairing 条目本身：将 `connectionStatus` 置为 `failed` 并把失败原因透出到 `connectionMessage` / `pairingError`；用户可在 Device Center 中显式 Edit（修正 key）或 Delete 该设备。
+  - 之所以不再自动从 `securePairingStore` 删除该 pairing，是因为 web 端 RN `Alert.alert` 是 no-op：旧实现会把"鉴权失败"显式打回 Pairing 页并默默删除条目，体验上像"保存失败、设备被静默删除"。当前实现保留条目，让错误对用户可见、可操作。
+- 视图保持在 `devices`；如果用户当时正在 `pairing` 页编辑该 pairing，则保留 `editingPairing` 让其继续修改。
 
 ## Relay 鉴权流程
 
@@ -170,7 +171,7 @@ malformed_proof
 - key 每次 Mac Agent 启动重新生成。
 - key 文件权限为 `0600`。
 - key 所在目录权限为 `0700`。
-- Relay 对失败次数限流。
+- Relay 对失败次数限流（仅对失败的 `auth.proof` 计数：relay 端 `malformed_proof` / agent 端返回 `auth.failed` 两个真实失败分支才 consume token；合法 `auth.proof` → `auth.ok` 不消耗桶，避免频繁重连或切换 `transport_preference` 被误封禁）。
 - App 认证失败后不无限重试。
 - 日志中永远不打印完整 key。
 - 审计中只记录 `key_id`，不记录 `key`。

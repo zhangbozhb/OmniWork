@@ -249,4 +249,120 @@ const sleep = (ms: number) =>
   assert.equal(sent.length, before);
 }
 
+// 5. strict P2P：peer factory 返回 null -> 触发 onForceClose 而非 onSwitchPath('relay')
+{
+  const sent: MessageEnvelope[] = [];
+  const pathChanges: TransportPath[] = [];
+  const forceCloseReasons: string[] = [];
+  const coordinator = new UpgradeCoordinator({
+    role: "offerer",
+    deviceId: "device-test",
+    peerFactory: () => null,
+    sendControl: (env) => sent.push(env),
+    onSwitchPath: (p) => pathChanges.push(p),
+    onForceClose: (reason) => forceCloseReasons.push(reason),
+    timeoutMs: 1_000,
+  });
+
+  await coordinator.propose({
+    upgrade_id: UPGRADE_ID,
+    ice_servers: ICE_SERVERS,
+    role: "offerer",
+    strict: true,
+  });
+
+  // tunnel.upgrade.downgrade 仍要发送给 Relay 用于 metrics + backoff
+  assert.ok(
+    sent.some(
+      (m) =>
+        m.type === "tunnel.upgrade.downgrade" &&
+        (m.payload as { reason: string }).reason === "peer_unavailable",
+    ),
+    "strict mode still sends downgrade for metrics",
+  );
+  // 但不会触发 onSwitchPath('relay')
+  assert.deepEqual(pathChanges, [], "strict mode does not switch to relay");
+  assert.deepEqual(
+    forceCloseReasons,
+    ["peer_unavailable"],
+    "strict mode triggers onForceClose with peer_unavailable",
+  );
+  assert.equal(coordinator.getState(), "idle");
+}
+
+// 6. strict P2P：协商超时也走 onForceClose
+{
+  const peer = new MockPeer();
+  const sent: MessageEnvelope[] = [];
+  const pathChanges: TransportPath[] = [];
+  const forceCloseReasons: string[] = [];
+  const coordinator = new UpgradeCoordinator({
+    role: "offerer",
+    deviceId: "device-test",
+    peerFactory: () => peer,
+    sendControl: (env) => sent.push(env),
+    onSwitchPath: (p) => pathChanges.push(p),
+    onForceClose: (reason) => forceCloseReasons.push(reason),
+    timeoutMs: 50,
+  });
+
+  await coordinator.propose({
+    upgrade_id: UPGRADE_ID,
+    ice_servers: ICE_SERVERS,
+    role: "offerer",
+    strict: true,
+  });
+
+  await sleep(120);
+
+  assert.deepEqual(pathChanges, [], "strict timeout does not switch to relay");
+  assert.deepEqual(
+    forceCloseReasons,
+    ["timeout"],
+    "strict timeout triggers onForceClose",
+  );
+  assert.ok(
+    sent.some(
+      (m) =>
+        m.type === "tunnel.upgrade.downgrade" &&
+        (m.payload as { reason: string }).reason === "timeout",
+    ),
+    "strict timeout still emits downgrade envelope",
+  );
+}
+
+// 7. 非 strict propose 仍走原 switchPath('relay') 路径，未传 strict 字段时默认 false
+{
+  const sent: MessageEnvelope[] = [];
+  const pathChanges: TransportPath[] = [];
+  const forceCloseReasons: string[] = [];
+  const coordinator = new UpgradeCoordinator({
+    role: "offerer",
+    deviceId: "device-test",
+    peerFactory: () => null,
+    sendControl: (env) => sent.push(env),
+    onSwitchPath: (p) => pathChanges.push(p),
+    onForceClose: (reason) => forceCloseReasons.push(reason),
+    timeoutMs: 1_000,
+  });
+
+  await coordinator.propose({
+    upgrade_id: UPGRADE_ID,
+    ice_servers: ICE_SERVERS,
+    role: "offerer",
+    // 不传 strict
+  });
+
+  assert.deepEqual(
+    pathChanges,
+    ["relay"],
+    "non-strict propose falls back to relay",
+  );
+  assert.deepEqual(
+    forceCloseReasons,
+    [],
+    "non-strict propose does not trigger onForceClose",
+  );
+}
+
 console.log("upgrade-coordinator tests passed");

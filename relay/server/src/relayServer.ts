@@ -8,12 +8,14 @@ import type { Socket } from "node:net";
 
 import {
   createMessage,
+  isTransportPreference,
   type AgentHelloPayload,
   type AuthFailedPayload,
   type AuthOkPayload,
   type AuthProofPayload,
   type MessageEnvelope,
   type MobileConnectPayload,
+  type TransportPreference,
 } from "../../../packages/protocol-ts/src/index.ts";
 
 import type { RelayServerConfig } from "./config.ts";
@@ -41,6 +43,11 @@ interface RelayConnection {
   authenticated: boolean;
   /** Remote address used as the secondary key for auth.proof rate limiting. */
   remoteIp: string;
+  /**
+   * App 在 mobile.connect 中显式声明的传输偏好，由 orchestrator 在 propose
+   * 守门时读取；缺省视为 "auto"。
+   */
+  transportPreference?: TransportPreference;
 }
 
 interface PendingAuth {
@@ -288,6 +295,11 @@ export class RelayServer {
     connection.role = "mobile";
     connection.deviceId = deviceId;
 
+    const rawPreference = message.payload.transport_preference;
+    if (isTransportPreference(rawPreference)) {
+      connection.transportPreference = rawPreference;
+    }
+
     if (!agent?.keyId) {
       this.send(
         connection,
@@ -336,7 +348,7 @@ export class RelayServer {
       connection.remoteIp,
     );
 
-    if (!this.authLimiter.consume(limiterKey)) {
+    if (this.authLimiter.isBlocked(limiterKey)) {
       console.warn("[omniwork-relay] auth rate limit hit", {
         key_id: message.payload.key_id,
         device_id: pending?.deviceId ?? connection.deviceId,
@@ -363,6 +375,10 @@ export class RelayServer {
       message.payload.nonce !== pending.nonce ||
       message.payload.key_id !== pending.keyId
     ) {
+      // 仅对失败的 proof 计数，避免合法重连/切偏好的连续 proof 把桶耗尽
+      // 触发 60s 误封禁。limiter.reset 在 auth.ok 时清零，所以正常路径
+      // 始终通过；这里 consume 的返回值已经被上面的 isBlocked 覆盖，忽略即可。
+      this.authLimiter.consume(limiterKey);
       this.send(
         connection,
         createMessage<AuthFailedPayload>(
@@ -444,6 +460,12 @@ export class RelayServer {
         // 阶段 4：通知 orchestrator 安排自动 upgrade。
         this.orchestrator.notifyMobileAuthenticated(mobile.deviceId, mobile);
       }
+    } else if (message.type === "auth.failed") {
+      // agent 端确认 key 不匹配 → 这才是真实的鉴权失败，计入限流；
+      // 避免合法 proof 被一并消耗 token 触发 60s 误封禁。
+      this.authLimiter.consume(
+        buildAuthRateLimitKey(pending?.keyId, mobile.deviceId, mobile.remoteIp),
+      );
     }
 
     this.send(mobile, message);

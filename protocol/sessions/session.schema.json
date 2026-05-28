@@ -24,7 +24,7 @@
     "cwd": { "type": "string" },
     "command": { "type": "string" },
     "status": {
-      "enum": ["created", "starting", "running", "detached", "exited", "error", "recovering", "archived"]
+      "enum": ["created", "starting", "running", "detached", "exited", "archived"]
     },
     "created_at": { "type": "string", "format": "date-time" },
     "last_active_at": { "type": "string", "format": "date-time" },
@@ -38,6 +38,11 @@
       "additionalProperties": false
     },
     "tmux_session_name": { "type": "string" },
+    "tmux_server_pid": { "type": "integer", "minimum": 1 },
+    "tmux_session_uid": { "type": "string" },
+    "workspace_path": { "type": "string" },
+    "workspace_name": { "type": "string" },
+    "git_repository": { "type": "boolean" },
     "origin": {
       "enum": ["managed", "external"]
     },

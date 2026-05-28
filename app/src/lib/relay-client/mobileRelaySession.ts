@@ -2,15 +2,33 @@ import {
   RelayClient,
   type RelayCloseEvent,
 } from "../../../../packages/relay-client/src/index.ts";
-import { createMessage, type AuthChallengePayload, type MessageEnvelope } from "../../../../packages/protocol-ts/src/index.ts";
+import {
+  createMessage,
+  type AuthChallengePayload,
+  type MessageEnvelope,
+  type TransportPreference,
+} from "../../../../packages/protocol-ts/src/index.ts";
 import type { PairingConfig } from "../../features/auth/types";
 import { createKeyProof } from "../../features/auth/keyProof";
 
+export interface MobileRelaySessionOptions {
+  /**
+   * App 端在 mobile.connect 中向 Relay 声明的传输偏好；缺省由 Relay 视为 "auto"。
+   * 详见 docs/relay-architecture.md "传输偏好可控"小节。
+   */
+  transportPreference?: TransportPreference;
+}
+
 export class MobileRelaySession {
   private readonly client: RelayClient;
+  private readonly options: MobileRelaySessionOptions;
 
-  constructor(private readonly pairing: PairingConfig) {
+  constructor(
+    private readonly pairing: PairingConfig,
+    options: MobileRelaySessionOptions = {},
+  ) {
     this.client = new RelayClient({ url: pairing.relayUrl });
+    this.options = options;
   }
 
   async connect(): Promise<void> {
@@ -21,10 +39,17 @@ export class MobileRelaySession {
     });
     await this.client.connect();
     this.client.send(
-      createMessage("mobile.connect", {
-        device_id: this.pairing.deviceId,
-        key_id: this.pairing.keyId ?? "unknown",
-      }, { device_id: this.pairing.deviceId }),
+      createMessage(
+        "mobile.connect",
+        {
+          device_id: this.pairing.deviceId,
+          key_id: this.pairing.keyId ?? "unknown",
+          ...(this.options.transportPreference
+            ? { transport_preference: this.options.transportPreference }
+            : {}),
+        },
+        { device_id: this.pairing.deviceId },
+      ),
     );
   }
 

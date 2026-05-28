@@ -14,11 +14,9 @@ export interface SessionCapabilities {
   canResize: boolean;
   canClose: boolean;
   canKill: boolean;
-  canRecover: boolean;
   interactive: boolean;
   pending: boolean;
   primaryActionLabel: string;
-  recoveryActionLabel?: "Retry" | "Recover" | "Restart";
   statusLabel: string;
   statusTone: "success" | "warning" | "danger" | "neutral";
   unavailableReason?: string;
@@ -42,37 +40,14 @@ export function getSessionCapabilities(
     canResize: !pendingAction && registered && status === "running",
     canClose: !pendingAction && registered && status !== "archived",
     canKill:
-      !pendingAction &&
-      status !== "archived" &&
-      status !== "exited" &&
-      status !== "error",
-    canRecover:
-      !pendingAction &&
-      registered &&
-      (status === "error" || status === "exited" || status === "recovering"),
+      !pendingAction && status !== "archived" && status !== "exited",
     interactive: !pendingAction && registered && status === "running",
     pending: pendingAction,
     primaryActionLabel: getPrimaryActionLabel(session, pending),
-    recoveryActionLabel: getRecoveryActionLabel(status),
     statusLabel: getStatusLabel(session),
     statusTone: getStatusTone(status, attachableExternal),
     unavailableReason,
   };
-}
-
-function getRecoveryActionLabel(
-  status: SessionStatus,
-): SessionCapabilities["recoveryActionLabel"] {
-  switch (status) {
-    case "error":
-      return "Retry";
-    case "recovering":
-      return "Recover";
-    case "exited":
-      return "Restart";
-    default:
-      return undefined;
-  }
 }
 
 function getPrimaryActionLabel(
@@ -96,10 +71,6 @@ function getPrimaryActionLabel(
     case "created":
     case "starting":
       return "Starting...";
-    case "recovering":
-      return "Recovering...";
-    case "error":
-      return "Unavailable";
     case "exited":
       return "Exited";
     case "archived":
@@ -125,10 +96,6 @@ function getStatusLabel(session: CodexSession): string {
       return "Detached";
     case "exited":
       return "Exited";
-    case "error":
-      return "Error";
-    case "recovering":
-      return "Recovering";
     case "archived":
       return "Archived";
     default:
@@ -149,10 +116,8 @@ function getStatusTone(
       return "success";
     case "created":
     case "starting":
-    case "recovering":
     case "detached":
       return "warning";
-    case "error":
     case "exited":
       return "danger";
     case "archived":
@@ -178,10 +143,6 @@ function getUnavailableReason(
     case "created":
     case "starting":
       return "The session is still starting. Refresh if it takes too long.";
-    case "recovering":
-      return "The Mac Agent is recovering this session.";
-    case "error":
-      return "This session is in an error state. Remove it or refresh sessions.";
     case "exited":
       return "This session has exited and is no longer interactive.";
     case "archived":

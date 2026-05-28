@@ -152,9 +152,12 @@ const styles = StyleSheet.create({
 });
 
 function toTextStyle(segment: TerminalTextSegment) {
+  // 反色段（ESC[7m）用于表示光标位置：交换前景/背景色，让光标格清晰可见。
+  const fg = segment.foregroundColor ?? "#d7ffe9";
+  const bg = segment.backgroundColor ?? "#050708";
   return {
-    color: segment.foregroundColor,
-    backgroundColor: segment.backgroundColor,
+    color: segment.inverse ? bg : segment.foregroundColor,
+    backgroundColor: segment.inverse ? fg : segment.backgroundColor,
     fontWeight: segment.bold ? ("800" as const) : undefined,
     fontStyle: segment.italic ? ("italic" as const) : undefined,
     opacity: segment.dim ? 0.7 : 1,

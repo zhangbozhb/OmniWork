@@ -198,6 +198,62 @@ export function TerminalScreen({
     };
   }, []);
 
+  // Web 端：监听全局键盘，把按键直接转发到 tmux，避免 PC 浏览器没有可见输入框
+  // 时无法交互的问题。当焦点位于 composer 等表单控件上时不拦截，保留兜底。
+  useEffect(() => {
+    if (Platform.OS !== "web" || readOnly) {
+      return undefined;
+    }
+
+    const handler = (event: Event) => {
+      const keyEvent = event as unknown as {
+        key: string;
+        ctrlKey: boolean;
+        metaKey: boolean;
+        altKey: boolean;
+        shiftKey: boolean;
+        target: EventTarget | null;
+        preventDefault: () => void;
+        stopPropagation: () => void;
+        isComposing?: boolean;
+      };
+      if (keyEvent.isComposing) {
+        return;
+      }
+      const target = keyEvent.target as
+        | (HTMLElement & { isContentEditable?: boolean })
+        | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      // 让浏览器原生处理刷新/开发者工具/标签页切换等系统快捷键。
+      if (keyEvent.metaKey) {
+        return;
+      }
+
+      const payload = mapWebKeyEventToTerminalInput(keyEvent);
+      if (!payload) {
+        return;
+      }
+      keyEvent.preventDefault();
+      keyEvent.stopPropagation();
+      onInput(payload);
+    };
+
+    window.addEventListener("keydown", handler, true);
+    return () => {
+      window.removeEventListener("keydown", handler, true);
+    };
+  }, [onInput, readOnly]);
+
   useEffect(() => {
     AsyncStorage.getItem(TERMINAL_PROFILE_STORAGE_KEY)
       .then((value) => {
@@ -596,6 +652,45 @@ function isTerminalDisplayProfile(
     value === "fitPreview" ||
     value === "landscapeWide"
   );
+}
+
+const WEB_CONTROL_KEY_MAP: Record<string, TerminalControlKey> = {
+  Enter: "enter",
+  Tab: "tab",
+  Backspace: "backspace",
+  Escape: "escape",
+  ArrowUp: "arrowUp",
+  ArrowDown: "arrowDown",
+  ArrowLeft: "arrowLeft",
+  ArrowRight: "arrowRight",
+};
+
+function mapWebKeyEventToTerminalInput(event: {
+  key: string;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): TerminalInputPayload | null {
+  const { key, ctrlKey, altKey } = event;
+
+  if (ctrlKey && !altKey && key.length === 1) {
+    const lower = key.toLowerCase();
+    if (lower >= "a" && lower <= "z") {
+      const code = lower.charCodeAt(0) - 96;
+      return { kind: "key", data: String.fromCharCode(code) };
+    }
+  }
+
+  const controlKey = WEB_CONTROL_KEY_MAP[key];
+  if (controlKey) {
+    return createControlInput(controlKey);
+  }
+
+  if (key.length === 1 && !ctrlKey && !altKey) {
+    return createTextInput(key);
+  }
+
+  return null;
 }
 
 const styles = StyleSheet.create({

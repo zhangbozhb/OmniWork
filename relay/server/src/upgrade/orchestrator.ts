@@ -4,16 +4,22 @@ import {
   createMessage,
   type IceServerConfig,
   type MessageEnvelope,
+  type TransportPreference,
+  type TunnelUpgradeDowngradePayload,
   type TunnelUpgradeProposePayload,
 } from "../../../../packages/protocol-ts/src/index.ts";
 
 /**
  * Orchestrator 关注的最小连接抽象：仅需 connection id 与可选 device id。
  * 这样 orchestrator 不依赖具体 socket 实现。
+ *
+ * `transportPreference` 由 mobile.connect 阶段缓存到 RelayConnection 上，
+ * orchestrator 守门时按 auto / relay_only / prefer_p2p 三态调整策略。
  */
 export interface UpgradeOrchestratorConnection {
   id: string;
   deviceId?: string;
+  transportPreference?: TransportPreference;
 }
 
 /**
@@ -23,6 +29,7 @@ export interface UpgradeOrchestratorConnection {
  * - deviceBlocklist: 永不参与升级的 device_id 集合。
  * - iceServers: propose 阶段下发给 App/Agent 的 STUN/TURN 列表。
  * - proposeDelayMs: 鉴权完成后的稳定窗口；默认 3000ms。
+ * - respectClientPreference: 是否尊重 App 端 transport_preference；默认 true。
  */
 export interface UpgradeOrchestratorConfig {
   enabled: boolean;
@@ -30,6 +37,7 @@ export interface UpgradeOrchestratorConfig {
   deviceBlocklist: Set<string>;
   iceServers: IceServerConfig[];
   proposeDelayMs: number;
+  respectClientPreference: boolean;
 }
 
 interface BackoffEntry {
@@ -50,6 +58,10 @@ interface OrchestratorMetricsState {
   committed: number;
   failed: Record<string, number>;
   downgrade: Record<string, number>;
+  /** 按 transport_preference 三态统计 mobile 鉴权后落到 orchestrator 的次数。 */
+  prefs: Record<TransportPreference, number>;
+  /** 因 transport_preference=relay_only 而跳过 propose 的次数。 */
+  skipped_by_pref: number;
 }
 
 export interface UpgradeDurationStats {
@@ -59,8 +71,7 @@ export interface UpgradeDurationStats {
   max_ms: number;
 }
 
-export interface OrchestratorMetricsSnapshot
-  extends OrchestratorMetricsState {
+export interface OrchestratorMetricsSnapshot extends OrchestratorMetricsState {
   in_flight: number;
   active_p2p: number;
   durations: UpgradeDurationStats;
@@ -109,6 +120,8 @@ export class RelayUpgradeOrchestrator {
     committed: 0,
     failed: {},
     downgrade: {},
+    prefs: { auto: 0, relay_only: 0, prefer_p2p: 0 },
+    skipped_by_pref: 0,
   };
 
   constructor(options: RelayUpgradeOrchestratorOptions) {
@@ -120,23 +133,56 @@ export class RelayUpgradeOrchestrator {
 
   /**
    * mobile 鉴权成功后调用：判定是否在 proposeDelayMs 后触发 upgrade。
-   * 不通过的原因（enabled/灰度/blocklist/退避）会被静默忽略。
+   * 不通过的原因（enabled/灰度/blocklist/退避/客户端偏好）会被静默忽略，
+   * 但客户端偏好会写入 metrics.prefs / metrics.skipped_by_pref 供观测。
    */
   notifyMobileAuthenticated(
     deviceId: string,
     mobile: UpgradeOrchestratorConnection,
   ): void {
+    const preference = this.resolvePreference(mobile);
+    this.metrics.prefs[preference] += 1;
+
     if (!this.config.enabled) {
+      // strict (prefer_p2p) 偏好下，全局开关关闭也意味着"无法升级 P2P"——
+      // 必须主动下发 downgrade 让 mobile 立即触发 forceClose，避免业务消息
+      // 持续暂存到 strictPendingQueue 直到超时。
+      this.notifyStrictUnavailable(
+        deviceId,
+        mobile,
+        preference,
+        "relay_disabled",
+      );
       return;
     }
     if (this.config.deviceBlocklist.has(deviceId)) {
+      this.notifyStrictUnavailable(deviceId, mobile, preference, "blocklisted");
       return;
     }
-    if (!shouldRollout(deviceId, this.config.rolloutPercent)) {
+
+    if (preference === "relay_only") {
+      // App 显式禁用 P2P 升级：跳过 propose，不退避不计 metrics 失败。
+      this.metrics.skipped_by_pref += 1;
       return;
     }
+
+    if (
+      preference !== "prefer_p2p" &&
+      !shouldRollout(deviceId, this.config.rolloutPercent)
+    ) {
+      // auto 模式继续走灰度；prefer_p2p 跳过 rollout 守门，
+      // 但仍受 enabled / blocklist / backoff 约束。
+      return;
+    }
+
     const backoff = this.backoffByDevice.get(deviceId);
     if (backoff && backoff.nextAvailableAt > this.nowFn()) {
+      this.notifyStrictUnavailable(
+        deviceId,
+        mobile,
+        preference,
+        "backoff_active",
+      );
       return;
     }
 
@@ -157,9 +203,22 @@ export class RelayUpgradeOrchestrator {
       if (current && current.nextAvailableAt > this.nowFn()) {
         return;
       }
-      this.triggerUpgrade(deviceId, mobile, agent);
+      this.triggerUpgrade(deviceId, mobile, agent, preference === "prefer_p2p");
     }, this.config.proposeDelayMs);
     this.sessionTimers.set(key, timer);
+  }
+
+  /**
+   * 根据 respectClientPreference 配置和 mobile 的 transportPreference 字段
+   * 解析最终生效偏好。客户端缺省值为 "auto"。
+   */
+  private resolvePreference(
+    mobile: UpgradeOrchestratorConnection,
+  ): TransportPreference {
+    if (!this.config.respectClientPreference) {
+      return "auto";
+    }
+    return mobile.transportPreference ?? "auto";
   }
 
   /**
@@ -214,7 +273,8 @@ export class RelayUpgradeOrchestrator {
    */
   handleControlMessage(message: MessageEnvelope): void {
     if (message.type === "tunnel.upgrade.committed") {
-      const upgradeId = (message.payload as { upgrade_id?: string })?.upgrade_id;
+      const upgradeId = (message.payload as { upgrade_id?: string })
+        ?.upgrade_id;
       if (!upgradeId) {
         return;
       }
@@ -255,7 +315,14 @@ export class RelayUpgradeOrchestrator {
       if (deviceId) {
         // 既可能是协商期失败、也可能是运行期主动降级；两种情况都要清理 active_p2p。
         this.activeP2pDevices.delete(deviceId);
-        this.recordFailure(deviceId, reason);
+        // client_closing 是用户主动行为（切换 transport_preference、退出账号
+        // 等触发 App 端 transport.close 时主动通知对端的礼貌降级），不是协议
+        // 失败；不应纳入 backoff 表，否则 prefer_p2p ↔ relay_only 反复切换时
+        // 第二次切回 prefer_p2p 会落入 backoff_active 永远不发 propose，
+        // strict 模式下业务消息全部堆积在 strictPendingQueue 触发 UI 卡死。
+        if (reason !== "client_closing") {
+          this.recordFailure(deviceId, reason);
+        }
       }
     }
   }
@@ -268,11 +335,10 @@ export class RelayUpgradeOrchestrator {
    */
   recordFailure(deviceId: string, reason: string): void {
     this.metrics.failed[reason] = (this.metrics.failed[reason] ?? 0) + 1;
-    const entry =
-      this.backoffByDevice.get(deviceId) ?? {
-        failures: 0,
-        nextAvailableAt: 0,
-      };
+    const entry = this.backoffByDevice.get(deviceId) ?? {
+      failures: 0,
+      nextAvailableAt: 0,
+    };
     entry.failures += 1;
     const now = this.nowFn();
     if (entry.failures === 1) {
@@ -290,11 +356,15 @@ export class RelayUpgradeOrchestrator {
   /**
    * 直接发起一次 upgrade：向 mobile (offerer) + agent (answerer) 同时发 propose。
    * 返回生成的 upgrade_id；外部 /debug/upgrade 也通过此入口触发以纳入 metrics。
+   *
+   * `strict` 在 mobile 端 transport_preference="prefer_p2p" 时为 true，会被
+   * 透传到双端 propose payload，触发严格 P2P 行为（详见协议 TunnelUpgradeProposePayload.strict）。
    */
   triggerUpgrade(
     deviceId: string,
     mobile: UpgradeOrchestratorConnection,
     agent: UpgradeOrchestratorConnection,
+    strict = false,
   ): string {
     const upgradeId = randomUUID();
     const iceServers = this.config.iceServers;
@@ -307,6 +377,7 @@ export class RelayUpgradeOrchestrator {
           upgrade_id: upgradeId,
           ice_servers: iceServers,
           role: "offerer",
+          ...(strict ? { strict: true } : {}),
         },
         { device_id: deviceId },
       ),
@@ -319,6 +390,7 @@ export class RelayUpgradeOrchestrator {
           upgrade_id: upgradeId,
           ice_servers: iceServers,
           role: "answerer",
+          ...(strict ? { strict: true } : {}),
         },
         { device_id: deviceId },
       ),
@@ -342,6 +414,8 @@ export class RelayUpgradeOrchestrator {
       committed: this.metrics.committed,
       failed: { ...this.metrics.failed },
       downgrade: { ...this.metrics.downgrade },
+      prefs: { ...this.metrics.prefs },
+      skipped_by_pref: this.metrics.skipped_by_pref,
       in_flight: this.inFlightUpgrades.size,
       active_p2p: this.activeP2pDevices.size,
       durations: this.computeDurationStats(),
@@ -356,6 +430,39 @@ export class RelayUpgradeOrchestrator {
     this.sessionTimers.clear();
     this.inFlightUpgrades.clear();
     this.activeP2pDevices.clear();
+  }
+
+  /**
+   * strict (transport_preference="prefer_p2p") 偏好下被 enabled / blocklist /
+   * backoff 命中时，必须主动下发 tunnel.upgrade.downgrade(reason="strict_unavailable")
+   * 给 mobile：mobile 端 upgradeCoordinator.downgrade() 会因 strict=false 不触发
+   * forceClose，但 App 级 onMessage 路由会把它转成"严格 P2P 不可用"的 UI 提示。
+   *
+   * 同时记一笔 metrics.downgrade["strict_unavailable:<reason>"] 便于排查。
+   */
+  private notifyStrictUnavailable(
+    deviceId: string,
+    mobile: UpgradeOrchestratorConnection,
+    preference: TransportPreference,
+    cause: string,
+  ): void {
+    if (preference !== "prefer_p2p") {
+      return;
+    }
+    const upgradeId = randomUUID();
+    this.sendFn(
+      mobile,
+      createMessage<TunnelUpgradeDowngradePayload>(
+        "tunnel.upgrade.downgrade",
+        {
+          upgrade_id: upgradeId,
+          reason: `strict_unavailable:${cause}`,
+        },
+        { device_id: deviceId },
+      ),
+    );
+    const key = `strict_unavailable:${cause}`;
+    this.metrics.downgrade[key] = (this.metrics.downgrade[key] ?? 0) + 1;
   }
 
   private recordDuration(durationMs: number): void {

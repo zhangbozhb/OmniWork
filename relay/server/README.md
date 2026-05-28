@@ -59,8 +59,12 @@ token bucket:
   this window. After the window elapses the bucket is fully refilled.
 
 When the limiter rejects a request, the relay responds with `auth.failed` and
-reason `too_many_attempts`. A successful `auth.ok` resets the corresponding
-bucket so subsequent attempts are not affected by past failures.
+reason `too_many_attempts`. Only failed `auth.proof` consume a token (either a
+malformed proof rejected at the relay, or `auth.failed` returned by the agent
+after key verification); legitimate `auth.proof` that lead to `auth.ok` do not
+consume the bucket, so frequent reconnects and transport-preference switches
+are not throttled. A successful `auth.ok` also resets the bucket so subsequent
+attempts are not affected by past failures.
 
 ### P2P upgrade orchestrator
 
@@ -73,6 +77,7 @@ OMNIWORK_UPGRADE_ROLLOUT=100
 OMNIWORK_UPGRADE_DEVICE_BLOCKLIST=
 OMNIWORK_UPGRADE_ICE_SERVERS_JSON=[{"urls":"stun:stun.l.google.com:19302"}]
 OMNIWORK_UPGRADE_PROPOSE_DELAY_MS=3000
+OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF=true
 ```
 
 - `OMNIWORK_UPGRADE_ENABLED` (`true`/`false`, default `true`): global kill switch.
@@ -84,12 +89,26 @@ OMNIWORK_UPGRADE_PROPOSE_DELAY_MS=3000
   credential? }` sent to clients in `tunnel.upgrade.propose`.
 - `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS` (default `3000`): stable window between
   mobile auth success and the propose.
+- `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF` (`true`/`false`, default `true`):
+  honour the App's `mobile.connect.transport_preference` field. Set to `false`
+  to force every connection to be treated as `auto` (and never propagate
+  `strict: true` on propose).
+  See `docs/relay-architecture.md §6.1`.
+
+When the App connects with `transport_preference=prefer_p2p`, the relay sets
+`strict: true` on the `tunnel.upgrade.propose` payload sent to both peers.
+Strict P2P clients only allow control-plane traffic on the relay path; any
+upgrade negotiation or runtime failure (`timeout`, `peer_unavailable`,
+`ice_failed`, `pong_timeout`, etc.) closes the session instead of falling
+back to relay. The relay still records the failure under `failed[reason]` and
+applies the same backoff policy as `auto`.
 
 Operational endpoints:
 
 - `GET /metrics` — JSON snapshot of `proposed`, `committed`, `failed[reason]`,
-  `downgrade[reason]`, `in_flight`, `active_p2p`, `durations` (p50/p95/max over
-  the last 100 successful upgrades).
+  `downgrade[reason]`, `prefs[preference]`, `skipped_by_pref`, `in_flight`,
+  `active_p2p`, `durations` (p50/p95/max over the last 100 successful
+  upgrades).
 - `POST /debug/upgrade?device_id=<id>` — manually triggers an upgrade for a
   paired device; included in metrics and logs.
 

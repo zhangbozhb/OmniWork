@@ -7,7 +7,9 @@
  * - 封禁结束后桶被填满，重新计时。
  *
  * 用法：在 auth.proof 失败时调用 consume(key)，true 表示允许继续尝试，
- * false 表示当前 key 已被限流。
+ * false 表示当前 key 已被限流。合法 auth.proof（即将转发给 agent 鉴权）
+ * 不应调用 consume，避免合法重连耗尽桶；可用 isBlocked(key) 在入口
+ * 短路掉处于封禁窗口期的 key。
  */
 export interface TokenBucketOptions {
   capacity: number;
@@ -78,6 +80,18 @@ export class TokenBucketLimiter {
 
     bucket.tokens -= 1;
     return true;
+  }
+
+  /**
+   * 仅探测 key 是否处于封禁窗口期，不消耗 token、不更新刷新时间。
+   * 用于 auth.proof 入口短路（失败计数仍由后续 consume 完成）。
+   */
+  isBlocked(key: string): boolean {
+    const bucket = this.buckets.get(key);
+    if (!bucket) {
+      return false;
+    }
+    return bucket.blockedUntilMs > this.now();
   }
 
   /**

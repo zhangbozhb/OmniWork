@@ -8,14 +8,10 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  Modal,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Modal, StyleSheet, Text, View } from "react-native";
 
 import { Button, Card } from "../components";
+import type { IconName } from "../icons";
 import { colors, radii, spacing } from "../theme";
 
 export type ConfirmTone = "primary" | "danger";
@@ -26,9 +22,21 @@ export interface ConfirmOptions {
   confirmText: string;
   cancelText?: string;
   tone?: ConfirmTone;
+  /**
+   * 可选：自定义确认按钮图标。缺省时按 `tone` 推断（primary→check / danger→trash）。
+   * 不同业务场景（如切换 Strict P2P 用 `plug`、回滚配置用 `refresh`）可在此覆盖。
+   */
+  confirmIcon?: IconName;
+  /**
+   * 可选：自定义取消按钮图标。缺省 `close`。
+   */
+  cancelIcon?: IconName;
 }
 
-type PendingConfirm = Required<ConfirmOptions>;
+type PendingConfirm = Required<
+  Omit<ConfirmOptions, "confirmIcon" | "cancelIcon">
+> &
+  Pick<ConfirmOptions, "confirmIcon" | "cancelIcon">;
 
 type ConfirmContextValue = (options: ConfirmOptions) => Promise<boolean>;
 
@@ -83,14 +91,17 @@ export function ConfirmProvider({
               </View>
               <View style={styles.actions}>
                 <Button
-                  icon="close"
+                  icon={pendingConfirm?.cancelIcon ?? "close"}
                   style={styles.actionButton}
                   onPress={() => resolve(false)}
                 >
                   {pendingConfirm?.cancelText ?? "Cancel"}
                 </Button>
                 <Button
-                  icon={pendingConfirm?.tone === "primary" ? "check" : "trash"}
+                  icon={
+                    pendingConfirm?.confirmIcon ??
+                    (pendingConfirm?.tone === "primary" ? "check" : "trash")
+                  }
                   style={styles.actionButton}
                   tone={
                     pendingConfirm?.tone === "primary" ? "primary" : "danger"

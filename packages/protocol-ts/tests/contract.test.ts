@@ -9,17 +9,33 @@ import { describe, it } from "node:test";
 
 import {
   PROTOCOL_VERSION,
+  SESSION_FIELDS,
+  SESSION_REQUIRED_FIELDS,
+  SUPPORTED_SESSION_STATUSES,
+  TRANSPORT_PREFERENCES,
   authFailedPayloadSchema,
   authOkPayloadSchema,
   authVerifyPayloadSchema,
+  codexSessionSchema,
   createMessage,
   createPairingLink,
+  isTransportPreference,
   messageEnvelopeSchema,
   parsePairingLink,
+  sessionAttachPayloadSchema,
+  sessionClosePayloadSchema,
+  sessionCreatePayloadSchema,
+  sessionCreatedPayloadSchema,
+  sessionKillTmuxPayloadSchema,
+  sessionListPayloadSchema,
+  sessionRenamePayloadSchema,
   terminalFramePayloadSchema,
   terminalInputPayloadSchema,
   terminalSnapshotPayloadSchema,
 } from "../src/index.ts";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 describe("messageEnvelopeSchema", () => {
   it("accepts a well-formed envelope produced by createMessage", () => {
@@ -220,5 +236,195 @@ describe("pairing link round-trip", () => {
     );
     const parsed = parsePairingLink(link);
     assert.deepEqual(parsed, samplePayload);
+  });
+});
+
+describe("transport_preference", () => {
+  it("exposes the documented three-state set", () => {
+    assert.deepEqual(
+      [...TRANSPORT_PREFERENCES],
+      ["auto", "relay_only", "prefer_p2p"],
+    );
+  });
+
+  it("accepts every documented value via the type guard", () => {
+    for (const value of TRANSPORT_PREFERENCES) {
+      assert.equal(isTransportPreference(value), true);
+    }
+  });
+
+  it("rejects unknown / non-string values", () => {
+    for (const value of [
+      "AUTO",
+      "p2p",
+      "",
+      undefined,
+      null,
+      0,
+      true,
+      {},
+      [],
+    ]) {
+      assert.equal(isTransportPreference(value), false);
+    }
+  });
+});
+
+describe("session.schema.json contract alignment", () => {
+  // protocol/sessions/session.schema.json 与 ts CodexSession 的字段集合、
+  // 必填集合、status 取值集合必须保持一致。任何一边漂移都会让"协议合同"
+  // 失效，本组用例作为最低限度的对账兜底。
+  const here = dirname(fileURLToPath(import.meta.url));
+  const schemaPath = join(
+    here,
+    "..",
+    "..",
+    "..",
+    "protocol",
+    "sessions",
+    "session.schema.json",
+  );
+  const schema = JSON.parse(readFileSync(schemaPath, "utf8")) as {
+    properties: Record<string, unknown>;
+    required: string[];
+    additionalProperties?: boolean;
+  };
+
+  it("status enum equals SUPPORTED_SESSION_STATUSES", () => {
+    const statusEnum = (
+      (schema.properties.status as { enum: string[] }).enum ?? []
+    )
+      .slice()
+      .sort();
+    const expected = SUPPORTED_SESSION_STATUSES.slice().sort();
+    assert.deepEqual(statusEnum, expected);
+  });
+
+  it("properties match SESSION_FIELDS", () => {
+    const schemaKeys = Object.keys(schema.properties).sort();
+    const expected = [...SESSION_FIELDS].sort();
+    assert.deepEqual(schemaKeys, expected);
+  });
+
+  it("required is a subset of SESSION_FIELDS and equals SESSION_REQUIRED_FIELDS", () => {
+    const required = schema.required.slice().sort();
+    const expected = [...SESSION_REQUIRED_FIELDS].sort();
+    assert.deepEqual(required, expected);
+    for (const field of required) {
+      assert.ok(
+        (SESSION_FIELDS as readonly string[]).includes(field),
+        `required field ${field} must also be declared in SESSION_FIELDS`,
+      );
+    }
+  });
+
+  it("additionalProperties is locked to false", () => {
+    assert.equal(schema.additionalProperties, false);
+  });
+});
+
+describe("session payload schemas", () => {
+  // 与 SESSION_FIELDS / SESSION_REQUIRED_FIELDS / SUPPORTED_SESSION_STATUSES
+  // 三个常量保持运行时一致。任何一边漂移都应被这里的正反例拦住。
+  const validSession = {
+    session_id: "sess_1",
+    runtime_kind: "codex",
+    runtime_label: "Codex",
+    title: "demo",
+    cwd: "/tmp",
+    command: "codex",
+    status: "running" as const,
+    created_at: new Date().toISOString(),
+    last_active_at: new Date().toISOString(),
+    terminal_size: { cols: 80, rows: 24 },
+    tmux_session_name: "omni-1",
+  };
+
+  it("codexSessionSchema accepts all SUPPORTED_SESSION_STATUSES", () => {
+    for (const status of SUPPORTED_SESSION_STATUSES) {
+      codexSessionSchema.parse({ ...validSession, status });
+    }
+  });
+
+  it("codexSessionSchema rejects status='error'", () => {
+    const result = codexSessionSchema.safeParse({
+      ...validSession,
+      status: "error",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("codexSessionSchema rejects unknown extra fields (strict)", () => {
+    const result = codexSessionSchema.safeParse({
+      ...validSession,
+      foo_bar: "x",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("codexSessionSchema rejects when any required field is missing", () => {
+    for (const field of SESSION_REQUIRED_FIELDS) {
+      const broken: Record<string, unknown> = { ...validSession };
+      delete broken[field];
+      const result = codexSessionSchema.safeParse(broken);
+      assert.equal(
+        result.success,
+        false,
+        `expected missing required field ${field} to be rejected`,
+      );
+    }
+  });
+
+  it("sessionListPayloadSchema accepts empty and populated lists", () => {
+    sessionListPayloadSchema.parse({ sessions: [] });
+    sessionListPayloadSchema.parse({
+      sessions: [validSession],
+      default_cwd: "/tmp",
+    });
+  });
+
+  it("sessionCreatePayloadSchema accepts empty payload", () => {
+    sessionCreatePayloadSchema.parse({});
+    sessionCreatePayloadSchema.parse({
+      runtime_kind: "codex",
+      cwd: "/tmp",
+      terminal_size: { cols: 80, rows: 24 },
+    });
+  });
+
+  it("sessionCreatePayloadSchema rejects extra unknown keys", () => {
+    const result = sessionCreatePayloadSchema.safeParse({
+      runtime_kind: "codex",
+      forced: true,
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("sessionCreatedPayloadSchema requires a valid session", () => {
+    sessionCreatedPayloadSchema.parse({ session: validSession });
+    const result = sessionCreatedPayloadSchema.safeParse({
+      session: { ...validSession, status: "error" },
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("session id payloads require non-empty session_id", () => {
+    for (const schema of [
+      sessionAttachPayloadSchema,
+      sessionClosePayloadSchema,
+      sessionKillTmuxPayloadSchema,
+    ]) {
+      schema.parse({ session_id: "sess_1" });
+      assert.equal(schema.safeParse({ session_id: "" }).success, false);
+      assert.equal(schema.safeParse({}).success, false);
+    }
+  });
+
+  it("sessionRenamePayloadSchema requires session_id and title", () => {
+    sessionRenamePayloadSchema.parse({ session_id: "sess_1", title: "new" });
+    assert.equal(
+      sessionRenamePayloadSchema.safeParse({ session_id: "sess_1" }).success,
+      false,
+    );
   });
 });

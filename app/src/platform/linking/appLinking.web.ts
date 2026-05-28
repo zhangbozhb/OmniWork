@@ -70,8 +70,7 @@ function getSearchParam(query: string, key: string): string | null {
 }
 
 function hasPairingParams(query: string): boolean {
-  // 仅检查 pairing link 必填的三个字段；`v` 由协议层 parsePairingLink 兜底校验，
-  // 这里保持宽松以便接受 v 缺省的旧版（协议层会拒绝 v 不匹配的入参）。
+  // 仅检查 pairing link 必填的三个字段；`v` 由协议层 parsePairingLink 兜底校验。
   const params = new URLSearchParams(query.startsWith("?") ? query : `?${query}`);
   return Boolean(
     params.get("relay_url") && params.get("device_id") && params.get("key"),

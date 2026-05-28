@@ -11,6 +11,11 @@ export interface UpgradeOrchestratorConfig {
   deviceBlocklist: Set<string>;
   iceServers: IceServerConfig[];
   proposeDelayMs: number;
+  /**
+   * 是否尊重 App 端在 mobile.connect 中携带的 transport_preference。
+   * 默认 true；运维如需在紧急情况下忽略客户端偏好可设为 false。
+   */
+  respectClientPreference: boolean;
 }
 
 export interface RelayServerConfig {
@@ -78,6 +83,10 @@ export function loadRelayServerConfig(
       proposeDelayMs: parseNumber(
         env.OMNIWORK_UPGRADE_PROPOSE_DELAY_MS,
         3000,
+      ),
+      respectClientPreference: parseBoolean(
+        env.OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF,
+        true,
       ),
     },
   };

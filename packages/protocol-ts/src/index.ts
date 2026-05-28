@@ -2,11 +2,13 @@ export {
   PAIRING_LINK_HOST,
   PAIRING_LINK_SCHEME,
   PROTOCOL_VERSION,
+  SUPPORTED_SESSION_STATUSES,
 } from "./constants.ts";
 import {
   PAIRING_LINK_HOST,
   PAIRING_LINK_SCHEME,
   PROTOCOL_VERSION,
+  SUPPORTED_SESSION_STATUSES,
 } from "./constants.ts";
 
 export type MessageType =
@@ -21,9 +23,6 @@ export type MessageType =
   | "device.list"
   | "session.list"
   | "session.create"
-  | "session.retry"
-  | "session.recover"
-  | "session.restart"
   | "session.rename"
   | "session.close"
   | "session.kill_tmux"
@@ -100,6 +99,33 @@ export type AgentCapability = KnownAgentCapability | (string & {});
 export interface MobileConnectPayload {
   device_id: string;
   key_id: string;
+  /**
+   * App 端显式声明的传输偏好，由 Relay 在 propose 守门时读取：
+   * - "auto"（缺省）：跟随 Relay 灰度/黑名单/退避策略
+   * - "relay_only"：禁用 P2P 升级，Relay 跳过 propose，不进入退避，不计 metrics 失败
+   * - "prefer_p2p"：严格 P2P。业务消息只允许走 DataChannel；协商或运行期失败时
+   *   双端直接关闭 session（forceClose），不回退到 Relay。Relay 会在 propose
+   *   payload 中带 strict=true，并跳过 rollout 灰度（仍受 enabled / blocklist /
+   *   backoff 约束）；Web 等无 PeerConnection 的环境下 session 直接不可建立。
+   */
+  transport_preference?: TransportPreference;
+}
+
+export type TransportPreference = "auto" | "relay_only" | "prefer_p2p";
+
+export const TRANSPORT_PREFERENCES: readonly TransportPreference[] = [
+  "auto",
+  "relay_only",
+  "prefer_p2p",
+];
+
+export function isTransportPreference(
+  value: unknown,
+): value is TransportPreference {
+  return (
+    typeof value === "string" &&
+    (TRANSPORT_PREFERENCES as readonly string[]).includes(value)
+  );
 }
 
 export interface AuthChallengePayload {
@@ -152,9 +178,34 @@ export type SessionStatus =
   | "running"
   | "detached"
   | "exited"
-  | "error"
-  | "recovering"
   | "archived";
+
+/**
+ * Agent 启动期 sessions.json 的"应当被持久化保留"的 status 白名单。
+ *
+ * 与 `SessionStatus` 在概念上对齐：当前 `SessionStatus` 中的所有值都应可
+ * 持久化（瞬态错误不再用 status 表达，而是通过 envelope error 直接反馈
+ * 给前端）。常量本体定义在 constants.ts，避免 schemas.ts ↔ index.ts 的
+ * 循环依赖在运行时触发 TDZ；这里通过编译期断言锁定二者的同步关系。
+ *
+ * 未来若新增"瞬态/不应落盘"的 status，可以从这里减除而无需动协议
+ * 类型，避免一次破坏性变更。
+ */
+const _SUPPORTED_SESSION_STATUSES_TYPE_CHECK: readonly SessionStatus[] =
+  SUPPORTED_SESSION_STATUSES;
+void _SUPPORTED_SESSION_STATUSES_TYPE_CHECK;
+
+export type PersistedSessionStatus =
+  (typeof SUPPORTED_SESSION_STATUSES)[number];
+
+export function isSupportedSessionStatus(
+  value: unknown,
+): value is PersistedSessionStatus {
+  return (
+    typeof value === "string" &&
+    (SUPPORTED_SESSION_STATUSES as readonly string[]).includes(value)
+  );
+}
 
 export type RuntimeKind = string;
 export type AgentProviderKind = string;
@@ -237,12 +288,69 @@ export interface CodexSession {
   last_active_at: string;
   terminal_size: TerminalSize;
   tmux_session_name: string;
+  /**
+   * tmux server 进程 pid（`#{pid}`）。tmux server 重启后会重置，因此可以
+   * 把 (tmux_server_pid, tmux_session_uid) 当作"同一进程窗口"的强 ID。
+   * create() 与 external 发现路径都会写入该字段，store 中的条目一律按强 ID 比对。
+   */
+  tmux_server_pid?: number;
+  /**
+   * tmux session 的稳定 uid（`#{session_id}`，形如 `$1`）。tmux 重启后从 0 开始
+   * 重新分配，所以与 `tmux_server_pid` 组合即可识别"同名但新进程"。
+   */
+  tmux_session_uid?: string;
   workspace_path?: string;
   workspace_name?: string;
   git_repository?: boolean;
   origin?: SessionOrigin;
   registered?: boolean;
 }
+
+/**
+ * `CodexSession` 的所有合法字段名（运行时清单）。
+ *
+ * 用作与 `protocol/sessions/session.schema.json` 的对账依据：
+ * contract.test 会断言 schema `properties` 集合与本数组一致，以保证
+ * ts 协议与 JSON Schema 不会无声漂移。新增 / 删除字段时只需同时改
+ * 这里和 schema.json 即可被测试覆盖。
+ */
+export const SESSION_FIELDS = [
+  "session_id",
+  "runtime_kind",
+  "runtime_label",
+  "title",
+  "cwd",
+  "command",
+  "status",
+  "created_at",
+  "last_active_at",
+  "terminal_size",
+  "tmux_session_name",
+  "tmux_server_pid",
+  "tmux_session_uid",
+  "workspace_path",
+  "workspace_name",
+  "git_repository",
+  "origin",
+  "registered",
+] as const satisfies readonly (keyof CodexSession)[];
+
+/**
+ * `CodexSession` 中的必填字段（与 schema.json#required 对齐）。
+ */
+export const SESSION_REQUIRED_FIELDS = [
+  "session_id",
+  "runtime_kind",
+  "runtime_label",
+  "title",
+  "cwd",
+  "command",
+  "status",
+  "created_at",
+  "last_active_at",
+  "terminal_size",
+  "tmux_session_name",
+] as const satisfies readonly (typeof SESSION_FIELDS)[number][];
 
 export interface SessionListPayload {
   sessions: CodexSession[];
@@ -278,10 +386,6 @@ export interface SessionRenamePayload {
 }
 
 export interface SessionKillTmuxPayload {
-  session_id: string;
-}
-
-export interface SessionRecoveryPayload {
   session_id: string;
 }
 
@@ -554,6 +658,14 @@ export interface TunnelUpgradeProposePayload {
   upgrade_id: string;
   ice_servers: IceServerConfig[];
   role: "offerer" | "answerer";
+  /**
+   * Relay 在 mobile.connect.transport_preference="prefer_p2p" 时置为 true。
+   * 双端在收到 strict 标记后会启用严格 P2P 模式：
+   * - 升级前不放行 session.* / terminal.* 等业务消息（仅放行控制面）
+   * - 协商或运行期失败 → 直接关闭 session（forceClose），不回退到 Relay
+   * 字段缺省视为 false，保持 auto 行为。
+   */
+  strict?: boolean;
 }
 
 export interface TunnelUpgradeOfferPayload {

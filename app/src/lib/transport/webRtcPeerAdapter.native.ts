@@ -44,6 +44,11 @@ function loadWrtc(): WrtcModule | null {
   }
 }
 
+/**
+ * dataChannel 尚未 open 时 send() 的最多暂存条数，防御 SCTP 握手卡顿场景。
+ */
+const PENDING_SEND_LIMIT = 256;
+
 class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
   private readonly pc: any;
   private readonly mod: WrtcModule;
@@ -52,6 +57,11 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
   private readonly candidateHandlers = new Set<CandidateHandler>();
   private readonly dataHandlers = new Set<DataHandler>();
   private readonly stateHandlers = new Set<StateHandler>();
+  /**
+   * dataChannel 尚未 open 时 send() 的暂存队列；onopen 后一次性 flush。
+   * 解决 ICE connected 与 SCTP open 不同步导致 commit 后首批业务消息被静默丢弃的问题。
+   */
+  private pendingSends: string[] = [];
   private closed = false;
 
   constructor(pc: any, mod: WrtcModule, role: "offerer" | "answerer") {
@@ -62,6 +72,12 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
     pc.onicecandidate = (event: any) => {
       const c = event?.candidate;
       if (!c || !c.candidate) {
+        return;
+      }
+      // 默认禁用 TURN：丢弃 typ relay candidate，确保严格 P2P 模式下不会出现
+      // 通过 TURN 中转的隐式连接。常规 auto 模式下也不需要 TURN（Relay 已经
+      // 提供 TURN 等价能力），因此对所有路径生效，无需额外开关。
+      if (typeof c.candidate === "string" && / typ relay\b/.test(c.candidate)) {
         return;
       }
       const init: IceCandidateInit = {
@@ -119,6 +135,8 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
   private attachDataChannel(channel: any): void {
     this.dataChannel = channel;
     channel.onopen = () => {
+      // SCTP 握手完成：先 flush 暂存的业务消息，再向上层广播 connected。
+      this.flushPendingSends();
       for (const handler of this.stateHandlers) {
         handler("connected");
       }
@@ -189,10 +207,23 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
   }
 
   send(data: string): void {
-    if (!this.dataChannel || this.dataChannel.readyState !== "open") {
+    if (this.closed) {
       return;
     }
-    this.dataChannel.send(data);
+    const channel = this.dataChannel;
+    if (channel && channel.readyState === "open") {
+      channel.send(data);
+      return;
+    }
+    if (channel && channel.readyState === "connecting") {
+      // SCTP 握手中：暂存到 channel.onopen 时再 flush；超出上限丢最旧的。
+      if (this.pendingSends.length >= PENDING_SEND_LIMIT) {
+        this.pendingSends.shift();
+      }
+      this.pendingSends.push(data);
+      return;
+    }
+    // closing / closed / 未创建：静默丢弃，由上层 health check 触发降级。
   }
 
   getBufferedAmount(): number {
@@ -208,6 +239,7 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
       return;
     }
     this.closed = true;
+    this.pendingSends = [];
     try {
       this.dataChannel?.close();
     } catch {
@@ -217,6 +249,25 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
       this.pc.close();
     } catch {
       /* ignore */
+    }
+  }
+
+  private flushPendingSends(): void {
+    if (this.pendingSends.length === 0) {
+      return;
+    }
+    const channel = this.dataChannel;
+    if (!channel || channel.readyState !== "open") {
+      return;
+    }
+    const queued = this.pendingSends;
+    this.pendingSends = [];
+    for (const data of queued) {
+      try {
+        channel.send(data);
+      } catch {
+        /* ignore: 单条失败不影响后续 flush */
+      }
     }
   }
 }

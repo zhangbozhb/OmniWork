@@ -1,4 +1,11 @@
-import { type JSX, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type JSX,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   AppState,
@@ -7,6 +14,7 @@ import {
   Text,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import type {
@@ -26,6 +34,7 @@ import type {
   TerminalInputPayload,
   TerminalResizePayload,
   TerminalSnapshotPayload,
+  TransportPreference,
   TunnelUpgradeAnswerPayload,
   TunnelUpgradeCandidatePayload,
   TunnelUpgradeCommittedPayload,
@@ -40,10 +49,13 @@ import type {
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
   createMessage,
+  isTransportPreference,
 } from "../../../packages/protocol-ts/src/index.ts";
 import type { RelayCloseEvent } from "../../../packages/relay-client/src/index.ts";
+import { appConfig } from "./appConfig";
 import { PairingScreen } from "../screens/pairing/PairingScreen";
 import { DeviceListScreen } from "../screens/devices/DeviceListScreen";
+import { ConnectionPreferenceScreen } from "../screens/settings/ConnectionPreferenceScreen";
 import { SessionListScreen } from "../screens/sessions/SessionListScreen";
 import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import type { PairingConfig } from "../features/auth/types";
@@ -51,9 +63,6 @@ import { parsePairingConfig } from "../features/auth/pairingConfig";
 import {
   closeSessionRequest,
   renameSessionRequest,
-  recoverSessionRequest,
-  restartSessionRequest,
-  retrySessionRequest,
   killTmuxSessionRequest,
   listSessionsRequest,
   createSessionRequest,
@@ -87,7 +96,7 @@ import {
 } from "../platform/secure-storage/securePairingStore";
 import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
 
-type AppView = "pairing" | "devices" | "sessions" | "terminal";
+type AppView = "pairing" | "devices" | "settings" | "sessions" | "terminal";
 type ConnectionStatus =
   | "idle"
   | "connecting"
@@ -104,10 +113,32 @@ type AppSessionTransport = Omit<SessionTransport, "close"> & {
    * 以及处理来自 Relay 的 tunnel.upgrade.* 控制消息。
    */
   forceDowngrade(reason: string): void;
+  /**
+   * strict 模式下，Relay 主动下发 strict_unavailable 时由 wiring 层调用，
+   * 直接让 transport 进入 forceClose 并通知 onForceClose handler。
+   */
+  forceClose(reason: string): void;
   handleUpgradeMessage(message: MessageEnvelope): void;
+  /**
+   * 严格 P2P 模式下，AppState 进/出后台时调用：暂停时不会触发协商失败，
+   * 仅暂停 ping/buffered 采样并把 currentPath 标记回 relay 入口（业务消息
+   * 仍受 strict 准入门保护，不会真的发到 relay）。
+   */
+  pauseForBackground(): void;
+  resumeForForeground(): void;
+  /**
+   * 是否运行在严格 P2P 模式（由 transportPreference === "prefer_p2p" 推导）。
+   */
+  isStrictP2p(): boolean;
 };
 
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
+
+/**
+ * AsyncStorage 中保存的用户传输偏好键；缺省时回退到 appConfig.transportPreference。
+ * 取值范围由 packages/protocol-ts isTransportPreference 守卫校验。
+ */
+const TRANSPORT_PREFERENCE_STORAGE_KEY = "omniwork.transportPreference";
 
 export default function App(): JSX.Element {
   return (
@@ -153,6 +184,14 @@ function AppContent(): JSX.Element {
   const [creatingSession, setCreatingSession] = useState(false);
   const [closingSessionIds, setClosingSessionIds] = useState<string[]>([]);
   const [killingSessionIds, setKillingSessionIds] = useState<string[]>([]);
+  // 用户在 Devices 页选择的传输偏好，持久化到 AsyncStorage；
+  // 缺省时回退到 appConfig.transportPreference（出厂值，默认 "auto"）。
+  // 注意：初始值直接使用 appConfig 默认值，不阻塞建链；AsyncStorage 加载完成后
+  // 若读出与默认不同的值，会经由 setTransportPreferenceState 触发 useEffect
+  // 重建链路（依赖项含 transportPreference）。这样 Web 端首屏不会卡在 idle，
+  // 且大多数用户（默认 auto）启动时不会经历额外重连。
+  const [transportPreference, setTransportPreferenceState] =
+    useState<TransportPreference>(appConfig.transportPreference);
   const relayRef = useRef<AppSessionTransport | null>(null);
   const pendingCreateRef = useRef(false);
   const pendingAutoOpenSessionsRef = useRef(false);
@@ -232,6 +271,70 @@ function AppContent(): JSX.Element {
     return () => subscription.remove();
   }, []);
 
+  // 启动时从 AsyncStorage 加载用户偏好；缺省回退到 appConfig.transportPreference。
+  // 加载完成前已经按默认值开始建链；若磁盘值与默认值不同，setTransportPreferenceState
+  // 会触发下面的连接 useEffect 自动重建链路。
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(TRANSPORT_PREFERENCE_STORAGE_KEY)
+      .then((raw) => {
+        if (!active) return;
+        if (isTransportPreference(raw)) {
+          setTransportPreferenceState(raw);
+        }
+      })
+      .catch(() => {
+        // 持久化失败不影响功能；使用 appConfig 默认值。
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // 用户切换偏好时持久化；首次加载未完成前不写回，避免覆盖磁盘值。
+  // 切换会立即触发 useEffect 重建 transport（因为 transportPreference 是依赖项），
+  // 同时若旧/新偏好涉及 prefer_p2p（=Strict P2P），需要弹确认让用户明确知晓
+  // "立即重连 + Strict 模式失败不会回退到 Relay"的副作用。
+  //
+  // 注意：RN 的 `Alert.alert` 在 web 端是 no-op，会导致 web 用户点 "Strict P2P"
+  // 后无任何反馈。这里统一改用项目内的跨端 `useConfirm`（基于 RN `Modal`，
+  // web/native 表现一致），保证三端都能弹出确认。
+  const handleChangeTransportPreference = useCallback(
+    (next: TransportPreference) => {
+      const persist = (value: TransportPreference) => {
+        setTransportPreferenceState(value);
+        AsyncStorage.setItem(TRANSPORT_PREFERENCE_STORAGE_KEY, value).catch(
+          () => {
+            // 非关键路径：偏好下次启动会回退到 appConfig 默认值。
+          },
+        );
+      };
+      if (next === "prefer_p2p") {
+        confirm({
+          title: "Switch to Strict P2P?",
+          message:
+            "The App will reconnect immediately. If a direct WebRTC link cannot be established, the session will fail instead of falling back to Relay.",
+          confirmText: "Switch",
+          cancelText: "Cancel",
+          tone: "danger",
+          // 语义上是"切换连接路径"而非"删除"，覆盖默认的 trash 图标。
+          confirmIcon: "plug",
+        })
+          .then((confirmed) => {
+            if (confirmed) {
+              persist(next);
+            }
+          })
+          .catch(() => {
+            // confirm Promise 不应 reject；保底吞掉。
+          });
+        return;
+      }
+      persist(next);
+    },
+    [confirm],
+  );
+
   useEffect(() => {
     if (!pairing) {
       relayRef.current?.close();
@@ -242,7 +345,17 @@ function AppContent(): JSX.Element {
     }
 
     let closed = false;
-    const relay = createAppSessionTransport(pairing);
+    const relay = createAppSessionTransport(pairing, transportPreference, {
+      onForceClose: (reason) => {
+        if (closed) {
+          return;
+        }
+        // 严格 P2P 模式下协商或运行期失败 → 关闭 session 并把错误透出到 UI。
+        // 不会回退到 Relay；用户需要切换 transport_preference 或重连才能继续。
+        setConnectionStatus("failed");
+        setConnectionMessage(formatStrictForceCloseMessage(reason));
+      },
+    });
     relayRef.current = relay;
     setConnectionStatus("connecting");
     setConnectionMessage("Connecting to Relay...");
@@ -287,15 +400,30 @@ function AppContent(): JSX.Element {
         relayRef.current = null;
       }
     };
-  }, [pairing]);
+  }, [pairing, transportPreference]);
 
   // 阶段 5：进入后台时主动降级到 relay path（PeerConnection 在后台会被系统挂起），
   // 回到前台后由下次 propose 周期重新尝试 upgrade。NetInfo 网络变化暂未接入，
   // TODO(阶段 5)：订阅 NetInfo，发生网络切换时同样调用 forceDowngrade 并清理 backoff。
+  // 严格 P2P 模式下不能 forceDowngrade（那等价于把业务消息切回 Relay），改为
+  // pauseForBackground/resumeForForeground：暂停 ping/buffered 采样并暂停业务消息，
+  // 前台恢复后等下次 propose 重新建链。
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (next) => {
+      const relay = relayRef.current;
+      if (!relay) {
+        return;
+      }
+      if (relay.isStrictP2p()) {
+        if (next === "active") {
+          relay.resumeForForeground();
+        } else {
+          relay.pauseForBackground();
+        }
+        return;
+      }
       if (next !== "active") {
-        relayRef.current?.forceDowngrade("app_background");
+        relay.forceDowngrade("app_background");
       }
     });
     return () => subscription.remove();
@@ -453,15 +581,17 @@ function AppContent(): JSX.Element {
 
   /**
    * 处理鉴权失败后的本地清理：
-   * - 清除已失效的 pairing（Mac Agent 重启后 sessionKey 不再有效）；
-   * - 把当前会话/工作区状态全部置空，避免误用旧数据；
-   * - 引导用户回到设备列表或配对页重新录入新 key。
+   * - 保留已保存的 pairing 条目（这样用户在 Device Center 里仍能看到该设备，
+   *   可主动 Edit 修正 key 或 Delete）；过去会自动删除该 pairing 并把用户
+   *   丢回 Pairing 页，但 web 端 RN `Alert.alert` 是 no-op，导致体感上是
+   *   "保存失败、设备被静默删除、重新弹出输入界面"。
+   * - 把当前会话/工作区状态全部置空，避免误用上一次会话状态；
+   * - 通过 connectionMessage / pairingError 透出失败原因。
    */
   async function handleAuthFailureCleanup(
     targetPairing: PairingConfig,
     reason: string,
   ): Promise<void> {
-    const nextPairings = await removeSavedPairing(targetPairing);
     setSessions([]);
     setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
     setWorkspaces([]);
@@ -471,23 +601,17 @@ function AppContent(): JSX.Element {
     setClosingSessionIds([]);
     setKillingSessionIds([]);
 
-    if (pairing && isSamePairing(pairing, targetPairing)) {
-      setPairing(nextPairings[0] ?? null);
-    }
+    const errorText = `Authentication failed for "${targetPairing.deviceId}": ${reason}. Edit the device to enter a new key, or delete it.`;
+    setConnectionStatus("failed");
+    setConnectionMessage(errorText);
+    setPairingError(errorText);
 
-    if (nextPairings.length > 0) {
-      setEditingPairing(undefined);
-      setView("devices");
-      setPairingError(
-        `Saved key for device "${targetPairing.deviceId}" was rejected by Mac Agent (${reason}). Please re-pair the device.`,
-      );
-    } else {
-      setEditingPairing(targetPairing);
-      setView("pairing");
-      setPairingError(
-        `Authentication failed: ${reason}. Please scan a fresh QR code or paste a new key.`,
-      );
+    if (view === "pairing" && editingPairing) {
+      // 用户正在 Edit 当前 pairing 时被打回，保留 editingPairing 让其继续修改。
+      return;
     }
+    setEditingPairing(undefined);
+    setView("devices");
   }
 
   async function removeSavedPairing(
@@ -673,9 +797,7 @@ function AppContent(): JSX.Element {
 
     const external = session.origin === "external";
     const removeOnly =
-      session.status === "error" ||
-      session.status === "exited" ||
-      session.status === "archived";
+      session.status === "exited" || session.status === "archived";
     const title = external
       ? "Forget tmux session"
       : removeOnly
@@ -750,39 +872,6 @@ function AppContent(): JSX.Element {
         : [...current, session.session_id],
     );
     sendToRelay(killTmuxSessionRequest(pairing.deviceId, session.session_id));
-  }
-
-  function handleRecoverSession(session: CodexSession): void {
-    if (!pairing || connectionStatus !== "authenticated") {
-      return;
-    }
-
-    const capabilities = getSessionCapabilities(session, {
-      closing: closingSessionIds.includes(session.session_id),
-      killing: killingSessionIds.includes(session.session_id),
-    });
-    if (!capabilities.canRecover) {
-      setConnectionMessage(
-        capabilities.unavailableReason ??
-          "This session cannot be recovered right now.",
-      );
-      return;
-    }
-
-    setConnectionMessage(
-      `${capabilities.recoveryActionLabel ?? "Recover"} requested for ${session.title}.`,
-    );
-
-    if (session.status === "exited") {
-      sendToRelay(restartSessionRequest(pairing.deviceId, session.session_id));
-      return;
-    }
-    if (session.status === "recovering") {
-      sendToRelay(recoverSessionRequest(pairing.deviceId, session.session_id));
-      return;
-    }
-
-    sendToRelay(retrySessionRequest(pairing.deviceId, session.session_id));
   }
 
   function handleOpenSession(session: CodexSession): void {
@@ -1071,13 +1160,30 @@ function AppContent(): JSX.Element {
         setCreatingSession(false);
         pendingCreateRef.current = false;
         setWorkspaceLoading(false);
-        setConnectionMessage(
-          payload.message || "Terminal error from Mac Agent.",
-        );
+        const detail = payload.message || "Terminal error from Mac Agent.";
+        setConnectionMessage(detail);
         if (payload.code === "TMUX_TARGET_MISSING") {
           setSelectedSession(null);
           setView("sessions");
         }
+        // session.create 等失败路径下，前端原本只是默默更新 connectionMessage，
+        // 用户在 SessionListScreen 上根本看不到。这里用 confirm 弹一次性提示，
+        // 让用户明确感知失败原因，避免"按了创建但什么也没发生"的体感。
+        const title =
+          payload.code === "SESSION_CREATE_FAILED"
+            ? "Failed to create session"
+            : payload.code === "TMUX_TARGET_MISSING"
+              ? "Session no longer available"
+              : "Mac Agent error";
+        confirm({
+          title,
+          message: detail,
+          confirmText: "OK",
+          cancelText: "",
+          tone: "danger",
+        }).catch(() => {
+          /* user dismissed */
+        });
         break;
       }
       default:
@@ -1129,6 +1235,13 @@ function AppContent(): JSX.Element {
             onDeleteDevice={handleDeleteDevice}
             onOpenDevice={handleOpenDevice}
             onRefreshSessions={handleRefreshSessions}
+            onOpenSettings={() => setView("settings")}
+          />
+        ) : view === "settings" ? (
+          <ConnectionPreferenceScreen
+            transportPreference={transportPreference}
+            onChangeTransportPreference={handleChangeTransportPreference}
+            onBack={() => setView("devices")}
           />
         ) : view === "sessions" ? (
           <SessionListScreen
@@ -1157,7 +1270,6 @@ function AppContent(): JSX.Element {
             onOpenSession={handleOpenSession}
             onCloseSession={handleCloseSession}
             onRenameSession={handleRenameSession}
-            onRecoverSession={handleRecoverSession}
             onKillTmuxSession={handleKillTmuxSession}
           />
         ) : selectedSession ? (
@@ -1189,10 +1301,17 @@ function AppContent(): JSX.Element {
 
 function createAppSessionTransport(
   pairing: PairingConfig,
+  transportPreference: TransportPreference,
+  options: { onForceClose?: (reason: string) => void } = {},
 ): AppSessionTransport {
-  const session = new MobileRelaySession(pairing);
+  const session = new MobileRelaySession(pairing, { transportPreference });
   const relayPath = new MobileRelayPath(session);
-  const transport = new MobileSessionTransport(relayPath);
+  const strictP2p = transportPreference === "prefer_p2p";
+  const onForceClose = options.onForceClose;
+  const transport = new MobileSessionTransport(relayPath, {
+    strictP2p,
+    onForceClose,
+  });
   const logTransport =
     typeof process !== "undefined" &&
     process.env?.OMNIWORK_LOG_TRANSPORT === "1";
@@ -1201,11 +1320,23 @@ function createAppSessionTransport(
   const coordinator = new UpgradeCoordinator({
     role: "offerer",
     deviceId: pairing.deviceId,
-    peerFactory: (opts) =>
-      createMobileWebRtcPeerAdapter({
+    // 防御性兜底：即便 Relay 端 respectClientPreference 被运维关闭，
+    // 用户选择 relay_only 时 App 仍拒绝创建 PeerConnection，触发 coordinator
+    // 的 peer_unavailable 失败计数让链路稳定回退到 relay。
+    // 严格 P2P 模式下若 react-native-webrtc / wrtc 不可用同样返回 null，
+    // coordinator 会调用 onForceClose("peer_unavailable") 关闭 session。
+    peerFactory: (opts) => {
+      if (transportPreference === "relay_only") {
+        console.info("[omniwork-app] upgrade refused by transport_preference", {
+          preference: transportPreference,
+        });
+        return null;
+      }
+      return createMobileWebRtcPeerAdapter({
         iceServers: opts.iceServers,
         role: opts.role,
-      }),
+      });
+    },
     sendControl: (envelope) => session.send(envelope),
     onSwitchPath: (path) => {
       if (path === "p2p") {
@@ -1219,6 +1350,10 @@ function createAppSessionTransport(
         }
       }
       void transport.switchPath(path);
+    },
+    onForceClose: (reason) => {
+      // 协商期失败 → 让 transport 通过 forceCloseHandler 通知上层
+      transport.forceClose(reason);
     },
   });
 
@@ -1248,6 +1383,22 @@ function createAppSessionTransport(
         console.warn("[omniwork-app] transport downgrade", {
           reason: event.reason,
         });
+        break;
+      case "force_close":
+        console.warn("[omniwork-app] strict_p2p force_close", {
+          reason: event.reason,
+        });
+        break;
+      case "strict_send_blocked":
+        console.warn("[omniwork-app] strict_p2p send blocked", {
+          envelope_type: event.envelope_type,
+        });
+        break;
+      case "background_pause":
+        console.info("[omniwork-app] strict_p2p background pause");
+        break;
+      case "background_resume":
+        console.info("[omniwork-app] strict_p2p background resume");
         break;
     }
   });
@@ -1280,6 +1431,14 @@ function createAppSessionTransport(
     onClose: (handler) => relayPath.onClose(handler),
     send: (message) => transport.send(message),
     close: () => {
+      // 切偏好/退出时若 currentPath==='p2p'，先让 coordinator 发出
+      // tunnel.upgrade.downgrade(reason="client_closing")，让 agent 端
+      // 立即 cleanup PeerConnection，避免之后 agent 仅靠 pong_timeout
+      // (~5s) 才被动感知，期间 strict 端会出现 strict_p2p_disconnect 噪音、
+      // auto 端业务消息（如新链路鉴权）也得不到清场。
+      if (transport.getCurrentPath() === "p2p") {
+        coordinator.downgrade("client_closing");
+      }
       transport.close("client closing");
       session.close();
     },
@@ -1289,6 +1448,7 @@ function createAppSessionTransport(
       transport.forceDowngrade(reason);
       coordinator.downgrade(reason);
     },
+    forceClose: (reason) => transport.forceClose(reason),
     handleUpgradeMessage: (message) => {
       switch (message.type) {
         case "tunnel.upgrade.propose":
@@ -1316,16 +1476,31 @@ function createAppSessionTransport(
             (message as MessageEnvelope<TunnelUpgradeCommittedPayload>).payload,
           );
           break;
-        case "tunnel.upgrade.downgrade":
-          coordinator.downgrade(
-            (message as MessageEnvelope<TunnelUpgradeDowngradePayload>).payload
-              .reason,
-          );
+        case "tunnel.upgrade.downgrade": {
+          const reason = (
+            message as MessageEnvelope<TunnelUpgradeDowngradePayload>
+          ).payload.reason;
+          // strict 偏好下，Relay 端 enabled/blocklist/backoff 守门会主动
+          // 下发 reason="strict_unavailable:*" —— 此时 coordinator 还在
+          // idle，downgrade() 直接 return 不会触发 forceClose；这里兜底
+          // 让 strict transport 立即关闭 session 让 UI 透出原因。
+          if (
+            reason.startsWith("strict_unavailable") &&
+            transport.isStrictP2p()
+          ) {
+            transport.forceClose(reason);
+            break;
+          }
+          coordinator.downgrade(reason);
           break;
+        }
         default:
           break;
       }
     },
+    pauseForBackground: () => transport.pauseForBackground(),
+    resumeForForeground: () => transport.resumeForForeground(),
+    isStrictP2p: () => transport.isStrictP2p(),
   };
 }
 
@@ -1419,9 +1594,7 @@ function formatErrorMessage(error: unknown): string {
 }
 
 function isTransitionalSessionStatus(status: CodexSession["status"]): boolean {
-  return (
-    status === "created" || status === "starting" || status === "recovering"
-  );
+  return status === "created" || status === "starting";
 }
 
 function formatRelayCloseMessage(event: {
@@ -1430,4 +1603,52 @@ function formatRelayCloseMessage(event: {
 }): string {
   const reason = event.reason ? `: ${event.reason}` : "";
   return `Relay connection closed${event.code ? ` (${event.code})` : ""}${reason}`;
+}
+
+/**
+ * 把 transport.forceClose 透出来的 strict 失败 reason 翻译成面向用户的 UI 文案。
+ * - 协商期失败（peer_unavailable / create_offer_failed / handle_offer_failed /
+ *   handle_answer_failed / timeout）：常见于双端 ICE/SDP 错配，提示用户重连或换偏好；
+ * - 运行期降级（pong_timeout / ice_failed / ice_disconnected / buffered_overflow /
+ *   peer_closed / peer_missing）：通常是网络抖动，提示用户重连；
+ * - relay 主动 strict_unavailable:*：来自 P1-1E/1F 守门，附带 cause 供排查。
+ *
+ * 未识别的 reason 走兜底文案 + 原始 token，便于线上抓 bug。
+ */
+function formatStrictForceCloseMessage(reason: string): string {
+  if (reason.startsWith("strict_unavailable:")) {
+    const cause = reason.slice("strict_unavailable:".length);
+    if (cause === "relay_disabled") {
+      return "Strict P2P is disabled by the Relay. Switch the connection preference or contact the operator.";
+    }
+    if (cause === "blocklisted") {
+      return "Strict P2P is unavailable: this device is blocklisted on the Relay.";
+    }
+    if (cause === "backoff_active") {
+      return "Strict P2P is in cooldown after recent failures. Please retry in a few minutes or switch preference.";
+    }
+    return `Strict P2P unavailable (${cause}). Switch preference or reconnect.`;
+  }
+  switch (reason) {
+    case "peer_unavailable":
+      return "Strict P2P unavailable: WebRTC could not be initialised. Check that the App and Mac Agent are reachable and try again.";
+    case "create_offer_failed":
+    case "handle_offer_failed":
+    case "handle_answer_failed":
+      return "Strict P2P negotiation failed. Reconnect, and if the issue persists switch the connection preference.";
+    case "timeout":
+      return "Strict P2P negotiation timed out. Check the network and retry.";
+    case "pong_timeout":
+      return "Strict P2P link lost (no heartbeat). Reconnect or switch the connection preference.";
+    case "ice_failed":
+    case "ice_disconnected":
+      return "Strict P2P link lost (ICE disconnected). Reconnect or switch the connection preference.";
+    case "buffered_overflow":
+      return "Strict P2P link lost (send buffer overflow). Reconnect or switch the connection preference.";
+    case "peer_closed":
+    case "peer_missing":
+      return "Strict P2P link closed unexpectedly. Reconnect or switch the connection preference.";
+    default:
+      return `Strict P2P unavailable: ${reason}. Switch transport preference or reconnect.`;
+  }
 }

@@ -356,7 +356,33 @@ idle → proposed → negotiating → committing → upgraded
   - `OMNIWORK_UPGRADE_ENABLED=true|false`：全局开关
   - `OMNIWORK_UPGRADE_ROLLOUT=0..100`：灰度百分比（按 device_id 哈希）
   - `OMNIWORK_UPGRADE_DEVICE_BLOCKLIST=`：逗号分隔
+  - `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF=true|false`（默认 `true`）：是否尊重 App 端 `mobile.connect.transport_preference`，运维回滚为 `false` 时所有偏好被强制视作 `auto`。
 - Relay 启动时从环境变量读取，运行时不热更新（v1）。
+
+### 任务 4.3.1：客户端传输偏好（auto / relay_only / prefer_p2p）
+
+- 协议层：`packages/protocol-ts` 的 `MobileConnectPayload` 新增可选 `transport_preference`，对应 `TransportPreference` 三态与 `isTransportPreference` 守卫；`TunnelUpgradeProposePayload` 新增可选 `strict?: boolean`。
+- Relay：`RelayConnection` 在 `mobile.connect` 阶段缓存 `transportPreference`；orchestrator `notifyMobileAuthenticated` 按三态分流：
+  - `relay_only`：跳过 propose，不进入退避，不计 `failed`，累计 `metrics.skipped_by_pref`。
+  - `prefer_p2p`：跳过灰度（rollout）守门；在 propose payload 中携带 `strict: true`；仍受 `enabled` / `blocklist` / `backoff` 约束。`OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF=false` 时强制视为 `auto` 且不下发 `strict`。
+  - `auto`（缺省）：维持原有灰度逻辑，propose 不带 `strict`。
+- **Relay strict 守门主动下发 downgrade**：`prefer_p2p` 命中 `enabled=false` / `deviceBlocklist` / `backoff` 三类守门时，orchestrator 不再静默吞掉 propose，而是经 `notifyStrictUnavailable(deviceId, mobile, preference, cause)` 私有方法主动下发 `tunnel.upgrade.downgrade(reason="strict_unavailable:<cause>")`（cause ∈ `relay_disabled` / `blocklisted` / `backoff_active`），并累计 `metrics.downgrade["strict_unavailable:<cause>"]`；`metrics.prefs` 计数提前到所有守门之前，保证偏好统计不丢。`auto` 偏好命中守门仍维持静默策略。
+- App / Agent：`SessionTransport` 在收到 `propose.strict=true` 后切到严格模式：
+  - **控制面准入门 + 业务消息暂存**：`relay` path 上仅放行 `tunnel.upgrade.*` / `transport.*`；其他业务消息暂存到 `strictPendingQueue`（上限 `STRICT_PENDING_QUEUE_LIMIT=256`），等 `switchPath('p2p')` 完成后 flush 下发。队列超过上限时直接 emit `pending_drop(reason="queue_overflow", count)` 并触发 `forceClose('strict_pending_overflow')`；`close` / `forceClose` 时若队列非空，亦各自 emit `pending_drop(reason="session_close" | "force_close")`，由业务侧记录度量。agent 端的 `configureStrictP2p` 仅用于切换偏好，仍静默清空。
+  - **DataChannel 未 open 防丢失**：`WebRtcPeerAdapter.send()` 在 `dataChannel.readyState === 'connecting'` 时把消息暂存到 adapter 内部 `pendingSends`（上限 256），`dataChannel.onopen` 时统一 flush。覆盖 ICE `connected` 抢跑 SCTP 握手的窗口。
+  - **dispatchSend 守门**：strict 模式 + `currentPath==='p2p'` + `peer===null` 时不 fallback 到 relay，发出 `strict_send_blocked` 后 `forceClose('peer_missing')`。
+  - **forceClose 唯一入口（P2-3D）**：四类 strict 关闭路径——coordinator 协商失败 / 运行期健康降级 / Relay 主动 `strict_unavailable` / `dispatchSend` peer 脱钩——统一汇聚到 `SessionTransport.forceClose(reason)`：先 emit `force_close`、`detachP2pPeer`、`resetPathState`、非空时 emit `pending_drop("force_close")`，再回调 `downgradeHandler` 让 coordinator 发出 `tunnel.upgrade.downgrade`（保留 Relay metrics 与退避计数），最后回调 `forceCloseHandler` 让业务上层提示用户。`forceClose` 自带 `forceClosed` 重入哨兵，重复调用立即返回；`handleHealthDowngrade` 在 strict 分支统一调 `forceClose`，不再单独分发 `downgradeHandler`。
+  - **close 与 forceClose 正交（P2-3E）**：`close()` 表达 session 生命周期结束，仅做 detach + 释放 handler 注册表；`forceClose()` 表达 strict 模式下不可用、需上报上层。两者互不调用，`close()` 不会触发 `forceCloseHandler`，避免普通关停被误识别为 strict 失败；两端均设 `closed` 重入哨兵。App 端 wiring（`createAppSessionTransport`）在 `close()` 内补一道协议礼貌：若 `currentPath==='p2p'`，先调 `coordinator.downgrade("client_closing")` 让对端立刻 cleanup PeerConnection，再走 `transport.close` / `session.close`；避免切换 `transport_preference`、退出账号等场景下 agent 端仅靠 `pong_timeout`(~5s) 才被动感知，期间 strict 端噪音 `strict_p2p_disconnect`、auto 端业务消息泄漏。`client_closing` 也作为 `tunnel.upgrade.downgrade` 的合法 reason 列入 [relay-architecture.md §4 降级触发清单](./relay-architecture.md)。
+  - **状态机完整 reset**：`forceClose` / `configureStrictP2p` 调用 `resetPathState()` 把 `currentPath` 切回 `relay` 并清空 `outboundQueue / switching / strictPendingQueue`，让跨多次 mobile 连接复用的 transport 回到初始态。**Agent 端 `forceClose` 同时把 `strictP2p` 标记复位为 `false` 并丢弃 `forceCloseHandler`**，避免本轮 strict 会话终结后下一轮 mobile 用 `relay_only` 偏好重连时（不会再触发 `configureStrictP2p`）残留的 `strictP2p + forceClosed` 把 `auth.ok` / `session.list` 等响应当成 strict 模式下需要暂存的非控制面消息，命中 `strict_send_blocked` 静默丢弃，导致 App 端永远收不到 `auth.ok`、UI 卡在 Connecting；下一轮若仍是 `prefer_p2p`，propose 路径上的 `configureStrictP2p` 会重新置回 true。
+  - **strict 心跳/超时阈值（mobile + agent 双端镜像）**：strict 模式下使用 `STRICT_PING_INTERVAL_MS=3000` / `STRICT_PING_TIMEOUT_MS=3000` / `STRICT_PING_TIMEOUT_THRESHOLD=5` / `STRICT_ICE_DISCONNECTED_GRACE_MS=10000`，分别覆盖 `startPingLoop` 间隔、`sendPing` 单次超时、`handlePongTimeout` 连续失败计数与 `armIceDisconnectedTimer` 宽限期；`auto` 模式仍走原始阈值（5s / 1s / 3 次 / 3s）。
+  - **协商/运行期失败**：`UpgradeCoordinator` 仍发送 `tunnel.upgrade.downgrade` 让 Relay 计 metrics + 退避，但本地不调 `switchPath('relay')`，改调 `SessionTransport.forceClose(reason)`，业务层收到 `force_close` 事件由用户决策。
+  - **upgrade_success 语义对齐（P2-2C）**：`UpgradeCoordinator.maybeUpgrade()` 在双端 `committed` 后先调 `onSwitchPath("p2p")` 再 emit `upgrade_success`，让订阅方在收到 `upgrade_success` 时观察到 transport 已经在切到 p2p（path_change 已触发或正在 drain），消除"success 但 currentPath 仍是 relay"的中间态。
+  - **App 端 strict_unavailable 兜底**：`tunnel.upgrade.downgrade` 路由分支判断 `reason.startsWith("strict_unavailable") && transport.isStrictP2p()` 时直接调 `transport.forceClose(reason)`，跳过 `coordinator.downgrade`；`AppSessionTransport` 类型暴露 `forceClose(reason)` 包装。
+  - **后台暂停**：`AppState` 进入 background 走 `pauseForBackground()`（不计协商失败）；前台恢复走 `resumeForForeground()` 触发重新 propose。
+  - **TURN 过滤**：`webRtcPeerAdapter` 在 `onicecandidate` 阶段丢弃 `typ relay` candidate，端到端禁用 TURN。
+  - `peerFactory` 在 `relay_only` 时直接返回 `null` 兜底；严格模式下任何 `peer_unavailable` 都会触发 `forceClose`。
+- App UI：Devices 页 `prefer_p2p` 选项标签为 “Strict P2P”，hint 说明立即重连与 strict 失败即关闭 session 的语义；出厂默认仍为 `appConfig.transportPreference` 的 `auto`，用户切换到 `prefer_p2p` 时弹 `Alert.alert("Switch to Strict P2P?", …)` 二次确认，确认后才写入 `AsyncStorage["omniwork.transportPreference"]` 并触发当前 pairing 重连。`onForceClose` 通过 `formatStrictForceCloseMessage(reason)` 把 `strict_unavailable:relay_disabled` / `:blocklisted` / `:backoff_active` 以及 `peer_unavailable` / `create_offer_failed` / `handle_offer_failed` / `handle_answer_failed` / `timeout` / `pong_timeout` / `ice_failed` / `ice_disconnected` / `buffered_overflow` / `peer_closed` / `peer_missing` 等 reason 翻译成面向用户的连接状态文案。
+- 详见 [relay-architecture.md §6.1](./relay-architecture.md)。
 
 ### 任务 4.4：可观测埋点（Relay 侧）
 

@@ -212,6 +212,8 @@ created_at
 last_active_at
 terminal_size
 tmux_session_name
+tmux_server_pid       # 可选，tmux server pid（`#{pid}`），与 session_uid 组合识别"同名但新进程"
+tmux_session_uid      # 可选，tmux 分配的 session uid（`#{session_id}`，形如 $1）
 owner_user_id
 mac_device_id
 ```

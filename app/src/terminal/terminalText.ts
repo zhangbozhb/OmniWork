@@ -6,6 +6,7 @@ export interface TerminalTextSegment {
   dim?: boolean;
   italic?: boolean;
   underline?: boolean;
+  inverse?: boolean;
 }
 
 interface TerminalAnsiState extends Omit<TerminalTextSegment, "text"> {}
@@ -86,6 +87,10 @@ function applySgrParams(state: TerminalAnsiState, rawParams?: string): void {
       state.underline = true;
       continue;
     }
+    if (param === 7) {
+      state.inverse = true;
+      continue;
+    }
     if (param === 22) {
       state.bold = undefined;
       state.dim = undefined;
@@ -97,6 +102,10 @@ function applySgrParams(state: TerminalAnsiState, rawParams?: string): void {
     }
     if (param === 24) {
       state.underline = undefined;
+      continue;
+    }
+    if (param === 27) {
+      state.inverse = undefined;
       continue;
     }
     if (param === 39) {
@@ -128,6 +137,7 @@ function resetState(state: TerminalAnsiState): void {
   state.dim = undefined;
   state.italic = undefined;
   state.underline = undefined;
+  state.inverse = undefined;
 }
 
 const ANSI_FOREGROUND_COLORS: Record<number, string> = {

@@ -78,7 +78,6 @@ export interface SessionListScreenProps {
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
   onRenameSession(session: CodexSession, title: string): void;
-  onRecoverSession(session: CodexSession): void;
   onKillTmuxSession(session: CodexSession): void;
 }
 
@@ -123,7 +122,6 @@ export function SessionListScreen({
   onOpenSession,
   onCloseSession,
   onRenameSession,
-  onRecoverSession,
   onKillTmuxSession,
 }: SessionListScreenProps): JSX.Element {
   const [providerPreferences, setProviderPreferences] =
@@ -1884,11 +1882,7 @@ function basename(path: string): string {
 }
 
 function getCloseActionLabel(session: CodexSession): string {
-  if (
-    session.status === "error" ||
-    session.status === "exited" ||
-    session.status === "archived"
-  ) {
+  if (session.status === "exited" || session.status === "archived") {
     return "Remove";
   }
 

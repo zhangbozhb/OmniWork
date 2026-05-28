@@ -49,6 +49,12 @@ export interface UpgradeCoordinatorOptions {
   peerFactory: UpgradePeerFactory;
   sendControl: (envelope: MessageEnvelope) => void;
   onSwitchPath: (path: TransportPath) => void;
+  /**
+   * 严格 P2P 模式下，协商失败/运行期降级不再回退到 Relay；
+   * 改为调用此回调让 agentService 关闭并清理对应 session（forceClose）。
+   * 调用前仍会向 Relay 发送 tunnel.upgrade.downgrade，仅用于 metrics + backoff。
+   */
+  onForceClose?: (reason: string) => void;
   deviceId: string;
   timeoutMs?: number;
 }
@@ -65,12 +71,14 @@ export class UpgradeCoordinator {
   private readonly peerFactory: UpgradePeerFactory;
   private readonly sendControl: (envelope: MessageEnvelope) => void;
   private readonly onSwitchPath: (path: TransportPath) => void;
+  private readonly onForceClose: ((reason: string) => void) | null;
   private readonly deviceId: string;
   private readonly timeoutMs: number;
 
   private state: UpgradeState = "idle";
   private peer: WebRtcPeerAdapter | null = null;
   private upgradeId: string | null = null;
+  private strict = false;
   private localCommitted = false;
   private remoteCommitted = false;
   private negotiationTimer: ReturnType<typeof setTimeout> | null = null;
@@ -82,6 +90,7 @@ export class UpgradeCoordinator {
     this.peerFactory = opts.peerFactory;
     this.sendControl = opts.sendControl;
     this.onSwitchPath = opts.onSwitchPath;
+    this.onForceClose = opts.onForceClose ?? null;
     this.deviceId = opts.deviceId;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
@@ -119,6 +128,7 @@ export class UpgradeCoordinator {
     }
 
     this.upgradeId = payload.upgrade_id;
+    this.strict = payload.strict === true;
     this.state = "proposed";
     this.successEmitted = false;
     this.emitEvent({
@@ -253,6 +263,7 @@ export class UpgradeCoordinator {
       return;
     }
     const upgradeId = this.upgradeId;
+    const strict = this.strict;
     if (upgradeId) {
       this.sendUpgrade<TunnelUpgradeDowngradePayload>(
         "tunnel.upgrade.downgrade",
@@ -269,6 +280,18 @@ export class UpgradeCoordinator {
       });
     }
     this.cleanupPeer();
+    if (strict && this.onForceClose) {
+      // 严格 P2P：失败/降级不回退 Relay，由上层 wiring 关闭并清理 session
+      this.resetToIdle();
+      try {
+        this.onForceClose(reason);
+      } catch (error) {
+        console.warn("[omniwork-upgrade] onForceClose failed", {
+          error: (error as Error)?.message,
+        });
+      }
+      return;
+    }
     this.onSwitchPath("relay");
     this.resetToIdle();
   }
@@ -345,11 +368,14 @@ export class UpgradeCoordinator {
       this.state = "upgraded";
       this.clearTimeout();
       const upgradeId = this.upgradeId;
+      // 先触发路径切换，再 emit upgrade_success：让订阅方观察到 success 时
+      // transport 已经在切到 p2p（path_change 已触发或正在 drain），避免出现
+      // "success 但 currentPath 仍是 relay"的中间态语义。
+      this.onSwitchPath("p2p");
       if (upgradeId && !this.successEmitted) {
         this.successEmitted = true;
         this.emitEvent({ type: "upgrade_success", upgrade_id: upgradeId });
       }
-      this.onSwitchPath("p2p");
     }
   }
 
@@ -368,6 +394,7 @@ export class UpgradeCoordinator {
   private resetToIdle(): void {
     this.state = "idle";
     this.upgradeId = null;
+    this.strict = false;
     this.localCommitted = false;
     this.remoteCommitted = false;
   }

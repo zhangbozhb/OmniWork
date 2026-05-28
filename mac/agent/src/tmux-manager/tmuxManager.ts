@@ -18,6 +18,10 @@ export class TmuxTargetMissingError extends Error {
 
 export interface TmuxSessionInfo {
   name: string;
+  /** tmux session uid，形如 `$1`，由 tmux server 分配，server 重启后重置。 */
+  sessionUid: string;
+  /** tmux server 进程 pid，与 sessionUid 组合可唯一标识"同一进程窗口"。 */
+  serverPid: number;
   createdAt: string;
   attached: boolean;
   currentPath?: string;
@@ -39,7 +43,7 @@ export class TmuxManager {
     cwd: string;
     command: string;
     size: TerminalSize;
-  }): Promise<void> {
+  }): Promise<{ serverPid: number; sessionUid: string }> {
     await runTmux([
       "new-session",
       "-d",
@@ -53,6 +57,8 @@ export class TmuxManager {
       options.cwd,
       options.command,
     ]);
+    // tmux 创建后立即取强 ID，以便 store 用 (serverPid, sessionUid) 绑定。
+    return await this.getSessionIdentity(options.tmuxSessionName);
   }
 
   async listSessions(): Promise<TmuxSessionInfo[]> {
@@ -60,17 +66,26 @@ export class TmuxManager {
       const { stdout } = await execFileAsync("tmux", [
         "list-sessions",
         "-F",
-        "#{session_name}\t#{session_created}\t#{session_attached}\t#{pane_current_path}\t#{pane_current_command}",
+        "#{session_name}\t#{session_id}\t#{pid}\t#{session_created}\t#{session_attached}\t#{pane_current_path}\t#{pane_current_command}",
       ]);
 
       return stdout
         .split("\n")
         .filter(Boolean)
         .map((line) => {
-          const [name, created, attached, currentPath, currentCommand] =
-            line.split("\t");
+          const [
+            name,
+            sessionUid,
+            serverPid,
+            created,
+            attached,
+            currentPath,
+            currentCommand,
+          ] = line.split("\t");
           return {
             name,
+            sessionUid,
+            serverPid: Number(serverPid) || 0,
             createdAt: new Date(Number(created) * 1000).toISOString(),
             attached: attached === "1",
             currentPath,
@@ -80,6 +95,29 @@ export class TmuxManager {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * 取一个 tmux session 的强 ID：(serverPid, sessionUid)。
+   * 用于 createSession 后立即绑定，或用于诊断"同名但不同实例"的场景。
+   */
+  async getSessionIdentity(
+    tmuxSessionName: string,
+  ): Promise<{ serverPid: number; sessionUid: string }> {
+    const { stdout } = await runTmux(
+      [
+        "display-message",
+        "-p",
+        "-t",
+        tmuxSessionName,
+        "-F",
+        "#{pid}\t#{session_id}",
+      ],
+      tmuxSessionName,
+    );
+    const [serverPidRaw, sessionUid] = stdout.trim().split("\t");
+    const serverPid = Number(serverPidRaw) || 0;
+    return { serverPid, sessionUid: sessionUid ?? "" };
   }
 
   async sendInput(tmuxSessionName: string, data: string): Promise<void> {
@@ -122,6 +160,28 @@ export class TmuxManager {
       tmuxSessionName,
     );
     return stdout;
+  }
+
+  async getCursor(
+    tmuxSessionName: string,
+  ): Promise<{ x: number; y: number; paneHeight: number }> {
+    const { stdout } = await runTmux(
+      [
+        "display-message",
+        "-p",
+        "-t",
+        tmuxSessionName,
+        "-F",
+        "#{cursor_x},#{cursor_y},#{pane_height}",
+      ],
+      tmuxSessionName,
+    );
+    const [x, y, paneHeight] = stdout.trim().split(",").map(Number);
+    return {
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+      paneHeight: Number.isFinite(paneHeight) ? paneHeight : 0,
+    };
   }
 
   async killSession(tmuxSessionName: string): Promise<void> {

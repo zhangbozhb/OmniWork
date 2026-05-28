@@ -406,6 +406,7 @@ agent.hello: device_id + agent_instance_id + key_id
 ```text
 auth.challenge
 auth.proof
+auth.verify
 auth.ok
 auth.failed
 agent.hello
@@ -415,10 +416,10 @@ session.list
 session.create
 session.rename
 session.close
+session.kill_tmux
 session.attach
 session.detach
 session.status
-session.audit
 ```
 
 TUI 数据面：
@@ -429,8 +430,6 @@ terminal.input
 terminal.resize
 terminal.snapshot
 terminal.ack
-terminal.pause
-terminal.resume
 terminal.error
 ```
 
@@ -502,10 +501,6 @@ stateDiagram-v2
   Detached --> Running
   Running --> Exited
   Detached --> Exited
-  Running --> Error
-  Detached --> Error
-  Error --> Recovering
-  Recovering --> Running
   Exited --> Archived
 ```
 
@@ -516,9 +511,9 @@ stateDiagram-v2
 - `Running`：会话运行中。
 - `Detached`：无人连接但后台运行。
 - `Exited`：Codex 进程已退出。
-- `Error`：会话异常。
-- `Recovering`：Agent 正在重建映射或重连。
 - `Archived`：不可交互，仅保留元数据。
+
+> 备注：协议层不再使用 `Error` 状态。任何瞬态错误（例如 `session.create` 时 tmux 启动失败）通过 `terminal.error` envelope 直接反馈给前端，后端不再写入 `status="error"` 占位。tmux 会话一旦消失，进程内对话上下文也随之丢失，无法"恢复成同一个 session"。`SessionManager.list()` 在对账时会直接将这些孤儿条目从持久化 store 中删除（不再保留 Error 占位、不提供 Recover/Retry/Restart 操作）。删除时按 `tmux_server_pid_mismatch` / `tmux_session_uid_mismatch` / `not_in_tmux_ls` 三类 reason 写入结构化日志，便于排查"会话突然消失"。
 
 ## 手机端 TUI 体验方案
 

@@ -143,7 +143,7 @@ MVP 鉴权模型：
 - Relay 如使用 Go/Rust，也从 `protocol/` 生成对应语言类型。
 - 生成代码只放 `generated/`，不得手工修改。
 - 协议破坏性变更必须升级版本并补 contract test。
-- `packages/protocol-ts/src/schemas.ts` 提供 envelope、`auth.*`、`terminal.*` 等关键报文的 zod schema 作为运行时校验来源；常量（如 `PROTOCOL_VERSION`、pairing link scheme/host）集中维护在 `packages/protocol-ts/src/constants.ts`。
+- `packages/protocol-ts/src/schemas.ts` 提供 envelope、`auth.*`、`terminal.*`、`session.*` 等关键报文的 zod schema 作为运行时校验来源；常量（如 `PROTOCOL_VERSION`、`SUPPORTED_SESSION_STATUSES`、pairing link scheme/host）集中维护在 `packages/protocol-ts/src/constants.ts`。会话字段清单 `SESSION_FIELDS` / `SESSION_REQUIRED_FIELDS` 定义在 `index.ts`，与 `protocol/sessions/session.schema.json` 由 contract test 强制对账。
 - `packages/protocol-ts/tests/contract.test.ts` 是协议契约测试，通过 `pnpm --filter @omniwork/protocol-ts test` 运行；新增/调整字段或取值集合时必须同步补充正反例。
 
 ## 传输与升级要求
@@ -163,6 +163,7 @@ Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.m
 - `OMNIWORK_UPGRADE_DEVICE_BLOCKLIST`
 - `OMNIWORK_UPGRADE_ICE_SERVERS_JSON`
 - `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS`
+- `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF`：是否尊重 App `mobile.connect.transport_preference`；默认 `true`，运维回滚为 `false`。详见 [relay-architecture.md §6.1](./relay-architecture.md)。
 
 客户端可观测开关：
 

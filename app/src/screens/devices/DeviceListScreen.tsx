@@ -27,6 +27,10 @@ export interface DeviceListScreenProps {
   onDeleteDevice(pairing: PairingConfig): void | Promise<void>;
   onOpenDevice(pairing: PairingConfig): void;
   onRefreshSessions(): void;
+  /**
+   * 打开"右上角齿轮"二级页（Connection preference 等设置项）。
+   */
+  onOpenSettings(): void;
 }
 
 export function DeviceListScreen({
@@ -39,6 +43,7 @@ export function DeviceListScreen({
   onDeleteDevice,
   onOpenDevice,
   onRefreshSessions,
+  onOpenSettings,
 }: DeviceListScreenProps): JSX.Element {
   const ready = connectionStatus === "authenticated";
   const activeStatus = getDeviceStatusPresentation(
@@ -104,7 +109,7 @@ export function DeviceListScreen({
         </View>
       ) : null}
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerText}>
           <Text style={styles.headerEyebrow}>Device Center</Text>
           <Text style={styles.headerTitle}>
             {pairings.length} linked{" "}
@@ -115,10 +120,19 @@ export function DeviceListScreen({
           accessibilityLabel="Refresh"
           icon="refresh"
           iconOnly
-          style={styles.headerRefresh}
+          style={styles.headerIconButton}
           onPress={handleRefresh}
         >
           Refresh
+        </Button>
+        <Button
+          accessibilityLabel="Settings"
+          icon="settings"
+          iconOnly
+          style={styles.headerIconButton}
+          onPress={onOpenSettings}
+        >
+          Settings
         </Button>
       </View>
 
@@ -235,8 +249,11 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: spacing.sm,
+  },
+  headerText: {
+    flex: 1,
   },
   headerEyebrow: {
     color: colors.textDim,
@@ -247,7 +264,7 @@ const styles = StyleSheet.create({
     ...typography.title,
     marginTop: spacing.xs,
   },
-  headerRefresh: {
+  headerIconButton: {
     minHeight: 36,
     width: 36,
     paddingHorizontal: 0,

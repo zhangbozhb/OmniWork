@@ -29,6 +29,7 @@
     "verify:upgrade:simulator": "node --experimental-strip-types scripts/verify/mobile-upgrade-simulator.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "@react-native-community/cli": "latest"
   }
 }
