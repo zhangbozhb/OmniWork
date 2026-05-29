@@ -12,8 +12,13 @@ export interface ConnectionPreferenceScreenProps {
    */
   transportPreference: TransportPreference;
   onChangeTransportPreference(preference: TransportPreference): void;
-  onBack(): void;
+  onBack?: () => void;
 }
+
+export type ConnectionPreferenceContentProps = Pick<
+  ConnectionPreferenceScreenProps,
+  "transportPreference" | "onChangeTransportPreference"
+>;
 
 const TRANSPORT_PREFERENCE_OPTIONS: ReadonlyArray<{
   value: TransportPreference;
@@ -23,17 +28,17 @@ const TRANSPORT_PREFERENCE_OPTIONS: ReadonlyArray<{
   {
     value: "auto",
     label: "Auto",
-    hint: "Follow Relay rollout (default)",
+    hint: "Recommended. Prefer direct, use relay when needed.",
   },
   {
     value: "prefer_p2p",
-    label: "Strict P2P",
-    hint: "Require WebRTC; session unavailable if it cannot be established",
+    label: "Direct only",
+    hint: "No relay carries session payload after direct link is ready.",
   },
   {
     value: "relay_only",
-    label: "Relay Only",
-    hint: "Disable WebRTC upgrade",
+    label: "Relay only",
+    hint: "Use relay path only. Session data remains encrypted.",
   },
 ];
 
@@ -45,26 +50,42 @@ export function ConnectionPreferenceScreen({
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={styles.header}>
-        <Button
-          accessibilityLabel="Back"
-          icon="arrowLeft"
-          iconOnly
-          style={styles.backButton}
-          onPress={onBack}
-        >
-          Back
-        </Button>
+        {onBack ? (
+          <Button
+            accessibilityLabel="Back"
+            icon="arrowLeft"
+            iconOnly
+            style={styles.backButton}
+            onPress={onBack}
+          >
+            Back
+          </Button>
+        ) : null}
         <View style={styles.headerText}>
           <Text style={styles.headerEyebrow}>Settings</Text>
-          <Text style={styles.headerTitle}>Connection preference</Text>
+          <Text style={styles.headerTitle}>Connection mode</Text>
         </View>
       </View>
 
+      <ConnectionPreferenceContent
+        transportPreference={transportPreference}
+        onChangeTransportPreference={onChangeTransportPreference}
+      />
+    </ScrollView>
+  );
+}
+
+export function ConnectionPreferenceContent({
+  transportPreference,
+  onChangeTransportPreference,
+}: ConnectionPreferenceContentProps): JSX.Element {
+  return (
+    <>
       <Text style={styles.sectionHint}>
-        Choose how the App connects to the Mac Agent. The selection is saved on
-        this device and triggers an immediate reconnect; if you pick Strict P2P
-        and a direct WebRTC link cannot be established, the session will fail
-        instead of falling back to Relay.
+        Choose how OmniWork connects to the Mac Agent. Direct means session
+        payload data is not carried by relay after the direct link is ready.
+        Relay can help when networks block a direct path; the setting is saved
+        on this device and reconnects immediately.
       </Text>
 
       <View style={styles.optionList}>
@@ -106,7 +127,7 @@ export function ConnectionPreferenceScreen({
           );
         })}
       </View>
-    </ScrollView>
+    </>
   );
 }
 

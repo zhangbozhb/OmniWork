@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dimensions,
   Keyboard,
@@ -13,7 +13,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import type {
   CodexSession,
@@ -28,8 +27,8 @@ import {
 } from "../../../../packages/terminal-core/src/index.ts";
 import {
   computeTerminalLayout,
-  getDefaultTerminalDisplayProfile,
-  type TerminalDisplayProfile,
+  TERMINAL_TEXT_SIZE_OPTIONS,
+  type TerminalTextSize,
   type TerminalViewport,
 } from "../../features/terminal/terminalLayout";
 import { NativeTerminalView } from "../../terminal/NativeTerminalView";
@@ -40,13 +39,13 @@ export interface TerminalScreenProps {
   session: CodexSession;
   frame: string;
   canInput?: boolean;
-  canKillTmux?: boolean;
   canResize?: boolean;
   connectionStatus?: TerminalConnectionStatus;
   readOnlyReason?: string;
   statusLabel?: string;
+  textSize: TerminalTextSize;
   onBack(): void;
-  onKillTmux(): void;
+  onChangeTextSize(textSize: TerminalTextSize): void;
   onRefreshSessions(): void;
   onInput(input: TerminalInputPayload): void;
   onResize(size: TerminalResizePayload): void;
@@ -97,12 +96,6 @@ const WEB_SAFE_AREA_BOTTOM_MARGIN =
   `calc(env(safe-area-inset-bottom, 0px) + ${BOTTOM_DOCK_BOTTOM_MARGIN}px)` as unknown as number;
 const INITIAL_BOTTOM_DOCK_HEIGHT = 156;
 const ESTIMATED_FULL_QUICK_KEYS_WIDTH = 760;
-const TERMINAL_PROFILE_STORAGE_KEY = "omniwork.terminal.displayProfile";
-const PROFILE_OPTIONS: Array<{ key: TerminalDisplayProfile; label: string }> = [
-  { key: "readableScroll", label: "Readable" },
-  { key: "fitPreview", label: "Fit" },
-  { key: "landscapeWide", label: "Wide" },
-];
 
 function getKeyboardBottomInset(event: KeyboardEvent): number {
   const keyboardHeight = event.endCoordinates.height;
@@ -120,13 +113,13 @@ export function TerminalScreen({
   session,
   frame,
   canInput = true,
-  canKillTmux = true,
   canResize = true,
   connectionStatus = "idle",
   readOnlyReason,
   statusLabel,
+  textSize,
   onBack,
-  onKillTmux,
+  onChangeTextSize,
   onRefreshSessions,
   onInput,
   onResize,
@@ -143,17 +136,12 @@ export function TerminalScreen({
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [terminalInputEnabled, setTerminalInputEnabled] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
-  const [toolbarHidden, setToolbarHidden] = useState(false);
-  const [displayControlsVisible, setDisplayControlsVisible] = useState(false);
+  const [textSizeControlsVisible, setTextSizeControlsVisible] = useState(false);
+  const [composerVisible, setComposerVisible] = useState(true);
   const [terminalViewport, setTerminalViewport] = useState<TerminalViewport>({
     width: Dimensions.get("window").width,
     height: Math.max(260, Dimensions.get("window").height - 260),
   });
-  const [profile, setProfile] = useState<TerminalDisplayProfile>(() =>
-    getDefaultTerminalDisplayProfile(Dimensions.get("window")),
-  );
-  const profileLoadedRef = useRef(false);
-  const lastResizeKeyRef = useRef("");
   const agentStatus = getAgentStatusPresentation(connectionStatus);
   const runtimeLabel = session.runtime_label || session.runtime_kind;
   const hasDraft = draft.trim().length > 0;
@@ -172,8 +160,8 @@ export function TerminalScreen({
       ? [...ALWAYS_VISIBLE_QUICK_KEYS, ...OVERFLOW_QUICK_KEYS]
       : ALWAYS_VISIBLE_QUICK_KEYS;
   const terminalLayout = useMemo(
-    () => computeTerminalLayout(terminalViewport, profile),
-    [profile, terminalViewport],
+    () => computeTerminalLayout(terminalViewport, textSize),
+    [textSize, terminalViewport],
   );
   const floatingControlsBottom =
     bottomDockHeight +
@@ -213,60 +201,6 @@ export function TerminalScreen({
     };
   }, []);
 
-  useEffect(() => {
-    AsyncStorage.getItem(TERMINAL_PROFILE_STORAGE_KEY)
-      .then((value) => {
-        if (isTerminalDisplayProfile(value)) {
-          setProfile(value);
-        }
-      })
-      .finally(() => {
-        profileLoadedRef.current = true;
-      });
-  }, []);
-
-  useEffect(() => {
-    if (!profileLoadedRef.current) {
-      return;
-    }
-
-    AsyncStorage.setItem(TERMINAL_PROFILE_STORAGE_KEY, profile).catch(() => {
-      // Display preferences are best-effort and should not block terminal use.
-    });
-  }, [profile]);
-
-  useEffect(() => {
-    const subscription = Dimensions.addEventListener("change", ({ window }) => {
-      setProfile((currentProfile) => {
-        if (currentProfile === "fitPreview") {
-          return currentProfile;
-        }
-        return getDefaultTerminalDisplayProfile(window);
-      });
-    });
-    return () => subscription.remove();
-  }, []);
-
-  useEffect(() => {
-    if (Platform.OS === "web") {
-      return undefined;
-    }
-    const size = terminalLayout.terminalSize;
-    const resizeKey = `${session.session_id}:${size.cols}x${size.rows}`;
-    if (lastResizeKeyRef.current === resizeKey) {
-      return undefined;
-    }
-
-    const timer = setTimeout(() => {
-      lastResizeKeyRef.current = resizeKey;
-      if (canResize) {
-        onResize(size);
-      }
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [canResize, onResize, session.session_id, terminalLayout.terminalSize]);
-
   function sendDraft(): void {
     if (readOnly) {
       return;
@@ -289,6 +223,22 @@ export function TerminalScreen({
       setTerminalInputEnabled(false);
       Keyboard.dismiss();
     }
+  }
+
+  function toggleComposerVisible(): void {
+    setComposerVisible((visible) => {
+      const nextVisible = !visible;
+      if (!nextVisible) {
+        setTerminalInputEnabled(false);
+        Keyboard.dismiss();
+      }
+      return nextVisible;
+    });
+  }
+
+  function selectTextSize(nextTextSize: TerminalTextSize): void {
+    onChangeTextSize(nextTextSize);
+    setTextSizeControlsVisible(false);
   }
 
   function enterTerminalInputMode(): void {
@@ -336,7 +286,7 @@ export function TerminalScreen({
         Platform.OS === "web" ? styles.webSafeAreaScreen : null,
       ]}
     >
-      {!focusMode && !toolbarHidden ? (
+      {!focusMode ? (
         <View style={styles.toolbar}>
           <Button
             accessibilityLabel="Back to sessions"
@@ -359,16 +309,73 @@ export function TerminalScreen({
               {session.title}
             </Text>
           </Pressable>
-          <Button
-            accessibilityLabel="Kill tmux session"
-            disabled={!canKillTmux}
-            icon="trash"
-            iconOnly
-            style={[styles.killButton, !canKillTmux && styles.disabled]}
-            onPress={onKillTmux}
-          >
-            Kill
-          </Button>
+          <View style={styles.toolbarActions}>
+            <Pressable
+              accessibilityLabel="Change terminal text size"
+              accessibilityRole="button"
+              style={[
+                styles.textSizeButton,
+                textSizeControlsVisible && styles.textSizeButtonActive,
+              ]}
+              onPress={() => setTextSizeControlsVisible((visible) => !visible)}
+            >
+              <Text style={styles.textSizeButtonText}>Aa</Text>
+            </Pressable>
+            <Button
+              accessibilityLabel={
+                composerVisible ? "Hide bottom input" : "Show bottom input"
+              }
+              icon={composerVisible ? "eyeOff" : "keyboard"}
+              iconOnly
+              style={[
+                styles.inputToggleButton,
+                !composerVisible && styles.inputToggleButtonActive,
+              ]}
+              onPress={toggleComposerVisible}
+            >
+              {composerVisible ? "Hide input" : "Show input"}
+            </Button>
+          </View>
+        </View>
+      ) : null}
+
+      {!focusMode && textSizeControlsVisible ? (
+        <View style={styles.textSizePopover}>
+          <Text style={styles.textSizePopoverTitle}>Text size</Text>
+          <View style={styles.textSizeOptionRow}>
+            {TERMINAL_TEXT_SIZE_OPTIONS.map((item) => {
+              const selected = textSize === item.key;
+              return (
+                <Pressable
+                  accessibilityLabel={`Use ${item.label} terminal text size`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  key={item.key}
+                  style={[
+                    styles.textSizeOption,
+                    selected && styles.textSizeOptionSelected,
+                  ]}
+                  onPress={() => selectTextSize(item.key)}
+                >
+                  <Text
+                    style={[
+                      styles.textSizeOptionText,
+                      selected && styles.textSizeOptionTextSelected,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.textSizeMeta}>
+            {terminalLayout.terminalSize.cols}x
+            {terminalLayout.terminalSize.rows}
+            {" · "}
+            {Math.round(terminalLayout.fontSize * 10) / 10}
+            {Platform.OS === "ios" ? "pt" : "sp"}
+          </Text>
         </View>
       ) : null}
 
@@ -394,7 +401,7 @@ export function TerminalScreen({
           terminalInputEnabled={terminalInputEnabled && !readOnly}
           readOnly={readOnly}
           onInput={onInput}
-          onResize={onResize}
+          onResize={canResize ? onResize : undefined}
         />
       </View>
 
@@ -463,83 +470,40 @@ export function TerminalScreen({
           </ScrollView>
         ) : null}
 
-        {!focusMode && displayControlsVisible ? (
-          <View style={styles.displayPanel}>
-            <View style={styles.displayPanelHeader}>
-              <Text style={styles.displayPanelTitle}>Display</Text>
-              <Text style={styles.gridMeta}>
-                {terminalLayout.terminalSize.cols}x
-                {terminalLayout.terminalSize.rows}
-                {" · "}
-                {Math.round(terminalLayout.fontSize * 10) / 10}
-                {Platform.OS === "ios" ? "pt" : "sp"}
-              </Text>
-            </View>
-            <View style={styles.profileRow}>
-              {PROFILE_OPTIONS.map((item) => {
-                const selected = profile === item.key;
-                return (
-                  <Pressable
-                    accessibilityLabel={`Use ${item.label} terminal profile`}
-                    accessibilityRole="button"
-                    key={item.key}
-                    style={[
-                      styles.profileButton,
-                      selected && styles.profileSelected,
-                    ]}
-                    onPress={() => setProfile(item.key)}
-                  >
-                    <Text
-                      style={[
-                        styles.profileButtonText,
-                        selected && styles.profileSelectedText,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              {terminalLayout.fitLimited ? (
-                <Text numberOfLines={1} style={styles.fitPill}>
-                  Fit limited
-                </Text>
-              ) : null}
+        {!focusMode && composerVisible ? (
+          <View style={styles.composer}>
+            <View style={styles.inputRow}>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                autoCapitalize="none"
+                autoCorrect={false}
+                multiline
+                placeholder={`Ask ${runtimeLabel} to inspect, edit, test, or explain...`}
+                placeholderTextColor="#66727c"
+                editable={!readOnly}
+                returnKeyType="default"
+                scrollEnabled
+                submitBehavior="newline"
+                onFocus={disableTerminalInputMode}
+                style={styles.input}
+              />
+              <Button
+                disabled={readOnly || (!hasDraft && !canHideKeyboard)}
+                icon={canHideKeyboard ? "keyboard" : "send"}
+                style={[
+                  styles.sendButton,
+                  canHideKeyboard && styles.sendButtonSecondary,
+                  (readOnly || (!hasDraft && !canHideKeyboard)) &&
+                    styles.disabled,
+                ]}
+                onPress={handlePrimaryComposerAction}
+              >
+                {canHideKeyboard ? "Hide" : "Send"}
+              </Button>
             </View>
           </View>
         ) : null}
-        <View style={styles.composer}>
-          <View style={styles.inputRow}>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              autoCapitalize="none"
-              autoCorrect={false}
-              multiline
-              placeholder={`Ask ${runtimeLabel} to inspect, edit, test, or explain...`}
-              placeholderTextColor="#66727c"
-              editable={!readOnly}
-              returnKeyType="default"
-              scrollEnabled
-              submitBehavior="newline"
-              onFocus={disableTerminalInputMode}
-              style={styles.input}
-            />
-            <Button
-              disabled={readOnly || (!hasDraft && !canHideKeyboard)}
-              icon={canHideKeyboard ? "keyboard" : "send"}
-              style={[
-                styles.sendButton,
-                canHideKeyboard && styles.sendButtonSecondary,
-                (readOnly || (!hasDraft && !canHideKeyboard)) &&
-                  styles.disabled,
-              ]}
-              onPress={handlePrimaryComposerAction}
-            >
-              {canHideKeyboard ? "Hide" : "Send"}
-            </Button>
-          </View>
-        </View>
       </View>
       <View
         style={[
@@ -558,65 +522,36 @@ export function TerminalScreen({
           style={styles.floatingControlButton}
           onPress={() => {
             setFocusMode((current) => !current);
-            setDisplayControlsVisible(false);
+            setTextSizeControlsVisible(false);
           }}
         >
           {focusMode ? "Exit focus" : "Focus"}
         </Button>
         {!focusMode ? (
-          <>
-            <Button
-              accessibilityLabel={
-                displayControlsVisible
-                  ? "Hide display controls"
-                  : "Show display controls"
+          <Button
+            accessibilityLabel={
+              terminalInputEnabled
+                ? "Exit terminal input mode"
+                : "Enter terminal input mode"
+            }
+            disabled={readOnly}
+            icon="keyboard"
+            iconOnly
+            style={[
+              styles.floatingControlButton,
+              terminalInputEnabled && styles.floatingControlButtonActive,
+              readOnly && styles.disabled,
+            ]}
+            onPress={() => {
+              if (terminalInputEnabled) {
+                exitTerminalInputMode();
+                return;
               }
-              icon="settings"
-              iconOnly
-              style={[
-                styles.floatingControlButton,
-                displayControlsVisible && styles.floatingControlButtonActive,
-              ]}
-              onPress={() => setDisplayControlsVisible((visible) => !visible)}
-            >
-              Display
-            </Button>
-            <Button
-              accessibilityLabel={
-                terminalInputEnabled
-                  ? "Exit terminal input mode"
-                  : "Enter terminal input mode"
-              }
-              disabled={readOnly}
-              icon="keyboard"
-              iconOnly
-              style={[
-                styles.floatingControlButton,
-                terminalInputEnabled && styles.floatingControlButtonActive,
-                readOnly && styles.disabled,
-              ]}
-              onPress={() => {
-                if (terminalInputEnabled) {
-                  exitTerminalInputMode();
-                  return;
-                }
-                enterTerminalInputMode();
-              }}
-            >
-              {terminalInputEnabled ? "Browse" : "Terminal input"}
-            </Button>
-            <Button
-              accessibilityLabel={
-                toolbarHidden ? "Show top toolbar" : "Hide top toolbar"
-              }
-              icon={toolbarHidden ? "eye" : "eyeOff"}
-              iconOnly
-              style={styles.floatingControlButton}
-              onPress={() => setToolbarHidden((hidden) => !hidden)}
-            >
-              Toolbar
-            </Button>
-          </>
+              enterTerminalInputMode();
+            }}
+          >
+            {terminalInputEnabled ? "Browse" : "Terminal input"}
+          </Button>
         ) : null}
       </View>
     </View>
@@ -651,16 +586,6 @@ function getAgentStatusPresentation(status: TerminalConnectionStatus): {
         color: colors.textDim,
       };
   }
-}
-
-function isTerminalDisplayProfile(
-  value: string | null,
-): value is TerminalDisplayProfile {
-  return (
-    value === "readableScroll" ||
-    value === "fitPreview" ||
-    value === "landscapeWide"
-  );
 }
 
 const styles = StyleSheet.create({
@@ -710,15 +635,86 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
   },
-  killButton: {
+  toolbarActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  textSizeButton: {
     width: 38,
     minHeight: 38,
     borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    borderColor: colors.dangerBorder,
+    borderColor: colors.border,
     borderWidth: 1,
-    backgroundColor: colors.dangerSurface,
+    backgroundColor: colors.surface,
+  },
+  textSizeButtonActive: {
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
+  },
+  textSizeButtonText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  inputToggleButton: {
+    width: 38,
+    minHeight: 38,
+    borderRadius: 19,
+    paddingHorizontal: 0,
+  },
+  inputToggleButtonActive: {
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
+  },
+  textSizePopover: {
+    position: "absolute",
+    top: 56,
+    right: spacing.lg,
+    zIndex: 5,
+    gap: spacing.sm,
+    borderColor: colors.borderSubtle,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    backgroundColor: "rgba(17, 24, 29, 0.96)",
+  },
+  textSizePopoverTitle: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  textSizeOptionRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  textSizeOption: {
+    minHeight: 32,
+    borderRadius: radii.sm,
+    borderColor: colors.border,
+    borderWidth: 1,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    backgroundColor: colors.surface,
+  },
+  textSizeOptionSelected: {
+    borderColor: colors.success,
+    backgroundColor: "#1a3028",
+  },
+  textSizeOptionText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  textSizeOptionTextSelected: {
+    color: "#d7ffe9",
+  },
+  textSizeMeta: {
+    color: colors.textDim,
+    fontSize: 11,
+    fontWeight: "700",
   },
   quickKeys: {
     flexGrow: 0,
@@ -767,68 +763,6 @@ const styles = StyleSheet.create({
   keyButtonText: {
     color: colors.textSecondary,
     fontWeight: "700",
-  },
-  profileRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  displayPanel: {
-    gap: spacing.sm,
-    borderColor: colors.borderSubtle,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    backgroundColor: colors.surfaceRaised,
-  },
-  displayPanelHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  displayPanelTitle: {
-    color: colors.textPrimary,
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  profileButton: {
-    minHeight: 30,
-    borderRadius: radii.sm,
-    borderColor: colors.border,
-    borderWidth: 1,
-    justifyContent: "center",
-    paddingHorizontal: 10,
-    backgroundColor: colors.surface,
-  },
-  profileSelected: {
-    borderColor: colors.success,
-    backgroundColor: "#1a3028",
-  },
-  profileButtonText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  profileSelectedText: {
-    color: "#d7ffe9",
-  },
-  gridMeta: {
-    color: colors.textDim,
-    flex: 1,
-    fontSize: 12,
-    textAlign: "right",
-  },
-  fitPill: {
-    color: colors.warning,
-    fontSize: 11,
-    fontWeight: "800",
-    borderColor: colors.warning,
-    borderWidth: 1,
-    borderRadius: radii.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
   },
   composer: {},
   inputRow: {

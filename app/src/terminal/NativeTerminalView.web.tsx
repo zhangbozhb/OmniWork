@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
@@ -18,6 +18,10 @@ import type { TerminalLayout } from "../features/terminal/terminalLayout";
 export interface NativeTerminalViewProps {
   frame: string;
   layout: TerminalLayout;
+  /**
+   * Backend/session size state used as an initial fallback.
+   * The live xterm display size is measured by FitAddon and reported via onResize.
+   */
   terminalSize: TerminalSize;
   terminalInputEnabled?: boolean;
   readOnly?: boolean;
@@ -36,16 +40,15 @@ const TERMINAL_THEME = {
 const FONT_FAMILY =
   'Menlo, "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace';
 const LINE_HEIGHT_RATIO = 1.2;
-// 字号是 PC 上的可读默认值；移动端通过调小 xterm fontSize 适配，不使用 CSS transform。
+// 仅作为 CSS fallback；实际字号由 TerminalScreen 的 Small/Normal/Big 控制。
 const DEFAULT_FONT_SIZE = 14;
-const MOBILE_FONT_SIZE = 9;
 const TERMINAL_SCROLLBACK = 240;
 const RESIZE_DEBOUNCE_MS = 120;
 const SCROLL_LOCK_MS = 220;
 
 export function NativeTerminalView({
   frame,
-  layout: _layout,
+  layout,
   terminalSize,
   readOnly = false,
   onInput,
@@ -71,16 +74,37 @@ export function NativeTerminalView({
   readOnlyRef.current = readOnly;
   const selectableText = useMemo(() => toSelectableText(frame), [frame]);
 
-  // 设计要点（解决跨端对齐）：
-  // - mac agent 的 frame 来源是 tmux capturePane，按 tmux 当前 cols（80）绑定，
-  //   tmux resize-window 不能可靠缩列；前端单方面 fit 后会与 frame 列宽不一致，
-  //   导致每行被 xterm 折行错位。
-  // - 因此 Web 端用 FitAddon 按真实容器计算可见 cols/rows，xterm 的
-  //   scrollback 保存 capture-pane 历史，避免把过大的 rows 强塞进手机容器后裁剪。
-  // - FitAddon 必须挂到无 padding 的真实 viewport 上；如果挂到带 padding 的
-  //   外层容器，clientHeight 会包含 padding，手机上会多算行数导致底部裁剪。
-  // - 不能使用 CSS transform: scale；xterm 的鼠标选区坐标不感知 transform，
-  //   会导致 Web 端无法正常拖拽选中文本。
+  const reportSize = useCallback(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+    const key = `${terminal.cols}x${terminal.rows}`;
+    if (key === lastReportedSizeRef.current) {
+      return;
+    }
+    lastReportedSizeRef.current = key;
+    onResizeRef.current?.({ cols: terminal.cols, rows: terminal.rows });
+  }, []);
+
+  const fitTerminalToContainer = useCallback(() => {
+    const addon = fitAddonRef.current;
+    if (!addon) {
+      return;
+    }
+    const dims = addon.proposeDimensions();
+    if (!dims || dims.cols < 2 || dims.rows < 2) {
+      return;
+    }
+    try {
+      addon.fit();
+      reportSize();
+    } catch {
+      // 容器尚未完成布局时忽略，下一次 ResizeObserver 会重新 fit。
+    }
+  }, [reportSize]);
+
+  // 字号是显示偏好；最终 cols/rows 仍由 xterm FitAddon 基于真实 DOM 尺寸计算。
   useEffect(() => {
     const container = containerRef.current;
     const host = xtermHostRef.current;
@@ -92,8 +116,8 @@ export function NativeTerminalView({
       cols: terminalSize.cols,
       rows: terminalSize.rows,
       fontFamily: FONT_FAMILY,
-      fontSize: pickFontSize(),
-      lineHeight: LINE_HEIGHT_RATIO,
+      fontSize: layout.fontSize,
+      lineHeight: layout.lineHeight / layout.fontSize,
       cursorBlink: false,
       // tmux capture-pane 输出的是快照文本，换行符是 "\n"。React Native <Text>
       // 会把 "\n" 当成回到行首并换行，但 xterm 默认只 LF 不 CR，直接 write
@@ -131,13 +155,10 @@ export function NativeTerminalView({
       TERMINAL_SCROLLBACK,
       terminalSize.rows,
     );
-    container.style.setProperty(
-      "--terminal-font-size",
-      `${terminal.options.fontSize}px`,
-    );
+    container.style.setProperty("--terminal-font-size", `${layout.fontSize}px`);
     container.style.setProperty(
       "--terminal-line-height",
-      `${Number(terminal.options.fontSize) * LINE_HEIGHT_RATIO}px`,
+      `${layout.lineHeight}px`,
     );
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -184,7 +205,7 @@ export function NativeTerminalView({
       }
       const lineHeight =
         (Number(terminal.options.fontSize) || DEFAULT_FONT_SIZE) *
-        LINE_HEIGHT_RATIO;
+        (Number(terminal.options.lineHeight) || LINE_HEIGHT_RATIO);
       const lines = Math.trunc(deltaY / Math.max(1, lineHeight));
       terminal.scrollLines(lines === 0 ? Math.sign(deltaY) : lines);
       lockFrameUpdatesForScroll();
@@ -218,36 +239,6 @@ export function NativeTerminalView({
     host.addEventListener("touchend", handleTouchEnd);
     host.addEventListener("touchcancel", handleTouchEnd);
 
-    const reportSize = () => {
-      const t = terminalRef.current;
-      if (!t) {
-        return;
-      }
-      const key = `${t.cols}x${t.rows}`;
-      if (key === lastReportedSizeRef.current) {
-        return;
-      }
-      lastReportedSizeRef.current = key;
-      onResizeRef.current?.({ cols: t.cols, rows: t.rows });
-    };
-
-    const fitTerminalToContainer = () => {
-      const addon = fitAddonRef.current;
-      if (!addon) {
-        return;
-      }
-      const dims = addon.proposeDimensions();
-      if (!dims || dims.cols < 2 || dims.rows < 2) {
-        return;
-      }
-      try {
-        addon.fit();
-        reportSize();
-      } catch {
-        // 容器尚未完成布局时忽略，下一次 ResizeObserver 会重新 fit。
-      }
-    };
-
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const observer = new ResizeObserver(() => {
       if (resizeTimer) {
@@ -256,7 +247,6 @@ export function NativeTerminalView({
       resizeTimer = setTimeout(fitTerminalToContainer, RESIZE_DEBOUNCE_MS);
     });
     observer.observe(host);
-    // 等首帧渲染完成后再算一次，避免拿到 0 尺寸。
     requestAnimationFrame(() => fitTerminalToContainer());
 
     return () => {
@@ -280,7 +270,7 @@ export function NativeTerminalView({
       fitAddonRef.current = null;
       lastReportedSizeRef.current = "";
     };
-    // 仅在挂载/卸载时初始化与销毁。
+    // 仅在挂载/卸载时初始化与销毁；字号变化由下方 effect 同步并重新 fit。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -298,24 +288,34 @@ export function NativeTerminalView({
     terminal.write(frame);
   }, [frame]);
 
-  // cols/rows 变化（用户切 Display profile）时同步给 xterm，并重新拟合字号。
+  // 字号变化后交给 xterm 重新实测可见 rows/cols，再由 reportSize 同步给后端。
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) {
       return;
     }
+    terminal.options.fontSize = layout.fontSize;
+    terminal.options.lineHeight = layout.lineHeight / layout.fontSize;
+    containerRef.current?.style.setProperty(
+      "--terminal-font-size",
+      `${layout.fontSize}px`,
+    );
+    containerRef.current?.style.setProperty(
+      "--terminal-line-height",
+      `${layout.lineHeight}px`,
+    );
     terminal.options.scrollback = Math.max(
       TERMINAL_SCROLLBACK,
       terminalSize.rows,
     );
-    requestAnimationFrame(() => {
-      try {
-        fitAddonRef.current?.fit();
-      } catch {
-        // 同上。
-      }
-    });
-  }, [terminalSize.cols, terminalSize.rows]);
+    requestAnimationFrame(() => fitTerminalToContainer());
+  }, [
+    fitTerminalToContainer,
+    layout.fontSize,
+    layout.lineHeight,
+    terminalSize.cols,
+    terminalSize.rows,
+  ]);
 
   return (
     <>
@@ -403,13 +403,6 @@ function toSelectableText(frame: string): string {
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .replace(ANSI_PATTERN, "");
-}
-
-function pickFontSize(): number {
-  if (typeof window === "undefined") {
-    return DEFAULT_FONT_SIZE;
-  }
-  return window.innerWidth < 600 ? MOBILE_FONT_SIZE : DEFAULT_FONT_SIZE;
 }
 
 function isScrolledAwayFromBottom(terminal: Terminal): boolean {

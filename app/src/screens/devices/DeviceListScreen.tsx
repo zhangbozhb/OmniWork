@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 
+import type { TransportPath } from "../../../../packages/protocol-ts/src/index.ts";
 import type { PairingConfig } from "../../features/auth/types";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";
@@ -21,34 +22,35 @@ export interface DeviceListScreenProps {
   pairings: PairingConfig[];
   activePairing?: PairingConfig;
   connectionStatus: string;
+  connectionPath: TransportPath;
   connectionMessage?: string;
   onAddDevice(): void;
   onEditDevice(pairing: PairingConfig): void;
   onDeleteDevice(pairing: PairingConfig): void | Promise<void>;
   onOpenDevice(pairing: PairingConfig): void;
   onRefreshSessions(): void;
-  /**
-   * 打开"右上角齿轮"二级页（Connection preference 等设置项）。
-   */
-  onOpenSettings(): void;
 }
 
 export function DeviceListScreen({
   pairings,
   activePairing,
   connectionStatus,
+  connectionPath,
   connectionMessage,
   onAddDevice,
   onEditDevice,
   onDeleteDevice,
   onOpenDevice,
   onRefreshSessions,
-  onOpenSettings,
 }: DeviceListScreenProps): JSX.Element {
   const ready = connectionStatus === "authenticated";
   const activeStatus = getDeviceStatusPresentation(
     connectionStatus,
     connectionMessage,
+  );
+  const activePathStatus = getConnectionPathPresentation(
+    connectionStatus,
+    connectionPath,
   );
 
   const [refreshing, setRefreshing] = useState(false);
@@ -125,15 +127,6 @@ export function DeviceListScreen({
         >
           Refresh
         </Button>
-        <Button
-          accessibilityLabel="Settings"
-          icon="settings"
-          iconOnly
-          style={styles.headerIconButton}
-          onPress={onOpenSettings}
-        >
-          Settings
-        </Button>
       </View>
 
       {pairings.length === 0 ? (
@@ -148,13 +141,14 @@ export function DeviceListScreen({
           const pairingKey = `${pairing.relayUrl}:${pairing.deviceId}`;
           const active = Boolean(
             activePairing &&
-            pairing.deviceId === activePairing.deviceId &&
-            pairing.relayUrl === activePairing.relayUrl,
+              pairing.deviceId === activePairing.deviceId &&
+              pairing.relayUrl === activePairing.relayUrl,
           );
           const canOpen = !active || ready;
           const status = active
             ? activeStatus
             : getSavedDeviceStatusPresentation();
+          const pathStatus = active ? activePathStatus : undefined;
           const primaryAction =
             active && !ready ? onRefreshSessions : () => onOpenDevice(pairing);
           const expanded = expandedDevice === pairingKey;
@@ -183,6 +177,16 @@ export function DeviceListScreen({
               </Text>
 
               <View style={styles.deviceRow3}>
+                {pathStatus ? (
+                  <Badge
+                    backgroundColor={pathStatus.backgroundColor}
+                    color={pathStatus.color}
+                  >
+                    {pathStatus.label}
+                  </Badge>
+                ) : (
+                  <View />
+                )}
                 <View style={styles.flexFiller} />
                 <Button
                   accessibilityLabel="More actions"
@@ -395,7 +399,7 @@ function getDeviceStatusPresentation(
       return {
         backgroundColor: colors.warningSoft,
         color: colors.warning,
-        detail: message ?? "Connecting to Relay...",
+        detail: message ?? "Opening secure connection...",
         label: "Connecting",
       };
     case "failed":
@@ -415,10 +419,37 @@ function getDeviceStatusPresentation(
   }
 }
 
+function getConnectionPathPresentation(
+  status: string,
+  path: TransportPath,
+): ConnectionPathPresentation | undefined {
+  if (status !== "authenticated") {
+    return undefined;
+  }
+  if (path === "p2p") {
+    return {
+      backgroundColor: colors.successSoft,
+      color: colors.success,
+      label: "Direct",
+    };
+  }
+  return {
+    backgroundColor: colors.neutralSoft,
+    color: colors.textSecondary,
+    label: "Relay assisted",
+  };
+}
+
 interface DeviceStatusPresentation {
   backgroundColor: string;
   color: string;
   detail: string;
+  label: string;
+}
+
+interface ConnectionPathPresentation {
+  backgroundColor: string;
+  color: string;
   label: string;
 }
 

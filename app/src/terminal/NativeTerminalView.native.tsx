@@ -15,6 +15,10 @@ import type { TerminalLayout } from "../features/terminal/terminalLayout";
 export interface NativeTerminalViewProps {
   frame: string;
   layout: TerminalLayout;
+  /**
+   * Backend/session size state used as an initial fallback by callers.
+   * WebView xterm display size is still measured by FitAddon and reported back.
+   */
   terminalSize: TerminalSize;
   terminalInputEnabled?: boolean;
   readOnly?: boolean;
@@ -37,7 +41,7 @@ const SCROLL_LOCK_MS = 220;
 
 export function NativeTerminalView({
   frame,
-  terminalSize,
+  layout,
   terminalInputEnabled = false,
   readOnly = false,
   onInput,
@@ -93,11 +97,11 @@ export function NativeTerminalView({
       return;
     }
     sendBridgeCommand({
-      type: "resize",
-      cols: terminalSize.cols,
-      rows: terminalSize.rows,
+      type: "setFont",
+      fontSize: layout.fontSize,
+      lineHeight: layout.lineHeight / layout.fontSize,
     });
-  }, [sendBridgeCommand, terminalSize.cols, terminalSize.rows]);
+  }, [layout.fontSize, layout.lineHeight, sendBridgeCommand]);
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -115,9 +119,9 @@ export function NativeTerminalView({
           enabled: terminalInputEnabled && !readOnlyRef.current,
         });
         sendBridgeCommand({
-          type: "resize",
-          cols: terminalSize.cols,
-          rows: terminalSize.rows,
+          type: "setFont",
+          fontSize: layout.fontSize,
+          lineHeight: layout.lineHeight / layout.fontSize,
         });
         sendBridgeCommand({ type: "write", frame: lastFrameRef.current });
         sendBridgeCommand({ type: "fit" });
@@ -136,7 +140,12 @@ export function NativeTerminalView({
         onResizeRef.current?.({ cols: message.cols, rows: message.rows });
       }
     },
-    [sendBridgeCommand, terminalSize.cols, terminalSize.rows],
+    [
+      layout.fontSize,
+      layout.lineHeight,
+      sendBridgeCommand,
+      terminalInputEnabled,
+    ],
   );
 
   return (
@@ -322,6 +331,14 @@ function createTerminalHtml(): string {
         }
       }
 
+      function setFont(fontSize, lineHeight) {
+        var nextFontSize = Number(fontSize) || Number(terminal.options.fontSize) || 9;
+        var nextLineHeight = Number(lineHeight) || Number(terminal.options.lineHeight) || 1.2;
+        terminal.options.fontSize = nextFontSize;
+        terminal.options.lineHeight = nextLineHeight;
+        fit();
+      }
+
       var inputEnabled = false;
       function getTextarea() {
         return terminal.textarea || document.querySelector(".xterm-helper-textarea");
@@ -397,7 +414,9 @@ function createTerminalHtml(): string {
         if (Math.abs(deltaY) < 1) {
           return;
         }
-        var lineHeight = (Number(terminal.options.fontSize) || 9) * 1.2;
+        var lineHeight =
+          (Number(terminal.options.fontSize) || 9) *
+          (Number(terminal.options.lineHeight) || 1.2);
         var lines = Math.trunc(deltaY / Math.max(1, lineHeight));
         terminal.scrollLines(lines === 0 ? Math.sign(deltaY) : lines);
         lockFrameUpdatesForScroll();
@@ -433,8 +452,8 @@ function createTerminalHtml(): string {
         post({ type: "data", data: data });
       });
 
-      terminal.onResize(function (size) {
-        post({ type: "resize", cols: size.cols, rows: size.rows });
+      terminal.onResize(function () {
+        reportSize();
       });
 
       window.__omniworkTerminalBridge = function (command) {
@@ -466,9 +485,9 @@ function createTerminalHtml(): string {
           setInputEnabled(!!command.enabled);
           return;
         }
-        if (command.type === "resize") {
-          terminal.options.scrollback = Math.max(${TERMINAL_SCROLLBACK}, command.rows || 0);
-          terminal.resize(command.cols || terminal.cols, command.rows || terminal.rows);
+        if (command.type === "setFont") {
+          setFont(command.fontSize, command.lineHeight);
+          return;
         }
       };
 

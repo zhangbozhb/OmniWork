@@ -24,7 +24,7 @@ export interface ConfirmOptions {
   tone?: ConfirmTone;
   /**
    * 可选：自定义确认按钮图标。缺省时按 `tone` 推断（primary→check / danger→trash）。
-   * 不同业务场景（如切换 Strict P2P 用 `plug`、回滚配置用 `refresh`）可在此覆盖。
+   * 不同业务场景（如切换 Direct only 用 `plug`、回滚配置用 `refresh`）可在此覆盖。
    */
   confirmIcon?: IconName;
   /**

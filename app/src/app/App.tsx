@@ -9,6 +9,8 @@ import {
 import {
   Alert,
   AppState,
+  Dimensions,
+  Pressable,
   StatusBar,
   StyleSheet,
   Text,
@@ -34,6 +36,7 @@ import type {
   TerminalInputPayload,
   TerminalResizePayload,
   TerminalSnapshotPayload,
+  TransportPath,
   TransportPreference,
   TunnelUpgradeAnswerPayload,
   TunnelUpgradeCandidatePayload,
@@ -56,6 +59,7 @@ import { appConfig } from "./appConfig";
 import { PairingScreen } from "../screens/pairing/PairingScreen";
 import { DeviceListScreen } from "../screens/devices/DeviceListScreen";
 import { ConnectionPreferenceScreen } from "../screens/settings/ConnectionPreferenceScreen";
+import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { SessionListScreen } from "../screens/sessions/SessionListScreen";
 import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import type { PairingConfig } from "../features/auth/types";
@@ -80,7 +84,12 @@ import {
   listWorkspacesRequest,
   readFileRequest,
 } from "../features/workspaces/workspaceMessages";
-import { computeInitialTerminalSize } from "../features/terminal/terminalLayout";
+import {
+  computeInitialTerminalSize,
+  getDefaultTerminalTextSize,
+  isTerminalTextSize,
+  type TerminalTextSize,
+} from "../features/terminal/terminalLayout";
 import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
 import { MobileRelayPath, MobileSessionTransport } from "../lib/transport";
 import { UpgradeCoordinator } from "../lib/transport/upgradeCoordinator";
@@ -95,8 +104,16 @@ import {
   savePairings,
 } from "../platform/secure-storage/securePairingStore";
 import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
+import { Icon, type IconName } from "../ui/icons";
 
-type AppView = "pairing" | "devices" | "settings" | "sessions" | "terminal";
+type AppView =
+  | "pairing"
+  | "devices"
+  | "settings"
+  | "connectionPreference"
+  | "sessions"
+  | "terminal";
+type PrimaryTabView = "devices" | "settings";
 type ConnectionStatus =
   | "idle"
   | "connecting"
@@ -108,26 +125,28 @@ type AppSessionTransport = Omit<SessionTransport, "close"> & {
   connect(): Promise<void>;
   onClose(handler: (event: RelayCloseEvent) => void): () => void;
   close(reason?: string): void;
+  getCurrentPath(): TransportPath;
+  onPathChange(handler: (path: TransportPath) => void): () => void;
   /**
    * 阶段 5：暴露给业务层用于在 AppState 变化、网络变化时主动触发降级，
    * 以及处理来自 Relay 的 tunnel.upgrade.* 控制消息。
    */
   forceDowngrade(reason: string): void;
   /**
-   * strict 模式下，Relay 主动下发 strict_unavailable 时由 wiring 层调用，
+   * Direct only（底层 prefer_p2p）模式下，Relay 主动下发 strict_unavailable 时由 wiring 层调用，
    * 直接让 transport 进入 forceClose 并通知 onForceClose handler。
    */
   forceClose(reason: string): void;
   handleUpgradeMessage(message: MessageEnvelope): void;
   /**
-   * 严格 P2P 模式下，AppState 进/出后台时调用：暂停时不会触发协商失败，
+   * Direct only（底层 prefer_p2p）模式下，AppState 进/出后台时调用：暂停时不会触发协商失败，
    * 仅暂停 ping/buffered 采样并把 currentPath 标记回 relay 入口（业务消息
    * 仍受 strict 准入门保护，不会真的发到 relay）。
    */
   pauseForBackground(): void;
   resumeForForeground(): void;
   /**
-   * 是否运行在严格 P2P 模式（由 transportPreference === "prefer_p2p" 推导）。
+   * 是否运行在 Direct only 模式（由 transportPreference === "prefer_p2p" 推导）。
    */
   isStrictP2p(): boolean;
 };
@@ -139,6 +158,7 @@ const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
  * 取值范围由 packages/protocol-ts isTransportPreference 守卫校验。
  */
 const TRANSPORT_PREFERENCE_STORAGE_KEY = "omniwork.transportPreference";
+const TERMINAL_TEXT_SIZE_STORAGE_KEY = "omniwork.terminal.textSize";
 
 export default function App(): JSX.Element {
   return (
@@ -177,6 +197,7 @@ function AppContent(): JSX.Element {
   );
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
+  const [connectionPath, setConnectionPath] = useState<TransportPath>("relay");
   const [connectionMessage, setConnectionMessage] = useState(
     "Enter the Mac Agent key to pair.",
   );
@@ -184,7 +205,7 @@ function AppContent(): JSX.Element {
   const [creatingSession, setCreatingSession] = useState(false);
   const [closingSessionIds, setClosingSessionIds] = useState<string[]>([]);
   const [killingSessionIds, setKillingSessionIds] = useState<string[]>([]);
-  // 用户在 Devices 页选择的传输偏好，持久化到 AsyncStorage；
+  // 用户在底部全局 Settings 入口选择的传输偏好，持久化到 AsyncStorage；
   // 缺省时回退到 appConfig.transportPreference（出厂值，默认 "auto"）。
   // 注意：初始值直接使用 appConfig 默认值，不阻塞建链；AsyncStorage 加载完成后
   // 若读出与默认不同的值，会经由 setTransportPreferenceState 触发 useEffect
@@ -192,21 +213,29 @@ function AppContent(): JSX.Element {
   // 且大多数用户（默认 auto）启动时不会经历额外重连。
   const [transportPreference, setTransportPreferenceState] =
     useState<TransportPreference>(appConfig.transportPreference);
+  const [terminalTextSize, setTerminalTextSizeState] =
+    useState<TerminalTextSize>(() =>
+      getDefaultTerminalTextSize(Dimensions.get("window")),
+    );
   const relayRef = useRef<AppSessionTransport | null>(null);
   const pendingCreateRef = useRef(false);
   const pendingAutoOpenSessionsRef = useRef(false);
   const pairingsRef = useRef<PairingConfig[]>([]);
   const selectedSessionRef = useRef<CodexSession | null>(null);
+  const terminalTextSizeLoadedRef = useRef(false);
   // 标记当前失败状态是否已经在交互流程中提示过用户，避免重复弹出
   // "Connection lost" 对话框（例如重试再次失败时立刻又弹一次）。
   const failureDialogActiveRef = useRef(false);
   const confirm = useConfirm();
 
   const canUseWorkspace = pairings.length > 0;
+  const showPrimaryTabs = canUseWorkspace && isPrimaryTabView(view);
   const title = useMemo(() => {
     if (view === "pairing") return editingPairing ? "Edit Device" : "Pair Mac";
     if (view === "terminal") return selectedSession?.title ?? "Terminal";
     if (view === "sessions") return "Workspaces";
+    if (view === "connectionPreference") return "Connection Mode";
+    if (view === "settings") return "Settings";
     return "Devices";
   }, [editingPairing, selectedSession?.title, view]);
 
@@ -291,12 +320,45 @@ function AppContent(): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(TERMINAL_TEXT_SIZE_STORAGE_KEY)
+      .then((raw) => {
+        if (!active) return;
+        if (isTerminalTextSize(raw)) {
+          setTerminalTextSizeState(raw);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          terminalTextSizeLoadedRef.current = true;
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleChangeTerminalTextSize = useCallback(
+    (next: TerminalTextSize) => {
+      setTerminalTextSizeState(next);
+      if (!terminalTextSizeLoadedRef.current) {
+        return;
+      }
+
+      AsyncStorage.setItem(TERMINAL_TEXT_SIZE_STORAGE_KEY, next).catch(() => {
+        // 字号偏好持久化失败不影响终端使用。
+      });
+    },
+    [],
+  );
+
   // 用户切换偏好时持久化；首次加载未完成前不写回，避免覆盖磁盘值。
   // 切换会立即触发 useEffect 重建 transport（因为 transportPreference 是依赖项），
-  // 同时若旧/新偏好涉及 prefer_p2p（=Strict P2P），需要弹确认让用户明确知晓
-  // "立即重连 + Strict 模式失败不会回退到 Relay"的副作用。
+  // 同时若旧/新偏好涉及 prefer_p2p（UI 展示为 Direct only），需要弹确认让用户明确知晓
+  // "立即重连 + Direct only 模式失败不会回退到 Relay"的副作用。
   //
-  // 注意：RN 的 `Alert.alert` 在 web 端是 no-op，会导致 web 用户点 "Strict P2P"
+  // 注意：RN 的 `Alert.alert` 在 web 端是 no-op，会导致 web 用户点 "Direct only"
   // 后无任何反馈。这里统一改用项目内的跨端 `useConfirm`（基于 RN `Modal`，
   // web/native 表现一致），保证三端都能弹出确认。
   const handleChangeTransportPreference = useCallback(
@@ -311,12 +373,12 @@ function AppContent(): JSX.Element {
       };
       if (next === "prefer_p2p") {
         confirm({
-          title: "Switch to Strict P2P?",
+          title: "Switch to Direct only?",
           message:
-            "The App will reconnect immediately. If a direct WebRTC link cannot be established, the session will fail instead of falling back to Relay.",
+            "The App will reconnect immediately. After a direct link is ready, no relay server will carry session payload data. The session may fail if a direct link cannot be established.",
           confirmText: "Switch",
           cancelText: "Cancel",
-          tone: "danger",
+          tone: "primary",
           // 语义上是"切换连接路径"而非"删除"，覆盖默认的 trash 图标。
           confirmIcon: "plug",
         })
@@ -340,6 +402,7 @@ function AppContent(): JSX.Element {
       relayRef.current?.close();
       relayRef.current = null;
       setConnectionStatus("idle");
+      setConnectionPath("relay");
       setConnectionMessage("Enter the Mac Agent key to pair.");
       return undefined;
     }
@@ -358,7 +421,8 @@ function AppContent(): JSX.Element {
     });
     relayRef.current = relay;
     setConnectionStatus("connecting");
-    setConnectionMessage("Connecting to Relay...");
+    setConnectionPath(relay.getCurrentPath());
+    setConnectionMessage("Opening secure connection...");
 
     const unsubscribe = relay.onMessage((message) => {
       if (closed) {
@@ -373,6 +437,9 @@ function AppContent(): JSX.Element {
       setConnectionStatus("failed");
       setConnectionMessage(formatRelayCloseMessage(event));
     });
+    const unsubscribePathChange = relay.onPathChange((path) => {
+      setConnectionPath(path);
+    });
 
     relay
       .connect()
@@ -386,7 +453,7 @@ function AppContent(): JSX.Element {
         if (!closed) {
           setConnectionStatus("failed");
           setConnectionMessage(
-            `Relay connection failed: ${formatErrorMessage(error)}`,
+            `Secure connection failed: ${formatErrorMessage(error)}`,
           );
         }
       });
@@ -395,6 +462,7 @@ function AppContent(): JSX.Element {
       closed = true;
       unsubscribe();
       unsubscribeClose();
+      unsubscribePathChange();
       relay.close();
       if (relayRef.current === relay) {
         relayRef.current = null;
@@ -666,7 +734,7 @@ function AppContent(): JSX.Element {
     }
     failureDialogActiveRef.current = false;
     setConnectionStatus("connecting");
-    setConnectionMessage("Reconnecting to Relay...");
+    setConnectionMessage("Reconnecting securely...");
     // 通过创建一个新的 pairing 引用强制触发上面的连接 useEffect
     // （依赖 pairing 引用变化），从而重建 transport。
     setPairing({ ...pairing });
@@ -698,7 +766,7 @@ function AppContent(): JSX.Element {
         cwd: input.cwd,
         workspace_path: input.workspacePath,
         runtime_kind: input.runtimeKind,
-        terminal_size: computeInitialTerminalSize(),
+        terminal_size: computeInitialTerminalSize(terminalTextSize),
       }),
     );
   }
@@ -1216,83 +1284,94 @@ function AppContent(): JSX.Element {
           </View>
         ) : null}
 
-        {view === "pairing" ? (
-          <PairingScreen
-            errorMessage={pairingError}
-            initialPairing={editingPairing}
-            submitLabel={editingPairing ? "Save Device" : "Pair Mac"}
-            onCancel={pairings.length > 0 ? handleCancelPairing : undefined}
-            onPair={handlePair}
-          />
-        ) : view === "devices" ? (
-          <DeviceListScreen
-            pairings={pairings}
-            activePairing={pairing ?? undefined}
-            connectionStatus={connectionStatus}
-            connectionMessage={connectionMessage}
-            onAddDevice={handleAddDevice}
-            onEditDevice={handleEditDevice}
-            onDeleteDevice={handleDeleteDevice}
-            onOpenDevice={handleOpenDevice}
-            onRefreshSessions={handleRefreshSessions}
-            onOpenSettings={() => setView("settings")}
-          />
-        ) : view === "settings" ? (
-          <ConnectionPreferenceScreen
-            transportPreference={transportPreference}
-            onChangeTransportPreference={handleChangeTransportPreference}
-            onBack={() => setView("devices")}
-          />
-        ) : view === "sessions" ? (
-          <SessionListScreen
-            sessions={sessions}
-            providers={agentProviders}
-            workspaces={workspaces}
-            providerPreferenceScope={pairing?.deviceId ?? "default"}
-            creating={creatingSession}
-            closingSessionIds={closingSessionIds}
-            killingSessionIds={killingSessionIds}
-            defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
-            fileRelativePath={fileRelativePath}
-            fileEntries={fileEntries}
-            selectedFile={selectedFile}
-            gitStatus={gitStatus}
-            gitDiff={gitDiff}
-            workspaceLoading={workspaceLoading}
-            onBack={() => setView("devices")}
-            onRefreshSessions={handleRefreshSessions}
-            onCreateSession={handleCreateSession}
-            onOpenWorkspaceFiles={handleOpenWorkspaceFiles}
-            onOpenWorkspaceGit={handleOpenWorkspaceGit}
-            onOpenDirectory={handleOpenDirectory}
-            onReadFile={handleReadFile}
-            onOpenGitDiff={handleOpenGitDiff}
-            onOpenSession={handleOpenSession}
-            onCloseSession={handleCloseSession}
-            onRenameSession={handleRenameSession}
-            onKillTmuxSession={handleKillTmuxSession}
-          />
-        ) : selectedSession ? (
-          <TerminalScreen
-            session={selectedSession}
-            frame={selectedFrame}
-            connectionStatus={connectionStatus}
-            statusLabel={connectionMessage}
-            readOnlyReason={
-              selectedSessionCapabilities?.canInput
-                ? undefined
-                : (selectedSessionCapabilities?.unavailableReason ??
-                  "This session is not interactive right now.")
-            }
-            canInput={Boolean(selectedSessionCapabilities?.canInput)}
-            canResize={Boolean(selectedSessionCapabilities?.canResize)}
-            canKillTmux={Boolean(selectedSessionCapabilities?.canKill)}
-            onBack={() => setView("sessions")}
-            onKillTmux={() => handleKillTmuxSession(selectedSession)}
-            onRefreshSessions={handleRefreshSessions}
-            onInput={handleTerminalInput}
-            onResize={handleTerminalResize}
-          />
+        <View style={styles.content}>
+          {view === "pairing" ? (
+            <PairingScreen
+              errorMessage={pairingError}
+              initialPairing={editingPairing}
+              submitLabel={editingPairing ? "Save Device" : "Pair Mac"}
+              onCancel={pairings.length > 0 ? handleCancelPairing : undefined}
+              onPair={handlePair}
+            />
+          ) : view === "devices" ? (
+            <DeviceListScreen
+              pairings={pairings}
+              activePairing={pairing ?? undefined}
+              connectionStatus={connectionStatus}
+              connectionPath={connectionPath}
+              connectionMessage={connectionMessage}
+              onAddDevice={handleAddDevice}
+              onEditDevice={handleEditDevice}
+              onDeleteDevice={handleDeleteDevice}
+              onOpenDevice={handleOpenDevice}
+              onRefreshSessions={handleRefreshSessions}
+            />
+          ) : view === "settings" ? (
+            <SettingsScreen
+              terminalTextSize={terminalTextSize}
+              onChangeTerminalTextSize={handleChangeTerminalTextSize}
+              onOpenConnectionPreference={() => setView("connectionPreference")}
+            />
+          ) : view === "connectionPreference" ? (
+            <ConnectionPreferenceScreen
+              transportPreference={transportPreference}
+              onChangeTransportPreference={handleChangeTransportPreference}
+              onBack={() => setView("settings")}
+            />
+          ) : view === "sessions" ? (
+            <SessionListScreen
+              sessions={sessions}
+              providers={agentProviders}
+              workspaces={workspaces}
+              providerPreferenceScope={pairing?.deviceId ?? "default"}
+              creating={creatingSession}
+              closingSessionIds={closingSessionIds}
+              killingSessionIds={killingSessionIds}
+              defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
+              fileRelativePath={fileRelativePath}
+              fileEntries={fileEntries}
+              selectedFile={selectedFile}
+              gitStatus={gitStatus}
+              gitDiff={gitDiff}
+              workspaceLoading={workspaceLoading}
+              onBack={() => setView("devices")}
+              onRefreshSessions={handleRefreshSessions}
+              onCreateSession={handleCreateSession}
+              onOpenWorkspaceFiles={handleOpenWorkspaceFiles}
+              onOpenWorkspaceGit={handleOpenWorkspaceGit}
+              onOpenDirectory={handleOpenDirectory}
+              onReadFile={handleReadFile}
+              onOpenGitDiff={handleOpenGitDiff}
+              onOpenSession={handleOpenSession}
+              onCloseSession={handleCloseSession}
+              onRenameSession={handleRenameSession}
+              onKillTmuxSession={handleKillTmuxSession}
+            />
+          ) : selectedSession ? (
+            <TerminalScreen
+              session={selectedSession}
+              frame={selectedFrame}
+              connectionStatus={connectionStatus}
+              statusLabel={connectionMessage}
+              readOnlyReason={
+                selectedSessionCapabilities?.canInput
+                  ? undefined
+                  : (selectedSessionCapabilities?.unavailableReason ??
+                    "This session is not interactive right now.")
+              }
+              canInput={Boolean(selectedSessionCapabilities?.canInput)}
+              canResize={Boolean(selectedSessionCapabilities?.canResize)}
+              textSize={terminalTextSize}
+              onBack={() => setView("sessions")}
+              onChangeTextSize={handleChangeTerminalTextSize}
+              onRefreshSessions={handleRefreshSessions}
+              onInput={handleTerminalInput}
+              onResize={handleTerminalResize}
+            />
+          ) : null}
+        </View>
+        {showPrimaryTabs ? (
+          <PrimaryTabBar activeView={view} onChange={setView} />
         ) : null}
       </SafeAreaView>
     </SafeAreaProvider>
@@ -1509,6 +1588,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#101417",
   },
+  content: {
+    flex: 1,
+  },
   header: {
     paddingHorizontal: 18,
     paddingTop: 14,
@@ -1528,7 +1610,83 @@ const styles = StyleSheet.create({
     marginTop: 3,
     textAlign: "center",
   },
+  tabBar: {
+    flexDirection: "row",
+    borderTopColor: "#263037",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    backgroundColor: "#11181d",
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    minHeight: 46,
+    borderRadius: 12,
+  },
+  tabButtonActive: {
+    backgroundColor: "rgba(48, 196, 141, 0.12)",
+  },
+  tabButtonPressed: {
+    opacity: 0.85,
+  },
+  tabLabel: {
+    color: "#94a3ad",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  tabLabelActive: {
+    color: "#30c48d",
+  },
 });
+
+const PRIMARY_TABS: ReadonlyArray<{
+  icon: IconName;
+  label: string;
+  value: PrimaryTabView;
+}> = [
+  { icon: "device", label: "Devices", value: "devices" },
+  { icon: "settings", label: "Settings", value: "settings" },
+];
+
+function PrimaryTabBar({
+  activeView,
+  onChange,
+}: {
+  activeView: PrimaryTabView;
+  onChange(view: PrimaryTabView): void;
+}): JSX.Element {
+  return (
+    <View style={styles.tabBar} accessibilityRole="tablist">
+      {PRIMARY_TABS.map((tab) => {
+        const selected = tab.value === activeView;
+        const tintColor = selected ? "#30c48d" : "#94a3ad";
+        return (
+          <Pressable
+            key={tab.value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            accessibilityLabel={tab.label}
+            style={({ pressed }) => [
+              styles.tabButton,
+              selected && styles.tabButtonActive,
+              pressed && styles.tabButtonPressed,
+            ]}
+            onPress={() => onChange(tab.value)}
+          >
+            <Icon name={tab.icon} color={tintColor} size={20} />
+            <Text style={[styles.tabLabel, selected && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 function upsertSession(
   sessions: CodexSession[],
@@ -1574,8 +1732,18 @@ function getHeaderSubtitle(
   if (view === "devices") {
     return `${deviceCount} linked ${deviceCount === 1 ? "device" : "devices"}`;
   }
+  if (view === "settings") {
+    return "Global preferences";
+  }
+  if (view === "connectionPreference") {
+    return "Connection settings";
+  }
 
   return activePairing?.deviceId ?? "";
+}
+
+function isPrimaryTabView(view: AppView): view is PrimaryTabView {
+  return view === "devices" || view === "settings";
 }
 
 function formatErrorMessage(error: unknown): string {
@@ -1602,7 +1770,7 @@ function formatRelayCloseMessage(event: {
   reason?: string;
 }): string {
   const reason = event.reason ? `: ${event.reason}` : "";
-  return `Relay connection closed${event.code ? ` (${event.code})` : ""}${reason}`;
+  return `Connection closed${event.code ? ` (${event.code})` : ""}${reason}`;
 }
 
 /**
@@ -1619,36 +1787,36 @@ function formatStrictForceCloseMessage(reason: string): string {
   if (reason.startsWith("strict_unavailable:")) {
     const cause = reason.slice("strict_unavailable:".length);
     if (cause === "relay_disabled") {
-      return "Strict P2P is disabled by the Relay. Switch the connection preference or contact the operator.";
+      return "Direct only is unavailable on this Relay. Switch Connection mode or contact the operator.";
     }
     if (cause === "blocklisted") {
-      return "Strict P2P is unavailable: this device is blocklisted on the Relay.";
+      return "Direct only is unavailable: this device is blocked by the Relay.";
     }
     if (cause === "backoff_active") {
-      return "Strict P2P is in cooldown after recent failures. Please retry in a few minutes or switch preference.";
+      return "Direct only is cooling down after recent failures. Retry in a few minutes or switch Connection mode.";
     }
-    return `Strict P2P unavailable (${cause}). Switch preference or reconnect.`;
+    return `Direct only unavailable (${cause}). Switch Connection mode or reconnect.`;
   }
   switch (reason) {
     case "peer_unavailable":
-      return "Strict P2P unavailable: WebRTC could not be initialised. Check that the App and Mac Agent are reachable and try again.";
+      return "Direct connection unavailable. Check that the App and Mac Agent are reachable and try again.";
     case "create_offer_failed":
     case "handle_offer_failed":
     case "handle_answer_failed":
-      return "Strict P2P negotiation failed. Reconnect, and if the issue persists switch the connection preference.";
+      return "Direct connection setup failed. Reconnect, and if the issue persists switch Connection mode.";
     case "timeout":
-      return "Strict P2P negotiation timed out. Check the network and retry.";
+      return "Direct connection setup timed out. Check the network and retry.";
     case "pong_timeout":
-      return "Strict P2P link lost (no heartbeat). Reconnect or switch the connection preference.";
+      return "Direct connection lost (no heartbeat). Reconnect or switch Connection mode.";
     case "ice_failed":
     case "ice_disconnected":
-      return "Strict P2P link lost (ICE disconnected). Reconnect or switch the connection preference.";
+      return "Direct connection lost. Reconnect or switch Connection mode.";
     case "buffered_overflow":
-      return "Strict P2P link lost (send buffer overflow). Reconnect or switch the connection preference.";
+      return "Direct connection lost (send buffer overflow). Reconnect or switch Connection mode.";
     case "peer_closed":
     case "peer_missing":
-      return "Strict P2P link closed unexpectedly. Reconnect or switch the connection preference.";
+      return "Direct connection closed unexpectedly. Reconnect or switch Connection mode.";
     default:
-      return `Strict P2P unavailable: ${reason}. Switch transport preference or reconnect.`;
+      return `Direct connection unavailable: ${reason}. Switch Connection mode or reconnect.`;
   }
 }

@@ -108,10 +108,25 @@ Codex CLI 当前不仅支持传统交互式 TUI，也支持 app-server 协议。
 
 - Web 端使用 `@xterm/xterm` + `@xterm/addon-fit` + `@xterm/addon-clipboard` + `@xterm/addon-web-links`，由 xterm 的隐藏 textarea 接管键盘输入与 IME，去除原本 `TerminalScreen` 中的全局 `keydown` 兜底监听。
 - iOS / Android 端使用 `react-native-webview` 承载同版本 xterm HTML，RN 侧通过 `injectJavaScript` 写入 frame / resize / fit，WebView 侧通过 `postMessage` 回传输入与尺寸。
-- 协议保持不变：mac agent 仍下发整屏 ANSI 文本帧（`terminal.frame`），xterm 端在收到新 frame 时执行 `terminal.reset()` + `terminal.write(frame)` 覆盖；终端尺寸由 xterm fit 结果或现有 layout 驱动后端 resize。
+- 协议保持不变：mac agent 仍下发整屏 ANSI 文本帧（`terminal.frame`），xterm 端在收到新 frame 时执行 `terminal.reset()` + `terminal.write(frame)` 覆盖；终端尺寸以 xterm fit 后的真实 `cols/rows` 为准，并由 App 回传驱动后端 resize。
 - Mac Agent 通过 tmux capture/snapshot 提供当前画面。
 - App 先做文本归一化、ANSI 控制序列清理、横向/纵向滚动、快捷键输入。
 - 如果后续需要完整 ANSI 行为，再以可替换 renderer 引入，不能复制整套 Web 页面。
+
+#### 终端字体与尺寸适配约束
+
+2026-05-29 字体大小配置接入过程中出现过一次回归：切换字号后 console 底部内容显示不完整，且无法通过滚动查看。最后一次有效修复证明，根因不是单一的底部 padding、`rows` 最小值、`minHeight` 或 frame 重写问题，而是尺寸权威来源被破坏：RN 侧用 `computeTerminalLayout` 估算出的 `terminalSize` 主动触发后端 resize，同时 xterm 端又基于真实 DOM / WebView 容器进行 fit，两套尺寸来源竞争，导致后端 snapshot、xterm viewport 和实际可见区域不同步。
+
+最终修复原则是保留 FitAddon 相关三要素，三者缺一不可：
+
+- **FitAddon 实测**：Web 端 `NativeTerminalView.web.tsx` 必须使用 `@xterm/addon-fit`，Native WebView 内部也必须加载 xterm fit addon；最终 `cols/rows` 由 `fitAddon.proposeDimensions()` / `fitAddon.fit()` 基于真实 DOM 或 WebView 容器计算。
+- **容器变化触发**：Web 端必须用 `ResizeObserver` 在终端宿主节点尺寸变化时重新 `fit()`；Native 端必须在 WebView `onLayout`、窗口 resize、字体 `setFont` 后触发 WebView 内部 `fit()`。
+- **尺寸上报回后端**：每次 fit 后必须通过 `reportSize` / `postMessage({ type: "resize" })` 将 xterm 的真实 `cols/rows` 回传给 App，再由 App 同步给后端刷新 snapshot；不能只在前端本地 fit 而不通知后端。
+- 字体变化时只更新 xterm `fontSize` / `lineHeight`，然后按上述三要素重新 fit、上报、刷新；RN 侧不直接决定 Web / WebView xterm 的最终行列数。
+- `TerminalScreen` 不应在字体变化时使用 `computeTerminalLayout(...).terminalSize` 主动调用 `onResize`；否则会把估算尺寸重新写回后端，覆盖 xterm fit 上报的真实尺寸。
+- `terminalSize` 是协议层的后端/session 尺寸状态，也可作为创建 session、xterm 初始化或非 xterm fallback 的初始值；它不是 Web / WebView xterm 的实时显示尺寸权威。
+- `computeTerminalLayout` 可以继续提供字体、行高、初始尺寸、UI 元信息或非 xterm fallback，但不能替代 xterm fit 成为 Web / WebView 端最终 `cols/rows` 的来源。
+- 不要再通过调整 `rows` 下限、容器 `minHeight`、底部安全距离或 resize 后重写 frame 来修复此类底部裁剪；这些补丁只能缓解局部场景，不能解决 snapshot 尺寸与 viewport 尺寸不一致。
 
 ### PTY 与 tmux
 
