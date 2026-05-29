@@ -25,7 +25,8 @@ export interface NativeTerminalViewProps {
   frame: string;
   layout: TerminalLayout;
   terminalSize: TerminalSize;
-  // 仅 web 实现使用：xterm 自身接管输入/尺寸协商。RN 平台保留 prop 以共享类型。
+  // xterm 平台实现使用：终端自身接管输入/尺寸协商。RN 快照实现仅作为 fallback。
+  terminalInputEnabled?: boolean;
   readOnly?: boolean;
   onInput?(input: TerminalInputPayload): void;
   onResize?(size: TerminalResizePayload): void;

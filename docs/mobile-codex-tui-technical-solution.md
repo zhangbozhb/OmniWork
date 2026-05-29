@@ -102,13 +102,13 @@ Codex CLI 当前不仅支持传统交互式 TUI，也支持 app-server 协议。
 
 ### Web SPA 与浏览器终端技术
 
-`@xterm/xterm` 当前稳定包是 6.0.0，是成熟的浏览器端终端组件。Web 端通过 platform suffix（`NativeTerminalView.web.tsx`）切换到 xterm.js，原因：基于 RN `<Text>` 的快照视图无法支持文本选中、复制、粘贴和 IME 输入。手机端继续沿用 React Native 终端快照视图，xterm.js 仅在 web 平台启用。
+`@xterm/xterm` 当前稳定包是 6.0.0，是成熟的浏览器端终端组件。Web 端通过 platform suffix（`NativeTerminalView.web.tsx`）直接挂载 xterm.js；iOS / Android 端通过 `NativeTerminalView.native.tsx` 使用 `react-native-webview` 加载内嵌 xterm HTML，并通过 `postMessage` 建立 `write/onData/fit/resize` 双向桥。这样三端都使用 xterm 处理终端输入、选择、复制、粘贴和 IME，RN `<Text>` 快照视图仅保留为 fallback。
 
 技术判断：
 
-- 手机端 MVP 使用 React Native 原生终端快照视图。
-- Web 端使用 `@xterm/xterm` + `@xterm/addon-clipboard` + `@xterm/addon-web-links`，由 xterm 的隐藏 textarea 接管键盘输入与 IME，去除原本 `TerminalScreen` 中的全局 `keydown` 兜底监听。
-- 协议保持不变：mac agent 仍下发整屏 ANSI 文本帧（`terminal.frame`），web 端在收到新 frame 时执行 `terminal.reset()` + `terminal.write(frame)` 覆盖；终端尺寸由 `TerminalScreen` 计算的 layout 决定，xterm 跟随 props 调用 `terminal.resize` 同步。
+- Web 端使用 `@xterm/xterm` + `@xterm/addon-fit` + `@xterm/addon-clipboard` + `@xterm/addon-web-links`，由 xterm 的隐藏 textarea 接管键盘输入与 IME，去除原本 `TerminalScreen` 中的全局 `keydown` 兜底监听。
+- iOS / Android 端使用 `react-native-webview` 承载同版本 xterm HTML，RN 侧通过 `injectJavaScript` 写入 frame / resize / fit，WebView 侧通过 `postMessage` 回传输入与尺寸。
+- 协议保持不变：mac agent 仍下发整屏 ANSI 文本帧（`terminal.frame`），xterm 端在收到新 frame 时执行 `terminal.reset()` + `terminal.write(frame)` 覆盖；终端尺寸由 xterm fit 结果或现有 layout 驱动后端 resize。
 - Mac Agent 通过 tmux capture/snapshot 提供当前画面。
 - App 先做文本归一化、ANSI 控制序列清理、横向/纵向滚动、快捷键输入。
 - 如果后续需要完整 ANSI 行为，再以可替换 renderer 引入，不能复制整套 Web 页面。

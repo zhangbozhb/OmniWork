@@ -19,6 +19,7 @@ export interface NativeTerminalViewProps {
   frame: string;
   layout: TerminalLayout;
   terminalSize: TerminalSize;
+  terminalInputEnabled?: boolean;
   readOnly?: boolean;
   onInput?(input: TerminalInputPayload): void;
   onResize?(size: TerminalResizePayload): void;
@@ -40,6 +41,7 @@ const DEFAULT_FONT_SIZE = 14;
 const MOBILE_FONT_SIZE = 9;
 const TERMINAL_SCROLLBACK = 240;
 const RESIZE_DEBOUNCE_MS = 120;
+const SCROLL_LOCK_MS = 220;
 
 export function NativeTerminalView({
   frame,
@@ -54,7 +56,11 @@ export function NativeTerminalView({
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const isPointerDownRef = useRef(false);
+  const isUserScrollingRef = useRef(false);
   const pendingFrameRef = useRef<string | null>(null);
+  const scrollUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const onInputRef = useRef(onInput);
   const onResizeRef = useRef(onResize);
   const readOnlyRef = useRef(readOnly);
@@ -151,6 +157,67 @@ export function NativeTerminalView({
     host.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("pointerup", handlePointerUp);
 
+    const lockFrameUpdatesForScroll = () => {
+      isUserScrollingRef.current = true;
+      if (scrollUnlockTimerRef.current) {
+        clearTimeout(scrollUnlockTimerRef.current);
+      }
+      scrollUnlockTimerRef.current = setTimeout(() => {
+        if (isScrolledAwayFromBottom(terminal)) {
+          scrollUnlockTimerRef.current = null;
+          return;
+        }
+        isUserScrollingRef.current = false;
+        scrollUnlockTimerRef.current = null;
+        const pendingFrame = pendingFrameRef.current;
+        if (pendingFrame !== null) {
+          pendingFrameRef.current = null;
+          terminal.reset();
+          terminal.write(pendingFrame);
+        }
+      }, SCROLL_LOCK_MS);
+    };
+
+    const scrollByPixels = (deltaY: number) => {
+      if (Math.abs(deltaY) < 1) {
+        return;
+      }
+      const lineHeight =
+        (Number(terminal.options.fontSize) || DEFAULT_FONT_SIZE) *
+        LINE_HEIGHT_RATIO;
+      const lines = Math.trunc(deltaY / Math.max(1, lineHeight));
+      terminal.scrollLines(lines === 0 ? Math.sign(deltaY) : lines);
+      lockFrameUpdatesForScroll();
+    };
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      scrollByPixels(event.deltaY);
+    };
+
+    let lastTouchY: number | null = null;
+    const handleTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches[0]?.clientY ?? null;
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const nextY = event.touches[0]?.clientY ?? null;
+      if (lastTouchY === null || nextY === null) {
+        lastTouchY = nextY;
+        return;
+      }
+      event.preventDefault();
+      scrollByPixels(lastTouchY - nextY);
+      lastTouchY = nextY;
+    };
+    const handleTouchEnd = () => {
+      lastTouchY = null;
+    };
+    host.addEventListener("wheel", handleWheel, { passive: false });
+    host.addEventListener("touchstart", handleTouchStart, { passive: true });
+    host.addEventListener("touchmove", handleTouchMove, { passive: false });
+    host.addEventListener("touchend", handleTouchEnd);
+    host.addEventListener("touchcancel", handleTouchEnd);
+
     const reportSize = () => {
       const t = terminalRef.current;
       if (!t) {
@@ -195,6 +262,15 @@ export function NativeTerminalView({
     return () => {
       host.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointerup", handlePointerUp);
+      host.removeEventListener("wheel", handleWheel);
+      host.removeEventListener("touchstart", handleTouchStart);
+      host.removeEventListener("touchmove", handleTouchMove);
+      host.removeEventListener("touchend", handleTouchEnd);
+      host.removeEventListener("touchcancel", handleTouchEnd);
+      if (scrollUnlockTimerRef.current) {
+        clearTimeout(scrollUnlockTimerRef.current);
+        scrollUnlockTimerRef.current = null;
+      }
       if (resizeTimer) {
         clearTimeout(resizeTimer);
       }
@@ -214,7 +290,7 @@ export function NativeTerminalView({
     if (!terminal) {
       return;
     }
-    if (isPointerDownRef.current) {
+    if (isPointerDownRef.current || isUserScrollingRef.current) {
       pendingFrameRef.current = frame;
       return;
     }
@@ -261,6 +337,30 @@ export function NativeTerminalView({
 const SNAPSHOT_TERMINAL_CSS = `
 .omniwork-xterm-snapshot .xterm-cursor-layer {
   display: none !important;
+}
+
+.omniwork-xterm-snapshot .xterm-viewport {
+  scrollbar-width: none;
+}
+
+.omniwork-xterm-snapshot .xterm-viewport::-webkit-scrollbar {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
+.omniwork-xterm-snapshot .xterm-scroll-area {
+  width: 2px !important;
+}
+
+.omniwork-xterm-snapshot .xterm-scroll-area::after,
+.omniwork-xterm-snapshot .xterm-scroll-area::before {
+  width: 2px !important;
+}
+
+.omniwork-xterm-snapshot .xterm-scrollable-element .scrollbar.vertical,
+.omniwork-xterm-snapshot .xterm-scrollable-element .scrollbar.vertical .slider {
+  width: 2px !important;
 }
 
 .omniwork-xterm-snapshot .omniwork-xterm-touch-select-layer {
@@ -310,6 +410,11 @@ function pickFontSize(): number {
     return DEFAULT_FONT_SIZE;
   }
   return window.innerWidth < 600 ? MOBILE_FONT_SIZE : DEFAULT_FONT_SIZE;
+}
+
+function isScrolledAwayFromBottom(terminal: Terminal): boolean {
+  const buffer = terminal.buffer.active;
+  return buffer.viewportY < buffer.baseY;
 }
 
 const containerStyle: React.CSSProperties = {

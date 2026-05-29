@@ -141,6 +141,7 @@ export function TerminalScreen({
   );
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [terminalInputEnabled, setTerminalInputEnabled] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [toolbarHidden, setToolbarHidden] = useState(false);
   const [displayControlsVisible, setDisplayControlsVisible] = useState(false);
@@ -156,7 +157,8 @@ export function TerminalScreen({
   const agentStatus = getAgentStatusPresentation(connectionStatus);
   const runtimeLabel = session.runtime_label || session.runtime_kind;
   const hasDraft = draft.trim().length > 0;
-  const canHideKeyboard = keyboardVisible && !hasDraft;
+  const canHideKeyboard =
+    (keyboardVisible || terminalInputEnabled) && !hasDraft;
   const readOnly = !canInput;
   // Android uses windowSoftInputMode="adjustResize", so the window is already
   // resized above the keyboard. Re-applying keyboardBottomInset on Android would
@@ -202,6 +204,7 @@ export function TerminalScreen({
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
       setKeyboardBottomInset(0);
       setKeyboardVisible(false);
+      setTerminalInputEnabled(false);
     });
 
     return () => {
@@ -283,8 +286,25 @@ export function TerminalScreen({
     }
 
     if (canHideKeyboard) {
+      setTerminalInputEnabled(false);
       Keyboard.dismiss();
     }
+  }
+
+  function enterTerminalInputMode(): void {
+    if (readOnly) {
+      return;
+    }
+    setTerminalInputEnabled(true);
+  }
+
+  function disableTerminalInputMode(): void {
+    setTerminalInputEnabled(false);
+  }
+
+  function exitTerminalInputMode(): void {
+    disableTerminalInputMode();
+    Keyboard.dismiss();
   }
 
   function handleTerminalAreaLayout(event: LayoutChangeEvent): void {
@@ -361,7 +381,9 @@ export function TerminalScreen({
         ]}
         onLayout={handleTerminalAreaLayout}
         onStartShouldSetResponderCapture={() => {
-          Keyboard.dismiss();
+          if (!terminalInputEnabled) {
+            Keyboard.dismiss();
+          }
           return false;
         }}
       >
@@ -369,6 +391,7 @@ export function TerminalScreen({
           frame={frame}
           layout={terminalLayout}
           terminalSize={terminalLayout.terminalSize}
+          terminalInputEnabled={terminalInputEnabled && !readOnly}
           readOnly={readOnly}
           onInput={onInput}
           onResize={onResize}
@@ -499,6 +522,7 @@ export function TerminalScreen({
               returnKeyType="default"
               scrollEnabled
               submitBehavior="newline"
+              onFocus={disableTerminalInputMode}
               style={styles.input}
             />
             <Button
@@ -556,6 +580,30 @@ export function TerminalScreen({
               onPress={() => setDisplayControlsVisible((visible) => !visible)}
             >
               Display
+            </Button>
+            <Button
+              accessibilityLabel={
+                terminalInputEnabled
+                  ? "Exit terminal input mode"
+                  : "Enter terminal input mode"
+              }
+              disabled={readOnly}
+              icon="keyboard"
+              iconOnly
+              style={[
+                styles.floatingControlButton,
+                terminalInputEnabled && styles.floatingControlButtonActive,
+                readOnly && styles.disabled,
+              ]}
+              onPress={() => {
+                if (terminalInputEnabled) {
+                  exitTerminalInputMode();
+                  return;
+                }
+                enterTerminalInputMode();
+              }}
+            >
+              {terminalInputEnabled ? "Browse" : "Terminal input"}
             </Button>
             <Button
               accessibilityLabel={

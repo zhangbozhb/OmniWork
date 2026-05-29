@@ -63,6 +63,7 @@
     "react-native-svg": "^15.15.5",
     "react-native-web": "^0.21.2",
     "react-native-webrtc": "^124.0.4",
+    "react-native-webview": "^13.16.1",
     "react-refresh": "^0.18.0",
     "regenerator-runtime": "^0.14.1",
     "scheduler": "^0.27.0",
