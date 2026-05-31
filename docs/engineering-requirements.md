@@ -9,7 +9,6 @@
 - [app-installation.md](./app-installation.md)
 - [relay-architecture.md](./relay-architecture.md)
 - [relay-architecture-implementation.md](./relay-architecture-implementation.md)
-- [archive/intranet-tunnel-technical-solution-v1.md](./archive/intranet-tunnel-technical-solution-v1.md)（已弃用，仅作历史参考）
 
 ## 总体要求
 
@@ -40,7 +39,7 @@
 - iOS 使用 Xcode / `xcodebuild` 产出可安装 IPA。
 - 本地开发支持 `react-native run-android` 和 `react-native run-ios`。
 - bundle id / package name 必须可通过环境变量覆盖。
-- 默认要求 Relay 使用 `wss://`，Android 禁止明文流量。
+- Relay 允许使用 `ws://` 或 `wss://`；业务安全边界必须是 App-Agent E2E 加密，Android 可允许明文传输以支持公网 IP Relay。
 
 交互实现要求：
 
@@ -79,7 +78,9 @@
 
 Relay 安全约束（`relay/server`）：
 
-- 监听非 loopback 地址时必须显式声明 `OMNIWORK_RELAY_TRUST_FORWARDED_TLS=true`，表明已经由前置 HTTPS / `wss://` 反向代理终结 TLS；否则启动会以 `RelayConfigError` 失败，避免明文上线。
+- 监听非 loopback 地址并使用明文 `ws://` 时必须显式声明 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`。
+- `OMNIWORK_RELAY_REQUIRE_E2E` 必须保持 `true`；如果允许明文 WS 但关闭 E2E，Relay 启动会以 `RelayConfigError` 失败。
+- `wss://` 仍推荐用于降低网络侧元数据暴露，但业务明文不得依赖 TLS 保护，必须封装在 `e2e.message` 中。
 - `auth.proof` 失败按 `(device_id, remote_ip)` 维度做 token bucket 限流，参数由 `OMNIWORK_RELAY_AUTH_RATE_CAPACITY`（默认 5）、`OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC`（默认 1）、`OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS`（默认 60000）控制，超额触发 `auth.failed` 且 `reason=too_many_attempts`，详见 [relay/server/README.md](../relay/server/README.md)。
 
 实现要求：
@@ -149,6 +150,8 @@ MVP 鉴权模型：
 ## 传输与升级要求
 
 业务消息默认走 Relay WS；P2P（WebRTC DataChannel）作为可选优选路径，由 Relay 协调升级、双端按需降级。详细架构以 [relay-architecture.md](./relay-architecture.md) 为单一来源。
+
+实施顺序上，P2P 传输能力已先行落地；当前阶段是在既有 Relay / P2P 两条路径上补齐 App-Agent E2E 加密。E2E 完成后，P2P 仍只是路径优化，不单独承担业务安全边界。
 
 依赖与运行时：
 

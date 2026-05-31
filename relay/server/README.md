@@ -28,22 +28,25 @@ pnpm verify:relay
 OMNIWORK_RELAY_HOST=127.0.0.1
 OMNIWORK_RELAY_PORT=8787
 OMNIWORK_DEVICE_ID=omniwork-relay
-OMNIWORK_RELAY_TRUST_FORWARDED_TLS=false
+OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true
+OMNIWORK_RELAY_REQUIRE_E2E=true
 OMNIWORK_RELAY_AUTH_RATE_CAPACITY=5
 OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC=1
 OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS=60000
 ```
 
-### TLS termination
+### Plaintext WS and E2E
 
-The server only accepts plaintext binding when `OMNIWORK_RELAY_HOST` is a
-loopback address (`127.0.0.1`, `::1`, `localhost`). Any non-loopback host
-requires `OMNIWORK_RELAY_TRUST_FORWARDED_TLS=true`, which acknowledges that an
-HTTPS / `wss://` reverse proxy (e.g. nginx, Envoy, ingress) is terminating TLS
-in front of the relay. Starting up on a non-loopback host without this flag
-fails fast with `RelayConfigError` to prevent accidental cleartext deployments.
-Production should always run behind company TLS so the App connects via
-`wss://`.
+The server treats `ws://` and `wss://` as transport only. Business security is
+provided by App-Agent E2E encryption, and relay business traffic must be carried
+inside `e2e.message`.
+
+Loopback hosts allow plaintext `ws://` by default for local development. Any
+non-loopback host must explicitly set `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`.
+When plaintext WS is allowed, `OMNIWORK_RELAY_REQUIRE_E2E` must remain `true`;
+otherwise startup fails with `RelayConfigError`. `wss://` is still recommended
+to reduce network metadata exposure, but it is not the business security
+boundary.
 
 ### auth.proof rate limiting
 

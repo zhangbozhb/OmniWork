@@ -305,7 +305,7 @@ sequenceDiagram
 - 当前阶段不接入 SSO。
 - Mac Agent 每次启动生成 32 字符临时 key。
 - App 使用该 key 完成本次连接授权。
-- WebSocket 全链路 TLS。
+- WebSocket 允许 `ws://` 与 `wss://`，业务消息必须通过 App-Agent E2E 加密。
 - Relay 不保存完整 key。
 - Mac Agent 重启后旧 key 自动失效。
 - 长时间未操作自动锁定。

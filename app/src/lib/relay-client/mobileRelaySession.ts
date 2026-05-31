@@ -3,6 +3,8 @@ import {
   type RelayCloseEvent,
 } from "../../../../packages/relay-client/src/index.ts";
 import {
+  E2E_SUPPORT_V1,
+  PROTOCOL_SUPPORT_V1,
   createMessage,
   type AuthChallengePayload,
   type MessageEnvelope,
@@ -42,8 +44,11 @@ export class MobileRelaySession {
       createMessage(
         "mobile.connect",
         {
+          v: PROTOCOL_SUPPORT_V1.current,
           device_id: this.pairing.deviceId,
           key_id: this.pairing.keyId ?? "unknown",
+          protocol: PROTOCOL_SUPPORT_V1,
+          e2e: E2E_SUPPORT_V1,
           ...(this.options.transportPreference
             ? { transport_preference: this.options.transportPreference }
             : {}),
@@ -77,11 +82,15 @@ export class MobileRelaySession {
     const challenge = message.payload as AuthChallengePayload;
     const proof = await createKeyProof(this.pairing.key, challenge.nonce);
     this.client.send(
-      createMessage("auth.proof", {
-        key_id: challenge.key_id,
-        nonce: challenge.nonce,
-        proof,
-      }, { device_id: this.pairing.deviceId }),
+      createMessage(
+        "auth.proof",
+        {
+          key_id: challenge.key_id,
+          nonce: challenge.nonce,
+          proof,
+        },
+        { device_id: this.pairing.deviceId },
+      ),
     );
   }
 }

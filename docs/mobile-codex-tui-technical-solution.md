@@ -8,7 +8,7 @@
 
 关联鉴权设计：[auth-key-design.md](./auth-key-design.md)
 
-关联内网穿透方案：[relay-architecture.md](./relay-architecture.md)（终版架构）；[archive/intranet-tunnel-technical-solution-v1.md](./archive/intranet-tunnel-technical-solution-v1.md)（已弃用，仅作历史参考）
+关联中继与传输方案：[relay-architecture.md](./relay-architecture.md)（终版架构）
 
 ## 当前实装状态（2026-05-22）
 
@@ -161,7 +161,7 @@ WebTransport 是更现代的 HTTP/3 传输能力，支持多 stream、单向 str
 
 技术判断：
 
-- MVP 使用 WebSocket over TLS。
+- MVP 使用 WebSocket 作为传输，允许 `ws://` 与 `wss://`；业务安全由 App-Agent E2E 加密承担。
 - 协议层自己实现 seq / ack / flow-control。
 - WebTransport 列入第二阶段实验，不进入第一版主链路。
 
@@ -192,14 +192,14 @@ Mac Agent 是公司设备上的本地常驻组件，应优先使用 Apple 官方
 
 - Mac Agent 不需要 SSH、屏幕录制或辅助功能权限。
 - Mac Agent 需要最小文件系统和网络权限。
-- Mac Agent 应默认只与公司中继建立出站 TLS 连接。
+- Mac Agent 默认只主动连接配置的 Relay；Relay 可为公司或第三方部署，业务安全不依赖 Relay 可信或 TLS 终止。
 
 ## 推荐总体架构
 
 ```mermaid
 flowchart LR
-  Phone["Android/iOS 跨端 App"] -->|WSS + key proof| Relay["公司内网 Relay"]
-  Relay -->|WSS + agent hello| Agent["Mac Agent"]
+  Phone["Android/iOS 跨端 App"] -->|WS/WSS + key proof + E2E| Relay["Relay"]
+  Relay -->|WS/WSS + agent hello + E2E| Agent["Mac Agent"]
 
   Agent --> Control["控制面"]
   Agent --> Runtime["Agent Provider 运行时适配层"]
@@ -265,7 +265,7 @@ flowchart LR
 推荐技术：
 
 - Go 或 Rust。
-- WebSocket over TLS。
+- WebSocket 传输，业务消息强制 App-Agent E2E 加密。
 - MVP 不接入 SSO / OIDC。
 - App 使用 32 字符临时 key 的 HMAC proof 完成连接授权。
 - Mac Agent 使用 `agent.hello` 注册 `device_id`、`agent_instance_id`、`key_id`。
@@ -376,18 +376,20 @@ Mac Agent 的本地端口策略：
 手机与 Relay：
 
 ```text
-wss://relay.company.example/mobile
+ws://relay.example/mobile 或 wss://relay.example/mobile
 auth.proof: HMAC_SHA256(session_key, relay_nonce)
+e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 ```
 
 Mac Agent 与 Relay：
 
 ```text
-wss://relay.company.example/agent
+ws://relay.example/agent 或 wss://relay.example/agent
 agent.hello: device_id + agent_instance_id + key_id
+e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 ```
 
-其中 `session_key` 是 Mac Agent 本次启动生成的 32 字符临时 key。Relay 不应持久化或打印完整 key；推荐由 Relay 发起 nonce，App 计算 proof，Mac Agent 使用本地 key 校验。
+其中 `session_key` 是 Mac Agent 本次启动生成的 32 字符临时 key。Relay 不应持久化或打印完整 key；推荐由 Relay 发起 nonce，App 计算 proof，Mac Agent 使用本地 key 校验。鉴权成功后还必须完成 App-Agent Noise E2E 握手，业务消息只能封装在 `e2e.message` 中。
 
 ### 消息 Envelope
 

@@ -23,10 +23,14 @@ export interface RelayServerConfig {
   port: number;
   deviceId: string;
   /**
-   * 是否在前置 TLS（reverse proxy / ingress）后运行。
-   * 当 host 不是 loopback 时必须显式声明 trustForwardedTls=true，否则启动会拒绝以避免明文上线。
+   * 是否允许公网明文 ws://。业务安全由 App-Agent E2E 负责；
+   * 非 loopback host 必须显式开启该项，避免误把明文传输当成 TLS 保护。
    */
-  trustForwardedTls: boolean;
+  allowPlaintextWs: boolean;
+  /** Relay 是否强制只转发 E2E 业务消息。生产和第三方 Relay 必须保持 true。 */
+  requireE2E: boolean;
+  protocolVersion: 1;
+  minProtocolVersion: 1;
   /**
    * auth.proof 限流：按 (device_id, remote_ip) 维度做 token bucket。
    * - capacity: 桶容量
@@ -50,15 +54,22 @@ export function loadRelayServerConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): RelayServerConfig {
   const host = env.OMNIWORK_RELAY_HOST ?? "127.0.0.1";
-  const trustForwardedTls = parseBoolean(
-    env.OMNIWORK_RELAY_TRUST_FORWARDED_TLS,
-    false,
+  const allowPlaintextWs = parseBoolean(
+    env.OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS,
+    isLoopbackHost(host),
   );
+  const requireE2E = parseBoolean(env.OMNIWORK_RELAY_REQUIRE_E2E, true);
 
-  if (!isLoopbackHost(host) && !trustForwardedTls) {
+  if (!isLoopbackHost(host) && !allowPlaintextWs) {
     throw new RelayConfigError(
-      `[omniwork-relay] refusing to start on non-loopback host "${host}" without TLS termination. ` +
-        `Set OMNIWORK_RELAY_TRUST_FORWARDED_TLS=true only when running behind an HTTPS/wss reverse proxy.`,
+      `[omniwork-relay] refusing to start on non-loopback host "${host}" without explicit plaintext ws allowance. ` +
+        `Set OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true after confirming OMNIWORK_RELAY_REQUIRE_E2E=true.`,
+    );
+  }
+
+  if (allowPlaintextWs && !requireE2E) {
+    throw new RelayConfigError(
+      "[omniwork-relay] plaintext ws requires E2E. Keep OMNIWORK_RELAY_REQUIRE_E2E=true.",
     );
   }
 
@@ -66,7 +77,10 @@ export function loadRelayServerConfig(
     host,
     port: Number(env.OMNIWORK_RELAY_PORT ?? "8787"),
     deviceId: env.OMNIWORK_DEVICE_ID ?? "omniwork-relay",
-    trustForwardedTls,
+    allowPlaintextWs,
+    requireE2E,
+    protocolVersion: 1,
+    minProtocolVersion: 1,
     authRateLimit: {
       capacity: parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_CAPACITY, 5),
       refillPerSecond: parseNumber(
@@ -80,10 +94,7 @@ export function loadRelayServerConfig(
       rolloutPercent: parseRolloutPercent(env.OMNIWORK_UPGRADE_ROLLOUT, 100),
       deviceBlocklist: parseBlocklist(env.OMNIWORK_UPGRADE_DEVICE_BLOCKLIST),
       iceServers: parseIceServers(env.OMNIWORK_UPGRADE_ICE_SERVERS_JSON),
-      proposeDelayMs: parseNumber(
-        env.OMNIWORK_UPGRADE_PROPOSE_DELAY_MS,
-        3000,
-      ),
+      proposeDelayMs: parseNumber(env.OMNIWORK_UPGRADE_PROPOSE_DELAY_MS, 3000),
       respectClientPreference: parseBoolean(
         env.OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF,
         true,

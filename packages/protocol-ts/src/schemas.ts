@@ -8,7 +8,13 @@
  */
 import { z } from "zod";
 
-import { PROTOCOL_VERSION, SUPPORTED_SESSION_STATUSES } from "./constants.ts";
+import {
+  E2E_PROTOCOL_VERSION,
+  INNER_PROTOCOL_VERSION,
+  NOISE_SUITE_NNPSK0_V1,
+  PROTOCOL_VERSION,
+  SUPPORTED_SESSION_STATUSES,
+} from "./constants.ts";
 
 const isoDateTime = z
   .string()
@@ -68,6 +74,163 @@ export const authFailedPayloadSchema = z.object({
   retry_after_ms: z.number().int().nonnegative().optional(),
 });
 
+const protocolSupportSchema = z
+  .object({
+    current: z.literal(PROTOCOL_VERSION),
+    min_supported: z.literal(PROTOCOL_VERSION),
+  })
+  .strict();
+
+const e2eSupportSchema = z
+  .object({
+    required: z.literal(true),
+    versions: z
+      .array(z.number().int().positive())
+      .min(1)
+      .refine((versions) => versions.includes(E2E_PROTOCOL_VERSION), {
+        message: "E2E v1 support is required",
+      }),
+    suites: z
+      .array(z.string().min(1))
+      .min(1)
+      .refine((suites) => suites.includes(NOISE_SUITE_NNPSK0_V1), {
+        message: "Noise NNpsk0 v1 support is required",
+      }),
+  })
+  .strict();
+
+export const agentHelloPayloadSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    device_id: z.string().min(1),
+    agent_instance_id: z.string().min(1),
+    key_id: z.string().min(1),
+    protocol: protocolSupportSchema,
+    e2e: e2eSupportSchema,
+    hostname: z.string().min(1),
+    platform: z.literal("darwin"),
+    agent_version: z.string().min(1),
+    providers: z.array(z.unknown()).optional(),
+    workspaces: z.array(z.unknown()).optional(),
+    capabilities: z.array(z.string().min(1)),
+  })
+  .strict();
+
+export const mobileConnectPayloadSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    device_id: z.string().min(1),
+    key_id: z.string().min(1),
+    protocol: protocolSupportSchema,
+    e2e: e2eSupportSchema,
+    transport_preference: z
+      .enum(["auto", "relay_only", "prefer_p2p"])
+      .optional(),
+  })
+  .strict();
+
+const protocolVersionsSchema = z
+  .object({
+    outer_v: z.literal(PROTOCOL_VERSION),
+    inner_v: z.literal(INNER_PROTOCOL_VERSION),
+    e2e_v: z.literal(E2E_PROTOCOL_VERSION),
+  })
+  .strict();
+
+export const e2eHandshakeInitPayloadSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    handshake_id: z.string().min(1),
+    key_id: z.string().min(1),
+    suite: z.literal(NOISE_SUITE_NNPSK0_V1),
+    app_protocol: protocolVersionsSchema,
+    message: z.string().min(1),
+  })
+  .strict();
+
+export const e2eHandshakeReplyPayloadSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    handshake_id: z.string().min(1),
+    key_id: z.string().min(1),
+    suite: z.literal(NOISE_SUITE_NNPSK0_V1),
+    agent_protocol: protocolVersionsSchema,
+    message: z.string().min(1),
+  })
+  .strict();
+
+export const e2eReadyPayloadSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    handshake_id: z.string().min(1),
+    transcript_hash: z.string().min(1),
+  })
+  .strict();
+
+export const e2eMessagePayloadSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    e2e_session_id: z.string().min(1),
+    seq: z.number().int().nonnegative(),
+    ciphertext: z.string().min(1),
+  })
+  .strict();
+
+export const e2eFailureReasonSchema = z.enum([
+  "unsupported_outer_version",
+  "unsupported_e2e_version",
+  "unsupported_suite",
+  "key_mismatch",
+  "handshake_failed",
+  "timeout",
+  "replay_detected",
+  "decrypt_failed",
+]);
+
+export const e2eFailedPayloadSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    handshake_id: z.string().min(1).optional(),
+    reason: e2eFailureReasonSchema,
+  })
+  .strict();
+
+export const protocolErrorCodeSchema = z.enum([
+  "unsupported_protocol_version",
+  "unsupported_message_type",
+  "invalid_state",
+  "schema_invalid",
+  "e2e_required",
+  "plaintext_business_rejected",
+  "route_not_found",
+]);
+
+export const protocolErrorPayloadSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    code: protocolErrorCodeSchema,
+    detail: z.string().optional(),
+    retryable: z.boolean(),
+  })
+  .strict();
+
+export const innerEnvelopeSchema = z
+  .object({
+    v: z.literal(INNER_PROTOCOL_VERSION),
+    id: messageId,
+    type: z.string().min(1),
+    created_at: isoDateTime,
+    request_id: z.string().min(1).optional(),
+    session_id: z.string().min(1).optional(),
+    payload: z.unknown(),
+  })
+  .strict();
+
 export const terminalSizeSchema = z.object({
   cols: z.number().int().positive(),
   rows: z.number().int().positive(),
@@ -103,9 +266,10 @@ export const terminalErrorPayloadSchema = z.object({
  * 严格对齐：`codexSessionSchema` 用 `.strict()` 拒绝额外字段，必填集合通过
  * `SESSION_REQUIRED_FIELDS` 强制；contract.test 会在跨端对账中覆盖。
  */
-export const sessionStatusSchema = z.enum([
-  ...SUPPORTED_SESSION_STATUSES,
-] as [string, ...string[]]);
+export const sessionStatusSchema = z.enum([...SUPPORTED_SESSION_STATUSES] as [
+  string,
+  ...string[],
+]);
 
 export const sessionOriginSchema = z.enum(["managed", "external"]);
 

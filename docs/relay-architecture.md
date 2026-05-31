@@ -4,12 +4,13 @@
 最后更新：2026-05-22
 关联文档：
 
-- [relay-architecture-implementation.md](./relay-architecture-implementation.md)：分阶段实施计划与变更明细
+- [relay-architecture-implementation.md](./relay-architecture-implementation.md)：当前实施状态与后续演进边界
 - [engineering-requirements.md](./engineering-requirements.md)
 - [auth-key-design.md](./auth-key-design.md)
-- 旧方案归档：[archive/intranet-tunnel-technical-solution-v1.md](./archive/intranet-tunnel-technical-solution-v1.md)
 
 本篇是 OmniWork 中继与 P2P 升级链路的最终参考。所有客户端、Relay 与运维的预期行为都以本文为准。
+
+实现顺序说明：P2P 传输升级能力已先行落地；当前安全改造是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密。本文描述最终目标态：路径可在 Relay 与 P2P 间切换，但业务 payload 安全统一由 E2E 保障。
 
 ## 1. 总体形态
 
@@ -27,7 +28,7 @@
 - **Relay**：始终在线、公网可达，承载 WS 业务中继与升级控制面（SDP/ICE 透传）。本身不再持有任何 `RTCPeerConnection`。
 - **Agent**：macOS Node 进程，使用 `@roamhq/wrtc` 充当 P2P answerer。
 - **App**：React Native（`react-native-webrtc`）/ Web（仅 relay path），充当 P2P offerer。
-- **业务协议**（`session.*`、`terminal.*`、`auth.*`、`workspace.*`、`files.*`、`git.*`、`agent.heartbeat`）零修改，路径切换由传输层吸收。完整消息族以 [packages/protocol-ts/src/index.ts](../packages/protocol-ts/src/index.ts) 为单一来源，对应 JSON Schema 见 [protocol/](../protocol/)。
+- **业务协议**（`session.*`、`terminal.*`、`auth.*`、`workspace.*`、`files.*`、`git.*`、`agent.heartbeat`）由 E2E 内层 envelope 承载；路径切换由传输层吸收。完整消息族以 [packages/protocol-ts/src/index.ts](../packages/protocol-ts/src/index.ts) 为单一来源，对应 JSON Schema 见 [protocol/](../protocol/)。
 
 ## 2. 关键抽象
 
@@ -42,7 +43,8 @@
 
 ### 3.1 触发
 
-- App 通过 `mobile.connect` + `auth.proof` 鉴权成功 → Relay 调用 `notifyMobileAuthenticated`。
+- 目标态：App 通过 `mobile.connect` + `auth.proof` 完成 Relay 接入鉴权后，必须继续完成 App-Agent E2E 握手；Relay 只在 mobile 进入 `e2e_ready` 后调用 `notifyMobileAuthenticated`。
+- 演进说明：P2P 触发能力已先于 E2E 落地；E2E 接入期间需要把原先“auth 后可 propose”的触发点收口到 `e2e_ready` 后。
 - 经过 `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS`（默认 3000ms）稳定窗口后，若 device 未被 enabled / blocklist / 灰度 / 退避 拒绝，则 Relay 同时向 App（`role: offerer`）和 Agent（`role: answerer`）发送 `tunnel.upgrade.propose`。
 
 ### 3.2 协商
@@ -200,7 +202,7 @@ Relay 通过 `logUpgradeEvent` 输出 JSON 行：
 
 ### 8.1 Relay 无法启动
 
-- 错误 `RelayConfigError: refusing to start on non-loopback host`：非 loopback host 必须设置 `OMNIWORK_RELAY_TRUST_FORWARDED_TLS=true`，且必须由前置 HTTPS / wss 反代终止 TLS。
+- 错误 `RelayConfigError: refusing to start on non-loopback host`：非 loopback host 使用 `ws://` 时必须设置 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`，且 `OMNIWORK_RELAY_REQUIRE_E2E=true` 必须保持开启。`wss://` 仍推荐，但业务安全边界是 App-Agent E2E。
 
 ### 8.2 始终走 relay path，从未升级
 

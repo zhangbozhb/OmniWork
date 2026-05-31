@@ -8,7 +8,12 @@ import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
 import {
+  E2E_PROTOCOL_VERSION,
+  E2E_SUPPORT_V1,
+  INNER_PROTOCOL_VERSION,
+  NOISE_SUITE_NNPSK0_V1,
   PROTOCOL_VERSION,
+  PROTOCOL_SUPPORT_V1,
   SESSION_FIELDS,
   SESSION_REQUIRED_FIELDS,
   SUPPORTED_SESSION_STATUSES,
@@ -19,9 +24,14 @@ import {
   codexSessionSchema,
   createMessage,
   createPairingLink,
+  e2eHandshakeInitPayloadSchema,
+  e2eMessagePayloadSchema,
+  e2eReadyPayloadSchema,
+  innerEnvelopeSchema,
   isTransportPreference,
   messageEnvelopeSchema,
   parsePairingLink,
+  protocolErrorPayloadSchema,
   sessionAttachPayloadSchema,
   sessionClosePayloadSchema,
   sessionCreatePayloadSchema,
@@ -101,6 +111,69 @@ describe("auth payload schemas", () => {
     ] as const) {
       authFailedPayloadSchema.parse({ reason });
     }
+  });
+});
+
+describe("e2e v1 schemas", () => {
+  it("validates the mandatory Noise handshake init payload", () => {
+    e2eHandshakeInitPayloadSchema.parse({
+      v: PROTOCOL_VERSION,
+      e2e_version: E2E_PROTOCOL_VERSION,
+      handshake_id: "hs_1",
+      key_id: "sha256:8f2b7d62d9b0",
+      suite: NOISE_SUITE_NNPSK0_V1,
+      app_protocol: {
+        outer_v: PROTOCOL_SUPPORT_V1.current,
+        inner_v: INNER_PROTOCOL_VERSION,
+        e2e_v: E2E_SUPPORT_V1.versions[0],
+      },
+      message: "base64url-noise-message",
+    });
+  });
+
+  it("rejects unsupported Noise suites", () => {
+    const result = e2eHandshakeInitPayloadSchema.safeParse({
+      v: PROTOCOL_VERSION,
+      e2e_version: E2E_PROTOCOL_VERSION,
+      handshake_id: "hs_1",
+      key_id: "sha256:8f2b7d62d9b0",
+      suite: "Noise_XX_25519_ChaChaPoly_BLAKE2s",
+      app_protocol: {
+        outer_v: PROTOCOL_VERSION,
+        inner_v: INNER_PROTOCOL_VERSION,
+        e2e_v: E2E_PROTOCOL_VERSION,
+      },
+      message: "base64url-noise-message",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("validates ready, encrypted message, protocol error, and inner envelope", () => {
+    e2eReadyPayloadSchema.parse({
+      v: PROTOCOL_VERSION,
+      e2e_version: E2E_PROTOCOL_VERSION,
+      handshake_id: "hs_1",
+      transcript_hash: "hash",
+    });
+    e2eMessagePayloadSchema.parse({
+      v: PROTOCOL_VERSION,
+      e2e_version: E2E_PROTOCOL_VERSION,
+      e2e_session_id: "e2e_1",
+      seq: 1,
+      ciphertext: "ciphertext",
+    });
+    protocolErrorPayloadSchema.parse({
+      v: PROTOCOL_VERSION,
+      code: "plaintext_business_rejected",
+      retryable: false,
+    });
+    innerEnvelopeSchema.parse({
+      v: INNER_PROTOCOL_VERSION,
+      id: "inner_1",
+      type: "terminal.input",
+      created_at: new Date().toISOString(),
+      payload: { data: "ls\n" },
+    });
   });
 });
 

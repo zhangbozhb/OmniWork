@@ -1,4 +1,8 @@
 import {
+  E2E_NOISE_NNPSK0_CAPABILITY_V1,
+  E2E_SUPPORT_V1,
+  ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
+  PROTOCOL_SUPPORT_V1,
   createMessage,
   type MessageEnvelope,
 } from "../../../../packages/protocol-ts/src/index.ts";
@@ -259,15 +263,20 @@ export class AgentService {
       createMessage<AgentHelloPayload>(
         "agent.hello",
         {
+          v: PROTOCOL_SUPPORT_V1.current,
           device_id: this.config.deviceId,
           agent_instance_id: keyRecord.agent_instance_id,
           key_id: keyRecord.key_id,
+          protocol: PROTOCOL_SUPPORT_V1,
+          e2e: E2E_SUPPORT_V1,
           hostname: this.config.hostname,
           platform: "darwin",
           agent_version: this.config.agentVersion,
           providers: this.runtimes.providers(),
           workspaces: await this.workspaces.list(),
           capabilities: [
+            E2E_NOISE_NNPSK0_CAPABILITY_V1,
+            ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
             "terminal.tui",
             "terminal.snapshot",
             "session.tmux",

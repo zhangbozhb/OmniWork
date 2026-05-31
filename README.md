@@ -50,7 +50,7 @@ Mobile signing and packaging environment variables (Android keystore, iOS team
 and provisioning profile, version metadata) live in
 [app/.env.example](app/.env.example) and are documented in
 [docs/app-installation.md](docs/app-installation.md) and
-[app/README.md](app/README.md). Relay TLS and `auth.proof` rate-limiting
-settings (`OMNIWORK_RELAY_TRUST_FORWARDED_TLS`,
-`OMNIWORK_RELAY_AUTH_RATE_*`) are documented in
+[app/README.md](app/README.md). Relay plaintext-WS/E2E and `auth.proof`
+rate-limiting settings (`OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS`,
+`OMNIWORK_RELAY_REQUIRE_E2E`, `OMNIWORK_RELAY_AUTH_RATE_*`) are documented in
 [relay/server/README.md](relay/server/README.md).

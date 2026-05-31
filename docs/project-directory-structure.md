@@ -496,14 +496,12 @@ docs/
 |-- relay-architecture.md
 |-- relay-architecture-implementation.md
 |-- project-directory-structure.md
-|-- archive/
-|   |-- intranet-tunnel-technical-solution-v1.md
 ```
 
 原则：
 
 - 当前设计结论放在 docs 根目录。
-- 历史探索或废弃方案放 `docs/archive/`。
+- 历史探索或废弃方案应直接移除，避免继续影响当前架构判断。
 - 协议变化需要同步更新 `packages/protocol-ts` 与（如有）`relay-architecture.md`、`auth-key-design.md`。
 - 任何代码改动都必须同步检查并更新相关文档。
 

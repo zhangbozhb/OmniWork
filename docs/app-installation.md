@@ -55,7 +55,7 @@ OMNIWORK_RELEASE_KEY_PASSWORD=
 
 > 当前 [app/android/app/src/main/AndroidManifest.xml](../app/android/app/src/main/AndroidManifest.xml) 中
 > `android:usesCleartextTraffic="true"`，目的是方便扫码连公网 IP 形态的 `ws://` Relay。
-> 上线分发前请改回 `"false"`，并把 Relay 切到 `wss://`（caddy/nginx + Let's Encrypt）。
+> 业务安全由 App-Agent E2E 加密承担；`wss://` 仍推荐用于降低网络侧元数据暴露，但不是业务安全边界。
 
 示例文件：[app/.env.example](../app/.env.example)
 
@@ -84,7 +84,7 @@ pnpm --filter @omniwork/app build:android:aab
 
 - Gradle 会读取 `OMNIWORK_APP_VERSION` / `OMNIWORK_ANDROID_VERSION_CODE` / `OMNIWORK_ANDROID_PACKAGE` 环境变量注入 versionName / versionCode / applicationId。
 - 当同时提供 `OMNIWORK_RELEASE_KEYSTORE`、`OMNIWORK_RELEASE_KEYSTORE_PASSWORD`、`OMNIWORK_RELEASE_KEY_ALIAS`、`OMNIWORK_RELEASE_KEY_PASSWORD` 时使用 release 签名；否则回退到 debug 签名（仅供 CI 冒烟产物，不可分发）。
-- 默认 release 允许明文 `ws://` 流量（manifest 硬编码 `usesCleartextTraffic="true"`），方便扫码连公网 IP 形态的 Relay；上线分发前需手动改回 `"false"` 并切到 `wss://`。
+- 默认 release 允许明文 `ws://` 流量（manifest 硬编码 `usesCleartextTraffic="true"`），方便扫码连公网 IP 形态的 Relay；业务消息必须通过 E2E 加密，不允许明文业务 fallback。
 
 本地调试：
 
@@ -219,7 +219,7 @@ iOS：
 Android：
 
 - 显式声明 `INTERNET`、`CAMERA` 权限。
-- 当前 `usesCleartextTraffic="true"`（联调用），上线分发前请改回 `"false"` 并切到 `wss://`。
+- 当前 `usesCleartextTraffic="true"`，用于支持 `ws://` Relay；业务消息必须由 App-Agent E2E 加密保护。
 
 ## P2P 升级（WebRTC）
 

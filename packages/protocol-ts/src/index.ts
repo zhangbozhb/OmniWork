@@ -1,10 +1,20 @@
 export {
+  E2E_NOISE_NNPSK0_CAPABILITY_V1,
+  E2E_PROTOCOL_VERSION,
+  ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
+  INNER_PROTOCOL_VERSION,
+  NOISE_SUITE_NNPSK0_V1,
   PAIRING_LINK_HOST,
   PAIRING_LINK_SCHEME,
   PROTOCOL_VERSION,
   SUPPORTED_SESSION_STATUSES,
 } from "./constants.ts";
 import {
+  E2E_NOISE_NNPSK0_CAPABILITY_V1,
+  E2E_PROTOCOL_VERSION,
+  ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
+  INNER_PROTOCOL_VERSION,
+  NOISE_SUITE_NNPSK0_V1,
   PAIRING_LINK_HOST,
   PAIRING_LINK_SCHEME,
   PROTOCOL_VERSION,
@@ -20,6 +30,16 @@ export type MessageType =
   | "auth.verify"
   | "auth.ok"
   | "auth.failed"
+  | "e2e.handshake.init"
+  | "e2e.handshake.reply"
+  | "e2e.ready"
+  | "e2e.message"
+  | "e2e.failed"
+  | "e2e.rekey.init"
+  | "e2e.rekey.reply"
+  | "e2e.rekey.ready"
+  | "e2e.close"
+  | "protocol.error"
   | "device.list"
   | "session.list"
   | "session.create"
@@ -70,9 +90,12 @@ export interface MessageEnvelope<TPayload = unknown> {
 }
 
 export interface AgentHelloPayload {
+  v: typeof PROTOCOL_VERSION;
   device_id: string;
   agent_instance_id: string;
   key_id: string;
+  protocol: ProtocolSupport;
+  e2e: E2ESupport;
   hostname: string;
   platform: "darwin";
   agent_version: string;
@@ -82,6 +105,8 @@ export interface AgentHelloPayload {
 }
 
 export type KnownAgentCapability =
+  | typeof E2E_NOISE_NNPSK0_CAPABILITY_V1
+  | typeof ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1
   | "terminal.tui"
   | "terminal.snapshot"
   | "session.tmux"
@@ -97,8 +122,11 @@ export type KnownAgentCapability =
 export type AgentCapability = KnownAgentCapability | (string & {});
 
 export interface MobileConnectPayload {
+  v: typeof PROTOCOL_VERSION;
   device_id: string;
   key_id: string;
+  protocol: ProtocolSupport;
+  e2e: E2ESupport;
   /**
    * App 端显式声明的传输偏好，由 Relay 在 propose 守门时读取：
    * - "auto"（缺省）：跟随 Relay 灰度/黑名单/退避策略
@@ -126,6 +154,116 @@ export function isTransportPreference(
     typeof value === "string" &&
     (TRANSPORT_PREFERENCES as readonly string[]).includes(value)
   );
+}
+
+export interface ProtocolSupport {
+  current: typeof PROTOCOL_VERSION;
+  min_supported: typeof PROTOCOL_VERSION;
+}
+
+export type NoiseSuite = typeof NOISE_SUITE_NNPSK0_V1;
+
+export interface E2ESupport {
+  required: true;
+  versions: readonly [typeof E2E_PROTOCOL_VERSION, ...number[]];
+  suites: readonly [NoiseSuite, ...string[]];
+}
+
+export const PROTOCOL_SUPPORT_V1: ProtocolSupport = {
+  current: PROTOCOL_VERSION,
+  min_supported: PROTOCOL_VERSION,
+} as const;
+
+export const E2E_SUPPORT_V1: E2ESupport = {
+  required: true,
+  versions: [E2E_PROTOCOL_VERSION],
+  suites: [NOISE_SUITE_NNPSK0_V1],
+} as const;
+
+export interface E2EHandshakeInitPayload {
+  v: typeof PROTOCOL_VERSION;
+  e2e_version: typeof E2E_PROTOCOL_VERSION;
+  handshake_id: string;
+  key_id: string;
+  suite: NoiseSuite;
+  app_protocol: {
+    outer_v: typeof PROTOCOL_VERSION;
+    inner_v: typeof INNER_PROTOCOL_VERSION;
+    e2e_v: typeof E2E_PROTOCOL_VERSION;
+  };
+  message: string;
+}
+
+export interface E2EHandshakeReplyPayload {
+  v: typeof PROTOCOL_VERSION;
+  e2e_version: typeof E2E_PROTOCOL_VERSION;
+  handshake_id: string;
+  key_id: string;
+  suite: NoiseSuite;
+  agent_protocol: {
+    outer_v: typeof PROTOCOL_VERSION;
+    inner_v: typeof INNER_PROTOCOL_VERSION;
+    e2e_v: typeof E2E_PROTOCOL_VERSION;
+  };
+  message: string;
+}
+
+export interface E2EReadyPayload {
+  v: typeof PROTOCOL_VERSION;
+  e2e_version: typeof E2E_PROTOCOL_VERSION;
+  handshake_id: string;
+  transcript_hash: string;
+}
+
+export interface E2EMessagePayload {
+  v: typeof PROTOCOL_VERSION;
+  e2e_version: typeof E2E_PROTOCOL_VERSION;
+  e2e_session_id: string;
+  seq: number;
+  ciphertext: string;
+}
+
+export type E2EFailureReason =
+  | "unsupported_outer_version"
+  | "unsupported_e2e_version"
+  | "unsupported_suite"
+  | "key_mismatch"
+  | "handshake_failed"
+  | "timeout"
+  | "replay_detected"
+  | "decrypt_failed";
+
+export interface E2EFailedPayload {
+  v: typeof PROTOCOL_VERSION;
+  e2e_version: typeof E2E_PROTOCOL_VERSION;
+  handshake_id?: string;
+  reason: E2EFailureReason;
+}
+
+export type ProtocolErrorCode =
+  | "unsupported_protocol_version"
+  | "unsupported_message_type"
+  | "invalid_state"
+  | "schema_invalid"
+  | "e2e_required"
+  | "plaintext_business_rejected"
+  | "route_not_found";
+
+export interface ProtocolErrorPayload {
+  v: typeof PROTOCOL_VERSION;
+  code: ProtocolErrorCode;
+  detail?: string;
+  retryable: boolean;
+}
+
+export interface InnerEnvelope<TPayload = unknown> {
+  v: typeof INNER_PROTOCOL_VERSION;
+  id: string;
+  type: MessageType;
+  created_at: string;
+  request_id?: string;
+  session_id?: string;
+  payload: TPayload;
 }
 
 export interface AuthChallengePayload {
