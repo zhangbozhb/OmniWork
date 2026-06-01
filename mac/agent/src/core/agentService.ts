@@ -2,18 +2,23 @@ import {
   E2E_NOISE_NNPSK0_CAPABILITY_V1,
   E2E_SUPPORT_V1,
   ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
+  INNER_PROTOCOL_VERSION,
   PROTOCOL_SUPPORT_V1,
   createMessage,
   type MessageEnvelope,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import type {
   AgentHelloPayload,
+  E2EHandshakeInitPayload,
+  E2EMessagePayload,
+  E2EReadyPayload,
   AuthVerifyPayload,
   CodexSession,
   FilesListRequestPayload,
   FilesReadRequestPayload,
   GitDiffRequestPayload,
   GitStatusRequestPayload,
+  InnerEnvelope,
   SessionCreatePayload,
   SessionListPayload,
   SessionRenamePayload,
@@ -28,6 +33,11 @@ import type {
   TunnelUpgradeOfferPayload,
   TunnelUpgradeProposePayload,
 } from "../../../../packages/protocol-ts/src/index.ts";
+import {
+  E2ENoiseError,
+  acceptInitiatorHandshake,
+  type E2ENoiseSession,
+} from "@omniwork/e2e-noise";
 import { createHash } from "node:crypto";
 
 import type { AgentConfig } from "../config/config.ts";
@@ -73,6 +83,9 @@ export class AgentService {
   private relay: AgentRelayClient | null = null;
   private transport: AgentSessionTransport | null = null;
   private upgradeCoordinator: UpgradeCoordinator | null = null;
+  private e2eSession: E2ENoiseSession | null = null;
+  private readonly seenAuthNonces: string[] = [];
+  private readonly seenAuthNonceSet = new Set<string>();
   private readonly logTransport =
     (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
   /**
@@ -298,20 +311,39 @@ export class AgentService {
     });
   }
 
-  private async handleRelayMessage(message: MessageEnvelope): Promise<void> {
+  private async handleRelayMessage(
+    message: MessageEnvelope,
+    trustedE2E = false,
+  ): Promise<void> {
     switch (message.type) {
       case "auth.verify":
         this.handleAuthVerify(message as MessageEnvelope<AuthVerifyPayload>);
         break;
+      case "e2e.handshake.init":
+        this.handleE2EHandshakeInit(
+          message as MessageEnvelope<E2EHandshakeInitPayload>,
+        );
+        break;
+      case "e2e.ready":
+        this.handleE2EReady(message as MessageEnvelope<E2EReadyPayload>);
+        break;
+      case "e2e.message":
+        await this.handleE2EMessage(
+          message as MessageEnvelope<E2EMessagePayload>,
+        );
+        break;
       case "session.list":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleSessionList(message);
         break;
       case "session.create":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleSessionCreate(
           message as MessageEnvelope<SessionCreatePayload>,
         );
         break;
       case "session.close":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         if (message.session_id) {
           this.stopTerminalPusher(message.session_id);
           await this.sessionManager.close(message.session_id);
@@ -319,11 +351,13 @@ export class AgentService {
         }
         break;
       case "session.rename":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleSessionRename(
           message as MessageEnvelope<SessionRenamePayload>,
         );
         break;
       case "session.kill_tmux":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         if (message.session_id) {
           this.stopTerminalPusher(message.session_id);
           await this.sessionManager.killTmux(message.session_id);
@@ -331,45 +365,55 @@ export class AgentService {
         }
         break;
       case "workspace.list":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleWorkspaceList(message);
         break;
       case "files.list":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleFilesList(
           message as MessageEnvelope<FilesListRequestPayload>,
         );
         break;
       case "files.read":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleFilesRead(
           message as MessageEnvelope<FilesReadRequestPayload>,
         );
         break;
       case "git.status":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleGitStatus(
           message as MessageEnvelope<GitStatusRequestPayload>,
         );
         break;
       case "git.diff":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleGitDiff(
           message as MessageEnvelope<GitDiffRequestPayload>,
         );
         break;
       case "terminal.input":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleTerminalInput(
           message as MessageEnvelope<TerminalInputPayload>,
         );
         break;
       case "terminal.resize":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleTerminalResize(
           message as MessageEnvelope<TerminalResizePayload>,
         );
         break;
       case "session.attach":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleSessionAttach(message);
         break;
       case "terminal.snapshot":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleTerminalSnapshot(message);
         break;
       case "tunnel.upgrade.propose": {
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         const payload = (
           message as MessageEnvelope<TunnelUpgradeProposePayload>
         ).payload;
@@ -386,26 +430,31 @@ export class AgentService {
         break;
       }
       case "tunnel.upgrade.offer":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.upgradeCoordinator?.handleOffer(
           (message as MessageEnvelope<TunnelUpgradeOfferPayload>).payload,
         );
         break;
       case "tunnel.upgrade.answer":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.upgradeCoordinator?.handleAnswer(
           (message as MessageEnvelope<TunnelUpgradeAnswerPayload>).payload,
         );
         break;
       case "tunnel.upgrade.candidate":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.upgradeCoordinator?.handleCandidate(
           (message as MessageEnvelope<TunnelUpgradeCandidatePayload>).payload,
         );
         break;
       case "tunnel.upgrade.committed":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         this.upgradeCoordinator?.handleCommitted(
           (message as MessageEnvelope<TunnelUpgradeCommittedPayload>).payload,
         );
         break;
       case "tunnel.upgrade.downgrade":
+        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         this.upgradeCoordinator?.downgrade(
           (message as MessageEnvelope<TunnelUpgradeDowngradePayload>).payload
             .reason,
@@ -418,13 +467,149 @@ export class AgentService {
     }
   }
 
+  private handleE2EHandshakeInit(
+    message: MessageEnvelope<E2EHandshakeInitPayload>,
+  ): void {
+    const keyRecord = this.requireKeyRecord();
+    try {
+      const result = acceptInitiatorHandshake(
+        {
+          pairingKey: keyRecord.key,
+          deviceId: this.config.deviceId,
+          keyId: keyRecord.key_id,
+          agentInstanceId: keyRecord.agent_instance_id,
+          handshakeId: message.payload.handshake_id,
+        },
+        message.payload,
+      );
+      this.e2eSession = result.session;
+      this.send(
+        createMessage("e2e.handshake.reply", result.reply, {
+          device_id: this.config.deviceId,
+        }),
+      );
+      this.send(
+        createMessage("e2e.ready", result.session.readyPayload(), {
+          device_id: this.config.deviceId,
+        }),
+      );
+      this.logger.info("e2e handshake accepted", {
+        handshake_id: result.reply.handshake_id,
+        e2e_session_id: result.session.sessionId,
+      });
+    } catch (error) {
+      this.e2eSession = null;
+      this.logger.warn("e2e handshake failed", { error: String(error) });
+      this.send(
+        createMessage(
+          "e2e.failed",
+          {
+            v: PROTOCOL_SUPPORT_V1.current,
+            e2e_version: E2E_SUPPORT_V1.versions[0],
+            handshake_id: message.payload.handshake_id,
+            reason:
+              error instanceof E2ENoiseError &&
+              error.code === "unsupported_suite"
+                ? "unsupported_suite"
+                : "handshake_failed",
+          },
+          { device_id: this.config.deviceId },
+        ),
+      );
+    }
+  }
+
+  private handleE2EReady(message: MessageEnvelope<E2EReadyPayload>): void {
+    if (!this.e2eSession) {
+      this.logger.warn("e2e ready without active session", {
+        handshake_id: message.payload.handshake_id,
+      });
+      return;
+    }
+    if (
+      message.payload.handshake_id !== this.e2eSession.handshakeId ||
+      message.payload.transcript_hash !== this.e2eSession.transcriptHash
+    ) {
+      this.logger.warn("e2e ready transcript mismatch", {
+        handshake_id: message.payload.handshake_id,
+      });
+      this.e2eSession = null;
+      return;
+    }
+    this.logger.info("e2e ready confirmed", {
+      handshake_id: message.payload.handshake_id,
+      e2e_session_id: this.e2eSession.sessionId,
+    });
+  }
+
+  private async handleE2EMessage(
+    message: MessageEnvelope<E2EMessagePayload>,
+  ): Promise<void> {
+    if (!this.e2eSession) {
+      this.logger.warn("e2e message without active session", {
+        e2e_session_id: message.payload.e2e_session_id,
+      });
+      return;
+    }
+    try {
+      const inner = this.e2eSession.decrypt(message.payload);
+      await this.handleRelayMessage(
+        innerToMessage(inner, this.config.deviceId),
+        true,
+      );
+    } catch (error) {
+      this.logger.warn("failed to decrypt e2e message", {
+        error: String(error),
+      });
+      if (
+        error instanceof E2ENoiseError &&
+        (error.code === "decrypt_failed" || error.code === "replay_detected")
+      ) {
+        this.e2eSession = null;
+      }
+    }
+  }
+
+  private rejectPlaintextBusiness(
+    message: MessageEnvelope,
+    trustedE2E: boolean,
+  ): boolean {
+    if (trustedE2E) {
+      return false;
+    }
+    this.logger.warn("rejected plaintext business message", {
+      message_type: message.type,
+    });
+    return true;
+  }
+
   private handleAuthVerify(message: MessageEnvelope<AuthVerifyPayload>): void {
     const keyRecord = this.requireKeyRecord();
+    const authNonceKey = `${message.payload.key_id}:${message.payload.nonce}`;
+    if (this.seenAuthNonceSet.has(authNonceKey)) {
+      this.logger.warn("rejected replayed auth nonce", {
+        key_id: message.payload.key_id,
+      });
+      this.send(
+        createMessage(
+          "auth.failed",
+          {
+            reason: "malformed_proof",
+            connection_id: message.payload.connection_id,
+            retry_after_ms: 2000,
+          },
+          { device_id: this.config.deviceId },
+        ),
+      );
+      return;
+    }
+
     const valid =
       message.payload.key_id === keyRecord.key_id &&
       verifyProof(keyRecord.key, message.payload.nonce, message.payload.proof);
 
     if (valid) {
+      this.rememberAuthNonce(authNonceKey);
       this.send(
         createMessage(
           "auth.ok",
@@ -447,6 +632,17 @@ export class AgentService {
           { device_id: this.config.deviceId },
         ),
       );
+    }
+  }
+
+  private rememberAuthNonce(nonceKey: string): void {
+    this.seenAuthNonceSet.add(nonceKey);
+    this.seenAuthNonces.push(nonceKey);
+    while (this.seenAuthNonces.length > 1024) {
+      const oldest = this.seenAuthNonces.shift();
+      if (oldest) {
+        this.seenAuthNonceSet.delete(oldest);
+      }
     }
   }
 
@@ -817,6 +1013,22 @@ export class AgentService {
       return;
     }
 
+    if (isE2EBusinessMessage(message.type)) {
+      if (!this.e2eSession) {
+        this.logger.warn("dropped business message without e2e session", {
+          message_type: message.type,
+        });
+        return;
+      }
+      const encrypted = this.e2eSession.encrypt(messageToInner(message));
+      this.transport.send(
+        createMessage("e2e.message", encrypted.payload, {
+          device_id: this.config.deviceId,
+        }),
+      );
+      return;
+    }
+
     this.transport.send(message);
   }
 
@@ -864,4 +1076,42 @@ function formatRelayConnectionError(error: unknown): string {
   } catch {
     return String(error);
   }
+}
+
+function isE2EBusinessMessage(type: string): boolean {
+  return (
+    type.startsWith("session.") ||
+    type.startsWith("terminal.") ||
+    type.startsWith("workspace.") ||
+    type.startsWith("files.") ||
+    type.startsWith("git.") ||
+    type.startsWith("codex.") ||
+    type.startsWith("tunnel.upgrade.")
+  );
+}
+
+function messageToInner(message: MessageEnvelope): InnerEnvelope {
+  return {
+    v: INNER_PROTOCOL_VERSION,
+    id: message.id,
+    type: message.type,
+    created_at: message.ts,
+    session_id: message.session_id,
+    payload: message.payload,
+  };
+}
+
+function innerToMessage(
+  inner: InnerEnvelope,
+  deviceId: string,
+): MessageEnvelope {
+  return {
+    v: PROTOCOL_SUPPORT_V1.current,
+    id: inner.id,
+    type: inner.type,
+    device_id: deviceId,
+    session_id: inner.session_id,
+    ts: inner.created_at,
+    payload: inner.payload,
+  };
 }

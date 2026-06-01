@@ -112,7 +112,7 @@ closed
 - mobile 只有在 `relay_pairing_verified` 状态下才能发起 `e2e.handshake.init`。
 - `e2e.message` 只允许在 `e2e_ready` 状态转发。
 - 外层明文业务消息会被拒绝，并返回 `protocol.error/plaintext_business_rejected`。
-- P2P 自动 propose 只应在 mobile 进入 `e2e_ready` 后触发。
+- P2P 自动 propose 暂停触发；待 P2P 数据路径和 `tunnel.upgrade.*` 控制面完成 E2E 包装后再恢复。
 
 ### 3.4 文档清理
 
@@ -124,61 +124,28 @@ closed
 
 - P2P 升级协议族 `tunnel.upgrade.*` 已存在。
 - App 与 Agent 已具备 P2P peer 抽象和升级协调状态机。
-- Relay 已具备 P2P propose、SDP/ICE 透传、灰度、退避、metrics 与 debug 触发能力。
+- Relay 已具备 P2P propose、SDP/ICE 透传、灰度、退避、metrics 与 debug 触发能力；当前为避免 E2E 绕过，自动 propose 暂停。
 - 这些能力是 E2E 改造的前置传输基础，不应在 E2E 改造中回退或删除。
 
-## 4. 尚未完成
+## 4. 后续边界
 
-### 4.1 Noise 基础库
-
-需要新增 `packages/e2e-noise`，推荐使用跨 Node / React Native / Web 的 `@noble/*` 生态：
-
-- `@noble/curves`：X25519。
-- `@noble/hashes`：HKDF / BLAKE2s / SHA256。
-- `@noble/ciphers`：ChaCha20-Poly1305。
-
-第一版固定实现：
-
-```text
-Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
-```
-
-需要覆盖：
-
-- pairing key 到 Noise PSK 的派生。
-- Noise handshake。
-- transport 加密和解密。
-- `seq` / replay 检测。
-- transcript hash 校验。
-- 篡改、重放、key mismatch 的失败路径。
-
-### 4.2 Agent E2E 接入
-
-Agent 需要：
-
-- 处理 `e2e.handshake.init` 并返回 `e2e.handshake.reply`。
-- 完成 `e2e.ready` 后建立 E2E session。
-- 只从解密后的 `InnerEnvelope` 分发业务消息。
-- 拒绝所有外层明文业务命令。
-- 在解密失败、重放、协议版本不匹配时关闭 E2E session。
-
-### 4.3 App E2E 接入
-
-App 需要：
-
-- 在 `auth.ok` 后发起 Noise handshake。
-- `e2e_ready` 前业务消息进入队列，不明文发送。
-- `e2e_ready` 后把业务消息封装成 `InnerEnvelope` 并加密为 `e2e.message`。
-- Noise 握手失败时关闭 session，不降级为明文业务。
-
-### 4.4 P2P 控制面收口
+### 4.1 P2P 控制面收口
 
 P2P 已经作为传输能力落地；E2E 改造阶段还需要对 P2P 控制面做安全收口：
 
 - 保证 relay path 和 p2p path 使用统一 E2E 安全模型。
 - 将 `tunnel.upgrade.*` 控制消息纳入 E2E 认证或密文控制面。
+- 恢复 Relay 自动 propose 前，必须先保证 P2P path 不会绕过 `e2e.message` 加解密。
+- `/debug/upgrade` 在 `OMNIWORK_RELAY_REQUIRE_E2E=true` 时保持禁用，避免调试入口直接下发明文 `tunnel.upgrade.*`。
 - 路径切换不能引入明文业务 fallback。
 - strict P2P 失败应关闭 session 或明确提示用户，不静默退回明文 relay。
+
+### 4.2 后续协议演进
+
+- 当前 v1 使用 `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s` 和 pairing key 派生 PSK。
+- 后续可演进到带长期设备身份的 Noise pattern，例如 `XXpsk3`。
+- 多 App 同时连接同一 Agent 时，需要把 Agent 侧 E2E session 从单实例扩展为按 connection/session 维度管理。
+- P2P DataChannel 恢复承载业务前，必须复用或迁移同一套 E2E session，不能新增明文旁路。
 
 ## 5. 实施不变量
 
@@ -210,6 +177,8 @@ E2E 接入完成后的安全验收还应包括：
 - `ws://` 下 App-Agent 能完成 Noise handshake。
 - Relay 日志和内存中不可见业务明文。
 - Relay 伪造外层 `terminal.input` 时 Agent 不执行。
+- Relay 伪造外层 `tunnel.upgrade.*` 时 App/Agent 不执行。
+- `/debug/upgrade` 在 encrypted-only 默认配置下不可直接触发 P2P propose。
 - Relay 篡改 handshake 或 ciphertext 时连接失败。
 - Relay 重放旧 `e2e.message` 时接收端拒绝。
 - App/Agent 协议版本或 Noise suite 不兼容时明确失败，不降级明文。
@@ -220,7 +189,8 @@ E2E 接入完成后的安全验收还应包括：
 - Relay `ws://` + `REQUIRE_E2E` 配置：已落地。
 - Relay encrypted-only 状态机：已落地。
 - P2P 传输升级能力：已先行落地。
-- Noise 加解密库：未开始。
-- Agent E2E 解密分发：未开始。
-- App E2E 加密发送：未开始。
-- P2P 控制面 E2E 安全收口：未开始。
+- Noise 加解密库：已落地。
+- Agent E2E 解密分发：已落地。
+- App E2E 加密发送：已落地。
+- P2P 自动 propose：已暂停。
+- P2P DataChannel 统一 E2E 承载：后续收口。

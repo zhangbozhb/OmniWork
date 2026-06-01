@@ -26,7 +26,8 @@
     "verify:app:bundle:android": "pnpm --filter @omniwork/app verify:bundle:android",
     "verify:relay": "node --experimental-strip-types relay/server/src/main.ts --check",
     "verify:mac-key": "node --experimental-strip-types mac/agent/tests/auth-key.test.ts",
-    "verify:upgrade:simulator": "node --experimental-strip-types scripts/verify/mobile-upgrade-simulator.mjs"
+    "verify:upgrade:simulator": "node --experimental-strip-types scripts/verify/mobile-upgrade-simulator.mjs",
+    "verify:security": "pnpm --filter @omniwork/e2e-noise test"
   },
   "devDependencies": {
     "typescript": "^5.8.0",

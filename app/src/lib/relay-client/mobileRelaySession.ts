@@ -4,12 +4,24 @@ import {
 } from "../../../../packages/relay-client/src/index.ts";
 import {
   E2E_SUPPORT_V1,
+  INNER_PROTOCOL_VERSION,
   PROTOCOL_SUPPORT_V1,
   createMessage,
   type AuthChallengePayload,
+  type AuthOkPayload,
+  type E2EHandshakeReplyPayload,
+  type E2EMessagePayload,
+  type E2EReadyPayload,
+  type InnerEnvelope,
   type MessageEnvelope,
   type TransportPreference,
 } from "../../../../packages/protocol-ts/src/index.ts";
+import {
+  E2ENoiseError,
+  createInitiatorHandshake,
+  type E2ENoiseSession,
+  type InitiatorHandshakeState,
+} from "@omniwork/e2e-noise";
 import type { PairingConfig } from "../../features/auth/types";
 import { createKeyProof } from "../../features/auth/keyProof";
 
@@ -24,6 +36,12 @@ export interface MobileRelaySessionOptions {
 export class MobileRelaySession {
   private readonly client: RelayClient;
   private readonly options: MobileRelaySessionOptions;
+  private readonly handlers = new Set<(message: MessageEnvelope) => void>();
+  private e2eHandshake: InitiatorHandshakeState | null = null;
+  private e2eSession: E2ENoiseSession | null = null;
+  private e2ePeerReady = false;
+  private pendingKeyId: string | null = null;
+  private pendingBusinessMessages: MessageEnvelope[] = [];
 
   constructor(
     private readonly pairing: PairingConfig,
@@ -59,7 +77,8 @@ export class MobileRelaySession {
   }
 
   onMessage(handler: (message: MessageEnvelope) => void): () => void {
-    return this.client.onMessage(handler);
+    this.handlers.add(handler);
+    return () => this.handlers.delete(handler);
   }
 
   onClose(handler: (event: RelayCloseEvent) => void): () => void {
@@ -67,6 +86,22 @@ export class MobileRelaySession {
   }
 
   send(message: MessageEnvelope): void {
+    if (isE2EBusinessMessage(message.type)) {
+      if (!this.e2eSession || !this.e2ePeerReady) {
+        this.pendingBusinessMessages.push(message);
+        return;
+      }
+      this.client.send(
+        createMessage(
+          "e2e.message",
+          this.e2eSession.encrypt(messageToInner(message)).payload,
+          {
+            device_id: this.pairing.deviceId,
+          },
+        ),
+      );
+      return;
+    }
     this.client.send(message);
   }
 
@@ -75,11 +110,37 @@ export class MobileRelaySession {
   }
 
   private async handleMessage(message: MessageEnvelope): Promise<void> {
-    if (message.type !== "auth.challenge") {
-      return;
+    switch (message.type) {
+      case "auth.challenge":
+        await this.handleAuthChallenge(message.payload as AuthChallengePayload);
+        return;
+      case "auth.ok":
+        this.handleAuthOk(message.payload as AuthOkPayload);
+        this.dispatch(message);
+        return;
+      case "e2e.handshake.reply":
+        this.handleE2EHandshakeReply(
+          message.payload as E2EHandshakeReplyPayload,
+        );
+        return;
+      case "e2e.ready":
+        this.handleE2EReady(message.payload as E2EReadyPayload);
+        return;
+      case "e2e.message":
+        this.handleE2EMessage(message.payload as E2EMessagePayload);
+        return;
+      default:
+        if (isE2EBusinessMessage(message.type)) {
+          return;
+        }
+        this.dispatch(message);
     }
+  }
 
-    const challenge = message.payload as AuthChallengePayload;
+  private async handleAuthChallenge(
+    challenge: AuthChallengePayload,
+  ): Promise<void> {
+    this.pendingKeyId = challenge.key_id;
     const proof = await createKeyProof(this.pairing.key, challenge.nonce);
     this.client.send(
       createMessage(
@@ -93,4 +154,117 @@ export class MobileRelaySession {
       ),
     );
   }
+
+  private handleAuthOk(payload: AuthOkPayload): void {
+    const keyId = this.pendingKeyId ?? this.pairing.keyId ?? "unknown";
+    this.e2eHandshake = createInitiatorHandshake({
+      pairingKey: this.pairing.key,
+      deviceId: this.pairing.deviceId,
+      keyId,
+      agentInstanceId: payload.agent_instance_id,
+    });
+    this.client.send(
+      createMessage("e2e.handshake.init", this.e2eHandshake.init, {
+        device_id: this.pairing.deviceId,
+      }),
+    );
+  }
+
+  private handleE2EHandshakeReply(payload: E2EHandshakeReplyPayload): void {
+    if (!this.e2eHandshake) {
+      return;
+    }
+    this.e2eSession = this.e2eHandshake.complete(payload);
+    this.e2eHandshake = null;
+    this.client.send(
+      createMessage("e2e.ready", this.e2eSession.readyPayload(), {
+        device_id: this.pairing.deviceId,
+      }),
+    );
+  }
+
+  private handleE2EReady(payload: E2EReadyPayload): void {
+    if (
+      !this.e2eSession ||
+      payload.handshake_id !== this.e2eSession.handshakeId ||
+      payload.transcript_hash !== this.e2eSession.transcriptHash
+    ) {
+      this.e2eSession = null;
+      this.e2ePeerReady = false;
+      return;
+    }
+    this.e2ePeerReady = true;
+    this.flushPendingBusinessMessages();
+  }
+
+  private handleE2EMessage(payload: E2EMessagePayload): void {
+    if (!this.e2eSession || !this.e2ePeerReady) {
+      return;
+    }
+    try {
+      this.dispatch(
+        innerToMessage(this.e2eSession.decrypt(payload), this.pairing.deviceId),
+      );
+    } catch (error) {
+      if (
+        error instanceof E2ENoiseError &&
+        (error.code === "decrypt_failed" || error.code === "replay_detected")
+      ) {
+        this.e2eSession = null;
+        this.e2ePeerReady = false;
+      }
+    }
+  }
+
+  private flushPendingBusinessMessages(): void {
+    const pending = this.pendingBusinessMessages;
+    this.pendingBusinessMessages = [];
+    for (const message of pending) {
+      this.send(message);
+    }
+  }
+
+  private dispatch(message: MessageEnvelope): void {
+    for (const handler of this.handlers) {
+      handler(message);
+    }
+  }
+}
+
+function isE2EBusinessMessage(type: string): boolean {
+  return (
+    type.startsWith("session.") ||
+    type.startsWith("terminal.") ||
+    type.startsWith("workspace.") ||
+    type.startsWith("files.") ||
+    type.startsWith("git.") ||
+    type.startsWith("codex.") ||
+    type.startsWith("tunnel.upgrade.")
+  );
+}
+
+function messageToInner(message: MessageEnvelope): InnerEnvelope {
+  return {
+    v: INNER_PROTOCOL_VERSION,
+    id: message.id,
+    type: message.type,
+    created_at: message.ts,
+    session_id: message.session_id,
+    payload: message.payload,
+  };
+}
+
+function innerToMessage(
+  inner: InnerEnvelope,
+  deviceId: string,
+): MessageEnvelope {
+  return {
+    v: PROTOCOL_SUPPORT_V1.current,
+    id: inner.id,
+    type: inner.type,
+    device_id: deviceId,
+    session_id: inner.session_id,
+    ts: inner.created_at,
+    payload: inner.payload,
+  };
 }

@@ -63,6 +63,9 @@ interface RelayConnection {
    * 守门时读取；缺省视为 "auto"。
    */
   transportPreference?: TransportPreference;
+  e2eHandshakeId?: string;
+  e2eTranscriptHash?: string;
+  e2eSessionId?: string;
 }
 
 interface PendingAuth {
@@ -154,6 +157,12 @@ export class RelayServer {
     request: IncomingMessage,
     response: ServerResponse,
   ): void {
+    if (this.config.requireE2E) {
+      response.writeHead(409, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "p2p_debug_disabled_until_e2e" }));
+      return;
+    }
+
     const url = new URL(request.url ?? "/", "http://relay.local");
     const deviceId = url.searchParams.get("device_id");
     if (!deviceId) {
@@ -307,6 +316,14 @@ export class RelayServer {
       case "tunnel.upgrade.candidate":
       case "tunnel.upgrade.committed":
       case "tunnel.upgrade.downgrade":
+        if (this.config.requireE2E) {
+          this.rejectPlaintextBusiness(connection, message.type);
+          return;
+        }
+        if (!this.isE2EPairReady(connection)) {
+          this.rejectInvalidState(connection, message.type);
+          return;
+        }
         logUpgradeEvent({
           event: message.type,
           device_id: connection.deviceId,
@@ -581,10 +598,16 @@ export class RelayServer {
       this.rejectInvalidState(connection, "e2e.handshake.init");
       return;
     }
-    if (!connection.authenticated || connection.state !== "relay_pairing_verified") {
+    if (
+      !connection.authenticated ||
+      connection.state !== "relay_pairing_verified"
+    ) {
       this.rejectInvalidState(connection, "e2e.handshake.init");
       return;
     }
+    connection.e2eHandshakeId = message.payload.handshake_id;
+    connection.e2eTranscriptHash = undefined;
+    connection.e2eSessionId = undefined;
     connection.state = "e2e_handshaking";
     this.routeMessage(connection, message);
   }
@@ -597,6 +620,9 @@ export class RelayServer {
       this.rejectInvalidState(connection, "e2e.handshake.reply");
       return;
     }
+    connection.e2eHandshakeId = message.payload.handshake_id;
+    connection.e2eTranscriptHash = undefined;
+    connection.e2eSessionId = undefined;
     connection.state = "e2e_handshaking";
     this.routeMessage(connection, message);
   }
@@ -609,10 +635,19 @@ export class RelayServer {
       this.rejectInvalidState(connection, "e2e.ready");
       return;
     }
-    connection.state = "e2e_ready";
-    if (connection.role === "mobile" && connection.deviceId) {
-      this.orchestrator.notifyMobileAuthenticated(connection.deviceId, connection);
+    if (
+      connection.e2eHandshakeId &&
+      message.payload.handshake_id !== connection.e2eHandshakeId
+    ) {
+      this.rejectInvalidState(connection, "e2e.ready");
+      return;
     }
+    connection.e2eHandshakeId = message.payload.handshake_id;
+    connection.e2eTranscriptHash = message.payload.transcript_hash;
+    connection.state = "e2e_ready";
+    // P2P 数据路径尚未完成统一 E2E 包装。安全优先：在 tunnel.upgrade.*
+    // 控制面纳入 E2E 之前，不自动触发 P2P propose，避免业务消息绕过
+    // App/Agent 的 e2e.message 加解密门禁。
     this.routeMessage(connection, message);
   }
 
@@ -624,6 +659,18 @@ export class RelayServer {
       this.rejectInvalidState(connection, "e2e.message");
       return;
     }
+    if (!this.isE2EPairReady(connection)) {
+      this.rejectInvalidState(connection, "e2e.message");
+      return;
+    }
+    if (
+      connection.e2eSessionId &&
+      connection.e2eSessionId !== message.payload.e2e_session_id
+    ) {
+      this.rejectInvalidState(connection, "e2e.message");
+      return;
+    }
+    connection.e2eSessionId = message.payload.e2e_session_id;
     this.routeMessage(connection, message);
   }
 
@@ -634,6 +681,9 @@ export class RelayServer {
     connection.state = connection.authenticated
       ? "relay_pairing_verified"
       : connection.state;
+    connection.e2eHandshakeId = undefined;
+    connection.e2eTranscriptHash = undefined;
+    connection.e2eSessionId = undefined;
     this.routeMessage(connection, message);
   }
 
@@ -645,7 +695,33 @@ export class RelayServer {
       this.rejectInvalidState(connection, message.type);
       return;
     }
+    if (!this.isE2EPairReady(connection)) {
+      this.rejectInvalidState(connection, message.type);
+      return;
+    }
     this.routeMessage(connection, message);
+  }
+
+  private isE2EPairReady(connection: RelayConnection): boolean {
+    if (!connection.deviceId || connection.state !== "e2e_ready") {
+      return false;
+    }
+    if (connection.role === "mobile") {
+      const agent = this.agentsByDevice.get(connection.deviceId);
+      return isMatchingE2EPeer(connection, agent);
+    }
+    if (connection.role === "agent") {
+      const mobiles = this.mobilesByDevice.get(connection.deviceId);
+      if (!mobiles) {
+        return false;
+      }
+      for (const mobile of mobiles) {
+        if (isMatchingE2EPeer(connection, mobile)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private rejectPlaintextBusiness(
@@ -722,6 +798,19 @@ function buildAuthRateLimitKey(
   return [keyId ?? "_", deviceId ?? "_", remoteIp ?? "_"].join("|");
 }
 
+function isMatchingE2EPeer(
+  connection: RelayConnection,
+  peer: RelayConnection | undefined,
+): boolean {
+  return (
+    peer?.state === "e2e_ready" &&
+    !!connection.e2eHandshakeId &&
+    connection.e2eHandshakeId === peer.e2eHandshakeId &&
+    !!connection.e2eTranscriptHash &&
+    connection.e2eTranscriptHash === peer.e2eTranscriptHash
+  );
+}
+
 function isPlaintextBusinessMessage(type: string): boolean {
   return (
     type.startsWith("session.") ||
@@ -729,7 +818,8 @@ function isPlaintextBusinessMessage(type: string): boolean {
     type.startsWith("workspace.") ||
     type.startsWith("files.") ||
     type.startsWith("git.") ||
-    type.startsWith("codex.")
+    type.startsWith("codex.") ||
+    type.startsWith("tunnel.upgrade.")
   );
 }
 

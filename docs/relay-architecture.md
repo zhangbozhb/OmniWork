@@ -43,9 +43,9 @@
 
 ### 3.1 触发
 
-- 目标态：App 通过 `mobile.connect` + `auth.proof` 完成 Relay 接入鉴权后，必须继续完成 App-Agent E2E 握手；Relay 只在 mobile 进入 `e2e_ready` 后调用 `notifyMobileAuthenticated`。
-- 演进说明：P2P 触发能力已先于 E2E 落地；E2E 接入期间需要把原先“auth 后可 propose”的触发点收口到 `e2e_ready` 后。
-- 经过 `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS`（默认 3000ms）稳定窗口后，若 device 未被 enabled / blocklist / 灰度 / 退避 拒绝，则 Relay 同时向 App（`role: offerer`）和 Agent（`role: answerer`）发送 `tunnel.upgrade.propose`。
+- 当前安全态：App 通过 `mobile.connect` + `auth.proof` 完成 Relay 接入鉴权后，必须继续完成 App-Agent E2E 握手；业务消息只允许通过 `e2e.message` 传输。
+- P2P 触发能力已先于 E2E 落地，但 P2P 数据路径尚未完成统一 E2E 包装；为避免明文绕过，Relay 暂不自动调用 `notifyMobileAuthenticated` 触发 propose。
+- 目标态：`tunnel.upgrade.*` 控制面纳入 E2E 后，再恢复 `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS` 稳定窗口和灰度/退避触发逻辑。
 
 ### 3.2 协商
 
@@ -192,7 +192,8 @@ Relay 通过 `logUpgradeEvent` 输出 JSON 行：
 {"ts":"2026-05-22T03:11:09.000Z","component":"omniwork-relay","event":"tunnel.upgrade.committed","upgrade_id":"...","device_id":"...","source_role":"mobile"}
 ```
 
-所有 `tunnel.upgrade.*` 透传消息都会写一行日志；额外事件：
+自动 P2P propose 暂停期间，`tunnel.upgrade.*` 不能作为 Relay 外层明文业务转发；
+恢复前必须统一封装到 App-Agent E2E 数据路径。额外事件：
 
 - `debug.trigger_upgrade`：通过 `POST /debug/upgrade?device_id=xxx` 手工触发。
 
@@ -232,7 +233,13 @@ Relay 通过 `logUpgradeEvent` 输出 JSON 行：
 curl -X POST "http://<relay-host>:<port>/debug/upgrade?device_id=<id>"
 ```
 
-成功响应：
+当前 encrypted-only 默认配置下，该入口会被拒绝：
+
+```json
+{ "error": "p2p_debug_disabled_until_e2e" }
+```
+
+后续 P2P path 完成 E2E 收口并临时关闭 `OMNIWORK_RELAY_REQUIRE_E2E` 时，成功响应：
 
 ```json
 { "ok": true, "upgrade_id": "upg_..." }
@@ -241,9 +248,10 @@ curl -X POST "http://<relay-host>:<port>/debug/upgrade?device_id=<id>"
 失败响应：
 
 - `400 { "error": "missing_device_id" }`：未传 query 参数。
+- `409 { "error": "p2p_debug_disabled_until_e2e" }`：当前 Relay 要求业务 encrypted-only，调试入口被禁用，避免直接下发明文 `tunnel.upgrade.*`。
 - `404 { "error": "device_not_online" }`：device 当前没有 agent 或 mobile 在线。
 
-注意：`/debug/upgrade` 直接走 `triggerUpgrade`，**不会受 ROLLOUT / DEVICE_BLOCKLIST / 退避 限制**——它只要求双端都已连接。该次 trigger 会进入 metrics 统计与日志（event=`debug.trigger_upgrade`），常用于本地或 staging 验证升级链路（见 `pnpm verify:upgrade:simulator`）。
+注意：旧的 `/debug/upgrade` 会直接走 `triggerUpgrade`，不受 ROLLOUT / DEVICE_BLOCKLIST / 退避限制；在 E2E 收口完成前保持禁用，避免调试面绕过 `e2e.message` 门禁。
 
 ## 9. 已知限制 / 不在范围
 

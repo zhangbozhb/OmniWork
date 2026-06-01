@@ -11,13 +11,21 @@
 - E2E 完成后，路径选择仍由现有 transport preference、灰度、退避和降级逻辑控制。
 - 本文只描述 E2E retrofit 的落地，不重新规划 P2P 传输能力。
 
+## 当前安全状态
+
+- 当前代码已接入 App-Agent Noise E2E：App 在 `auth.ok` 后发起握手，Agent 只执行解密后的 `InnerEnvelope`，业务响应也会封装为 `e2e.message`。
+- `packages/e2e-noise` 已覆盖 NNpsk0 握手、ChaCha20-Poly1305 加解密、`seq` 防重放、篡改检测和 key mismatch 测试。
+- `auth.proof` 仍只用于 Relay 接入校验和失败限流；Agent 额外记录已处理 nonce，拒绝同一 `key_id + nonce` 的 `auth.verify` 重放。
+- P2P 数据路径尚未完成统一 E2E 包装，因此 Relay 暂不自动触发 P2P propose；P2P 控制面纳入 E2E 后才能重新开放自动升级。
+
 ## 设计基线
 
 - `ws://` 和 `wss://` 都只是传输；业务安全边界是 App-Agent E2E。
 - Relay 不可信，只负责外层路由、状态校验、限流和升级协调。
 - P2P 是传输路径优化，不能单独作为业务安全边界。
 - 所有业务消息必须封装为 `e2e.message`，Relay 不转发明文 `session.*`、
-  `terminal.*`、`workspace.*`、`files.*`、`git.*`、`codex.*`。
+  `terminal.*`、`workspace.*`、`files.*`、`git.*`、`codex.*`、
+  `tunnel.upgrade.*`。
 - v1 固定使用 `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`。
 - 外层协议、E2E 协议、内层业务协议均显式携带版本号。
 
@@ -41,32 +49,30 @@
 - Relay 已拒绝外层明文业务消息，并返回
   `protocol.error/plaintext_business_rejected`。
 
-> 说明：该阶段是在 P2P 已存在的基础上增加安全门禁。接入 App/Agent Noise 前，
-> 业务链路可能处于“安全门禁已开启、E2E 加解密待补齐”的过渡状态。
-
-## 下一阶段
-
 ### 阶段 3：Noise 基础库
 
-- 新增 `packages/e2e-noise`。
-- 推荐依赖：`@noble/curves`、`@noble/hashes`、`@noble/ciphers`。
-- 实现 PSK 派生、NNpsk0 握手、transport 加解密、seq/replay 校验。
+- 已新增 `packages/e2e-noise`。
+- 已使用 `@noble/curves`、`@noble/hashes`、`@noble/ciphers` 实现跨端密码学基础。
+- 已实现 PSK 派生、NNpsk0 握手、transport 加解密、seq/replay 校验。
 
 ### 阶段 4：Agent E2E 接入
 
-- Agent 处理 `e2e.handshake.init` 并返回 `e2e.handshake.reply`。
-- Agent 只从解密后的 `InnerEnvelope` 分发业务消息。
-- Agent 拒绝所有外层明文业务命令。
+- Agent 已处理 `e2e.handshake.init` 并返回 `e2e.handshake.reply` / `e2e.ready`。
+- Agent 已只从解密后的 `InnerEnvelope` 分发业务消息。
+- Agent 已拒绝所有外层明文业务命令。
 
 ### 阶段 5：App E2E 接入
 
-- App 在 `auth.ok` 后发起 Noise 握手。
+- App 已在 `auth.ok` 后发起 Noise 握手。
 - `e2e_ready` 前业务消息入队，`e2e_ready` 后统一加密发送。
 - Noise 失败时关闭 session，不降级明文。
 
+## 后续阶段
+
 ### 阶段 6：P2P 路径安全收口
 
-- relay path 和 p2p path 复用同一个 E2E session。
+- 当前为了避免 P2P 明文绕过，Relay 暂不自动触发 P2P propose。
+- 后续需要让 relay path 和 p2p path 复用同一个 E2E session。
 - P2P 切换不重新暴露业务明文，也不新增明文 fallback。
 - `tunnel.upgrade.*` 控制面纳入 E2E 认证或密文控制消息。
 - P2P 升级失败只影响路径选择，不影响业务 payload 的 E2E 安全。

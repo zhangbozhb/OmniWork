@@ -11,6 +11,7 @@
     "test": "node --experimental-strip-types tests/auth-key.test.ts && node --experimental-strip-types tests/session-store.test.ts && node --experimental-strip-types tests/session-startup-patch.test.ts"
   },
   "dependencies": {
+    "@omniwork/e2e-noise": "workspace:*",
     "@omniwork/protocol-ts": "workspace:*",
     "@omniwork/relay-client": "workspace:*",
     "@omniwork/terminal-core": "workspace:*",

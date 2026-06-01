@@ -25,6 +25,7 @@
     "test": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@omniwork/e2e-noise": "workspace:*",
     "@omniwork/protocol-ts": "workspace:*",
     "@omniwork/relay-client": "workspace:*",
     "@omniwork/terminal-core": "workspace:*",
