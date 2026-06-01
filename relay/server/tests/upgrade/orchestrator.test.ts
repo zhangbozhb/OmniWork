@@ -135,9 +135,9 @@ const makeAgent = (id = "conn_agent"): UpgradeOrchestratorConnection => ({
     getAgent: () => makeAgent(),
     now: () => fakeNow,
   });
-  orchestrator2.recordFailure("device-123", "ice_failed");
-  orchestrator2.recordFailure("device-123", "ice_failed");
-  orchestrator2.recordFailure("device-123", "ice_failed");
+  orchestrator2.recordFailure("device-123", "ice_failed", "conn_mobile");
+  orchestrator2.recordFailure("device-123", "ice_failed", "conn_mobile");
+  orchestrator2.recordFailure("device-123", "ice_failed", "conn_mobile");
   // 推进 9 分钟，仍在退避内。
   fakeNow += 9 * 60_000;
   orchestrator2.notifyMobileAuthenticated("device-123", makeMobile());
@@ -145,9 +145,9 @@ const makeAgent = (id = "conn_agent"): UpgradeOrchestratorConnection => ({
   assert.equal(sends.length, 0, "still in backoff at 9min");
 
   // 第 4 次失败 → 永久退避。
-  orchestrator2.recordFailure("device-123", "ice_failed");
+  orchestrator2.recordFailure("device-123", "ice_failed", "conn_mobile");
   fakeNow = Number.MAX_SAFE_INTEGER - 1; // 即便走到最大值附近也不放行
-  orchestrator2.notifyMobileAuthenticated("device-123", makeMobile("conn_2"));
+  orchestrator2.notifyMobileAuthenticated("device-123", makeMobile());
   await wait(20);
   assert.equal(sends.length, 0, "permanent backoff after 4 failures");
   orchestrator.dispose();
@@ -172,7 +172,7 @@ const makeAgent = (id = "conn_agent"): UpgradeOrchestratorConnection => ({
 
   const committed = createMessage<TunnelUpgradeCommittedPayload>(
     "tunnel.upgrade.committed",
-    { upgrade_id: upgradeId },
+    { upgrade_id: upgradeId, app_connection_id: "conn_mobile" },
     { device_id: "device-123" },
   );
   orchestrator.handleControlMessage(committed);
@@ -189,7 +189,11 @@ const makeAgent = (id = "conn_agent"): UpgradeOrchestratorConnection => ({
   );
   const downgrade = createMessage<TunnelUpgradeDowngradePayload>(
     "tunnel.upgrade.downgrade",
-    { upgrade_id: upgradeId2, reason: "ice_failed" },
+    {
+      upgrade_id: upgradeId2,
+      app_connection_id: "conn_2",
+      reason: "ice_failed",
+    },
     { device_id: "device-123" },
   );
   orchestrator.handleControlMessage(downgrade);
@@ -311,7 +315,7 @@ const makeAgent = (id = "conn_agent"): UpgradeOrchestratorConnection => ({
     getAgent: () => makeAgent(),
     now: () => fakeNow,
   });
-  orchestrator4.recordFailure("device-123", "ice_failed");
+  orchestrator4.recordFailure("device-123", "ice_failed", "conn_mobile");
   // 第一次失败 → 30s 退避；推进 5s 仍在窗内。
   fakeNow += 5_000;
   orchestrator4.notifyMobileAuthenticated("device-123", {

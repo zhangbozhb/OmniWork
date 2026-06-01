@@ -141,6 +141,7 @@ export const e2eHandshakeInitPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    app_connection_id: z.string().min(1),
     handshake_id: z.string().min(1),
     key_id: z.string().min(1),
     suite: z.literal(NOISE_SUITE_NNPSK0_V1),
@@ -153,6 +154,7 @@ export const e2eHandshakeReplyPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    app_connection_id: z.string().min(1),
     handshake_id: z.string().min(1),
     key_id: z.string().min(1),
     suite: z.literal(NOISE_SUITE_NNPSK0_V1),
@@ -165,6 +167,7 @@ export const e2eReadyPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    app_connection_id: z.string().min(1),
     handshake_id: z.string().min(1),
     transcript_hash: z.string().min(1),
   })
@@ -174,6 +177,7 @@ export const e2eMessagePayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    app_connection_id: z.string().min(1),
     e2e_session_id: z.string().min(1),
     seq: z.number().int().nonnegative(),
     ciphertext: z.string().min(1),
@@ -195,6 +199,7 @@ export const e2eFailedPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    app_connection_id: z.string().min(1).optional(),
     handshake_id: z.string().min(1).optional(),
     reason: e2eFailureReasonSchema,
   })

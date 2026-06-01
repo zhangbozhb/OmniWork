@@ -85,6 +85,7 @@ class MockPeer implements WebRtcPeerAdapter {
 
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const UPGRADE_ID = "upgrade-test-1";
+const APP_CONNECTION_ID = "conn_app";
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -106,12 +107,17 @@ const sleep = (ms: number) =>
 
   await coordinator.propose({
     upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
     ice_servers: ICE_SERVERS,
     role: "answerer",
   });
   assert.equal(coordinator.getState(), "negotiating");
 
-  await coordinator.handleOffer({ upgrade_id: UPGRADE_ID, sdp: "remote-offer" });
+  await coordinator.handleOffer({
+    upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
+    sdp: "remote-offer",
+  });
   assert.equal(peer.lastRemoteSdp?.type, "offer");
 
   // sendControl 中应已包含 answer
@@ -121,6 +127,7 @@ const sleep = (ms: number) =>
   // 模拟收到对端 candidate
   await coordinator.handleCandidate({
     upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
     candidate: "candidate:1 1 udp 2122260223 1.1.1.1 1234 typ host",
     sdp_mid: "0",
     sdp_mline_index: 0,
@@ -147,7 +154,7 @@ const sleep = (ms: number) =>
   assert.equal(coordinator.getState(), "committing");
 
   // 收到对端 committed -> upgraded -> p2p
-  coordinator.handleCommitted({ upgrade_id: UPGRADE_ID });
+  coordinator.handleCommitted({ upgrade_id: UPGRADE_ID, app_connection_id: APP_CONNECTION_ID });
   assert.equal(coordinator.getState(), "upgraded");
   assert.deepEqual(pathChanges, ["p2p"]);
 }
@@ -169,6 +176,7 @@ const sleep = (ms: number) =>
 
   await coordinator.propose({
     upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
     ice_servers: ICE_SERVERS,
     role: "offerer",
   });
@@ -205,6 +213,7 @@ const sleep = (ms: number) =>
 
   await coordinator.propose({
     upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
     ice_servers: ICE_SERVERS,
     role: "offerer",
   });
@@ -236,12 +245,14 @@ const sleep = (ms: number) =>
 
   await coordinator.propose({
     upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
     ice_servers: ICE_SERVERS,
     role: "answerer",
   });
   const before = sent.length;
   await coordinator.propose({
     upgrade_id: "another",
+    app_connection_id: APP_CONNECTION_ID,
     ice_servers: ICE_SERVERS,
     role: "answerer",
   });
@@ -266,6 +277,7 @@ const sleep = (ms: number) =>
 
   await coordinator.propose({
     upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
     ice_servers: ICE_SERVERS,
     role: "offerer",
     strict: true,
@@ -308,6 +320,7 @@ const sleep = (ms: number) =>
 
   await coordinator.propose({
     upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
     ice_servers: ICE_SERVERS,
     role: "offerer",
     strict: true,
@@ -348,6 +361,7 @@ const sleep = (ms: number) =>
 
   await coordinator.propose({
     upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
     ice_servers: ICE_SERVERS,
     role: "offerer",
     // 不传 strict

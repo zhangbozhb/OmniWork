@@ -69,6 +69,17 @@ import { AgentRelayPath, AgentSessionTransport } from "../transport/index.ts";
 import { UpgradeCoordinator } from "../transport/upgradeCoordinator.ts";
 import { createAgentWebRtcPeerAdapter } from "../transport/webRtcPeerAdapter.ts";
 
+interface AppE2EPeer {
+  appConnectionId: string;
+  session: E2ENoiseSession;
+  ready: boolean;
+}
+
+interface AgentDispatchContext {
+  appConnectionId: string;
+  trustedE2E: true;
+}
+
 export class AgentService {
   private readonly logger = new Logger("omniwork-agent");
   private readonly tmux = new TmuxManager();
@@ -82,8 +93,8 @@ export class AgentService {
   private keyRecord: SessionKeyRecord | null = null;
   private relay: AgentRelayClient | null = null;
   private transport: AgentSessionTransport | null = null;
-  private upgradeCoordinator: UpgradeCoordinator | null = null;
-  private e2eSession: E2ENoiseSession | null = null;
+  private readonly upgradeCoordinators = new Map<string, UpgradeCoordinator>();
+  private readonly e2ePeers = new Map<string, AppE2EPeer>();
   private readonly seenAuthNonces: string[] = [];
   private readonly seenAuthNonceSet = new Set<string>();
   private readonly logTransport =
@@ -94,6 +105,7 @@ export class AgentService {
    */
   private readonly terminalPushers = new Map<string, NodeJS.Timeout>();
   private readonly terminalLastFrameHash = new Map<string, string>();
+  private readonly terminalSubscribers = new Map<string, Set<string>>();
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -165,38 +177,6 @@ export class AgentService {
     const transport = new AgentSessionTransport(relayPath);
     this.transport = transport;
 
-    // Agent 端固定为 answerer（mobile 是 offerer）。
-    const coordinator = new UpgradeCoordinator({
-      role: "answerer",
-      deviceId: this.config.deviceId,
-      peerFactory: (opts) =>
-        createAgentWebRtcPeerAdapter({
-          iceServers: opts.iceServers,
-          role: opts.role,
-        }),
-      sendControl: (envelope) => relay.send(envelope),
-      onSwitchPath: (path) => {
-        if (path === "p2p") {
-          const peer = coordinator.getPeer();
-          const upgradeId = coordinator.getUpgradeId();
-          if (peer) {
-            transport.attachP2pPeer(peer, {
-              upgradeId: upgradeId ?? undefined,
-              onDowngrade: (reason) => coordinator.downgrade(reason),
-            });
-          }
-        }
-        void transport.switchPath(path);
-      },
-      onForceClose: (reason) => {
-        // 严格 P2P 模式下协商或运行期失败：关闭 mobile-agent 会话，让 mobile
-        // 端通过 force_close 事件感知，下次重连由 mobile 主动发起。
-        this.logger.warn("strict_p2p_disconnect", { reason });
-        transport.forceClose(reason);
-      },
-    });
-    this.upgradeCoordinator = coordinator;
-
     // transport 健康事件 → Logger（pong_received 仅在 OMNIWORK_LOG_TRANSPORT=1 时打印）。
     transport.onEvent((event) => {
       switch (event.type) {
@@ -222,28 +202,6 @@ export class AgentService {
           break;
         case "downgrade":
           this.logger.warn("transport downgrade", { reason: event.reason });
-          break;
-      }
-    });
-
-    coordinator.onEvent((event) => {
-      switch (event.type) {
-        case "propose":
-          this.logger.info("upgrade propose", {
-            upgrade_id: event.upgrade_id,
-            role: event.role,
-          });
-          break;
-        case "upgrade_success":
-          this.logger.info("upgrade success", {
-            upgrade_id: event.upgrade_id,
-          });
-          break;
-        case "upgrade_failed":
-          this.logger.warn("upgrade failed", {
-            upgrade_id: event.upgrade_id,
-            reason: event.reason,
-          });
           break;
       }
     });
@@ -313,8 +271,9 @@ export class AgentService {
 
   private async handleRelayMessage(
     message: MessageEnvelope,
-    trustedE2E = false,
+    context?: AgentDispatchContext,
   ): Promise<void> {
+    const trustedE2E = context?.trustedE2E === true;
     switch (message.type) {
       case "auth.verify":
         this.handleAuthVerify(message as MessageEnvelope<AuthVerifyPayload>);
@@ -334,12 +293,13 @@ export class AgentService {
         break;
       case "session.list":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleSessionList(message);
+        await this.handleSessionList(message, context);
         break;
       case "session.create":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleSessionCreate(
           message as MessageEnvelope<SessionCreatePayload>,
+          context,
         );
         break;
       case "session.close":
@@ -347,13 +307,14 @@ export class AgentService {
         if (message.session_id) {
           this.stopTerminalPusher(message.session_id);
           await this.sessionManager.close(message.session_id);
-          await this.handleSessionList(message);
+          await this.handleSessionList(message, context);
         }
         break;
       case "session.rename":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleSessionRename(
           message as MessageEnvelope<SessionRenamePayload>,
+          context,
         );
         break;
       case "session.kill_tmux":
@@ -361,35 +322,39 @@ export class AgentService {
         if (message.session_id) {
           this.stopTerminalPusher(message.session_id);
           await this.sessionManager.killTmux(message.session_id);
-          await this.handleSessionList(message);
+          await this.handleSessionList(message, context);
         }
         break;
       case "workspace.list":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleWorkspaceList(message);
+        await this.handleWorkspaceList(message, context);
         break;
       case "files.list":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleFilesList(
           message as MessageEnvelope<FilesListRequestPayload>,
+          context,
         );
         break;
       case "files.read":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleFilesRead(
           message as MessageEnvelope<FilesReadRequestPayload>,
+          context,
         );
         break;
       case "git.status":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleGitStatus(
           message as MessageEnvelope<GitStatusRequestPayload>,
+          context,
         );
         break;
       case "git.diff":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleGitDiff(
           message as MessageEnvelope<GitDiffRequestPayload>,
+          context,
         );
         break;
       case "terminal.input":
@@ -406,65 +371,154 @@ export class AgentService {
         break;
       case "session.attach":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleSessionAttach(message);
+        await this.handleSessionAttach(message, context);
         break;
       case "terminal.snapshot":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleTerminalSnapshot(message);
+        await this.handleTerminalSnapshot(message, context);
         break;
       case "tunnel.upgrade.propose": {
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         const payload = (
           message as MessageEnvelope<TunnelUpgradeProposePayload>
         ).payload;
-        // strict 标记由 Relay 在 mobile.connect.transport_preference="prefer_p2p"
-        // 时设置；agent transport 实例横跨多次 mobile 连接复用，因此每次 propose
-        // 都需要重新 configure 一次（含上一轮强制关闭后的状态重置）。
-        this.transport?.configureStrictP2p(
-          payload.strict === true,
-          (reason) => {
-            this.logger.warn("strict_p2p_disconnect", { reason });
-          },
+        if (
+          !trustedE2E &&
+          !this.e2ePeers.get(payload.app_connection_id)?.ready
+        ) {
+          this.rejectPlaintextBusiness(message, trustedE2E);
+          return;
+        }
+        await this.getUpgradeCoordinator(payload.app_connection_id).propose(
+          payload,
         );
-        await this.upgradeCoordinator?.propose(payload);
         break;
       }
       case "tunnel.upgrade.offer":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.upgradeCoordinator?.handleOffer(
-          (message as MessageEnvelope<TunnelUpgradeOfferPayload>).payload,
-        );
+        {
+          const payload = (
+            message as MessageEnvelope<TunnelUpgradeOfferPayload>
+          ).payload;
+          await this.getUpgradeCoordinator(
+            payload.app_connection_id,
+          ).handleOffer(payload);
+        }
         break;
       case "tunnel.upgrade.answer":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.upgradeCoordinator?.handleAnswer(
-          (message as MessageEnvelope<TunnelUpgradeAnswerPayload>).payload,
-        );
+        {
+          const payload = (
+            message as MessageEnvelope<TunnelUpgradeAnswerPayload>
+          ).payload;
+          await this.getUpgradeCoordinator(
+            payload.app_connection_id,
+          ).handleAnswer(payload);
+        }
         break;
       case "tunnel.upgrade.candidate":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.upgradeCoordinator?.handleCandidate(
-          (message as MessageEnvelope<TunnelUpgradeCandidatePayload>).payload,
-        );
+        {
+          const payload = (
+            message as MessageEnvelope<TunnelUpgradeCandidatePayload>
+          ).payload;
+          await this.getUpgradeCoordinator(
+            payload.app_connection_id,
+          ).handleCandidate(payload);
+        }
         break;
       case "tunnel.upgrade.committed":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        this.upgradeCoordinator?.handleCommitted(
-          (message as MessageEnvelope<TunnelUpgradeCommittedPayload>).payload,
-        );
+        {
+          const payload = (
+            message as MessageEnvelope<TunnelUpgradeCommittedPayload>
+          ).payload;
+          this.getUpgradeCoordinator(payload.app_connection_id).handleCommitted(
+            payload,
+          );
+        }
         break;
       case "tunnel.upgrade.downgrade":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        this.upgradeCoordinator?.downgrade(
-          (message as MessageEnvelope<TunnelUpgradeDowngradePayload>).payload
-            .reason,
-        );
+        {
+          const payload = (
+            message as MessageEnvelope<TunnelUpgradeDowngradePayload>
+          ).payload;
+          this.getUpgradeCoordinator(payload.app_connection_id).downgrade(
+            payload.reason,
+          );
+        }
         break;
       default:
         this.logger.debug("ignored relay message", {
           message_type: message.type,
         });
     }
+  }
+
+  private getUpgradeCoordinator(appConnectionId: string): UpgradeCoordinator {
+    const existing = this.upgradeCoordinators.get(appConnectionId);
+    if (existing) {
+      return existing;
+    }
+    if (!this.transport) {
+      throw new Error("Cannot create upgrade coordinator without transport.");
+    }
+    const coordinator = new UpgradeCoordinator({
+      role: "answerer",
+      deviceId: this.config.deviceId,
+      peerFactory: (opts) =>
+        createAgentWebRtcPeerAdapter({
+          iceServers: opts.iceServers,
+          role: opts.role,
+        }),
+      sendControl: (envelope) =>
+        this.sendToAppByConnectionId(appConnectionId, envelope),
+      onSwitchPath: (path) => {
+        if (path === "p2p") {
+          const peer = coordinator.getPeer();
+          const upgradeId = coordinator.getUpgradeId();
+          if (peer) {
+            this.transport?.attachP2pPeer(peer, {
+              appConnectionId,
+              upgradeId: upgradeId ?? undefined,
+              onDowngrade: (reason) => coordinator.downgrade(reason),
+            });
+          }
+        } else {
+          this.transport?.detachP2pPeer(appConnectionId);
+        }
+        void this.transport?.switchPath(path);
+      },
+      onForceClose: (reason) => {
+        this.logger.warn("strict_p2p_disconnect", {
+          app_connection_id: appConnectionId,
+          reason,
+        });
+        this.transport?.detachP2pPeer(appConnectionId);
+      },
+    });
+    coordinator.onEvent((event) => {
+      if (event.type === "propose") {
+        this.logger.info("upgrade propose", {
+          app_connection_id: appConnectionId,
+          upgrade_id: event.upgrade_id,
+          role: event.role,
+        });
+      } else if (event.type === "upgrade_success") {
+        this.logger.info("upgrade success", {
+          app_connection_id: appConnectionId,
+          upgrade_id: event.upgrade_id,
+        });
+      } else {
+        this.logger.warn("upgrade failed", {
+          app_connection_id: appConnectionId,
+          upgrade_id: event.upgrade_id,
+          reason: event.reason,
+        });
+      }
+    });
+    this.upgradeCoordinators.set(appConnectionId, coordinator);
+    return coordinator;
   }
 
   private handleE2EHandshakeInit(
@@ -478,11 +532,17 @@ export class AgentService {
           deviceId: this.config.deviceId,
           keyId: keyRecord.key_id,
           agentInstanceId: keyRecord.agent_instance_id,
+          appConnectionId: message.payload.app_connection_id,
           handshakeId: message.payload.handshake_id,
         },
         message.payload,
       );
-      this.e2eSession = result.session;
+      const peer: AppE2EPeer = {
+        appConnectionId: message.payload.app_connection_id,
+        session: result.session,
+        ready: false,
+      };
+      this.e2ePeers.set(peer.appConnectionId, peer);
       this.send(
         createMessage("e2e.handshake.reply", result.reply, {
           device_id: this.config.deviceId,
@@ -498,7 +558,7 @@ export class AgentService {
         e2e_session_id: result.session.sessionId,
       });
     } catch (error) {
-      this.e2eSession = null;
+      this.e2ePeers.delete(message.payload.app_connection_id);
       this.logger.warn("e2e handshake failed", { error: String(error) });
       this.send(
         createMessage(
@@ -506,6 +566,7 @@ export class AgentService {
           {
             v: PROTOCOL_SUPPORT_V1.current,
             e2e_version: E2E_SUPPORT_V1.versions[0],
+            app_connection_id: message.payload.app_connection_id,
             handshake_id: message.payload.handshake_id,
             reason:
               error instanceof E2ENoiseError &&
@@ -520,42 +581,52 @@ export class AgentService {
   }
 
   private handleE2EReady(message: MessageEnvelope<E2EReadyPayload>): void {
-    if (!this.e2eSession) {
+    const peer = this.e2ePeers.get(message.payload.app_connection_id);
+    if (!peer) {
       this.logger.warn("e2e ready without active session", {
+        app_connection_id: message.payload.app_connection_id,
         handshake_id: message.payload.handshake_id,
       });
       return;
     }
     if (
-      message.payload.handshake_id !== this.e2eSession.handshakeId ||
-      message.payload.transcript_hash !== this.e2eSession.transcriptHash
+      message.payload.handshake_id !== peer.session.handshakeId ||
+      message.payload.transcript_hash !== peer.session.transcriptHash
     ) {
       this.logger.warn("e2e ready transcript mismatch", {
+        app_connection_id: message.payload.app_connection_id,
         handshake_id: message.payload.handshake_id,
       });
-      this.e2eSession = null;
+      this.e2ePeers.delete(message.payload.app_connection_id);
       return;
     }
+    peer.ready = true;
     this.logger.info("e2e ready confirmed", {
+      app_connection_id: message.payload.app_connection_id,
       handshake_id: message.payload.handshake_id,
-      e2e_session_id: this.e2eSession.sessionId,
+      e2e_session_id: peer.session.sessionId,
     });
   }
 
   private async handleE2EMessage(
     message: MessageEnvelope<E2EMessagePayload>,
   ): Promise<void> {
-    if (!this.e2eSession) {
+    const peer = this.e2ePeers.get(message.payload.app_connection_id);
+    if (!peer?.ready) {
       this.logger.warn("e2e message without active session", {
+        app_connection_id: message.payload.app_connection_id,
         e2e_session_id: message.payload.e2e_session_id,
       });
       return;
     }
     try {
-      const inner = this.e2eSession.decrypt(message.payload);
+      const inner = peer.session.decrypt(message.payload);
       await this.handleRelayMessage(
         innerToMessage(inner, this.config.deviceId),
-        true,
+        {
+          appConnectionId: message.payload.app_connection_id,
+          trustedE2E: true,
+        },
       );
     } catch (error) {
       this.logger.warn("failed to decrypt e2e message", {
@@ -565,7 +636,7 @@ export class AgentService {
         error instanceof E2ENoiseError &&
         (error.code === "decrypt_failed" || error.code === "replay_detected")
       ) {
-        this.e2eSession = null;
+        this.e2ePeers.delete(message.payload.app_connection_id);
       }
     }
   }
@@ -646,7 +717,10 @@ export class AgentService {
     }
   }
 
-  private async handleSessionList(message: MessageEnvelope): Promise<void> {
+  private async handleSessionList(
+    message: MessageEnvelope,
+    context?: AgentDispatchContext,
+  ): Promise<void> {
     const sessions = await this.sessionManager.list();
     const payload: SessionListPayload = {
       default_cwd: this.config.defaultCwd,
@@ -654,7 +728,8 @@ export class AgentService {
       workspaces: await this.workspaces.list(sessions),
       sessions,
     };
-    this.send(
+    this.sendToApp(
+      context,
       createMessage("session.list", payload, {
         device_id: this.config.deviceId,
         id: message.id,
@@ -662,8 +737,12 @@ export class AgentService {
     );
   }
 
-  private async handleWorkspaceList(message: MessageEnvelope): Promise<void> {
-    this.send(
+  private async handleWorkspaceList(
+    message: MessageEnvelope,
+    context?: AgentDispatchContext,
+  ): Promise<void> {
+    this.sendToApp(
+      context,
       createMessage(
         "workspace.list",
         {
@@ -681,11 +760,13 @@ export class AgentService {
 
   private async handleFilesList(
     message: MessageEnvelope<FilesListRequestPayload>,
+    context?: AgentDispatchContext,
   ): Promise<void> {
     const workspace = await this.requireWorkspace(
       message.payload.workspacePath,
     );
-    this.send(
+    this.sendToApp(
+      context,
       createMessage(
         "files.list",
         await this.files.list(workspace, message.payload.relativePath),
@@ -699,11 +780,13 @@ export class AgentService {
 
   private async handleFilesRead(
     message: MessageEnvelope<FilesReadRequestPayload>,
+    context?: AgentDispatchContext,
   ): Promise<void> {
     const workspace = await this.requireWorkspace(
       message.payload.workspacePath,
     );
-    this.send(
+    this.sendToApp(
+      context,
       createMessage(
         "files.read",
         await this.files.read(workspace, message.payload.relativePath),
@@ -717,11 +800,13 @@ export class AgentService {
 
   private async handleGitStatus(
     message: MessageEnvelope<GitStatusRequestPayload>,
+    context?: AgentDispatchContext,
   ): Promise<void> {
     const workspace = await this.requireWorkspace(
       message.payload.workspacePath,
     );
-    this.send(
+    this.sendToApp(
+      context,
       createMessage("git.status", await this.git.status(workspace), {
         device_id: this.config.deviceId,
         id: message.id,
@@ -731,11 +816,13 @@ export class AgentService {
 
   private async handleGitDiff(
     message: MessageEnvelope<GitDiffRequestPayload>,
+    context?: AgentDispatchContext,
   ): Promise<void> {
     const workspace = await this.requireWorkspace(
       message.payload.workspacePath,
     );
-    this.send(
+    this.sendToApp(
+      context,
       createMessage(
         "git.diff",
         await this.git.diff(workspace, message.payload.relativePath),
@@ -749,6 +836,7 @@ export class AgentService {
 
   private async handleSessionCreate(
     message: MessageEnvelope<SessionCreatePayload>,
+    context?: AgentDispatchContext,
   ): Promise<void> {
     let session;
     try {
@@ -757,7 +845,8 @@ export class AgentService {
         (nextSession) => this.sendSessionStatus(nextSession),
       );
     } catch (error) {
-      this.send(
+      this.sendToApp(
+        context,
         createMessage<TerminalErrorPayload>(
           "terminal.error",
           {
@@ -774,15 +863,22 @@ export class AgentService {
       return;
     }
 
-    await this.handleTerminalSnapshot({
-      ...message,
-      session_id: session.session_id,
-    });
+    await this.handleTerminalSnapshot(
+      {
+        ...message,
+        session_id: session.session_id,
+      },
+      context,
+    );
+    if (context) {
+      this.addTerminalSubscriber(session.session_id, context.appConnectionId);
+    }
     this.startTerminalPusher(session.session_id);
   }
 
   private async handleSessionRename(
     message: MessageEnvelope<SessionRenamePayload>,
+    context?: AgentDispatchContext,
   ): Promise<void> {
     const sessionId = message.payload.session_id || message.session_id;
     if (!sessionId) {
@@ -796,10 +892,13 @@ export class AgentService {
     if (session) {
       this.sendSessionStatus(session);
     }
-    await this.handleSessionList(message);
+    await this.handleSessionList(message, context);
   }
 
-  private async handleSessionAttach(message: MessageEnvelope): Promise<void> {
+  private async handleSessionAttach(
+    message: MessageEnvelope,
+    context?: AgentDispatchContext,
+  ): Promise<void> {
     if (!message.session_id) {
       return;
     }
@@ -809,7 +908,8 @@ export class AgentService {
       return;
     }
 
-    this.send(
+    this.sendToApp(
+      context,
       createMessage(
         "session.status",
         { session },
@@ -819,10 +919,16 @@ export class AgentService {
         },
       ),
     );
-    await this.handleTerminalSnapshot({
-      ...message,
-      session_id: session.session_id,
-    });
+    if (context) {
+      this.addTerminalSubscriber(session.session_id, context.appConnectionId);
+    }
+    await this.handleTerminalSnapshot(
+      {
+        ...message,
+        session_id: session.session_id,
+      },
+      context,
+    );
     this.startTerminalPusher(session.session_id);
   }
 
@@ -876,6 +982,7 @@ export class AgentService {
 
   private async handleTerminalSnapshot(
     message: MessageEnvelope,
+    context?: AgentDispatchContext,
   ): Promise<void> {
     const session = message.session_id
       ? await this.sessionManager.get(message.session_id)
@@ -896,7 +1003,8 @@ export class AgentService {
       throw error;
     }
 
-    this.send(
+    this.sendToApp(
+      context,
       createMessage("terminal.snapshot", snapshot, {
         device_id: this.config.deviceId,
         session_id: session.session_id,
@@ -964,6 +1072,7 @@ export class AgentService {
       this.terminalPushers.delete(sessionId);
     }
     this.terminalLastFrameHash.delete(sessionId);
+    this.terminalSubscribers.delete(sessionId);
   }
 
   private async pushTerminalFrameIfChanged(sessionId: string): Promise<void> {
@@ -997,12 +1106,21 @@ export class AgentService {
     }
     this.terminalLastFrameHash.set(sessionId, hash);
 
-    this.send(
-      createMessage<TerminalFramePayload>("terminal.frame", frame, {
+    const frameMessage = createMessage<TerminalFramePayload>(
+      "terminal.frame",
+      frame,
+      {
         device_id: this.config.deviceId,
         session_id: sessionId,
-      }),
+      },
     );
+    const subscribers = this.terminalSubscribers.get(sessionId);
+    if (!subscribers || subscribers.size === 0) {
+      return;
+    }
+    for (const appConnectionId of subscribers) {
+      this.sendToAppByConnectionId(appConnectionId, frameMessage);
+    }
   }
 
   private send(message: MessageEnvelope): void {
@@ -1014,22 +1132,68 @@ export class AgentService {
     }
 
     if (isE2EBusinessMessage(message.type)) {
-      if (!this.e2eSession) {
-        this.logger.warn("dropped business message without e2e session", {
-          message_type: message.type,
-        });
-        return;
-      }
-      const encrypted = this.e2eSession.encrypt(messageToInner(message));
-      this.transport.send(
-        createMessage("e2e.message", encrypted.payload, {
-          device_id: this.config.deviceId,
-        }),
-      );
+      this.broadcastToReadyApps(message);
       return;
     }
 
     this.transport.send(message);
+  }
+
+  private sendToApp(
+    context: AgentDispatchContext | undefined,
+    message: MessageEnvelope,
+  ): void {
+    if (!context) {
+      this.logger.warn("dropped app-scoped message without context", {
+        message_type: message.type,
+      });
+      return;
+    }
+    this.sendToAppByConnectionId(context.appConnectionId, message);
+  }
+
+  private sendToAppByConnectionId(
+    appConnectionId: string,
+    message: MessageEnvelope,
+  ): void {
+    if (!this.transport) {
+      this.logger.warn("cannot send without transport", {
+        message_type: message.type,
+      });
+      return;
+    }
+    const peer = this.e2ePeers.get(appConnectionId);
+    if (!peer?.ready) {
+      this.logger.warn("dropped business message without ready app e2e peer", {
+        app_connection_id: appConnectionId,
+        message_type: message.type,
+      });
+      return;
+    }
+    const encrypted = peer.session.encrypt(messageToInner(message));
+    this.transport.send(
+      createMessage("e2e.message", encrypted.payload, {
+        device_id: this.config.deviceId,
+      }),
+    );
+  }
+
+  private broadcastToReadyApps(message: MessageEnvelope): void {
+    for (const peer of this.e2ePeers.values()) {
+      if (peer.ready) {
+        this.sendToAppByConnectionId(peer.appConnectionId, message);
+      }
+    }
+  }
+
+  private addTerminalSubscriber(
+    sessionId: string,
+    appConnectionId: string,
+  ): void {
+    const subscribers =
+      this.terminalSubscribers.get(sessionId) ?? new Set<string>();
+    subscribers.add(appConnectionId);
+    this.terminalSubscribers.set(sessionId, subscribers);
   }
 
   private sendSessionStatus(session: CodexSession): void {

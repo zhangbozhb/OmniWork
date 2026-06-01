@@ -119,6 +119,7 @@ describe("e2e v1 schemas", () => {
     e2eHandshakeInitPayloadSchema.parse({
       v: PROTOCOL_VERSION,
       e2e_version: E2E_PROTOCOL_VERSION,
+      app_connection_id: "conn_app_1",
       handshake_id: "hs_1",
       key_id: "sha256:8f2b7d62d9b0",
       suite: NOISE_SUITE_NNPSK0_V1,
@@ -135,6 +136,7 @@ describe("e2e v1 schemas", () => {
     const result = e2eHandshakeInitPayloadSchema.safeParse({
       v: PROTOCOL_VERSION,
       e2e_version: E2E_PROTOCOL_VERSION,
+      app_connection_id: "conn_app_1",
       handshake_id: "hs_1",
       key_id: "sha256:8f2b7d62d9b0",
       suite: "Noise_XX_25519_ChaChaPoly_BLAKE2s",
@@ -152,12 +154,14 @@ describe("e2e v1 schemas", () => {
     e2eReadyPayloadSchema.parse({
       v: PROTOCOL_VERSION,
       e2e_version: E2E_PROTOCOL_VERSION,
+      app_connection_id: "conn_app_1",
       handshake_id: "hs_1",
       transcript_hash: "hash",
     });
     e2eMessagePayloadSchema.parse({
       v: PROTOCOL_VERSION,
       e2e_version: E2E_PROTOCOL_VERSION,
+      app_connection_id: "conn_app_1",
       e2e_session_id: "e2e_1",
       seq: 1,
       ciphertext: "ciphertext",

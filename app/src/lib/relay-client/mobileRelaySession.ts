@@ -41,6 +41,7 @@ export class MobileRelaySession {
   private e2eSession: E2ENoiseSession | null = null;
   private e2ePeerReady = false;
   private pendingKeyId: string | null = null;
+  private appConnectionId: string | null = null;
   private pendingBusinessMessages: MessageEnvelope[] = [];
 
   constructor(
@@ -109,6 +110,10 @@ export class MobileRelaySession {
     this.client.close();
   }
 
+  getAppConnectionId(): string | null {
+    return this.appConnectionId;
+  }
+
   private async handleMessage(message: MessageEnvelope): Promise<void> {
     switch (message.type) {
       case "auth.challenge":
@@ -128,6 +133,12 @@ export class MobileRelaySession {
         return;
       case "e2e.message":
         this.handleE2EMessage(message.payload as E2EMessagePayload);
+        return;
+      case "tunnel.upgrade.propose":
+        this.dispatchRelayUpgradeControl(message);
+        return;
+      case "tunnel.upgrade.downgrade":
+        this.dispatchRelayUpgradeControl(message);
         return;
       default:
         if (isE2EBusinessMessage(message.type)) {
@@ -157,11 +168,16 @@ export class MobileRelaySession {
 
   private handleAuthOk(payload: AuthOkPayload): void {
     const keyId = this.pendingKeyId ?? this.pairing.keyId ?? "unknown";
+    if (!payload.connection_id) {
+      return;
+    }
+    this.appConnectionId = payload.connection_id;
     this.e2eHandshake = createInitiatorHandshake({
       pairingKey: this.pairing.key,
       deviceId: this.pairing.deviceId,
       keyId,
       agentInstanceId: payload.agent_instance_id,
+      appConnectionId: payload.connection_id,
     });
     this.client.send(
       createMessage("e2e.handshake.init", this.e2eHandshake.init, {
@@ -186,6 +202,7 @@ export class MobileRelaySession {
   private handleE2EReady(payload: E2EReadyPayload): void {
     if (
       !this.e2eSession ||
+      payload.app_connection_id !== this.appConnectionId ||
       payload.handshake_id !== this.e2eSession.handshakeId ||
       payload.transcript_hash !== this.e2eSession.transcriptHash
     ) {
@@ -198,7 +215,11 @@ export class MobileRelaySession {
   }
 
   private handleE2EMessage(payload: E2EMessagePayload): void {
-    if (!this.e2eSession || !this.e2ePeerReady) {
+    if (
+      !this.e2eSession ||
+      !this.e2ePeerReady ||
+      payload.app_connection_id !== this.appConnectionId
+    ) {
       return;
     }
     try {
@@ -221,6 +242,16 @@ export class MobileRelaySession {
     this.pendingBusinessMessages = [];
     for (const message of pending) {
       this.send(message);
+    }
+  }
+
+  private dispatchRelayUpgradeControl(message: MessageEnvelope): void {
+    const payload = message.payload as { app_connection_id?: string };
+    if (
+      this.appConnectionId &&
+      payload.app_connection_id === this.appConnectionId
+    ) {
+      this.dispatch(message);
     }
   }
 

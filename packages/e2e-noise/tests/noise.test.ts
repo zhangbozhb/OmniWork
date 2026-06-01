@@ -13,6 +13,7 @@ const context = {
   deviceId: "mac_test",
   keyId: "key_test",
   agentInstanceId: "agent_test",
+  appConnectionId: "conn_app_1",
   handshakeId: "hs_test",
 };
 
@@ -82,6 +83,21 @@ test("rejects key mismatch when decrypting traffic", () => {
 
   assert.throws(
     () => responder.session.decrypt(encrypted.payload),
+    (error) =>
+      error instanceof E2ENoiseError && error.code === "decrypt_failed",
+  );
+});
+
+test("binds traffic to the app connection id", () => {
+  const { appSession, agentSession } = createSessionPair();
+  const encrypted = appSession.encrypt(makeInner());
+
+  assert.throws(
+    () =>
+      agentSession.decrypt({
+        ...encrypted.payload,
+        app_connection_id: "conn_other",
+      }),
     (error) =>
       error instanceof E2ENoiseError && error.code === "decrypt_failed",
   );

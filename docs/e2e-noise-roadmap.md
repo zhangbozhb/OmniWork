@@ -14,9 +14,10 @@
 ## 当前安全状态
 
 - 当前代码已接入 App-Agent Noise E2E：App 在 `auth.ok` 后发起握手，Agent 只执行解密后的 `InnerEnvelope`，业务响应也会封装为 `e2e.message`。
+- 同一个 Agent 已支持多个 App 同时连接；每个 App 使用 Relay 分配的 `app_connection_id` 建立独立 E2E session。
 - `packages/e2e-noise` 已覆盖 NNpsk0 握手、ChaCha20-Poly1305 加解密、`seq` 防重放、篡改检测和 key mismatch 测试。
 - `auth.proof` 仍只用于 Relay 接入校验和失败限流；Agent 额外记录已处理 nonce，拒绝同一 `key_id + nonce` 的 `auth.verify` 重放。
-- P2P 数据路径尚未完成统一 E2E 包装，因此 Relay 暂不自动触发 P2P propose；P2P 控制面纳入 E2E 后才能重新开放自动升级。
+- P2P per App connection 已完成基础收口：Relay 只对 E2E ready 的 App 连接触发 propose，后续信令按 `app_connection_id` 绑定并复用 App-Agent E2E 通道。
 
 ## 设计基线
 
@@ -27,6 +28,7 @@
   `terminal.*`、`workspace.*`、`files.*`、`git.*`、`codex.*`、
   `tunnel.upgrade.*`。
 - v1 固定使用 `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`。
+- `app_connection_id` 由 Relay mobile connection id 规范化，参与 Noise prologue 和 E2E message AAD。
 - 外层协议、E2E 协议、内层业务协议均显式携带版本号。
 
 ## 已推进阶段
@@ -48,6 +50,7 @@
   `e2e_ready`。
 - Relay 已拒绝外层明文业务消息，并返回
   `protocol.error/plaintext_business_rejected`。
+- Relay path 已按 `app_connection_id` 定向转发多 App E2E 消息，Agent 响应不再广播给所有 App。
 
 ### 阶段 3：Noise 基础库
 
@@ -58,8 +61,10 @@
 ### 阶段 4：Agent E2E 接入
 
 - Agent 已处理 `e2e.handshake.init` 并返回 `e2e.handshake.reply` / `e2e.ready`。
+- Agent 已按 `app_connection_id` 维护多个独立 E2E session。
 - Agent 已只从解密后的 `InnerEnvelope` 分发业务消息。
 - Agent 已拒绝所有外层明文业务命令。
+- 请求响应类消息定向返回来源 App，终端帧按订阅 App 推送，共享 session 状态才广播。
 
 ### 阶段 5：App E2E 接入
 
@@ -71,8 +76,8 @@
 
 ### 阶段 6：P2P 路径安全收口
 
-- 当前为了避免 P2P 明文绕过，Relay 暂不自动触发 P2P propose。
-- 后续需要让 relay path 和 p2p path 复用同一个 E2E session。
+- Relay path 和 p2p path 复用同一个 App-Agent E2E session。
 - P2P 切换不重新暴露业务明文，也不新增明文 fallback。
-- `tunnel.upgrade.*` 控制面纳入 E2E 认证或密文控制消息。
+- `tunnel.upgrade.propose` 是 Relay 定向升级提示；offer / answer / candidate / committed / downgrade 通过 E2E 密文通道传递。
 - P2P 升级失败只影响路径选择，不影响业务 payload 的 E2E 安全。
+- P2P 多 App 实现边界记录在 `p2p-per-app-connection.md`。

@@ -72,6 +72,7 @@ const STRICT_ICE_DISCONNECTED_GRACE_MS = 10_000;
 const STRICT_PENDING_QUEUE_LIMIT = 256;
 
 export interface AttachP2pPeerOptions {
+  appConnectionId?: string;
   /**
    * 当传输层检测到需要降级（pong 超时 / bufferedAmount / ICE 异常）时回调，
    * 由外部（通常是 UpgradeCoordinator.downgrade）执行真正的协议降级动作。
@@ -105,6 +106,15 @@ export class AgentSessionTransport implements SessionTransport {
   private closed = false;
   private peer: WebRtcPeerAdapter | null = null;
   private detachPeerListeners: (() => void) | null = null;
+  private readonly peersByAppConnectionId = new Map<
+    string,
+    {
+      peer: WebRtcPeerAdapter;
+      detach: () => void;
+      onDowngrade: DowngradeReasonHandler | null;
+      upgradeId: string | null;
+    }
+  >();
   private outboundQueue: MessageEnvelope[] | null = null;
   /**
    * 严格 P2P 模式下、currentPath !== "p2p" 时业务消息的暂存队列。
@@ -268,7 +278,12 @@ export class AgentSessionTransport implements SessionTransport {
     peer: WebRtcPeerAdapter,
     options: AttachP2pPeerOptions = {},
   ): void {
-    this.detachP2pPeer();
+    const appConnectionId = options.appConnectionId;
+    if (appConnectionId) {
+      this.detachP2pPeer(appConnectionId);
+    } else {
+      this.detachP2pPeer();
+    }
     this.peer = peer;
     this.downgradeHandler = options.onDowngrade ?? null;
     this.upgradeId = options.upgradeId ?? null;
@@ -315,17 +330,44 @@ export class AgentSessionTransport implements SessionTransport {
         if (this.currentPath === "p2p") {
           this.handleHealthDowngrade("peer_closed");
         } else {
-          this.detachP2pPeer();
+          this.detachP2pPeer(appConnectionId);
         }
       }
     });
-    this.detachPeerListeners = () => {
+    const detach = () => {
       offMessage();
       offState();
     };
+    if (appConnectionId) {
+      this.peersByAppConnectionId.set(appConnectionId, {
+        peer,
+        detach,
+        onDowngrade: options.onDowngrade ?? null,
+        upgradeId: options.upgradeId ?? null,
+      });
+    }
+    this.detachPeerListeners = detach;
   }
 
-  detachP2pPeer(): void {
+  detachP2pPeer(appConnectionId?: string): void {
+    if (appConnectionId) {
+      const entry = this.peersByAppConnectionId.get(appConnectionId);
+      if (entry) {
+        entry.detach();
+        try {
+          entry.peer.close();
+        } catch {
+          /* ignore */
+        }
+        this.peersByAppConnectionId.delete(appConnectionId);
+      }
+      if (this.peer === entry?.peer) {
+        this.peer = null;
+        this.downgradeHandler = null;
+        this.upgradeId = null;
+      }
+      return;
+    }
     this.stopPingLoop();
     this.stopBufferedSampler();
     this.clearIceDisconnectedTimer();
@@ -334,6 +376,15 @@ export class AgentSessionTransport implements SessionTransport {
       this.detachPeerListeners = null;
     }
     this.peer = null;
+    for (const entry of this.peersByAppConnectionId.values()) {
+      entry.detach();
+      try {
+        entry.peer.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.peersByAppConnectionId.clear();
     this.downgradeHandler = null;
     this.upgradeId = null;
   }
@@ -390,6 +441,18 @@ export class AgentSessionTransport implements SessionTransport {
   }
 
   private dispatchSend(envelope: MessageEnvelope): void {
+    const appConnectionId = getEnvelopeAppConnectionId(envelope);
+    const appPeer = appConnectionId
+      ? this.peersByAppConnectionId.get(appConnectionId)
+      : undefined;
+    if (appPeer) {
+      appPeer.peer.send(JSON.stringify(envelope));
+      return;
+    }
+    if (appConnectionId) {
+      this.relayPath.send(envelope);
+      return;
+    }
     if (this.currentPath === "p2p" && this.peer) {
       this.peer.send(JSON.stringify(envelope));
       return;
@@ -729,4 +792,13 @@ function delay(ms: number): Promise<void> {
     const timer = setTimeout(resolve, ms);
     (timer as unknown as { unref?: () => void }).unref?.();
   });
+}
+
+function getEnvelopeAppConnectionId(
+  envelope: MessageEnvelope,
+): string | undefined {
+  const payload = envelope.payload as { app_connection_id?: unknown };
+  return typeof payload?.app_connection_id === "string"
+    ? payload.app_connection_id
+    : undefined;
 }

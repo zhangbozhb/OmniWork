@@ -183,6 +183,7 @@ export const E2E_SUPPORT_V1: E2ESupport = {
 export interface E2EHandshakeInitPayload {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  app_connection_id: string;
   handshake_id: string;
   key_id: string;
   suite: NoiseSuite;
@@ -197,6 +198,7 @@ export interface E2EHandshakeInitPayload {
 export interface E2EHandshakeReplyPayload {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  app_connection_id: string;
   handshake_id: string;
   key_id: string;
   suite: NoiseSuite;
@@ -211,6 +213,7 @@ export interface E2EHandshakeReplyPayload {
 export interface E2EReadyPayload {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  app_connection_id: string;
   handshake_id: string;
   transcript_hash: string;
 }
@@ -218,6 +221,7 @@ export interface E2EReadyPayload {
 export interface E2EMessagePayload {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  app_connection_id: string;
   e2e_session_id: string;
   seq: number;
   ciphertext: string;
@@ -236,6 +240,7 @@ export type E2EFailureReason =
 export interface E2EFailedPayload {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  app_connection_id?: string;
   handshake_id?: string;
   reason: E2EFailureReason;
 }
@@ -794,6 +799,7 @@ export interface IceServerConfig {
 
 export interface TunnelUpgradeProposePayload {
   upgrade_id: string;
+  app_connection_id: string;
   ice_servers: IceServerConfig[];
   role: "offerer" | "answerer";
   /**
@@ -808,16 +814,19 @@ export interface TunnelUpgradeProposePayload {
 
 export interface TunnelUpgradeOfferPayload {
   upgrade_id: string;
+  app_connection_id: string;
   sdp: string;
 }
 
 export interface TunnelUpgradeAnswerPayload {
   upgrade_id: string;
+  app_connection_id: string;
   sdp: string;
 }
 
 export interface TunnelUpgradeCandidatePayload {
   upgrade_id: string;
+  app_connection_id: string;
   candidate: string;
   sdp_mid: string | null;
   sdp_mline_index: number | null;
@@ -825,10 +834,12 @@ export interface TunnelUpgradeCandidatePayload {
 
 export interface TunnelUpgradeCommittedPayload {
   upgrade_id: string;
+  app_connection_id: string;
 }
 
 export interface TunnelUpgradeDowngradePayload {
   upgrade_id: string;
+  app_connection_id: string;
   reason: string;
 }
 

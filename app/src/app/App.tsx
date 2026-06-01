@@ -1529,6 +1529,13 @@ function createAppSessionTransport(
     },
     forceClose: (reason) => transport.forceClose(reason),
     handleUpgradeMessage: (message) => {
+      const appConnectionId = session.getAppConnectionId();
+      const payloadAppConnectionId = (
+        message.payload as { app_connection_id?: string }
+      ).app_connection_id;
+      if (!appConnectionId || payloadAppConnectionId !== appConnectionId) {
+        return;
+      }
       switch (message.type) {
         case "tunnel.upgrade.propose":
           void coordinator.propose(

@@ -47,6 +47,7 @@ interface BackoffEntry {
 
 interface InFlightEntry {
   deviceId: string;
+  appConnectionId: string;
   mobileConnectionId: string;
   agentConnectionId: string;
   startedAt: number;
@@ -109,10 +110,10 @@ export class RelayUpgradeOrchestrator {
   private readonly nowFn: () => number;
 
   private readonly sessionTimers = new Map<string, NodeJS.Timeout>();
-  private readonly backoffByDevice = new Map<string, BackoffEntry>();
+  private readonly backoffByApp = new Map<string, BackoffEntry>();
   private readonly inFlightUpgrades = new Map<string, InFlightEntry>();
-  /** 当前已完成升级（双端 committed）且尚未降级的 device 集合。 */
-  private readonly activeP2pDevices = new Set<string>();
+  /** 当前已完成升级（双端 committed）且尚未降级的 App 连接集合。 */
+  private readonly activeP2pApps = new Set<string>();
   /** 最近 N 次升级耗时（毫秒），FIFO 截断。 */
   private readonly upgradeSessionDurations: number[] = [];
   private readonly metrics: OrchestratorMetricsState = {
@@ -175,7 +176,8 @@ export class RelayUpgradeOrchestrator {
       return;
     }
 
-    const backoff = this.backoffByDevice.get(deviceId);
+    const appKey = sessionKey(deviceId, mobile.id);
+    const backoff = this.backoffByApp.get(appKey);
     if (backoff && backoff.nextAvailableAt > this.nowFn()) {
       this.notifyStrictUnavailable(
         deviceId,
@@ -186,7 +188,7 @@ export class RelayUpgradeOrchestrator {
       return;
     }
 
-    const key = sessionKey(deviceId, mobile.id);
+    const key = appKey;
     const existing = this.sessionTimers.get(key);
     if (existing) {
       clearTimeout(existing);
@@ -199,7 +201,7 @@ export class RelayUpgradeOrchestrator {
         return;
       }
       // 触发前再校验一次退避，避免 propose 期间被 recordFailure 推迟。
-      const current = this.backoffByDevice.get(deviceId);
+      const current = this.backoffByApp.get(appKey);
       if (current && current.nextAvailableAt > this.nowFn()) {
         return;
       }
@@ -242,9 +244,9 @@ export class RelayUpgradeOrchestrator {
         this.inFlightUpgrades.delete(upgradeId);
       }
     }
-    // mobile 断开 = 该 device 的 P2P 链路必然失效；仅清理 active_p2p 状态，
+    // mobile 断开 = 该 App 连接的 P2P 链路必然失效；仅清理 active_p2p 状态，
     // 不计入 downgrade 统计（断线不是协议层降级；下次 mobile 连上后会重新走 propose）。
-    this.activeP2pDevices.delete(deviceId);
+    this.activeP2pApps.delete(key);
   }
 
   /**
@@ -264,7 +266,11 @@ export class RelayUpgradeOrchestrator {
         this.sessionTimers.delete(key);
       }
     }
-    this.activeP2pDevices.delete(deviceId);
+    for (const key of [...this.activeP2pApps]) {
+      if (key.startsWith(prefix)) {
+        this.activeP2pApps.delete(key);
+      }
+    }
   }
 
   /**
@@ -287,10 +293,10 @@ export class RelayUpgradeOrchestrator {
       if (entry.committedCount >= 2) {
         const durationMs = this.nowFn() - entry.startedAt;
         this.recordDuration(durationMs);
-        this.activeP2pDevices.add(entry.deviceId);
+        this.activeP2pApps.add(sessionKey(entry.deviceId, entry.appConnectionId));
         this.inFlightUpgrades.delete(upgradeId);
-        // 双端确认升级成功 → 重置该 device 的退避。
-        this.backoffByDevice.delete(entry.deviceId);
+        // 双端确认升级成功 → 重置该 App 连接的退避。
+        this.backoffByApp.delete(sessionKey(entry.deviceId, entry.appConnectionId));
       }
       return;
     }
@@ -298,6 +304,7 @@ export class RelayUpgradeOrchestrator {
     if (message.type === "tunnel.upgrade.downgrade") {
       const payload = message.payload as {
         upgrade_id?: string;
+        app_connection_id?: string;
         reason?: string;
       };
       const upgradeId = payload?.upgrade_id;
@@ -313,29 +320,37 @@ export class RelayUpgradeOrchestrator {
       this.metrics.downgrade[reason] =
         (this.metrics.downgrade[reason] ?? 0) + 1;
       if (deviceId) {
+        const appConnectionId = payload?.app_connection_id;
         // 既可能是协商期失败、也可能是运行期主动降级；两种情况都要清理 active_p2p。
-        this.activeP2pDevices.delete(deviceId);
+        if (appConnectionId) {
+          this.activeP2pApps.delete(sessionKey(deviceId, appConnectionId));
+        }
         // client_closing 是用户主动行为（切换 transport_preference、退出账号
         // 等触发 App 端 transport.close 时主动通知对端的礼貌降级），不是协议
         // 失败；不应纳入 backoff 表，否则 prefer_p2p ↔ relay_only 反复切换时
         // 第二次切回 prefer_p2p 会落入 backoff_active 永远不发 propose，
         // strict 模式下业务消息全部堆积在 strictPendingQueue 触发 UI 卡死。
         if (reason !== "client_closing") {
-          this.recordFailure(deviceId, reason);
+          this.recordFailure(deviceId, reason, appConnectionId);
         }
       }
     }
   }
 
   /**
-   * 记一次失败，并按文档 4.2 的退避表更新 backoffByDevice：
+   * 记一次失败，并按文档 4.2 的退避表更新 backoffByApp：
    * 1 次 → 30s，2 次 → 2min，3 次 → 10min，4+ → MAX_SAFE_INTEGER。
    *
-   * TODO(阶段 5)：收到 app.network.changed 时清空 backoffByDevice 中的相关条目。
+   * TODO(阶段 5)：收到 app.network.changed 时清空 backoffByApp 中的相关条目。
    */
-  recordFailure(deviceId: string, reason: string): void {
+  recordFailure(
+    deviceId: string,
+    reason: string,
+    appConnectionId = "*",
+  ): void {
     this.metrics.failed[reason] = (this.metrics.failed[reason] ?? 0) + 1;
-    const entry = this.backoffByDevice.get(deviceId) ?? {
+    const key = sessionKey(deviceId, appConnectionId);
+    const entry = this.backoffByApp.get(key) ?? {
       failures: 0,
       nextAvailableAt: 0,
     };
@@ -350,7 +365,7 @@ export class RelayUpgradeOrchestrator {
     } else {
       entry.nextAvailableAt = Number.MAX_SAFE_INTEGER;
     }
-    this.backoffByDevice.set(deviceId, entry);
+    this.backoffByApp.set(key, entry);
   }
 
   /**
@@ -375,6 +390,7 @@ export class RelayUpgradeOrchestrator {
         "tunnel.upgrade.propose",
         {
           upgrade_id: upgradeId,
+          app_connection_id: mobile.id,
           ice_servers: iceServers,
           role: "offerer",
           ...(strict ? { strict: true } : {}),
@@ -388,6 +404,7 @@ export class RelayUpgradeOrchestrator {
         "tunnel.upgrade.propose",
         {
           upgrade_id: upgradeId,
+          app_connection_id: mobile.id,
           ice_servers: iceServers,
           role: "answerer",
           ...(strict ? { strict: true } : {}),
@@ -398,6 +415,7 @@ export class RelayUpgradeOrchestrator {
 
     this.inFlightUpgrades.set(upgradeId, {
       deviceId,
+      appConnectionId: mobile.id,
       mobileConnectionId: mobile.id,
       agentConnectionId: agent.id,
       startedAt: this.nowFn(),
@@ -417,7 +435,7 @@ export class RelayUpgradeOrchestrator {
       prefs: { ...this.metrics.prefs },
       skipped_by_pref: this.metrics.skipped_by_pref,
       in_flight: this.inFlightUpgrades.size,
-      active_p2p: this.activeP2pDevices.size,
+      active_p2p: this.activeP2pApps.size,
       durations: this.computeDurationStats(),
     };
   }
@@ -429,7 +447,7 @@ export class RelayUpgradeOrchestrator {
     }
     this.sessionTimers.clear();
     this.inFlightUpgrades.clear();
-    this.activeP2pDevices.clear();
+    this.activeP2pApps.clear();
   }
 
   /**
@@ -456,6 +474,7 @@ export class RelayUpgradeOrchestrator {
         "tunnel.upgrade.downgrade",
         {
           upgrade_id: upgradeId,
+          app_connection_id: mobile.id,
           reason: `strict_unavailable:${cause}`,
         },
         { device_id: deviceId },

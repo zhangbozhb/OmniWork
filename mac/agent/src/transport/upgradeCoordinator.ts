@@ -78,6 +78,7 @@ export class UpgradeCoordinator {
   private state: UpgradeState = "idle";
   private peer: WebRtcPeerAdapter | null = null;
   private upgradeId: string | null = null;
+  private appConnectionId: string | null = null;
   private strict = false;
   private localCommitted = false;
   private remoteCommitted = false;
@@ -128,6 +129,7 @@ export class UpgradeCoordinator {
     }
 
     this.upgradeId = payload.upgrade_id;
+    this.appConnectionId = payload.app_connection_id;
     this.strict = payload.strict === true;
     this.state = "proposed";
     this.successEmitted = false;
@@ -152,6 +154,7 @@ export class UpgradeCoordinator {
         const sdp = await peer.createOffer();
         this.sendUpgrade<TunnelUpgradeOfferPayload>("tunnel.upgrade.offer", {
           upgrade_id: payload.upgrade_id,
+          app_connection_id: payload.app_connection_id,
           sdp,
         });
         this.enterNegotiating();
@@ -171,7 +174,11 @@ export class UpgradeCoordinator {
     if (this.role !== "answerer") {
       return;
     }
-    if (!this.peer || this.upgradeId !== payload.upgrade_id) {
+    if (
+      !this.peer ||
+      this.upgradeId !== payload.upgrade_id ||
+      this.appConnectionId !== payload.app_connection_id
+    ) {
       console.warn("[omniwork-upgrade] offer ignored", {
         upgrade_id: payload.upgrade_id,
         current: this.upgradeId,
@@ -183,7 +190,11 @@ export class UpgradeCoordinator {
       const sdp = await this.peer.createAnswer();
       this.sendUpgrade<TunnelUpgradeAnswerPayload>(
         "tunnel.upgrade.answer",
-        { upgrade_id: payload.upgrade_id, sdp },
+        {
+          upgrade_id: payload.upgrade_id,
+          app_connection_id: payload.app_connection_id,
+          sdp,
+        },
       );
     } catch (error) {
       console.warn("[omniwork-upgrade] handleOffer failed", {
@@ -197,7 +208,11 @@ export class UpgradeCoordinator {
     if (this.role !== "offerer") {
       return;
     }
-    if (!this.peer || this.upgradeId !== payload.upgrade_id) {
+    if (
+      !this.peer ||
+      this.upgradeId !== payload.upgrade_id ||
+      this.appConnectionId !== payload.app_connection_id
+    ) {
       return;
     }
     try {
@@ -213,7 +228,11 @@ export class UpgradeCoordinator {
   async handleCandidate(
     payload: TunnelUpgradeCandidatePayload,
   ): Promise<void> {
-    if (!this.peer || this.upgradeId !== payload.upgrade_id) {
+    if (
+      !this.peer ||
+      this.upgradeId !== payload.upgrade_id ||
+      this.appConnectionId !== payload.app_connection_id
+    ) {
       return;
     }
     try {
@@ -230,7 +249,10 @@ export class UpgradeCoordinator {
   }
 
   handleCommitted(payload: TunnelUpgradeCommittedPayload): void {
-    if (this.upgradeId !== payload.upgrade_id) {
+    if (
+      this.upgradeId !== payload.upgrade_id ||
+      this.appConnectionId !== payload.app_connection_id
+    ) {
       return;
     }
     this.remoteCommitted = true;
@@ -253,7 +275,10 @@ export class UpgradeCoordinator {
     this.state = "committing";
     this.sendUpgrade<TunnelUpgradeCommittedPayload>(
       "tunnel.upgrade.committed",
-      { upgrade_id: this.upgradeId },
+      {
+        upgrade_id: this.upgradeId,
+        app_connection_id: this.requireAppConnectionId(),
+      },
     );
     this.maybeUpgrade();
   }
@@ -267,7 +292,11 @@ export class UpgradeCoordinator {
     if (upgradeId) {
       this.sendUpgrade<TunnelUpgradeDowngradePayload>(
         "tunnel.upgrade.downgrade",
-        { upgrade_id: upgradeId, reason },
+        {
+          upgrade_id: upgradeId,
+          app_connection_id: this.requireAppConnectionId(),
+          reason,
+        },
       );
     }
     // 仅在尚未发出 upgrade_success 时认为是失败；升级成功后再降级算"运行期降级"，
@@ -311,6 +340,7 @@ export class UpgradeCoordinator {
         "tunnel.upgrade.candidate",
         {
           upgrade_id: this.upgradeId,
+          app_connection_id: this.requireAppConnectionId(),
           candidate: c.candidate,
           sdp_mid: c.sdpMid,
           sdp_mline_index: c.sdpMLineIndex,
@@ -394,6 +424,7 @@ export class UpgradeCoordinator {
   private resetToIdle(): void {
     this.state = "idle";
     this.upgradeId = null;
+    this.appConnectionId = null;
     this.strict = false;
     this.localCommitted = false;
     this.remoteCommitted = false;
@@ -411,6 +442,13 @@ export class UpgradeCoordinator {
     this.sendControl(
       createMessage<TPayload>(type, payload, { device_id: this.deviceId }),
     );
+  }
+
+  private requireAppConnectionId(): string {
+    if (!this.appConnectionId) {
+      throw new Error("Missing app_connection_id for P2P upgrade.");
+    }
+    return this.appConnectionId;
   }
 
   private emitEvent(event: UpgradeCoordinatorEvent): void {

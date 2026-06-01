@@ -10,7 +10,7 @@
 
 本篇是 OmniWork 中继与 P2P 升级链路的最终参考。所有客户端、Relay 与运维的预期行为都以本文为准。
 
-实现顺序说明：P2P 传输升级能力已先行落地；当前安全改造是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密。本文描述最终目标态：路径可在 Relay 与 P2P 间切换，但业务 payload 安全统一由 E2E 保障。
+实现顺序说明：P2P 传输升级能力已先行落地；当前安全改造是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密。Relay path 和 P2P path 都按 `app_connection_id` 支持同一 Agent 下多个 App 同时连接。
 
 ## 1. 总体形态
 
@@ -44,8 +44,9 @@
 ### 3.1 触发
 
 - 当前安全态：App 通过 `mobile.connect` + `auth.proof` 完成 Relay 接入鉴权后，必须继续完成 App-Agent E2E 握手；业务消息只允许通过 `e2e.message` 传输。
-- P2P 触发能力已先于 E2E 落地，但 P2P 数据路径尚未完成统一 E2E 包装；为避免明文绕过，Relay 暂不自动调用 `notifyMobileAuthenticated` 触发 propose。
-- 目标态：`tunnel.upgrade.*` 控制面纳入 E2E 后，再恢复 `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS` 稳定窗口和灰度/退避触发逻辑。
+- Relay 为每个 mobile WebSocket 分配 canonical `app_connection_id`；E2E 握手、ready 和密文消息都按该连接 ID 绑定并定向路由。
+- Relay 只在对应 App 的 E2E pair ready 后触发 P2P propose；P2P 升级按 `app_connection_id` 独立编排。
+- `tunnel.upgrade.propose` 是 Relay 定向升级提示；后续 offer / answer / candidate / committed / downgrade 通过 App-Agent E2E 通道承载。
 
 ### 3.2 协商
 
@@ -66,7 +67,7 @@ App                       Relay                       Agent
 
 ### 3.3 升级期约束
 
-- 同一时刻同一 device 只能存在一个 upgrade（再次 propose 将被 coordinator 忽略）。
+- 同一时刻同一 `(device_id, app_connection_id)` 只能存在一个 upgrade（再次 propose 将被 coordinator 忽略）。
 - 客户端单次 upgrade 总超时（默认 10s，可配 `timeoutMs`）；超时即 `downgrade("timeout")`。
 - `peerFactory` 返回 null（如 Web 平台 / wrtc 加载失败） → 立即 `downgrade("peer_unavailable")`。
 
@@ -86,7 +87,7 @@ App                       Relay                       Agent
 | 任意端业务异常 | 调用 `forceDowngrade(reason)` | 自定义 |
 | 客户端主动关闭 | App `transport.close()` 时 `currentPath==='p2p'`（如切换 `transport_preference`、退出账号） | `client_closing` |
 
-降级后 Relay 端按 `device_id` 累计失败次数指数退避：30s → 2min → 10min → 永不再尝试（直到 mobile 重连或 device 重新进入流程）。双端任一次 `committed` 成功都会清零该 device 的 backoff 计数。`client_closing` 例外——它表达"用户主动切换偏好/退出账号"的礼貌降级，仅用于让对端立即清理 PeerConnection 与 metrics 计数，不计入退避，避免 `prefer_p2p ↔ relay_only` 反复切换时第二次回到 `prefer_p2p` 落入 `backoff_active` 死锁。
+降级后 Relay 端按 `(device_id, app_connection_id)` 累计失败次数指数退避：30s → 2min → 10min → 永不再尝试（直到对应 App 重连或重新进入流程）。双端任一次 `committed` 成功都会清零该 App 连接的 backoff 计数。`client_closing` 例外——它表达"用户主动切换偏好/退出账号"的礼貌降级，仅用于让对端立即清理 PeerConnection 与 metrics 计数，不计入退避，避免 `prefer_p2p ↔ relay_only` 反复切换时第二次回到 `prefer_p2p` 落入 `backoff_active` 死锁。
 
 > 严格 P2P 模式（`transport_preference=prefer_p2p`）下，上述任意触发源都不会切回 relay path：`UpgradeCoordinator` 仍会发送 `tunnel.upgrade.downgrade`（用于 metrics 与退避），但本地不调用 `switchPath('relay')`，而是经 `SessionTransport.forceClose(reason)` 关闭整个 session。`AppState` 进入后台时改走 `pauseForBackground()` / `resumeForForeground()`，不算协商失败，不计入退避。详见 §6.1。
 
@@ -136,7 +137,7 @@ App                       Relay                       Agent
 - `prefs[preference]`：按 `transport_preference` 三态统计 mobile 鉴权后落到 orchestrator 的次数；`OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF=false` 时全部计入 `auto`。
 - `skipped_by_pref`：因 `transport_preference=relay_only` 而跳过 propose 的次数（不计入 `failed`，不进入退避）。
 - `in_flight`：已 propose 未双端 committed 的升级数。
-- `active_p2p`：当前已升级到 P2P 且尚未降级的 device 数。
+- `active_p2p`：当前已升级到 P2P 且尚未降级的 App 连接数。
 - `durations`：最近最多 100 次升级耗时（`startedAt → 双端 committed`）的 p50/p95/max（毫秒）。
 
 ## 6.1 传输偏好可控
@@ -192,10 +193,9 @@ Relay 通过 `logUpgradeEvent` 输出 JSON 行：
 {"ts":"2026-05-22T03:11:09.000Z","component":"omniwork-relay","event":"tunnel.upgrade.committed","upgrade_id":"...","device_id":"...","source_role":"mobile"}
 ```
 
-自动 P2P propose 暂停期间，`tunnel.upgrade.*` 不能作为 Relay 外层明文业务转发；
-恢复前必须统一封装到 App-Agent E2E 数据路径。额外事件：
+P2P propose 恢复后，Relay 只下发按 `app_connection_id` 定向的 propose 提示；实际信令继续走 App-Agent E2E 数据路径。额外事件：
 
-- `debug.trigger_upgrade`：通过 `POST /debug/upgrade?device_id=xxx` 手工触发。
+- `debug.trigger_upgrade`：通过 `POST /debug/upgrade?device_id=xxx&app_connection_id=conn_xxx` 手工触发。
 
 客户端事件通过 `coordinator.onEvent` / `transport.onEvent` 暴露给业务侧 logger：`upgrade_proposed` / `upgrade_committed` / `upgrade_failed` / `path_change` / `ping_timeout` / `pong_received` / `downgrade`。
 

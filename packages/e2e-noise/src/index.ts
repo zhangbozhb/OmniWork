@@ -45,12 +45,14 @@ export interface NoiseContext {
   deviceId: string;
   keyId: string;
   agentInstanceId: string;
+  appConnectionId: string;
   handshakeId?: string;
 }
 
 export interface HandshakeInit {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  app_connection_id: string;
   handshake_id: string;
   key_id: string;
   suite: typeof NOISE_SUITE_NNPSK0_V1;
@@ -65,6 +67,7 @@ export interface HandshakeInit {
 export interface HandshakeReply {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  app_connection_id: string;
   handshake_id: string;
   key_id: string;
   suite: typeof NOISE_SUITE_NNPSK0_V1;
@@ -79,6 +82,7 @@ export interface HandshakeReply {
 export interface ReadyPayload {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  app_connection_id: string;
   handshake_id: string;
   transcript_hash: string;
 }
@@ -119,6 +123,7 @@ export function createInitiatorHandshake(
   const init: HandshakeInit = {
     v: PROTOCOL_VERSION,
     e2e_version: E2E_PROTOCOL_VERSION,
+    app_connection_id: context.appConnectionId,
     handshake_id: handshakeId,
     key_id: context.keyId,
     suite: NOISE_SUITE_NNPSK0_V1,
@@ -136,6 +141,7 @@ export function createInitiatorHandshake(
       assertSuite(reply.suite);
       if (
         reply.handshake_id !== handshakeId ||
+        reply.app_connection_id !== context.appConnectionId ||
         reply.key_id !== context.keyId ||
         reply.e2e_version !== E2E_PROTOCOL_VERSION
       ) {
@@ -155,6 +161,7 @@ export function createInitiatorHandshake(
         role: "initiator",
         handshakeId,
         sessionId: deriveSessionId(state.hash),
+        appConnectionId: context.appConnectionId,
         transcriptHash: toBase64Url(state.hash),
         txKey: initiatorKey,
         rxKey: responderKey,
@@ -170,6 +177,7 @@ export function acceptInitiatorHandshake(
   assertSuite(init.suite);
   if (
     init.key_id !== context.keyId ||
+    init.app_connection_id !== context.appConnectionId ||
     init.e2e_version !== E2E_PROTOCOL_VERSION
   ) {
     throw new E2ENoiseError(
@@ -195,6 +203,7 @@ export function acceptInitiatorHandshake(
   const reply: HandshakeReply = {
     v: PROTOCOL_VERSION,
     e2e_version: E2E_PROTOCOL_VERSION,
+    app_connection_id: context.appConnectionId,
     handshake_id: init.handshake_id,
     key_id: context.keyId,
     suite: NOISE_SUITE_NNPSK0_V1,
@@ -212,6 +221,7 @@ export function acceptInitiatorHandshake(
       role: "responder",
       handshakeId: init.handshake_id,
       sessionId: deriveSessionId(state.hash),
+      appConnectionId: context.appConnectionId,
       transcriptHash: toBase64Url(state.hash),
       txKey: responderKey,
       rxKey: initiatorKey,
@@ -223,11 +233,13 @@ export class E2ENoiseSession {
   readonly role: NoiseRole;
   readonly handshakeId: string;
   readonly sessionId: string;
+  readonly appConnectionId: string;
   readonly transcriptHash: string;
   private readonly options: {
     role: NoiseRole;
     handshakeId: string;
     sessionId: string;
+    appConnectionId: string;
     transcriptHash: string;
     txKey: Uint8Array;
     rxKey: Uint8Array;
@@ -240,6 +252,7 @@ export class E2ENoiseSession {
     role: NoiseRole;
     handshakeId: string;
     sessionId: string;
+    appConnectionId: string;
     transcriptHash: string;
     txKey: Uint8Array;
     rxKey: Uint8Array;
@@ -248,6 +261,7 @@ export class E2ENoiseSession {
     this.role = options.role;
     this.handshakeId = options.handshakeId;
     this.sessionId = options.sessionId;
+    this.appConnectionId = options.appConnectionId;
     this.transcriptHash = options.transcriptHash;
   }
 
@@ -255,6 +269,7 @@ export class E2ENoiseSession {
     return {
       v: PROTOCOL_VERSION,
       e2e_version: E2E_PROTOCOL_VERSION,
+      app_connection_id: this.appConnectionId,
       handshake_id: this.handshakeId,
       transcript_hash: this.transcriptHash,
     };
@@ -275,6 +290,7 @@ export class E2ENoiseSession {
       payload: {
         v: PROTOCOL_VERSION,
         e2e_version: E2E_PROTOCOL_VERSION,
+        app_connection_id: this.appConnectionId,
         e2e_session_id: this.sessionId,
         seq,
         ciphertext: toBase64Url(ciphertext),
@@ -287,6 +303,12 @@ export class E2ENoiseSession {
       throw new E2ENoiseError(
         "decrypt_failed",
         "E2E session id does not match this Noise session.",
+      );
+    }
+    if (payload.app_connection_id !== this.appConnectionId) {
+      throw new E2ENoiseError(
+        "decrypt_failed",
+        "App connection id does not match this Noise session.",
       );
     }
     if (payload.seq !== this.expectedRxSeq) {
@@ -332,6 +354,7 @@ export class E2ENoiseSession {
       [
         MESSAGE_AAD_PREFIX,
         this.sessionId,
+        this.appConnectionId,
         semanticDirection,
         String(seq),
       ].join("|"),
@@ -377,6 +400,7 @@ function prologue(context: NoiseContext): string {
     `device=${context.deviceId}`,
     `key=${context.keyId}`,
     `agent=${context.agentInstanceId}`,
+    `app=${context.appConnectionId}`,
     `suite=${NOISE_SUITE_NNPSK0_V1}`,
   ].join("|");
 }
