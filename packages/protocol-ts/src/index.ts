@@ -324,7 +324,7 @@ export type SessionStatus =
   | "archived";
 
 /**
- * Agent 启动期 sessions.json 的"应当被持久化保留"的 status 白名单。
+ * Agent 启动期 session store 的"应当被持久化保留"的 status 白名单。
  *
  * 与 `SessionStatus` 在概念上对齐：当前 `SessionStatus` 中的所有值都应可
  * 持久化（瞬态错误不再用 status 表达，而是通过 envelope error 直接反馈

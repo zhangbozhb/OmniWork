@@ -9,7 +9,7 @@ import type {
 } from "../../../../packages/protocol-ts/src/index.ts";
 import { isSupportedSessionStatus } from "../../../../packages/protocol-ts/src/index.ts";
 import { clampTerminalSize } from "../../../../packages/terminal-core/src/index.ts";
-import { JsonSessionStore } from "../session-store/sessionStore.ts";
+import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
 import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
 import { WorkspaceManager } from "../workspace/workspaceManager.ts";
@@ -17,7 +17,7 @@ import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 type SessionStatusListener = (session: CodexSession) => void | Promise<void>;
 
 export class SessionManager {
-  private readonly store: JsonSessionStore;
+  private readonly store: SQLiteSessionStore;
   private readonly tmux: TmuxManager;
   private readonly runtimes: RuntimeRegistry;
   private readonly workspaces?: WorkspaceManager;
@@ -27,7 +27,7 @@ export class SessionManager {
   };
 
   constructor(
-    store: JsonSessionStore,
+    store: SQLiteSessionStore,
     tmux: TmuxManager,
     runtimes: RuntimeRegistry,
     workspaces: WorkspaceManager | undefined,
@@ -44,7 +44,7 @@ export class SessionManager {
   }
 
   /**
-   * Agent 启动期对 sessions.json 做的一次性补丁，集中放在这里。
+   * Agent 启动期对持久化 session store 做的一次性补丁，集中放在这里。
    *
    * 设计取舍：采用 **白名单** 策略而非黑名单。
    * - 协议层 `SUPPORTED_SESSION_STATUSES` 是 SessionStatus 的唯一事实源；
@@ -54,7 +54,7 @@ export class SessionManager {
    * - reconcile 的常态逻辑只关心"对应 tmux 还活着吗"，不会主动改写
    *   非法 status；因此把"格式正确性"约束集中到启动期统一收敛。
    *
-   * 任何后续新增的"启动期 sessions.json 补丁"都集中加在这一函数里，
+   * 任何新增的"启动期 session store 补丁"都集中加在这一函数里，
    * 与运行期 reconcile / 写入路径保持职责分离。
    */
   async applyStartupPatches(): Promise<void> {

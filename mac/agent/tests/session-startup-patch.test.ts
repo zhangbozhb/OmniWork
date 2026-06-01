@@ -1,9 +1,9 @@
 import { strict as assert } from "node:assert";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { JsonSessionStore } from "../src/session-store/sessionStore.ts";
+import { SQLiteSessionStore } from "../src/session-store/sessionStore.ts";
 import { SessionManager } from "../src/core/sessionManager.ts";
 import { TmuxManager } from "../src/tmux-manager/tmuxManager.ts";
 import { RuntimeRegistry } from "../src/runtime/runtimeAdapter.ts";
@@ -37,35 +37,24 @@ function fakeSession(overrides: Partial<CodexSession>): CodexSession {
 // 但不在 store 白名单内，应被一并清理。
 {
   const dir = await mkdtemp(join(tmpdir(), "omniwork-startup-patch-"));
-  const path = join(dir, "sessions.json");
-  await writeFile(
-    path,
-    JSON.stringify(
-      {
-        sessions: [
-          fakeSession({ session_id: "sess_keep", status: "running" }),
-          fakeSession({ session_id: "sess_keep_detached", status: "detached" }),
-          fakeSession({
-            session_id: "sess_invalid_error",
-            // `error` 虽是协议合法值，但不在 store 持久化白名单内，应被清理。
-            status: "error" as CodexSession["status"],
-          }),
-          fakeSession({
-            session_id: "sess_invalid_recovering",
-            status: "recovering" as CodexSession["status"],
-          }),
-          fakeSession({
-            session_id: "sess_unknown",
-            status: "weird" as CodexSession["status"],
-          }),
-        ],
-      },
-      null,
-      2,
-    ),
-  );
-
-  const store = new JsonSessionStore(path);
+  const store = new SQLiteSessionStore(join(dir, "sessions.sqlite"));
+  await store.saveAll([
+    fakeSession({ session_id: "sess_keep", status: "running" }),
+    fakeSession({ session_id: "sess_keep_detached", status: "detached" }),
+    fakeSession({
+      session_id: "sess_invalid_error",
+      // `error` 虽是协议合法值，但不在 store 持久化白名单内，应被清理。
+      status: "error" as CodexSession["status"],
+    }),
+    fakeSession({
+      session_id: "sess_invalid_recovering",
+      status: "recovering" as CodexSession["status"],
+    }),
+    fakeSession({
+      session_id: "sess_unknown",
+      status: "weird" as CodexSession["status"],
+    }),
+  ]);
   const manager = new SessionManager(
     store,
     new TmuxManager(),
@@ -91,17 +80,8 @@ function fakeSession(overrides: Partial<CodexSession>): CodexSession {
 // applyStartupPatches 在没有命中条目时应零写入，幂等。
 {
   const dir = await mkdtemp(join(tmpdir(), "omniwork-startup-patch-"));
-  const path = join(dir, "sessions.json");
-  await writeFile(
-    path,
-    JSON.stringify(
-      { sessions: [fakeSession({ session_id: "sess_ok" })] },
-      null,
-      2,
-    ),
-  );
-
-  const store = new JsonSessionStore(path);
+  const store = new SQLiteSessionStore(join(dir, "sessions.sqlite"));
+  await store.saveAll([fakeSession({ session_id: "sess_ok" })]);
   const manager = new SessionManager(
     store,
     new TmuxManager(),

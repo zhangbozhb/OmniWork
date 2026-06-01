@@ -42,7 +42,7 @@ export function loadAgentConfig(
     sessionKeyPath:
       env.OMNIWORK_SESSION_KEY_PATH ?? join(appSupportDir, "session-key.json"),
     sessionStorePath:
-      env.OMNIWORK_SESSION_STORE_PATH ?? join(appSupportDir, "sessions.json"),
+      env.OMNIWORK_SESSION_STORE_PATH ?? join(appSupportDir, "sessions.sqlite"),
     terminalSize: DEFAULT_TERMINAL_SIZE,
   };
 }

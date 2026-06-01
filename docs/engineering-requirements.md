@@ -68,7 +68,7 @@
 - Node.js LTS。
 - TypeScript。
 - tmux。
-- 会话状态使用 `sessions.json`；SQLite 只作为可替换存储方向。
+- 会话状态使用 SQLite，默认文件为 `sessions.sqlite`；旧 `sessions.json` 仅作为首次导入来源，显式传入 `.json` 存储路径时会自动映射到同名 `.sqlite`。
 - 临时 key 文件存储。
 - macOS Keychain adapter 只作为演进持久凭证能力预留。
 - WebSocket Relay client。

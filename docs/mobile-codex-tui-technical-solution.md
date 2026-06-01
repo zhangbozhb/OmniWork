@@ -203,7 +203,7 @@ flowchart LR
   Agent --> Control["控制面"]
   Agent --> Runtime["Agent Provider 运行时适配层"]
   Agent --> Tmux["tmux 会话池"]
-  Agent --> Store["sessions.json + session-key.json"]
+  Agent --> Store["sessions.sqlite + session-key.json"]
 
   Runtime --> AppServer["Codex app-server<br/>stdio/unix/127.0.0.1"]
   Runtime --> PTY["PTY bridge"]
@@ -301,7 +301,7 @@ flowchart LR
 - 会话持久：`tmux`。
 - 打包：固定 Node runtime 的 macOS 分发包。
 - 自启动：`SMAppService` 注册 LaunchAgent。
-- 本地存储：为 `sessions.json`；SQLite 是可替换存储方向。
+- 本地存储：SQLite，默认路径 `~/Library/Application Support/OmniWork/agent/sessions.sqlite`；首次打开会从同目录旧 `sessions.json` 自动导入，显式传入 `.json` 存储路径时会自动映射到同名 `.sqlite`。
 - 临时 key 文件：`~/Library/Application Support/OmniWork/agent/session-key.json`。
 - 演进持久 secret：Keychain。
 - 与 app-server 通信：优先 stdio 或 unix socket；必要时 loopback WebSocket。
@@ -310,7 +310,7 @@ flowchart LR
 
 - Agent 业务主实现必须在 TypeScript 中。
 - macOS 原生代码只做 Keychain、LaunchAgent、签名公证、可选 Menu Bar 等薄桥接。
-- `node-pty`、SQLite、Keychain 等演进 native 依赖必须收敛在独立 adapter 模块内。
+- `node-pty`、Keychain 等演进 native 依赖必须收敛在独立 adapter 模块内；SQLite 存储统一封装在 `session-store`。
 - 不依赖用户机器上不受控的全局 Node 版本。
 
 Mac Agent 的本地端口策略：
@@ -924,7 +924,7 @@ Mac Agent:
   TypeScript + Node.js LTS
   tmux-manager / pty-bridge
   tmux
-  sessions.json
+  sessions.sqlite
   session-key.json
   Packaged Node runtime
 
@@ -957,7 +957,7 @@ Mac Agent:
   SMAppService / LaunchAgent
   session-key.json for temporary key
   Keychain only for future long-lived secrets
-  SQLite only if/when replacing sessions.json
+  SQLite session store
   tmux
   Codex app-server adapter after structured Codex phase starts
   PTY adapter

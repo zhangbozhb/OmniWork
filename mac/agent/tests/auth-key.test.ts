@@ -53,7 +53,7 @@ const baseConfig: AgentConfig = {
   defaultCwd: dir,
   appSupportDir: dir,
   sessionKeyPath: path,
-  sessionStorePath: join(dir, "sessions.json"),
+  sessionStorePath: join(dir, "sessions.sqlite"),
   terminalSize: { cols: 80, rows: 24 },
 };
 

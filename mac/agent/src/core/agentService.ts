@@ -50,7 +50,7 @@ import type { SessionKeyRecord } from "../auth-key/authKey.ts";
 import { AgentRelayClient } from "../relay-client/agentRelayClient.ts";
 import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
 import { SessionManager } from "./sessionManager.ts";
-import { JsonSessionStore } from "../session-store/sessionStore.ts";
+import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { TerminalBridge } from "../pty-bridge/terminalBridge.ts";
 import {
   TmuxManager,
@@ -116,7 +116,7 @@ export class AgentService {
       defaultCwd: config.defaultCwd,
     });
     this.sessionManager = new SessionManager(
-      new JsonSessionStore(config.sessionStorePath),
+      new SQLiteSessionStore(config.sessionStorePath),
       this.tmux,
       this.runtimes,
       this.workspaces,
@@ -155,7 +155,7 @@ export class AgentService {
       );
     }
 
-    // 对历史 sessions.json 做一次性补丁（清理已废弃的 status 等），与运行期
+    // 对持久化 session store 做一次性补丁（清理已废弃的 status 等），与运行期
     // reconcile 的职责分离；具体规则集中在 SessionManager.applyStartupPatches。
     await this.sessionManager.applyStartupPatches();
 

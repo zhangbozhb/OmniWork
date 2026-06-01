@@ -1,68 +1,104 @@
-import { open, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname, basename } from "node:path";
+import { mkdir, readFile } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
+import { dirname, join } from "node:path";
 
 import type {
   CodexSession,
   RuntimeKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
 
+interface SessionRow {
+  session_id: string;
+  payload: string;
+}
+
 /**
- * JsonSessionStore：持久化 sessions.json 的轻量封装。
+ * SQLiteSessionStore：持久化 sessions.sqlite 的轻量封装。
  *
- * 关键约束（来自方案 1+4）：
+ * 关键约束：
  * - **进程内串行**：所有写入经 `withWriteLock` 排队，避免 list reconcile 与
  *   create/attach 并发互相覆盖；`list()` 是只读路径，无需排队。
- * - **跨进程互斥（lockfile）**：保存前抢占 `<path>.lock`，agent 升级或人工
- *   误开两个实例时能拿到 EEXIST 错误，避免"内存有、磁盘没"的偏差。
- * - **原子写入**：先写 `<path>.tmp.<rand>`，再 `rename` 替换原文件；rename
- *   在同一文件系统下是原子操作，可以杜绝写到一半被读到半截 JSON 的情况。
+ * - **SQLite 事务**：批量覆盖、upsert、remove 均通过 SQLite 事务或单语句提交；
+ *   跨进程写入互斥由 SQLite 自身负责，避免手写 lockfile。
  * - **结构化删除日志**：`remove()` 命中条目时打印 reason，便于排查"会话
  *   被吃掉了"这类反馈（详见 docs/relay-architecture.md）。
  */
-export class JsonSessionStore {
+export class SQLiteSessionStore {
   private readonly path: string;
-  private readonly lockPath: string;
+  private readonly legacyJsonPath: string;
   private writeQueue: Promise<unknown> = Promise.resolve();
+  private db: DatabaseSync | null = null;
 
   constructor(path: string) {
-    this.path = path;
-    this.lockPath = `${path}.lock`;
+    this.path = path.endsWith(".json") ? path.replace(/\.json$/, ".sqlite") : path;
+    this.legacyJsonPath = path.endsWith(".json")
+      ? path
+      : join(dirname(this.path), "sessions.json");
   }
 
   async list(): Promise<CodexSession[]> {
-    try {
-      const raw = await readFile(this.path, "utf8");
-      const parsed = JSON.parse(raw) as { sessions: CodexSession[] };
-      return parsed.sessions.map(normalizeSession);
-    } catch {
-      return [];
-    }
+    const db = await this.open();
+    const rows = db
+      .prepare(
+        "SELECT session_id, payload FROM sessions ORDER BY created_at ASC, session_id ASC",
+      )
+      .all() as unknown as SessionRow[];
+    return rows.flatMap((row) => {
+      try {
+        return [normalizeSession(JSON.parse(row.payload) as CodexSession)];
+      } catch {
+        return [];
+      }
+    });
   }
 
   async saveAll(sessions: CodexSession[]): Promise<void> {
-    await this.withWriteLock(() => this.writeAtomic(sessions));
+    await this.withWriteLock(async () => {
+      const db = await this.open();
+      this.runTransaction(db, () => {
+        db.prepare("DELETE FROM sessions").run();
+        const insert = db.prepare(
+          "INSERT INTO sessions (session_id, payload, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        );
+        for (const session of sessions) {
+          insert.run(
+            session.session_id,
+            JSON.stringify(session),
+            session.created_at,
+            session.last_active_at,
+          );
+        }
+      });
+    });
   }
 
   async upsert(session: CodexSession): Promise<void> {
     await this.withWriteLock(async () => {
-      const sessions = await this.list();
-      const existingIndex = sessions.findIndex(
-        (item) => item.session_id === session.session_id,
+      const db = await this.open();
+      db.prepare(
+        `
+          INSERT INTO sessions (session_id, payload, created_at, updated_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(session_id) DO UPDATE SET
+            payload = excluded.payload,
+            updated_at = excluded.updated_at
+        `,
+      ).run(
+        session.session_id,
+        JSON.stringify(session),
+        session.created_at,
+        session.last_active_at,
       );
-      if (existingIndex >= 0) {
-        sessions[existingIndex] = session;
-      } else {
-        sessions.push(session);
-      }
-      await this.writeAtomic(sessions);
     });
   }
 
   async remove(sessionId: string, reason?: string): Promise<void> {
     await this.withWriteLock(async () => {
-      const sessions = await this.list();
-      const next = sessions.filter((session) => session.session_id !== sessionId);
-      if (next.length === sessions.length) {
+      const db = await this.open();
+      const result = db
+        .prepare("DELETE FROM sessions WHERE session_id = ?")
+        .run(sessionId);
+      if (result.changes === 0) {
         return;
       }
       // 结构化日志：方便用户反馈"我的 session 突然没了"时溯源。
@@ -72,16 +108,15 @@ export class JsonSessionStore {
           event: "session_store.remove",
           session_id: sessionId,
           reason: reason ?? "unspecified",
-          remaining: next.length,
+          remaining: this.countSessions(db),
         }),
       );
-      await this.writeAtomic(next);
     });
   }
 
   /**
    * 串行化所有写入路径，避免 list reconcile 与 upsert/remove 并发覆盖。
-   * 只对当前进程生效；跨进程互斥由 lockfile 负责（见 acquireLock）。
+   * 只对当前进程生效；跨进程互斥交给 SQLite 写锁与 busy_timeout。
    */
   private withWriteLock<T>(task: () => Promise<T>): Promise<T> {
     const next = this.writeQueue.then(task, task);
@@ -90,79 +125,80 @@ export class JsonSessionStore {
     return next;
   }
 
-  /**
-   * 抢占 lockfile：用 `wx` 标志写入，存在即抛 EEXIST。
-   * 调用方负责在 finally 里 release。
-   */
-  private async acquireLock(): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-    const handle = await open(this.lockPath, "wx", 0o600);
-    try {
-      await handle.writeFile(`${process.pid}\n${new Date().toISOString()}\n`);
-    } finally {
-      await handle.close();
+  private async open(): Promise<DatabaseSync> {
+    if (this.db) {
+      return this.db;
     }
+    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+    const db = new DatabaseSync(this.path);
+    db.exec("PRAGMA journal_mode = WAL");
+    db.exec("PRAGMA busy_timeout = 5000");
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        session_id TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    this.db = db;
+    await this.importLegacyJsonIfEmpty(db);
+    return db;
   }
 
-  private async releaseLock(): Promise<void> {
-    try {
-      await unlink(this.lockPath);
-    } catch {
-      // 已被其他人移除或从未持有，忽略。
-    }
+  private countSessions(db: DatabaseSync): number {
+    const row = db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as {
+      count: number;
+    };
+    return row.count;
   }
 
-  /**
-   * 原子写入：tmp 文件 + rename。
-   * - 抢 lockfile 失败 → 直接抛 SessionStoreLockedError；调用方一般会让上层
-   *   重试，避免静默吞掉失败导致内存与磁盘漂移。
-   * - rename 在同一文件系统是原子操作，读端永远不会看到半截 JSON。
-   */
-  private async writeAtomic(sessions: CodexSession[]): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+  private async importLegacyJsonIfEmpty(db: DatabaseSync): Promise<void> {
+    if (this.countSessions(db) > 0) {
+      return;
+    }
+    const legacyPath = this.legacyJsonPath;
+    if (legacyPath === this.path) {
+      return;
+    }
     try {
-      await this.acquireLock();
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException | undefined)?.code;
-      if (code === "EEXIST") {
-        throw new SessionStoreLockedError(this.lockPath);
+      const raw = await readFile(legacyPath, "utf8");
+      const parsed = JSON.parse(raw) as { sessions?: CodexSession[] };
+      if (!Array.isArray(parsed.sessions) || parsed.sessions.length === 0) {
+        return;
       }
-      throw error;
-    }
-
-    const tmpPath = `${this.path}.tmp.${process.pid}.${Date.now()}.${Math.random()
-      .toString(16)
-      .slice(2)}`;
-    try {
-      await writeFile(tmpPath, `${JSON.stringify({ sessions }, null, 2)}\n`, {
-        encoding: "utf8",
-        mode: 0o600,
+      const legacySessions = parsed.sessions;
+      const insert = db.prepare(
+        "INSERT OR REPLACE INTO sessions (session_id, payload, created_at, updated_at) VALUES (?, ?, ?, ?)",
+      );
+      this.runTransaction(db, () => {
+        for (const session of legacySessions.map(normalizeSession)) {
+          insert.run(
+            session.session_id,
+            JSON.stringify(session),
+            session.created_at,
+            session.last_active_at,
+          );
+        }
       });
-      await rename(tmpPath, this.path);
-    } catch (error) {
-      // 失败时清理 tmp，避免目录里堆积无主文件。
-      try {
-        await unlink(tmpPath);
-      } catch {
-        // 不存在或已被 rename 替换，忽略。
-      }
-      throw error;
-    } finally {
-      await this.releaseLock();
+    } catch {
+      // legacy sessions.json 不存在或不可读时直接从空 SQLite store 开始。
     }
   }
-}
 
-export class SessionStoreLockedError extends Error {
-  readonly code = "SESSION_STORE_LOCKED";
-  readonly lockPath: string;
-
-  constructor(lockPath: string) {
-    super(
-      `session store is locked by another process: ${basename(lockPath)}`,
-    );
-    this.name = "SessionStoreLockedError";
-    this.lockPath = lockPath;
+  private runTransaction(db: DatabaseSync, task: () => void): void {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      task();
+      db.exec("COMMIT");
+    } catch (error) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        // rollback 失败时保留原始错误。
+      }
+      throw error;
+    }
   }
 }
 

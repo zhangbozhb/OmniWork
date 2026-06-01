@@ -208,7 +208,7 @@ mac/
 |   |   |-- runtime/             # runtimeAdapter（Codex/Claude/Gemini provider 抽象）
 |   |   |-- pty-bridge/          # terminalBridge
 |   |   |-- tmux-manager/        # tmuxManager
-|   |   |-- session-store/       # sessionStore（基于本地文件）
+|   |   |-- session-store/       # sessionStore（SQLite sessions.sqlite）
 |   |   |-- workspace/           # workspaceManager
 |   |   |-- files/               # fileService
 |   |   |-- git/                 # gitService

@@ -1,12 +1,9 @@
 import { strict as assert } from "node:assert";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  JsonSessionStore,
-  SessionStoreLockedError,
-} from "../src/session-store/sessionStore.ts";
+import { SQLiteSessionStore } from "../src/session-store/sessionStore.ts";
 import type { CodexSession } from "../../../packages/protocol-ts/src/index.ts";
 
 function fakeSession(overrides: Partial<CodexSession> = {}): CodexSession {
@@ -31,36 +28,29 @@ function fakeSession(overrides: Partial<CodexSession> = {}): CodexSession {
   };
 }
 
-async function newStore(): Promise<{ store: JsonSessionStore; path: string }> {
+async function newStore(): Promise<{ store: SQLiteSessionStore; path: string }> {
   const dir = await mkdtemp(join(tmpdir(), "omniwork-store-"));
-  const path = join(dir, "sessions.json");
-  return { store: new JsonSessionStore(path), path };
+  const path = join(dir, "sessions.sqlite");
+  return { store: new SQLiteSessionStore(path), path };
 }
 
-// upsert + list 走 atomic write 路径，磁盘上应该是一份合法 JSON。
+// upsert + list 走 SQLite 持久化路径。
 {
-  const { store, path } = await newStore();
+  const { store } = await newStore();
   await store.upsert(fakeSession());
-  const raw = await readFile(path, "utf8");
-  const parsed = JSON.parse(raw) as { sessions: CodexSession[] };
-  assert.equal(parsed.sessions.length, 1);
-  assert.equal(parsed.sessions[0].tmux_session_uid, "$1");
   const listed = await store.list();
   assert.equal(listed.length, 1);
+  assert.equal(listed[0].tmux_session_uid, "$1");
 }
 
-// 有 lockfile 时 saveAll 应抛 SessionStoreLockedError，不能写穿磁盘。
+// saveAll 应以传入列表替换 SQLite 表内容。
 {
-  const { store, path } = await newStore();
+  const { store } = await newStore();
   await store.upsert(fakeSession());
-  await writeFile(`${path}.lock`, `${process.pid}\n`, { mode: 0o600 });
-  await assert.rejects(
-    () => store.saveAll([fakeSession({ session_id: "sess_other" })]),
-    (error) => error instanceof SessionStoreLockedError,
-  );
+  await store.saveAll([fakeSession({ session_id: "sess_other" })]);
   const listed = await store.list();
   assert.equal(listed.length, 1);
-  assert.equal(listed[0].session_id, "sess_test");
+  assert.equal(listed[0].session_id, "sess_other");
 }
 
 // remove 命中条目应输出结构化日志，且写入持久化。
@@ -99,6 +89,33 @@ async function newStore(): Promise<{ store: JsonSessionStore; path: string }> {
   );
   const listed = await store.list();
   assert.equal(listed.length, 5);
+}
+
+// 首次打开 SQLite store 时应从同目录旧 sessions.json 导入一次。
+{
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-store-"));
+  await writeFile(
+    join(dir, "sessions.json"),
+    JSON.stringify({ sessions: [fakeSession({ session_id: "legacy" })] }),
+  );
+  const store = new SQLiteSessionStore(join(dir, "sessions.sqlite"));
+  const listed = await store.list();
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].session_id, "legacy");
+}
+
+// 兼容显式传入旧 sessions.json 路径：应自动映射到同名 SQLite 文件并导入旧数据。
+{
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-store-"));
+  const legacyPath = join(dir, "custom-sessions.json");
+  await writeFile(
+    legacyPath,
+    JSON.stringify({ sessions: [fakeSession({ session_id: "custom_legacy" })] }),
+  );
+  const store = new SQLiteSessionStore(legacyPath);
+  const listed = await store.list();
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].session_id, "custom_legacy");
 }
 
 console.log("session-store tests passed");
