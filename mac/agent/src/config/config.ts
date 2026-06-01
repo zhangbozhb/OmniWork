@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DEFAULT_TERMINAL_SIZE } from "../../../../packages/terminal-core/src/index.ts";
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+  type BusinessSecurityMode,
   type AgentProviderDefinition,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import type { TerminalSize } from "../../../../packages/protocol-ts/src/index.ts";
@@ -19,6 +20,7 @@ export interface AgentConfig {
   sessionKeyPath: string;
   sessionStorePath: string;
   terminalSize: TerminalSize;
+  businessSecurityMode: BusinessSecurityMode;
 }
 
 export function loadAgentConfig(
@@ -44,7 +46,24 @@ export function loadAgentConfig(
     sessionStorePath:
       env.OMNIWORK_SESSION_STORE_PATH ?? join(appSupportDir, "sessions.sqlite"),
     terminalSize: DEFAULT_TERMINAL_SIZE,
+    businessSecurityMode: parseBoolean(env.OMNIWORK_AGENT_REQUIRE_E2E, true)
+      ? "e2e_required"
+      : "plaintext_allowed",
   };
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
 }
 
 function readDefaultProviderCommandOverrides(

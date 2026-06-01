@@ -2,7 +2,8 @@
 
 本文记录E2E 安全改造的实施基线。P2P 传输能力已经落地；
 MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密。
-系统尚未上线，因此 v1 直接采用 encrypted-only 业务模型，不保留明文业务兼容路径。
+默认采用 encrypted-only 业务模型；本地可信调试可由 Agent 启动配置显式切换为
+`plaintext_allowed`，其他端通过协议字段适配，不做自动降级。
 
 ## 前置状态
 
@@ -24,9 +25,12 @@ MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密
 - `ws://` 和 `wss://` 都只是传输；业务安全边界是 App-Agent E2E。
 - Relay 不可信，只负责外层路由、状态校验、限流和升级协调。
 - P2P 是传输路径优化，不能单独作为业务安全边界。
-- 所有业务消息必须封装为 `e2e.message`，Relay 不转发明文 `session.*`、
+- 默认模式下所有业务消息必须封装为 `e2e.message`，Relay 不转发明文 `session.*`、
   `terminal.*`、`workspace.*`、`files.*`、`git.*`、`codex.*`、
   `tunnel.upgrade.*`。
+- Agent 可通过 `OMNIWORK_AGENT_REQUIRE_E2E=false` 显式声明
+  `business_security_mode=plaintext_allowed`；同一 Relay 可同时承载
+  `e2e_required` 与 `plaintext_allowed` Agent，并按目标 Agent 模式路由。
 - v1 固定使用 `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`。
 - `app_connection_id` 由 Relay mobile connection id 规范化，参与 Noise prologue 和 E2E message AAD。
 - 外层协议、E2E 协议、内层业务协议均显式携带版本号。
@@ -38,17 +42,18 @@ MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密
 - `packages/protocol-ts` 已新增 E2E v1 常量、能力名、TypeScript 类型。
 - `schemas.ts` 已新增 `agent.hello`、`mobile.connect`、`e2e.*`、
   `protocol.error`、`InnerEnvelope` 的运行时 schema。
-- `AgentHelloPayload` 和 `MobileConnectPayload` 已声明 `protocol` 与
-  `e2e.required=true`。
+- `AgentHelloPayload` 和 `AuthOkPayload` 已声明 `business_security_mode`，缺省按
+  `e2e_required` 兼容旧端，并用 `e2e.required` 表达本次连接是否强制 E2E。
 
 ### Relay encrypted-only 状态机
 
-- Relay 配置改为 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS` 与
-  `OMNIWORK_RELAY_REQUIRE_E2E`。
-- 非 loopback 明文 `ws://` 必须显式允许，且 `REQUIRE_E2E=false` 会拒绝启动。
+- Relay 配置保留 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS`，`OMNIWORK_RELAY_REQUIRE_E2E`
+  仅作为旧配置兼容项；业务是否加密由 Agent `business_security_mode` 决定。
+- 非 loopback 明文 `ws://` 必须显式允许；Relay 不再用全局 E2E 开关阻断
+  `plaintext_allowed` Agent。
 - Relay 已新增连接状态：`relay_pairing_verified`、`e2e_handshaking`、
   `e2e_ready`。
-- Relay 已拒绝外层明文业务消息，并返回
+- Relay 对 `e2e_required` Agent 拒绝外层明文业务消息，并返回
   `protocol.error/plaintext_business_rejected`。
 - Relay path 已按 `app_connection_id` 定向转发多 App E2E 消息，Agent 响应不再广播给所有 App。
 
@@ -62,8 +67,9 @@ MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密
 
 - Agent 已处理 `e2e.handshake.init` 并返回 `e2e.handshake.reply` / `e2e.ready`。
 - Agent 已按 `app_connection_id` 维护多个独立 E2E session。
-- Agent 已只从解密后的 `InnerEnvelope` 分发业务消息。
-- Agent 已拒绝所有外层明文业务命令。
+- Agent 默认只从解密后的 `InnerEnvelope` 分发业务消息；显式 plaintext 模式下
+  接受带 `app_connection_id` 的已鉴权外层业务消息。
+- Agent 默认拒绝所有外层明文业务命令。
 - 请求响应类消息定向返回来源 App，终端帧按订阅 App 推送，共享 session 状态才广播。
 
 ### App E2E 接入

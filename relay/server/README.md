@@ -38,15 +38,16 @@ OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS=60000
 ### Plaintext WS and E2E
 
 The server treats `ws://` and `wss://` as transport only. Business security is
-provided by App-Agent E2E encryption, and relay business traffic must be carried
-inside `e2e.message`.
+declared per Agent: the same relay process can carry `e2e_required` Agents whose
+business traffic is inside `e2e.message`, and `plaintext_allowed` Agents started
+with `OMNIWORK_AGENT_REQUIRE_E2E=false`.
 
 Loopback hosts allow plaintext `ws://` by default for local development. Any
 non-loopback host must explicitly set `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`.
-When plaintext WS is allowed, `OMNIWORK_RELAY_REQUIRE_E2E` must remain `true`;
-otherwise startup fails with `RelayConfigError`. `wss://` is still recommended
-to reduce network metadata exposure, but it is not the business security
-boundary.
+`OMNIWORK_RELAY_REQUIRE_E2E` is retained only as a legacy compatibility setting;
+business encryption is no longer enforced globally by the relay. `wss://` is
+still recommended to reduce network metadata exposure, but it is not the
+business security boundary.
 
 ### auth.proof rate limiting
 

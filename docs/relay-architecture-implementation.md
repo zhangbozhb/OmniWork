@@ -89,9 +89,9 @@ App <-- ws/wss --> Relay <-- ws/wss --> Agent
 ### 3.2 Relay 配置
 
 - `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS`：非 loopback 明文 `ws://` 必须显式允许。
-- `OMNIWORK_RELAY_REQUIRE_E2E`：默认 `true`，允许明文 WS 时必须保持开启。
+- `OMNIWORK_RELAY_REQUIRE_E2E`：仅作为旧配置兼容项保留；Relay 可同时承载
+  `e2e_required` 与 `plaintext_allowed` Agent，业务是否加密由 Agent 声明决定。
 - 旧的 TLS 终止确认配置已废弃，不再作为安全边界配置。
-- 如果允许 plaintext WS 且关闭 E2E，Relay 启动会失败。
 
 ### 3.3 Relay 状态机
 

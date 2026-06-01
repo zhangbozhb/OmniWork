@@ -7,6 +7,8 @@ export const E2E_NOISE_NNPSK0_CAPABILITY_V1 =
   "e2e.noise.nnpsk0.v1" as const;
 export const ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1 =
   "business.encrypted-only.v1" as const;
+export const PLAINTEXT_BUSINESS_CAPABILITY_V1 =
+  "business.plaintext-allowed.v1" as const;
 export const PAIRING_LINK_SCHEME = "omniwork" as const;
 export const PAIRING_LINK_HOST = "pair" as const;
 

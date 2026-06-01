@@ -78,8 +78,8 @@
 Relay 安全约束（`relay/server`）：
 
 - 监听非 loopback 地址并使用明文 `ws://` 时必须显式声明 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`。
-- `OMNIWORK_RELAY_REQUIRE_E2E` 必须保持 `true`；如果允许明文 WS 但关闭 E2E，Relay 启动会以 `RelayConfigError` 失败。
-- `wss://` 仍推荐用于降低网络侧元数据暴露，但业务明文不得依赖 TLS 保护，必须封装在 `e2e.message` 中。
+- Relay 可同时承载 `e2e_required` 与 `plaintext_allowed` Agent；是否封装 `e2e.message` 由目标 Agent 在 `agent.hello` / `auth.ok` 中声明的 `business_security_mode` 决定。
+- `wss://` 仍推荐用于降低网络侧元数据暴露；默认业务明文不得依赖 TLS 保护，必须封装在 `e2e.message` 中。只有 Agent 显式配置 `OMNIWORK_AGENT_REQUIRE_E2E=false` 时，才可走明文业务通道。
 - `auth.proof` 失败按 `(device_id, remote_ip)` 维度做 token bucket 限流，参数由 `OMNIWORK_RELAY_AUTH_RATE_CAPACITY`（默认 5）、`OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC`（默认 1）、`OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS`（默认 60000）控制，超额触发 `auth.failed` 且 `reason=too_many_attempts`，详见 [relay/server/README.md](../relay/server/README.md)。
 
 实现要求：

@@ -9,6 +9,7 @@ import {
   createMessage,
   type AuthChallengePayload,
   type AuthOkPayload,
+  type BusinessSecurityMode,
   type E2EHandshakeReplyPayload,
   type E2EMessagePayload,
   type E2EReadyPayload,
@@ -40,6 +41,8 @@ export class MobileRelaySession {
   private e2eHandshake: InitiatorHandshakeState | null = null;
   private e2eSession: E2ENoiseSession | null = null;
   private e2ePeerReady = false;
+  private businessSecurityMode: BusinessSecurityMode = "e2e_required";
+  private plaintextReady = false;
   private pendingKeyId: string | null = null;
   private appConnectionId: string | null = null;
   private pendingBusinessMessages: MessageEnvelope[] = [];
@@ -88,6 +91,14 @@ export class MobileRelaySession {
 
   send(message: MessageEnvelope): void {
     if (isE2EBusinessMessage(message.type)) {
+      if (this.businessSecurityMode === "plaintext_allowed") {
+        if (!this.plaintextReady) {
+          this.pendingBusinessMessages.push(message);
+          return;
+        }
+        this.client.send(message);
+        return;
+      }
       if (!this.e2eSession || !this.e2ePeerReady) {
         this.pendingBusinessMessages.push(message);
         return;
@@ -141,7 +152,10 @@ export class MobileRelaySession {
         this.dispatchRelayUpgradeControl(message);
         return;
       default:
-        if (isE2EBusinessMessage(message.type)) {
+        if (
+          isE2EBusinessMessage(message.type) &&
+          this.businessSecurityMode === "e2e_required"
+        ) {
           return;
         }
         this.dispatch(message);
@@ -172,6 +186,13 @@ export class MobileRelaySession {
       return;
     }
     this.appConnectionId = payload.connection_id;
+    this.businessSecurityMode =
+      payload.business_security_mode ?? "e2e_required";
+    if (this.businessSecurityMode === "plaintext_allowed") {
+      this.plaintextReady = true;
+      this.flushPendingBusinessMessages();
+      return;
+    }
     this.e2eHandshake = createInitiatorHandshake({
       pairingKey: this.pairing.key,
       deviceId: this.pairing.deviceId,

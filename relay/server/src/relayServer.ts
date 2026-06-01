@@ -12,6 +12,8 @@ import {
   type AgentHelloPayload,
   type AuthFailedPayload,
   type AuthOkPayload,
+  type BusinessSecurityMode,
+  type E2ESupport,
   type AuthProofPayload,
   type E2EFailedPayload,
   type E2EHandshakeInitPayload,
@@ -55,6 +57,8 @@ interface RelayConnection {
   socket: RelaySocket;
   deviceId?: string;
   keyId?: string;
+  businessSecurityMode?: BusinessSecurityMode;
+  e2e?: E2ESupport;
   authenticated: boolean;
   /** Remote address used as the secondary key for auth.proof rate limiting. */
   remoteIp: string;
@@ -185,7 +189,7 @@ export class RelayServer {
       !agent ||
       mobile?.role !== "mobile" ||
       mobile.deviceId !== deviceId ||
-      !this.isE2EPairReadyForApp(appConnectionId, deviceId)
+      !this.isBusinessChannelReadyForApp(appConnectionId, deviceId)
     ) {
       response.writeHead(404, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "device_not_online" }));
@@ -324,11 +328,14 @@ export class RelayServer {
       case "tunnel.upgrade.candidate":
       case "tunnel.upgrade.committed":
       case "tunnel.upgrade.downgrade":
-        if (this.config.requireE2E) {
+        if (this.shouldRejectPlaintextBusiness(connection)) {
           this.rejectPlaintextBusiness(connection, message.type);
           return;
         }
-        if (!this.isE2EPairReady(connection)) {
+        if (
+          this.businessSecurityModeFor(connection) === "e2e_required" &&
+          !this.isE2EPairReady(connection)
+        ) {
           this.rejectInvalidState(connection, message.type);
           return;
         }
@@ -348,7 +355,10 @@ export class RelayServer {
         this.routeMessage(connection, message);
         break;
       default:
-        if (isPlaintextBusinessMessage(message.type)) {
+        if (
+          isPlaintextBusinessMessage(message.type) &&
+          this.shouldRejectPlaintextBusiness(connection)
+        ) {
           this.rejectPlaintextBusiness(connection, message.type);
           return;
         }
@@ -365,6 +375,9 @@ export class RelayServer {
     connection.state = "registered_agent";
     connection.deviceId = message.payload.device_id;
     connection.keyId = message.payload.key_id;
+    connection.businessSecurityMode =
+      message.payload.business_security_mode ?? "e2e_required";
+    connection.e2e = message.payload.e2e;
     connection.authenticated = true;
     this.agentsByDevice.set(message.payload.device_id, connection);
   }
@@ -530,6 +543,10 @@ export class RelayServer {
     const pending = this.pendingAuth.get(mobile.id);
     this.pendingAuth.delete(mobile.id);
     if (message.type === "auth.ok") {
+      const okPayload = message.payload as AuthOkPayload;
+      const agentMode = connection.businessSecurityMode ?? "e2e_required";
+      okPayload.business_security_mode ??= agentMode;
+      okPayload.e2e ??= connection.e2e;
       mobile.authenticated = true;
       mobile.state = "relay_pairing_verified";
       // 鉴权成功后释放限流计数，避免合法重连被旧失败拖累。
@@ -542,6 +559,9 @@ export class RelayServer {
           new Set<RelayConnection>();
         mobiles.add(mobile);
         this.mobilesByDevice.set(mobile.deviceId, mobiles);
+        if (agentMode === "plaintext_allowed") {
+          this.orchestrator.notifyMobileAuthenticated(mobile.deviceId, mobile);
+        }
       }
     } else if (message.type === "auth.failed") {
       // agent 端确认 key 不匹配 → 这才是真实的鉴权失败，计入限流；
@@ -558,7 +578,10 @@ export class RelayServer {
     connection: RelayConnection,
     message: MessageEnvelope,
   ): void {
-    if (this.config.requireE2E && isPlaintextBusinessMessage(message.type)) {
+    if (
+      isPlaintextBusinessMessage(message.type) &&
+      this.shouldRejectPlaintextBusiness(connection)
+    ) {
       this.rejectPlaintextBusiness(connection, message.type);
       return;
     }
@@ -582,12 +605,25 @@ export class RelayServer {
 
       const agent = this.agentsByDevice.get(connection.deviceId);
       if (agent) {
-        this.send(agent, message);
+        this.send(agent, {
+          ...message,
+          app_connection_id: connection.id,
+        });
       }
       return;
     }
 
     if (connection.role === "agent" && connection.deviceId) {
+      if (message.app_connection_id) {
+        const mobile = this.getMobileByAppConnectionId(
+          connection,
+          message.app_connection_id,
+        );
+        if (mobile) {
+          this.send(mobile, message);
+        }
+        return;
+      }
       const mobiles = this.mobilesByDevice.get(connection.deviceId);
       if (!mobiles) {
         return;
@@ -851,6 +887,41 @@ export class RelayServer {
       !!mobile.e2eTranscriptHash &&
       mobile.e2eTranscriptHash === peer.transcriptHash
     );
+  }
+
+  private isBusinessChannelReadyForApp(
+    appConnectionId: string,
+    deviceId: string | undefined,
+  ): boolean {
+    const agent = deviceId ? this.agentsByDevice.get(deviceId) : undefined;
+    if (agent?.businessSecurityMode === "plaintext_allowed") {
+      const mobile = this.connections.get(appConnectionId);
+      return (
+        mobile?.role === "mobile" &&
+        mobile.deviceId === deviceId &&
+        mobile.authenticated
+      );
+    }
+    return this.isE2EPairReadyForApp(appConnectionId, deviceId);
+  }
+
+  private shouldRejectPlaintextBusiness(connection: RelayConnection): boolean {
+    return this.businessSecurityModeFor(connection) === "e2e_required";
+  }
+
+  private businessSecurityModeFor(
+    connection: RelayConnection,
+  ): BusinessSecurityMode {
+    if (connection.role === "agent") {
+      return connection.businessSecurityMode ?? "e2e_required";
+    }
+    if (connection.deviceId) {
+      return (
+        this.agentsByDevice.get(connection.deviceId)?.businessSecurityMode ??
+        "e2e_required"
+      );
+    }
+    return "e2e_required";
   }
 
   private rejectPlaintextBusiness(

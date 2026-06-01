@@ -27,7 +27,10 @@ export interface RelayServerConfig {
    * 非 loopback host 必须显式开启该项，避免误把明文传输当成 TLS 保护。
    */
   allowPlaintextWs: boolean;
-  /** Relay 是否强制只转发 E2E 业务消息。生产和第三方 Relay 必须保持 true。 */
+  /**
+   * 兼容旧配置项。业务安全模式现在由每个 Agent 在 agent.hello 中声明，
+   * Relay 可在同一进程内同时承载 e2e_required 与 plaintext_allowed Agent。
+   */
   requireE2E: boolean;
   protocolVersion: 1;
   minProtocolVersion: 1;
@@ -64,12 +67,6 @@ export function loadRelayServerConfig(
     throw new RelayConfigError(
       `[omniwork-relay] refusing to start on non-loopback host "${host}" without explicit plaintext ws allowance. ` +
         `Set OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true after confirming OMNIWORK_RELAY_REQUIRE_E2E=true.`,
-    );
-  }
-
-  if (allowPlaintextWs && !requireE2E) {
-    throw new RelayConfigError(
-      "[omniwork-relay] plaintext ws requires E2E. Keep OMNIWORK_RELAY_REQUIRE_E2E=true.",
     );
   }
 

@@ -6,6 +6,7 @@ export {
   NOISE_SUITE_NNPSK0_V1,
   PAIRING_LINK_HOST,
   PAIRING_LINK_SCHEME,
+  PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_VERSION,
   SUPPORTED_SESSION_STATUSES,
 } from "./constants.ts";
@@ -17,6 +18,7 @@ import {
   NOISE_SUITE_NNPSK0_V1,
   PAIRING_LINK_HOST,
   PAIRING_LINK_SCHEME,
+  PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_VERSION,
   SUPPORTED_SESSION_STATUSES,
 } from "./constants.ts";
@@ -84,6 +86,7 @@ export interface MessageEnvelope<TPayload = unknown> {
   type: MessageType;
   device_id?: string;
   session_id?: string;
+  app_connection_id?: string;
   seq?: number;
   ts: string;
   payload: TPayload;
@@ -96,6 +99,7 @@ export interface AgentHelloPayload {
   key_id: string;
   protocol: ProtocolSupport;
   e2e: E2ESupport;
+  business_security_mode?: BusinessSecurityMode;
   hostname: string;
   platform: "darwin";
   agent_version: string;
@@ -107,6 +111,7 @@ export interface AgentHelloPayload {
 export type KnownAgentCapability =
   | typeof E2E_NOISE_NNPSK0_CAPABILITY_V1
   | typeof ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1
+  | typeof PLAINTEXT_BUSINESS_CAPABILITY_V1
   | "terminal.tui"
   | "terminal.snapshot"
   | "session.tmux"
@@ -162,9 +167,10 @@ export interface ProtocolSupport {
 }
 
 export type NoiseSuite = typeof NOISE_SUITE_NNPSK0_V1;
+export type BusinessSecurityMode = "e2e_required" | "plaintext_allowed";
 
 export interface E2ESupport {
-  required: true;
+  required: boolean;
   versions: readonly [typeof E2E_PROTOCOL_VERSION, ...number[]];
   suites: readonly [NoiseSuite, ...string[]];
 }
@@ -290,6 +296,8 @@ export interface AuthVerifyPayload extends AuthProofPayload {
 export interface AuthOkPayload {
   agent_instance_id: string;
   connection_id?: string;
+  business_security_mode?: BusinessSecurityMode;
+  e2e?: E2ESupport;
   expires_at?: string;
 }
 
@@ -662,6 +670,7 @@ export function createMessage<TPayload>(
     id?: string;
     device_id?: string;
     session_id?: string;
+    app_connection_id?: string;
     seq?: number;
     ts?: string;
   } = {},
@@ -672,6 +681,7 @@ export function createMessage<TPayload>(
     type,
     device_id: options.device_id,
     session_id: options.session_id,
+    app_connection_id: options.app_connection_id,
     seq: options.seq,
     ts: options.ts ?? new Date().toISOString(),
     payload,

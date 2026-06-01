@@ -31,6 +31,7 @@ export const messageEnvelopeSchema = z.object({
   type: z.string().min(1),
   device_id: z.string().min(1).optional(),
   session_id: z.string().min(1).optional(),
+  app_connection_id: z.string().min(1).optional(),
   seq: z.number().int().nonnegative().optional(),
   ts: isoDateTime,
   payload: z.unknown(),
@@ -56,6 +57,27 @@ export const authVerifyPayloadSchema = authProofPayloadSchema.extend({
 export const authOkPayloadSchema = z.object({
   agent_instance_id: z.string().min(1),
   connection_id: z.string().min(1).optional(),
+  business_security_mode: z
+    .enum(["e2e_required", "plaintext_allowed"])
+    .optional(),
+  e2e: z
+    .object({
+      required: z.boolean(),
+      versions: z
+        .array(z.number().int().positive())
+        .min(1)
+        .refine((versions) => versions.includes(E2E_PROTOCOL_VERSION), {
+          message: "E2E v1 support is required",
+        }),
+      suites: z
+        .array(z.string().min(1))
+        .min(1)
+        .refine((suites) => suites.includes(NOISE_SUITE_NNPSK0_V1), {
+          message: "Noise NNpsk0 v1 support is required",
+        }),
+    })
+    .strict()
+    .optional(),
   expires_at: isoDateTime.optional(),
 });
 
@@ -83,7 +105,7 @@ const protocolSupportSchema = z
 
 const e2eSupportSchema = z
   .object({
-    required: z.literal(true),
+    required: z.boolean(),
     versions: z
       .array(z.number().int().positive())
       .min(1)
@@ -107,6 +129,9 @@ export const agentHelloPayloadSchema = z
     key_id: z.string().min(1),
     protocol: protocolSupportSchema,
     e2e: e2eSupportSchema,
+    business_security_mode: z
+      .enum(["e2e_required", "plaintext_allowed"])
+      .optional(),
     hostname: z.string().min(1),
     platform: z.literal("darwin"),
     agent_version: z.string().min(1),

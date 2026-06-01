@@ -10,14 +10,17 @@ import { describe, it } from "node:test";
 import {
   E2E_PROTOCOL_VERSION,
   E2E_SUPPORT_V1,
+  ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
   INNER_PROTOCOL_VERSION,
   NOISE_SUITE_NNPSK0_V1,
+  PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_VERSION,
   PROTOCOL_SUPPORT_V1,
   SESSION_FIELDS,
   SESSION_REQUIRED_FIELDS,
   SUPPORTED_SESSION_STATUSES,
   TRANSPORT_PREFERENCES,
+  agentHelloPayloadSchema,
   authFailedPayloadSchema,
   authOkPayloadSchema,
   authVerifyPayloadSchema,
@@ -111,6 +114,55 @@ describe("auth payload schemas", () => {
     ] as const) {
       authFailedPayloadSchema.parse({ reason });
     }
+  });
+});
+
+describe("agent hello security mode", () => {
+  it("accepts the default encrypted-only mode", () => {
+    agentHelloPayloadSchema.parse({
+      v: PROTOCOL_VERSION,
+      device_id: "device-1",
+      agent_instance_id: "agent-1",
+      key_id: "key-1",
+      protocol: PROTOCOL_SUPPORT_V1,
+      e2e: E2E_SUPPORT_V1,
+      business_security_mode: "e2e_required",
+      hostname: "mac",
+      platform: "darwin",
+      agent_version: "0.1.0",
+      capabilities: [ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1],
+    });
+  });
+
+  it("accepts explicit plaintext-allowed mode", () => {
+    agentHelloPayloadSchema.parse({
+      v: PROTOCOL_VERSION,
+      device_id: "device-1",
+      agent_instance_id: "agent-1",
+      key_id: "key-1",
+      protocol: PROTOCOL_SUPPORT_V1,
+      e2e: { ...E2E_SUPPORT_V1, required: false },
+      business_security_mode: "plaintext_allowed",
+      hostname: "mac",
+      platform: "darwin",
+      agent_version: "0.1.0",
+      capabilities: [PLAINTEXT_BUSINESS_CAPABILITY_V1],
+    });
+  });
+
+  it("accepts legacy hello without explicit business security mode", () => {
+    agentHelloPayloadSchema.parse({
+      v: PROTOCOL_VERSION,
+      device_id: "device-1",
+      agent_instance_id: "agent-1",
+      key_id: "key-1",
+      protocol: PROTOCOL_SUPPORT_V1,
+      e2e: E2E_SUPPORT_V1,
+      hostname: "mac",
+      platform: "darwin",
+      agent_version: "0.1.0",
+      capabilities: [ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1],
+    });
   });
 });
 

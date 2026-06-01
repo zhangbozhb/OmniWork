@@ -3,6 +3,7 @@ import {
   E2E_SUPPORT_V1,
   ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
   INNER_PROTOCOL_VERSION,
+  PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_SUPPORT_V1,
   createMessage,
   type MessageEnvelope,
@@ -77,7 +78,7 @@ interface AppE2EPeer {
 
 interface AgentDispatchContext {
   appConnectionId: string;
-  trustedE2E: true;
+  trustedE2E: boolean;
 }
 
 export class AgentService {
@@ -95,6 +96,7 @@ export class AgentService {
   private transport: AgentSessionTransport | null = null;
   private readonly upgradeCoordinators = new Map<string, UpgradeCoordinator>();
   private readonly e2ePeers = new Map<string, AppE2EPeer>();
+  private readonly authenticatedAppConnectionIds = new Set<string>();
   private readonly seenAuthNonces: string[] = [];
   private readonly seenAuthNonceSet = new Set<string>();
   private readonly logTransport =
@@ -239,7 +241,8 @@ export class AgentService {
           agent_instance_id: keyRecord.agent_instance_id,
           key_id: keyRecord.key_id,
           protocol: PROTOCOL_SUPPORT_V1,
-          e2e: E2E_SUPPORT_V1,
+          e2e: this.e2eSupport(),
+          business_security_mode: this.config.businessSecurityMode,
           hostname: this.config.hostname,
           platform: "darwin",
           agent_version: this.config.agentVersion,
@@ -247,7 +250,9 @@ export class AgentService {
           workspaces: await this.workspaces.list(),
           capabilities: [
             E2E_NOISE_NNPSK0_CAPABILITY_V1,
-            ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
+            this.config.businessSecurityMode === "e2e_required"
+              ? ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1
+              : PLAINTEXT_BUSINESS_CAPABILITY_V1,
             "terminal.tui",
             "terminal.snapshot",
             "session.tmux",
@@ -274,6 +279,14 @@ export class AgentService {
     context?: AgentDispatchContext,
   ): Promise<void> {
     const trustedE2E = context?.trustedE2E === true;
+    const dispatchContext =
+      context ??
+      (message.app_connection_id
+        ? {
+            appConnectionId: message.app_connection_id,
+            trustedE2E: false,
+          }
+        : undefined);
     switch (message.type) {
       case "auth.verify":
         this.handleAuthVerify(message as MessageEnvelope<AuthVerifyPayload>);
@@ -293,13 +306,13 @@ export class AgentService {
         break;
       case "session.list":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleSessionList(message, context);
+        await this.handleSessionList(message, dispatchContext);
         break;
       case "session.create":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleSessionCreate(
           message as MessageEnvelope<SessionCreatePayload>,
-          context,
+          dispatchContext,
         );
         break;
       case "session.close":
@@ -307,14 +320,14 @@ export class AgentService {
         if (message.session_id) {
           this.stopTerminalPusher(message.session_id);
           await this.sessionManager.close(message.session_id);
-          await this.handleSessionList(message, context);
+          await this.handleSessionList(message, dispatchContext);
         }
         break;
       case "session.rename":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleSessionRename(
           message as MessageEnvelope<SessionRenamePayload>,
-          context,
+          dispatchContext,
         );
         break;
       case "session.kill_tmux":
@@ -322,39 +335,39 @@ export class AgentService {
         if (message.session_id) {
           this.stopTerminalPusher(message.session_id);
           await this.sessionManager.killTmux(message.session_id);
-          await this.handleSessionList(message, context);
+          await this.handleSessionList(message, dispatchContext);
         }
         break;
       case "workspace.list":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleWorkspaceList(message, context);
+        await this.handleWorkspaceList(message, dispatchContext);
         break;
       case "files.list":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleFilesList(
           message as MessageEnvelope<FilesListRequestPayload>,
-          context,
+          dispatchContext,
         );
         break;
       case "files.read":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleFilesRead(
           message as MessageEnvelope<FilesReadRequestPayload>,
-          context,
+          dispatchContext,
         );
         break;
       case "git.status":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleGitStatus(
           message as MessageEnvelope<GitStatusRequestPayload>,
-          context,
+          dispatchContext,
         );
         break;
       case "git.diff":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         await this.handleGitDiff(
           message as MessageEnvelope<GitDiffRequestPayload>,
-          context,
+          dispatchContext,
         );
         break;
       case "terminal.input":
@@ -371,17 +384,18 @@ export class AgentService {
         break;
       case "session.attach":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleSessionAttach(message, context);
+        await this.handleSessionAttach(message, dispatchContext);
         break;
       case "terminal.snapshot":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleTerminalSnapshot(message, context);
+        await this.handleTerminalSnapshot(message, dispatchContext);
         break;
       case "tunnel.upgrade.propose": {
         const payload = (
           message as MessageEnvelope<TunnelUpgradeProposePayload>
         ).payload;
         if (
+          this.config.businessSecurityMode === "e2e_required" &&
           !trustedE2E &&
           !this.e2ePeers.get(payload.app_connection_id)?.ready
         ) {
@@ -645,7 +659,7 @@ export class AgentService {
     message: MessageEnvelope,
     trustedE2E: boolean,
   ): boolean {
-    if (trustedE2E) {
+    if (trustedE2E || this.config.businessSecurityMode === "plaintext_allowed") {
       return false;
     }
     this.logger.warn("rejected plaintext business message", {
@@ -681,12 +695,17 @@ export class AgentService {
 
     if (valid) {
       this.rememberAuthNonce(authNonceKey);
+      if (message.payload.connection_id) {
+        this.authenticatedAppConnectionIds.add(message.payload.connection_id);
+      }
       this.send(
         createMessage(
           "auth.ok",
           {
             agent_instance_id: keyRecord.agent_instance_id,
             connection_id: message.payload.connection_id,
+            business_security_mode: this.config.businessSecurityMode,
+            e2e: this.e2eSupport(),
           },
           { device_id: this.config.deviceId },
         ),
@@ -1163,6 +1182,13 @@ export class AgentService {
       return;
     }
     const peer = this.e2ePeers.get(appConnectionId);
+    if (this.config.businessSecurityMode === "plaintext_allowed") {
+      this.transport.send({
+        ...message,
+        app_connection_id: appConnectionId,
+      });
+      return;
+    }
     if (!peer?.ready) {
       this.logger.warn("dropped business message without ready app e2e peer", {
         app_connection_id: appConnectionId,
@@ -1179,11 +1205,24 @@ export class AgentService {
   }
 
   private broadcastToReadyApps(message: MessageEnvelope): void {
+    if (this.config.businessSecurityMode === "plaintext_allowed") {
+      for (const appConnectionId of this.authenticatedAppConnectionIds) {
+        this.sendToAppByConnectionId(appConnectionId, message);
+      }
+      return;
+    }
     for (const peer of this.e2ePeers.values()) {
       if (peer.ready) {
         this.sendToAppByConnectionId(peer.appConnectionId, message);
       }
     }
+  }
+
+  private e2eSupport(): typeof E2E_SUPPORT_V1 {
+    return {
+      ...E2E_SUPPORT_V1,
+      required: this.config.businessSecurityMode === "e2e_required",
+    };
   }
 
   private addTerminalSubscriber(
