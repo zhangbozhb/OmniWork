@@ -520,9 +520,15 @@ function concat(...chunks: Uint8Array[]): Uint8Array {
 }
 
 function toBase64Url(value: Uint8Array): string {
-  return Buffer.from(value).toString("base64url");
+  return Buffer.from(value)
+    .toString("base64")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
 }
 
 function fromBase64Url(value: string): Uint8Array {
-  return Buffer.from(value, "base64url");
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  return Buffer.from(base64 + padding, "base64");
 }
