@@ -31,7 +31,7 @@
 - React Native。
 - React Native CLI。
 - TypeScript。
-- React Native 原生终端快照视图。
+- React Native 主界面；TUI 兼容通道使用 Native WebView/xterm 终端视图。
 
 安装交付要求：
 
@@ -43,20 +43,20 @@
 
 交互实现要求：
 
-- 原始 Codex TUI 快照先使用 React Native 原生组件渲染。
+- 原始 Codex TUI 使用 Native WebView/xterm 终端视图渲染，WebView 只作为终端兼容渲染容器，不承载主界面。
 - MVP 不引入 PWA 或网页壳。
-- 如后续确实需要完整 ANSI 行为，再以可替换的原生 terminal renderer 的方式引入。
+- 如演进确实需要完整 ANSI 行为，再以可替换的原生 terminal renderer 的方式引入。
 - 结构化 Codex UI 使用 React Native 原生组件实现。
 - 快捷键、复制粘贴、横屏、缩放、输入法适配属于 App 的核心体验。
 - 推送通知使用 APNs / FCM 或公司统一推送网关。
 
 安全要求：
 
-- 当前阶段不接入 SSO。
-- App 使用 Mac Agent 当前启动生成的 32 字符临时 key 完成连接鉴权。
+- MVP 范围不接入 SSO。
+- App 使用 Mac Agent 启动生成的 32 字符临时 key 完成连接鉴权。
 - key 不得存入普通明文存储。
-- App 不得加载远程网页作为主界面。
-- 当前路线不使用 WebView 承载终端或主界面。
+- App 不得加载远程网页作为主界面；移动端主交付必须是 React Native APK/IPA，native 体验优先于 Web 实验入口。
+- 终端 WebView 只能加载本地打包的 xterm HTML/CSS/JS 资源，不得在运行时依赖 CDN 或远程网页。
 - 终端剪贴板能力默认受限，OSC 52 等能力需要显式策略控制。
 
 ## Mac Agent 工程要求
@@ -67,14 +67,13 @@
 
 - Node.js LTS。
 - TypeScript。
-- node-pty。
 - tmux。
-- SQLite。
+- 会话状态使用 `sessions.json`；SQLite 只作为可替换存储方向。
 - 临时 key 文件存储。
-- macOS Keychain adapter 只作为后续长期凭证能力预留。
+- macOS Keychain adapter 只作为演进持久凭证能力预留。
 - WebSocket Relay client。
 
-当前工程已补齐 `relay/server` 的 TypeScript MVP，用于 App 与 Mac Agent 的公司内网消息中继；正式生产可继续替换为公司统一 Relay 平台，但协议和鉴权流程保持一致。
+本工程已补齐 `relay/server` 的 TypeScript MVP，用于 App 与 Mac Agent 的公司内网消息中继；正式生产可继续替换为公司统一 Relay 平台，但协议和鉴权流程保持一致。
 
 Relay 安全约束（`relay/server`）：
 
@@ -88,11 +87,11 @@ Relay 安全约束（`relay/server`）：
 - Agent 业务逻辑必须写在 TypeScript 中。
 - PTY 能力统一封装在 `pty-bridge` 模块。
 - tmux 能力统一封装在 `tmux-manager` 模块。
-- Codex app-server 能力统一封装在 `codex-runtime` 模块。
+- runtime 是配置化 CLI Provider；演进 Codex app-server 能力落地时统一封装在 `codex-runtime` 或等价独立模块。
 - Relay 连接统一封装在 `relay-client` 模块。
 - 本地会话状态统一封装在 `session-store` 模块。
 - 临时 key 文件读写统一封装在 `auth-key` 模块。
-- Keychain 操作保留为后续能力，当前 MVP 不作为登录依赖。
+- Keychain 操作保留为演进能力，MVP 不作为登录依赖。
 
 macOS 集成要求：
 
@@ -107,7 +106,7 @@ macOS 集成要求：
 
 ## 登录与鉴权要求
 
-当前阶段不使用 SSO、OIDC、长期设备绑定或 refresh token。
+MVP 范围不使用 SSO、OIDC、持久设备绑定或 refresh token。
 
 MVP 鉴权模型：
 
@@ -115,7 +114,7 @@ MVP 鉴权模型：
 - Mac Agent 每次启动临时生成一个固定 32 字符长度的随机字符串作为 key。
 - key 使用加密安全随机数生成器。
 - key 保存到 Mac 本地文件。
-- App 通过手动输入、扫码或后续本机展示方式获得 key。
+- App 通过手动输入、扫码或演进本机展示方式获得 key。
 - App 使用该 key 完成本次连接授权。
 - Mac Agent 重启后旧 key 失效，App 需要重新输入新 key。
 
@@ -151,7 +150,7 @@ MVP 鉴权模型：
 
 业务消息默认走 Relay WS；P2P（WebRTC DataChannel）作为可选优选路径，由 Relay 协调升级、双端按需降级。详细架构以 [relay-architecture.md](./relay-architecture.md) 为单一来源。
 
-实施顺序上，P2P 传输能力已先行落地；当前阶段是在既有 Relay / P2P 两条路径上补齐 App-Agent E2E 加密。E2E 完成后，P2P 仍只是路径优化，不单独承担业务安全边界。
+能力关系上，P2P 传输能力已落地；MVP 范围是在既有 Relay / P2P 两条路径上补齐 App-Agent E2E 加密。E2E 完成后，P2P 仍只是路径优化，不单独承担业务安全边界。
 
 依赖与运行时：
 
@@ -176,7 +175,8 @@ Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.m
 
 - `pnpm verify:relay`：Relay 配置自检。
 - `pnpm verify:mac-key`：Agent 临时 key 写入与权限校验。
-- `pnpm verify:upgrade:simulator`：本地拉起 relay + agent 模拟器 + mobile 模拟器，跑通 propose → committed → switchPath 全链路；产出 proposed / committed / 升级耗时 p50/p95/max。脚本入口 [scripts/verify/mobile-upgrade-simulator.mjs](../scripts/verify/mobile-upgrade-simulator.mjs)。
+- `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/mobile --device <id> --key <KEY> --key-id <KEY_ID>`：连接已启动的 Relay 与 Mac Agent，用 mobile simulator 跑通 propose → committed → DataChannel 验证链路。脚本入口 [scripts/verify/mobile-upgrade-simulator.mjs](../scripts/verify/mobile-upgrade-simulator.mjs)。
+- `pnpm verify:security`：运行 `@omniwork/e2e-noise` 测试，覆盖 Noise 握手、加解密、seq 防重放和篡改检测。
 
 ## 共享包要求
 
@@ -185,6 +185,7 @@ Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.m
 允许：
 
 - `protocol-ts`。
+- `e2e-noise`。
 - `relay-client`。
 - `terminal-core`。
 - `config`。
@@ -192,7 +193,8 @@ Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.m
 
 限制：
 
-- `mac/agent` 可以依赖 `protocol-ts`、`relay-client`、`terminal-core`、`config`。
+- `mac/agent` 可以依赖 `protocol-ts`、`e2e-noise`、`relay-client`、`terminal-core`、`config`。
+- `app/` 可以依赖 `protocol-ts`、`e2e-noise`、`relay-client`、`terminal-core`、`mobile-ui`。
 - `mac/agent` 不依赖 `mobile-ui`。
 - `app/` 不依赖 `mac/agent` 内部模块。
 - `mac/` 不依赖 `app/src` 内部模块。
@@ -200,7 +202,7 @@ Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.m
 
 ## 验证要求
 
-MVP 阶段至少验证：
+MVP 范围至少验证：
 
 - Android App 可连接 Relay。
 - iOS App 可连接 Relay。
@@ -213,7 +215,7 @@ MVP 阶段至少验证：
 - App 重连后恢复终端快照。
 - Agent 重启后恢复已有 tmux 会话。
 
-企业化阶段至少验证：
+企业化能力至少验证：
 
 - Mac Agent 每次启动生成 32 字符临时 key。
 - key 文件路径、权限和内容格式正确。

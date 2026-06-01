@@ -1,7 +1,7 @@
 # P2P Per App Connection 设计
 
-本文记录多 App 并发后的 P2P per App connection 设计与当前实现边界。
-当前 P2P 升级粒度已从 `device_id` 下沉到 `(device_id, app_connection_id)`。
+本文记录多 App 并发后的 P2P per App connection 设计与实现边界。
+P2P 升级粒度已从 `device_id` 下沉到 `(device_id, app_connection_id)`。
 
 ## 背景
 
@@ -42,7 +42,7 @@
 
 ## App 改造
 
-- App 当前单连接模型可保持不变。
+- App 单连接模型可保持不变。
 - App 使用 `auth.ok.connection_id` 作为 `app_connection_id`。
 - App 的 P2P coordinator 只处理自身 `app_connection_id` 的 upgrade 控制消息。
 - 收到其他 `app_connection_id` 的 upgrade 控制消息必须丢弃。

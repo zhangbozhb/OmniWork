@@ -4,9 +4,9 @@
 
 关联鉴权设计：[auth-key-design.md](./auth-key-design.md)
 
-## 当前 MVP 实装状态（2026-05-22）
+## MVP 实装状态
 
-本文档记录的是设计意图。当前已落地的 App 屏幕（[app/src/screens/](../app/src/screens/)）：
+本文档记录的是设计意图。已落地的 App 屏幕（[app/src/screens/](../app/src/screens/)）：
 
 - [DeviceListScreen](../app/src/screens/devices/DeviceListScreen.tsx)：已保存设备列表与切换。
 - [PairingScreen](../app/src/screens/pairing/PairingScreen.tsx) + `PairingQrScannerModal.{native,web}.tsx`：扫码 / URL / 32 字符 key 三种配对方式。
@@ -14,7 +14,7 @@
 - [TerminalScreen](../app/src/screens/terminal/TerminalScreen.tsx)：原始 TUI 快照 + 输入。
 - [FileBrowserScreen](../app/src/screens/workspaces/FileBrowserScreen.tsx) / [GitStatusScreen](../app/src/screens/workspaces/GitStatusScreen.tsx)：workspace 只读上下文。
 
-下文中的页面、交互流转可能与现有 5 屏存在差异；以代码为准，本设计为后续演进的目标态参考。
+下文中的页面、交互流转可能与现有 5 屏存在差异；以代码为准，本设计为演进的目标态参考。
 
 ## 背景
 
@@ -43,15 +43,15 @@ MVP 需要做到：
 - 手机重新连接后，可以恢复查看和交互。
 - 整个系统不依赖 SSH、屏幕共享或远程桌面。
 
-长期目标：
+产品目标：
 
 - 支持 24 小时办公：长任务持续运行、手机随时查看和接手。
-- 当前阶段支持临时 key 鉴权、审计和失败限流；企业身份和设备绑定作为后续演进。
+- MVP 范围支持临时 key 鉴权、审计和失败限流；企业身份和设备绑定作为演进。
 - 支持更好的移动端输入、通知和会话状态摘要。
 
 ## 非目标
 
-第一阶段不做：
+MVP 不做：
 
 - 通用远程桌面。
 - 鼠标、键盘级别的整机远控。
@@ -104,7 +104,7 @@ flowchart LR
 - Mac 不需要开放入站端口。
 - 不需要 SSH。
 - 不需要屏幕共享。
-- 可以统一做临时 key 鉴权、失败限流、连接审计和后续策略扩展。
+- 可以统一做临时 key 鉴权、失败限流、连接审计和演进策略扩展。
 
 局域网直连可以作为开发或小范围验证模式，但不应作为企业正式方案的唯一依赖。
 
@@ -126,14 +126,14 @@ flowchart LR
 主要页面：
 
 - 登录 / 配对页
-  - 输入或扫码 Mac Agent 当前启动生成的 32 字符临时 key。
+  - 输入或扫码 Mac Agent 启动生成的 32 字符临时 key。
   - 选择目标 Mac。
   - Mac Agent 重启后需要重新输入新 key。
 
 - 设备页
-  - 展示当前可连接的 Mac。
+  - 展示可连接的 Mac。
   - 展示在线、离线、最近连接时间。
-  - 对当前活动设备展示实际连接路径：`Direct` 或 `Relay assisted`。
+  - 对活动设备展示实际连接路径：`Direct` 或 `Relay assisted`。
   - 连接模式不在设备编辑页调整，统一放到底部全局 `Settings` 的 `Connection mode`。
 
 - 会话列表页
@@ -186,7 +186,7 @@ Mac Agent 是用户态程序，运行在用户自己的公司 Mac 上。
 - 记录连接、断开、会话创建、会话关闭等审计事件。
 - 做认证失败限流和异常连接保护。
 
-中继不需要理解 Codex 业务语义，第一版可以只作为安全转发层。
+中继不需要理解 Codex 业务语义，MVP 可以只作为安全转发层。
 
 ### 会话持久层
 
@@ -269,16 +269,16 @@ sequenceDiagram
 
   P->>R: 请求切换到 session B
   R->>M: 校验并请求 attach session B
-  M-->>R: 返回 session B 当前终端快照
+  M-->>R: 返回 session B 终端快照
   R-->>P: 展示 session B
-  P->>R: 后续输入发送给 session B
+  P->>R: 演进输入发送给 session B
 ```
 
 ## 终端交互设计
 
 手机上的 TUI 交互是最大体验风险之一。
 
-第一版建议采用：
+MVP 建议采用：
 
 - 固定终端宽度，例如 `100x32` 或 `120x36`。
 - 手机上支持缩放和横向拖动。
@@ -286,12 +286,12 @@ sequenceDiagram
 - 输入栏固定在底部。
 - 常用控制键做成按钮。
 
-不建议第一版强行将 TUI 压缩到手机屏幕宽度，因为 Codex TUI 可能出现布局错乱、换行异常和信息密度过低的问题。
+不建议MVP 强行将 TUI 压缩到手机屏幕宽度，因为 Codex TUI 可能出现布局错乱、换行异常和信息密度过低的问题。
 
-后续可以增加移动优化能力：
+可以增加移动优化能力：
 
-- 最新输出摘要。
-- 当前任务状态提取。
+- 输出摘要。
+- 任务状态提取。
 - 重要结果高亮。
 - 常用 prompt 模板。
 - 任务完成通知。
@@ -302,7 +302,7 @@ sequenceDiagram
 
 最低要求：
 
-- 当前阶段不接入 SSO。
+- MVP 范围不接入 SSO。
 - Mac Agent 每次启动生成 32 字符临时 key。
 - App 使用该 key 完成本次连接授权。
 - WebSocket 允许 `ws://` 与 `wss://`，业务消息必须通过 App-Agent E2E 加密。
@@ -319,7 +319,7 @@ sequenceDiagram
 - 不开放公网端口。
 - 不提供任意远程 shell 入口。
 - 不支持跨用户访问其他人的 Mac。
-- 不保存明文长期凭证。
+- 不保存明文持久凭证。
 - 不绕过公司代理、VPN、防火墙或 MDM 策略。
 
 ## 24 小时办公设计
@@ -336,7 +336,7 @@ sequenceDiagram
 - 手机重连后能拿到终端快照。
 - 会话列表能显示最近活动和运行状态。
 
-后续增强：
+演进增强：
 
 - 任务完成后推送通知。
 - 长时间无输出时显示心跳状态。
@@ -372,7 +372,7 @@ sequenceDiagram
 
 ## MVP 验收标准
 
-第一版完成的判断标准：
+MVP 完成的判断标准：
 
 - Mac Agent 可以启动。
 - Mac Agent 可以创建至少一个 Codex TUI 会话。
@@ -411,30 +411,30 @@ sequenceDiagram
 
 ## 推荐里程碑
 
-### 阶段 1：本机能力验证
+### 本机能力验证
 
 - Mac Agent 能创建 Codex TUI。
 - `tmux` 会话能持久存在。
 - 可以 attach、detach、恢复。
 
-### 阶段 2：局域网验证
+### 局域网验证
 
 - 手机浏览器能连接 Mac Agent。
 - 能查看一个 TUI。
 - 能发送输入。
 
-### 阶段 3：中继验证
+### 中继验证
 
 - Mac Agent 主动连接公司内网中继。
 - 手机通过中继连接 Mac。
 - 完成临时 key 鉴权。
 
-### 阶段 4：多会话
+### 多会话
 
 - 支持创建、列出、切换、关闭多个 Codex TUI。
 - 支持会话标题和最近活动状态。
 
-### 阶段 5：可靠性和安全
+### 可靠性和安全
 
 - 断线重连。
 - Agent 重启恢复。
@@ -442,7 +442,7 @@ sequenceDiagram
 - 临时 key 失败限流和重启失效。
 - 空闲锁定。
 
-### 阶段 6：移动体验优化
+### 移动体验优化
 
 - 横屏优化。
 - 快捷键栏。

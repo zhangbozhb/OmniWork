@@ -11,6 +11,12 @@ import type {
 } from "../../../packages/protocol-ts/src/index.ts";
 import { createTextInput } from "../../../packages/terminal-core/src/index.ts";
 import type { TerminalLayout } from "../features/terminal/terminalLayout";
+import {
+  FIT_ADDON_JS,
+  WEB_LINKS_ADDON_JS,
+  XTERM_CSS,
+  XTERM_JS,
+} from "./xtermWebViewAssets";
 
 export interface NativeTerminalViewProps {
   frame: string;
@@ -31,9 +37,6 @@ type BridgeMessage =
   | { type: "data"; data: string }
   | { type: "resize"; cols: number; rows: number };
 
-const XTERM_CDN_VERSION = "6.0.0";
-const FIT_CDN_VERSION = "0.11.0";
-const WEB_LINKS_CDN_VERSION = "0.12.0";
 const TERMINAL_SCROLLBACK = 240;
 const TERMINAL_VIEW_PADDING = 8;
 const TERMINAL_BOTTOM_SAFETY_PX = 4;
@@ -190,6 +193,11 @@ const styles = StyleSheet.create({
 });
 
 function createTerminalHtml(): string {
+  const xtermCss = inlineStyle(XTERM_CSS);
+  const xtermJs = inlineScript(XTERM_JS);
+  const fitAddonJs = inlineScript(FIT_ADDON_JS);
+  const webLinksAddonJs = inlineScript(WEB_LINKS_ADDON_JS);
+
   return `<!doctype html>
 <html>
 <head>
@@ -198,8 +206,9 @@ function createTerminalHtml(): string {
     name="viewport"
     content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
   />
-  <link rel="stylesheet" href="https://unpkg.com/@xterm/xterm@${XTERM_CDN_VERSION}/css/xterm.css" />
   <style>
+    ${xtermCss}
+
     html,
     body,
     #terminal-shell {
@@ -272,9 +281,9 @@ function createTerminalHtml(): string {
   <div id="terminal-shell">
     <div id="terminal"></div>
   </div>
-  <script src="https://unpkg.com/@xterm/xterm@${XTERM_CDN_VERSION}/lib/xterm.js"></script>
-  <script src="https://unpkg.com/@xterm/addon-fit@${FIT_CDN_VERSION}/lib/addon-fit.js"></script>
-  <script src="https://unpkg.com/@xterm/addon-web-links@${WEB_LINKS_CDN_VERSION}/lib/addon-web-links.js"></script>
+  <script>${xtermJs}</script>
+  <script>${fitAddonJs}</script>
+  <script>${webLinksAddonJs}</script>
   <script>
     (function () {
       var terminal = new Terminal({
@@ -501,4 +510,12 @@ function createTerminalHtml(): string {
   </script>
 </body>
 </html>`;
+}
+
+function inlineStyle(css: string): string {
+  return css.replaceAll("</style", "<\\/style");
+}
+
+function inlineScript(script: string): string {
+  return script.replaceAll("</script", "<\\/script");
 }

@@ -3,3 +3,8 @@ mac/agent/node_modules
 node_modules
 pnpm-lock.yaml
 app/dist
+.codex
+.trae
+app/android/app/.cxx
+app/android/.kotlin
+xtermWebViewAssets.ts

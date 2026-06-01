@@ -4,7 +4,7 @@ Android/iOS installable app built with React Native CLI. The same React Native
 codebase also exposes a Web single-page app through `react-native-web` for
 browser access without introducing a second UI stack.
 
-## Current MVP
+## MVP
 
 - Pairing screen for Relay URL, Mac device ID, and the 32-character temporary key.
 - Secure pairing persistence through platform secure storage.
@@ -15,7 +15,7 @@ browser access without introducing a second UI stack.
 - Read-only workspace file browser for viewing files inside the selected workspace boundary.
 - Read-only Git status and diff views, shown only for workspaces that the Mac Agent reports as Git repositories.
 - User-editable session titles, with Terminal screens using the session title as the primary header.
-- Terminal screen with native React Native terminal snapshot surface, polling refresh, and quick keys.
+- Terminal screen with Native WebView/xterm rendering, local generated xterm assets, and quick keys.
 - Shared SVG icon system through `react-native-svg`, used by icon-first buttons across pairing, devices, sessions, terminal, scanner, and confirmation flows.
 - Shared TypeScript protocol and terminal input helpers.
 - Configured Agent Provider metadata from the Mac Agent for capability display and session creation, with App-local hide, sort, and default-provider preferences.
@@ -53,6 +53,11 @@ pnpm --filter @omniwork/app verify:targets
 
 This runs TypeScript checking, iOS Metro bundle, Android Metro bundle, and the
 Web production build.
+
+Native WebView terminal assets are generated from the installed `@xterm/*`
+packages before app start, bundle, build, typecheck, lint, and test scripts.
+Run `pnpm --filter @omniwork/app generate:xterm-assets` manually after changing
+xterm dependencies if you need to inspect the generated file before packaging.
 
 ## Installable Builds
 

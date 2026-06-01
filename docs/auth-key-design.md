@@ -6,15 +6,15 @@
 - [mobile-codex-tui-technical-solution.md](./mobile-codex-tui-technical-solution.md)
 - [project-directory-structure.md](./project-directory-structure.md)
 
-## 当前结论
+## 结论
 
-当前阶段不接入 SSO，不做企业身份体系，不做长期设备绑定。
+MVP 范围不接入 SSO，不做企业身份体系，不做持久设备绑定。
 
 MVP 鉴权采用临时共享 key：
 
 - Mac Agent 每次启动时生成一个新的 32 字符随机字符串。
 - 该 key 保存到 Mac 本地文件。
-- 手机 App 通过手动输入、扫码或后续的本机展示方式获得该 key。
+- 手机 App 通过手动输入、扫码或演进的本机展示方式获得该 key。
 - App 使用该 key 与 Mac Agent 建立本次连接授权。
 - Mac Agent 重启后 key 失效，需要重新获取新的 key。
 
@@ -63,7 +63,7 @@ mode: 0600
   "version": 1,
   "key": "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
   "key_id": "sha256:8f2b7d62d9b0",
-  "created_at": "2026-05-12T00:00:00Z",
+  "created_at": "<ISO_TIMESTAMP>",
   "agent_instance_id": "agent_20260512000001_a1b2c3d4",
   "relay_url": "wss://relay.company.example/agent"
 }
@@ -82,20 +82,20 @@ MVP 支持：
 
 - 用户在 Mac 上打开 key 文件后手动复制到 App。
 - Mac Agent 在本机终端输出一次 key。
-- 后续可提供 Menu Bar 或本地页面展示二维码。
+- 可提供 Menu Bar 或本地页面展示二维码。
 
 App 侧要求：
 
 - key 不进入普通明文持久存储。
-- 如果为了重连短期保存，必须使用 iOS Keychain / Android Keystore / 安全存储封装。
+- 如果为了重连临时保存，必须使用 iOS Keychain / Android Keystore / 安全存储封装。
 - 当 Mac Agent 重启导致认证失败时，App 清理旧 key 并提示重新输入。
 
 App 收到 `auth.failed` 后的具体清理动作（由 `app/src/app/App.tsx` 实现）：
 
-- 立即调用 `relay.close()` 关闭当前会话连接，避免空跑或重复重连。
+- 立即调用 `relay.close()` 关闭本次会话连接，避免空跑或重复重连。
 - 将本地缓存的 sessions、workspaces、terminal frame、provider 列表等会话级状态全部清空，避免误用旧 Mac Agent 的数据。
 - **保留** 已保存的 pairing 条目本身：将 `connectionStatus` 置为 `failed` 并把失败原因透出到 `connectionMessage` / `pairingError`；用户可在 Device Center 中显式 Edit（修正 key）或 Delete 该设备。
-  - 之所以不再自动从 `securePairingStore` 删除该 pairing，是因为 web 端 RN `Alert.alert` 是 no-op：旧实现会把"鉴权失败"显式打回 Pairing 页并默默删除条目，体验上像"保存失败、设备被静默删除"。当前实现保留条目，让错误对用户可见、可操作。
+  - 之所以不再自动从 `securePairingStore` 删除该 pairing，是因为 web 端 RN `Alert.alert` 是 no-op：旧实现会把"鉴权失败"显式打回 Pairing 页并默默删除条目，体验上像"保存失败、设备被静默删除"。实现保留条目，让错误对用户可见、可操作。
 - 视图保持在 `devices`；如果用户当时正在 `pairing` 页编辑该 pairing，则保留 `editingPairing` 让其继续修改。
 
 ## Relay 鉴权流程
@@ -179,19 +179,19 @@ malformed_proof
 不做：
 
 - 不接入 SSO。
-- 不做长期设备绑定。
+- 不做持久设备绑定。
 - 不做 refresh token。
 - 不做永久登录态。
-- 不把 key 当作长期账户密码。
+- 不把 key 当作持久账户密码。
 
-## 后续可演进
+## 可演进
 
-未来如果需要企业化，可以从该 key 方案平滑演进：
+如需要企业化，可以从该 key 方案平滑演进：
 
 - 临时 key 继续作为本机配对 fallback。
 - Relay 增加公司身份体系。
-- Mac Agent 增加长期设备凭证。
+- Mac Agent 增加持久设备凭证。
 - App 增加企业登录态。
 - 管理员增加设备撤销和审计策略。
 
-当前阶段以上能力不进入 MVP。
+MVP 范围以上能力不进入 MVP。

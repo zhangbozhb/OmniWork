@@ -7,6 +7,8 @@
 - [engineering-requirements.md](./engineering-requirements.md)
 - [relay-architecture.md](./relay-architecture.md)
 - [relay-architecture-implementation.md](./relay-architecture-implementation.md)
+- [e2e-noise-roadmap.md](./e2e-noise-roadmap.md)
+- [p2p-per-app-connection.md](./p2p-per-app-connection.md)
 
 ## 目标
 
@@ -20,12 +22,12 @@
 - 支持先做 MVP，再演进到企业正式部署。
 - App 和 Mac Agent 均采用 TypeScript 技术栈。
 - App 采用 React Native 技术栈，同时适配 Android、iOS 和 Web SPA；Web 不另起一套 React DOM UI。
-- Relay 当前使用 TypeScript（见 `relay/server/`），后续可替换为 Go/Rust，但必须通过 `protocol/` 与 App/Mac 对齐。
+- Relay 使用 TypeScript（见 `relay/server/`），可替换为 Go/Rust，但必须通过 `protocol/` 与 App/Mac 对齐。
 - 不把本项目做成通用远控系统，目录命名也要体现 Codex TUI 工作台的窄能力边界。
 
 ## 顶层结构
 
-当前仓库真实顶层结构：
+仓库真实顶层结构：
 
 ```text
 OmniWork/
@@ -51,7 +53,7 @@ OmniWork/
 - `scripts/` 放跨端开发与验证脚本（详见 [scripts 目录](#scripts-目录)）。
 - 各端单元测试放在各端目录内（`app/`、`mac/agent/tests/`、`relay/server/tests/`、`packages/*/tests/`）。
 
-> 规划中尚未落地的目录：`infra/`（部署/证书/观测）、`tests/`（跨端 e2e）、`tools/`（一次性辅助）、`fixtures/`（脱敏样例）。这些目录在企业化阶段再创建，避免空目录。
+> 规划中尚未落地的目录：`infra/`（部署/证书/观测）、`tests/`（跨端 e2e）、`tools/`（一次性辅助）、`fixtures/`（脱敏样例）。这些目录按企业化需求创建，避免空目录。
 
 ## 工程技术栈约束
 
@@ -62,8 +64,9 @@ OmniWork/
 - `app/` 推荐采用 React Native CLI；Web 通过 `react-native-web` 接入，不独立重写 UI。
 - `mac/` 使用 TypeScript / Node.js 技术栈实现 Agent 主体。
 - `mac/` 不采用 Rust/Swift 作为业务主实现；如需 macOS 原生能力，只作为最薄的平台桥接层。
-- `protocol/` 优先生成 TypeScript 类型，供 `app/` 和 `mac/` 共同复用（当前 TS 主体在 `packages/protocol-ts/`）。
+- `protocol/` 优先生成 TypeScript 类型，供 `app/` 和 `mac/` 共同复用（TS 主体在 `packages/protocol-ts/`）。
 - Relay 是否使用 TypeScript 不强制，但不得绕过 `protocol/` 自行定义消息格式。
+- App-Agent 业务消息采用 E2E encrypted-only 模型；Noise 加解密能力在 `packages/e2e-noise/`，Relay 不作为业务明文安全边界。
 
 技术栈：
 
@@ -71,15 +74,16 @@ OmniWork/
 | --- | --- | --- |
 | `app/` | React Native CLI + TypeScript + react-native-web | 同一套代码交付 Android/iOS APK/IPA 和 Web SPA；终端区域使用 React Native 视图 |
 | `mac/agent` | Node.js LTS + TypeScript | 管理 Relay 连接、tmux、PTY、Codex/Claude/Gemini runtime、本地状态 |
-| `relay/server` | Node.js LTS + TypeScript | 当前 MVP 实现；后续可替换为 Go/Rust |
+| `relay/server` | Node.js LTS + TypeScript | MVP 实现；可替换为 Go/Rust |
 | `protocol/` | JSON Schema（auth/envelopes/sessions/terminal） | 跨端协议契约的可机读真相 |
-| `packages/protocol-ts` | TypeScript + zod | 协议类型与运行时校验、升级链路类型 |
+| `packages/protocol-ts` | TypeScript + zod | 协议类型与运行时校验、E2E / 升级链路类型 |
+| `packages/e2e-noise` | TypeScript | App-Agent Noise E2E 握手、加解密、seq 防重放与篡改检测 |
 
 ## app 目录
 
 `app/` 是 React Native App，负责 Android/iOS/Web 上的配对、设备选择、会话列表、TUI 渲染、文件浏览、git 状态查看与输入体验。Web 端是单页面程序，不实现摄像头扫码。
 
-当前真实结构：
+真实结构：
 
 ```text
 app/
@@ -118,6 +122,7 @@ app/
 |   |   |-- devices/             # DeviceListScreen
 |   |   |-- pairing/             # PairingScreen + PairingQrScannerModal（native/web）
 |   |   |-- sessions/            # SessionListScreen
+|   |   |-- settings/            # SettingsScreen + ConnectionPreferenceScreen
 |   |   |-- terminal/            # TerminalScreen
 |   |   |-- workspaces/          # FileBrowserScreen + GitStatusScreen
 |   |-- terminal/                # NativeTerminalView + terminalText
@@ -131,7 +136,7 @@ app/
 
 `screens/`：
 
-- 移动端导航级页面，5 个屏：`devices` / `pairing` / `sessions` / `terminal` / `workspaces`。
+- 移动端导航级页面，包含 `devices` / `pairing` / `sessions` / `settings` / `terminal` / `workspaces`。
 - 不直接实现复杂业务逻辑；组合 `features/` 与 `lib/`。
 
 `features/`：
@@ -159,16 +164,16 @@ app/
 
 `terminal/`：
 
-- 承载 React Native 原生终端快照视图。
+- 承载Native WebView/xterm 终端兼容视图；WebView 只作为终端渲染容器，不承载主界面。
 - 处理终端文本归一化、ANSI 控制序列清理、横向/纵向滚动。
-- 不加载远程网页，不作为 PWA 或浏览器入口。
+- 终端 HTML/CSS/JS 资源必须由 `app/scripts/generateXtermWebViewAssets.mjs` 从已安装的 `@xterm/*` 依赖生成并本地打包，不运行时加载 CDN 或远程网页；App 主交付仍是 React Native APK/IPA，native 体验优先于 Web 实验入口。
 
 `ui/`：
 
 - 通用 UI 组件（含 confirm 弹窗、KeyboardAwareScrollView、theme、icons）。
 - 不放业务页面。
 
-> 暂未实装但仍属规划：`screens/login`（当前 MVP 通过配对码登录，未独立 login 屏）、`features/codex-structured`（结构化 Codex UI，等接入 Codex app-server 后再补）、`features/notifications` / `features/audit` / `lib/storage` / `lib/telemetry` / `lib/feature-flags` / `src/styles` / `src/generated/protocol`。在企业化阶段按需补齐，不预先创建空目录。
+> 暂未实装但仍属规划：`screens/login`（MVP 通过配对码登录，未独立 login 屏）、`features/codex-structured`（App 侧结构化 Codex UI feature 目录尚未落地；协议层已有 `codex.*` 消息类型，等接入 Codex app-server 后再补 UI 与运行时适配）、`features/notifications` / `features/audit` / `lib/storage` / `lib/telemetry` / `lib/feature-flags` / `src/styles` / `src/generated/protocol`。在企业化能力按需补齐，不预先创建空目录。
 
 ### app 跨端要求
 
@@ -186,7 +191,7 @@ app/
 
 `mac/` 是 TypeScript 技术栈的 Mac 本地 Agent，负责连接 Relay、管理 runtime（Codex/Claude/Gemini）、管理 tmux/PTY 会话、保存本地状态、提供文件与 git 视图、处理直连升级与生成临时 key。
 
-当前真实结构：
+真实结构：
 
 ```text
 mac/
@@ -218,7 +223,7 @@ mac/
 |   |   |-- auth-key.test.ts
 ```
 
-> `mac/macos/`（LaunchAgent / 签名 / 公证 / Menu Bar）、`mac/native/`（Keychain / Launch Services native binding）、`mac/resources/`、`mac/generated/` 等企业化阶段产物当前未实装，企业化时按需补齐。
+> `mac/macos/`（LaunchAgent / 签名 / 公证 / Menu Bar）、`mac/native/`（Keychain / Launch Services native binding）、`mac/resources/`、`mac/generated/` 等企业化能力未实装，按需补齐。
 
 ### mac/agent
 
@@ -268,7 +273,7 @@ mac/
 
 `auth-key/`：32 字符 key 生成、`session-key.json` 持久化、目录 `0700` 文件 `0600` 权限、HMAC proof 校验。日志不输出完整 key。
 
-`keychain/`：Mac Keychain 封装，保留给后续长期 secret 或企业凭证。
+`keychain/`：Mac Keychain 封装，保留给演进持久 secret 或企业凭证。
 
 `config/`：读取默认配置、用户配置、环境变量；对外提供类型安全配置对象。
 
@@ -281,10 +286,10 @@ mac/
 - 使用 Node.js LTS 作为运行时。
 - 所有 Agent 业务逻辑使用 TypeScript（基于 `node --experimental-strip-types` 直接运行 `.ts`）。
 - 允许使用必要的 Node native addon（PTY、WebRTC native、Keychain bridge），但 native addon 必须封装在清晰模块后面。
-- `node-pty` 是 PTY 主实现，所有 PTY 操作必须通过 `pty-bridge/`，业务模块不直接调用。
+- PTY 输入/快照能力通过 `pty-bridge/` 调用 `tmux-manager/` 完成；如演进引入 `node-pty`，也必须封装在 `pty-bridge/`，业务模块不直接调用 native addon。
 - `tmux` 操作必须通过 `tmux-manager/`，不能在业务代码中散落 shell 命令。
-- 当前 MVP 登录不使用长期凭证；临时 key 写入 `session-key.json`，文件权限必须为 `0600`。
-- 后续长期凭证必须存入 macOS Keychain，不能写入明文配置文件。
+- MVP 登录不使用持久凭证；临时 key 写入 `session-key.json`，文件权限必须为 `0600`。
+- 演进持久凭证必须存入 macOS Keychain，不能写入明文配置文件。
 - WebRTC 使用 `@roamhq/wrtc`；动态 import 时需做 `default` 解包以兼容 Node ESM 包装。
 - 打包时需要内嵌或固定 Node runtime，避免依赖用户机器上的全局 Node 版本。
 - macOS 签名、公证、LaunchAgent 配置属于规划中的 `macos/` 与 `native/`，不进入 Agent 业务层。
@@ -293,7 +298,7 @@ mac/
 
 `relay/` 是公司内网中继服务，负责手机和 Mac Agent 之间的安全连接、路由、临时 key 鉴权、P2P 升级编排和审计。
 
-当前 TypeScript MVP：
+TypeScript MVP：
 
 ```text
 relay/
@@ -314,7 +319,9 @@ relay/
 |   |   |   |-- orchestrator.test.ts
 ```
 
-后续若公司决定用 Go/Rust 重写生产 Relay，可保留同样的协议边界，目录可演进为：
+> `@omniwork/relay-server` 的 `test` 脚本只执行 `src/main.ts --check` 做配置自检；`tests/upgrade/orchestrator.test.ts` 是源码中的单测文件，但尚未接入 package script。
+
+演进若公司决定用 Go/Rust 重写生产 Relay，可保留同样的协议边界，目录可演进为：
 
 ```text
 relay/
@@ -340,13 +347,13 @@ relay/
 |-- tests/
 ```
 
-### relay 内部边界（MVP 与未来形态共用）
+### relay 内部边界（MVP 与可选形态共用）
 
 `auth/`：临时 key challenge/proof，nonce 生成，proof 校验转发，失败次数限流。
 
 `devices/`：Mac 设备注册、在线状态、Agent 版本、设备合规状态。
 
-`bindings/`：MVP 不做长期用户与 Mac 绑定；预留后续设备绑定、委派访问与撤销能力。
+`bindings/`：MVP 不做持久用户与 Mac 绑定；预留演进设备绑定、委派访问与撤销能力。
 
 `routing/`：手机连接和 Agent 连接的匹配，消息转发，在线路由表。
 
@@ -366,7 +373,7 @@ relay/
 
 `protocol/` 是跨端协议契约中心。手机、Mac、Relay 都不应各自手写一份协议类型。
 
-当前真实 schema：
+真实 schema：
 
 ```text
 protocol/
@@ -380,9 +387,9 @@ protocol/
 |   |-- terminal-input.schema.json
 ```
 
-> 实际承载消息类型的"主协议体"位于 `packages/protocol-ts/src/`（`index.ts`、`schemas.ts`、`constants.ts`、`transport.ts`、`webrtc.ts`），同时通过 `tests/contract.test.ts` 维护 schema 与 TS 类型的一致性。`protocol/` 中的 JSON Schema 是给跨语言使用者（含未来 Go/Rust Relay）的机器可读真相。
+> 实际承载消息类型的"主协议体"位于 `packages/protocol-ts/src/`（`index.ts`、`schemas.ts`、`constants.ts`、`transport.ts`、`webrtc.ts`），同时通过 `tests/contract.test.ts` 维护 schema 与 TS 类型的一致性。`protocol/` 中的 JSON Schema 是给跨语言使用者（含可选 Go/Rust Relay）的机器可读真相。
 
-未来扩展（按需补齐）：
+可选扩展（按需补齐）：
 
 - `protocol/version.json`：协议版本号。
 - `protocol/devices/`、`protocol/codex/`、`protocol/sessions/session-events.schema.json`：补齐设备绑定、Codex 结构化、会话事件等领域。
@@ -394,16 +401,16 @@ protocol/
 
 - `protocol/` 是唯一 schema 源（机器可读契约）。
 - App / Mac 优先使用 `packages/protocol-ts` 中的类型；该包的 `tests/contract.test.ts` 验证与 `protocol/*.schema.json` 一致。
-- Go/Rust 生成物只服务 Relay 或后续平台扩展，不是 App/Mac 主依赖。
+- Go/Rust 生成物只服务 Relay 或演进平台扩展，不是 App/Mac 主依赖。
 - 生成物不要手工修改。
 - 协议变更必须带 contract test。
 - 协议字段只新增不随意改语义；破坏性变更要升级版本。
 
 ## packages 目录
 
-`packages/` 只放 TypeScript 共享包，主要服务 App、Mac Agent 和未来 Web 管理台。
+`packages/` 只放 TypeScript 共享包，主要服务 App、Mac Agent 和可选 Web 管理台。
 
-当前真实结构：
+真实结构：
 
 ```text
 packages/
@@ -418,6 +425,13 @@ packages/
 |   |   |-- webrtc.ts            # tunnel.upgrade.* 与 IceServerConfig
 |   |-- tests/
 |   |   |-- contract.test.ts
+|-- e2e-noise/
+|   |-- package.json
+|   |-- tsconfig.json
+|   |-- src/
+|   |   |-- index.ts             # Noise 握手、加解密、seq 防重放
+|   |-- tests/
+|   |   |-- noise.test.ts
 |-- relay-client/
 |   |-- package.json
 |   |-- tsconfig.json
@@ -432,22 +446,23 @@ packages/
 
 说明：
 
-- `protocol-ts/`：跨端协议的 TypeScript 类型与 zod 运行时校验，包括升级链路的 `tunnel.upgrade.*` / `transport.*`。运行 `pnpm --filter @omniwork/protocol-ts test` 校验契约。
+- `protocol-ts/`：跨端协议的 TypeScript 类型与 zod 运行时校验，包括 E2E、升级链路的 `tunnel.upgrade.*` / `transport.*`。运行 `pnpm --filter @omniwork/protocol-ts test` 校验契约。
+- `e2e-noise/`：App-Agent Noise E2E 握手、加解密、seq 防重放和篡改检测。运行 `pnpm --filter @omniwork/e2e-noise test` 校验安全基础能力。
 - `relay-client/`：可被 `app/` 和 `mac/` 复用的 Relay 客户端核心。
 - `terminal-core/`：终端输入、快捷键、frame 合并等纯 TS 逻辑。
 
 依赖原则：
 
-- Mac Agent 依赖 `protocol-ts`、`relay-client`、`terminal-core`。
-- App 依赖 `protocol-ts`、`relay-client`、`terminal-core`。
+- Mac Agent 依赖 `protocol-ts`、`e2e-noise`、`relay-client`、`terminal-core`。
+- App 依赖 `protocol-ts`、`e2e-noise`、`relay-client`、`terminal-core`。
 - Relay（TS）依赖 `protocol-ts`；Go/Rust Relay 则从 `protocol/` 生成本语言类型。
 - 跨语言共享走 `protocol/`，不是走 TS 包。
 
-> 暂未规划入仓库的共享包：`mobile-ui`（RN 通用 UI 组件）、`config`、`eslint-config`、`tsconfig`。短期不创建，避免过度抽象。
+> 暂未规划入仓库的共享包：`mobile-ui`（RN 通用 UI 组件）、`config`、`eslint-config`、`tsconfig`。不预先创建，避免过度抽象。
 
 ## scripts 目录
 
-`scripts/` 放跨端开发与验证脚本。当前真实结构：
+`scripts/` 放跨端开发与验证脚本。真实结构：
 
 ```text
 scripts/
@@ -462,10 +477,12 @@ scripts/
 - `verify:app-auth`、`verify:app:targets`、`verify:app:web`、`verify:app:bundle:ios`、`verify:app:bundle:android`
 - `verify:relay`
 - `verify:mac-key`
+- `verify:upgrade:simulator`
+- `verify:security`
 
-> P2P 升级 e2e 验证当前直接运行 `node --experimental-strip-types scripts/verify/mobile-upgrade-simulator.mjs --relay ws://127.0.0.1:8787/mobile --device <id> --key <KEY> --key-id <KEY_ID>`，详见 [relay-architecture.md](./relay-architecture.md) 调试章节。
+> P2P 升级 e2e 验证脚本是 mobile simulator：需要先启动真实 Relay 与 Mac Agent，再运行 `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/mobile --device <id> --key <KEY> --key-id <KEY_ID>`。安全基础验证运行 `pnpm verify:security`，等价于 `@omniwork/e2e-noise` 测试。
 
-后续可补：
+可补：
 
 ```text
 scripts/
@@ -483,16 +500,18 @@ scripts/
 
 ## docs 目录
 
-`docs/` 保存项目长期知识。当前已存在的文档：
+`docs/` 保存项目知识。已存在的文档：
 
 ```text
 docs/
-|-- AGENTS.md                              # 在仓库根
+|-- README.md                              # 文档入口与推荐阅读顺序
 |-- engineering-requirements.md
 |-- auth-key-design.md
 |-- app-installation.md
+|-- e2e-noise-roadmap.md
 |-- mobile-codex-tui-workbench-design.md
 |-- mobile-codex-tui-technical-solution.md
+|-- p2p-per-app-connection.md
 |-- relay-architecture.md
 |-- relay-architecture-implementation.md
 |-- project-directory-structure.md
@@ -500,21 +519,21 @@ docs/
 
 原则：
 
-- 当前设计结论放在 docs 根目录。
-- 历史探索或废弃方案应直接移除，避免继续影响当前架构判断。
+- 设计结论放在 docs 根目录。
+- 历史探索或废弃方案应直接移除，避免继续影响架构判断。
 - 协议变化需要同步更新 `packages/protocol-ts` 与（如有）`relay-architecture.md`、`auth-key-design.md`。
 - 任何代码改动都必须同步检查并更新相关文档。
 
 ## 规划中目录
 
-以下顶层目录在企业化阶段按需补齐，当前不预先创建：
+以下顶层目录在企业化能力按需补齐，不预先创建：
 
 - `infra/`：环境、部署、证书、观测配置（`local/`、`k8s/`、`terraform/`、`certs/`、`observability/`、`mdm/`）。
 - `tests/`：跨端 e2e 与安全测试（`contract/`、`e2e/`、`security/`、`fixtures/`）。
 - `tools/`：协议 lint、终端 frame 回放、Relay 压测、Codex 事件录制等一次性辅助工具。
 - `fixtures/`：脱敏样例（terminal/codex/auth）。
 
-跨端必测场景（未来落入 `tests/e2e/` 与 `tests/security/`）：
+跨端必测场景（规划纳入 `tests/e2e/` 与 `tests/security/`）：
 
 - 手机连接 Relay。
 - Mac Agent 注册 Relay。
@@ -534,20 +553,20 @@ docs/
 
 ```text
 package.json              # JS workspace 编排（含 verify:* 脚本）
-pnpm-workspace.yaml       # 覆盖 app / mac/agent / relay/server / packages/*
+pnpm-workspace.yaml       # 覆盖 app / mac/agent / relay/* / packages/*
 tsconfig.base.json        # 共享 tsconfig
 AGENTS.md                 # Agent 工作准则
 README.md
 ```
 
-后续按需补：`Makefile` 或 `justfile`、`.editorconfig`、`.env.example`。
+演进按需补：`Makefile` 或 `justfile`、`.editorconfig`、`.env.example`。
 
 注意：
 
 - 根目录配置只做编排，不承载单端业务逻辑。
 - `app/` 有自己的 TypeScript 配置。
 - `mac/agent` 有自己的 TypeScript 配置。
-- `relay/server` 有自己的 TypeScript 配置；如未来用 Go/Rust 重写，可保留独立构建入口由根脚本编排。
+- `relay/server` 有自己的 TypeScript 配置；如改用 Go/Rust 重写，可保留独立构建入口由根脚本编排。
 
 ## 依赖方向
 
@@ -555,15 +574,17 @@ README.md
 
 ```text
 app       --> packages/protocol-ts
+app       --> packages/e2e-noise
 app       --> packages/relay-client
 app       --> packages/terminal-core
 
 mac       --> packages/protocol-ts
+mac       --> packages/e2e-noise
 mac       --> packages/relay-client
 mac       --> packages/terminal-core
 
-relay     --> packages/protocol-ts        # 当前 TS 实现
-relay     --> protocol/*.schema.json      # 跨语言契约（未来 Go/Rust）
+relay     --> packages/protocol-ts        # TS 实现
+relay     --> protocol/*.schema.json      # 跨语言契约（可选 Go/Rust）
 
 app       --> relay API
 mac       --> relay API
@@ -586,7 +607,7 @@ relay     -X-> app/mac internal code
 
 ## MVP 最小目录
 
-第一阶段不需要一次性创建所有目录。MVP 当前覆盖：
+MVP 不需要一次性创建所有目录。MVP 覆盖：
 
 ```text
 OmniWork/
@@ -601,14 +622,15 @@ OmniWork/
 
 其中：
 
-- `app/` 已实现 React Native 跨端 App + 原生终端快照页 + 文件/git 视图 + 配对扫码。
+- `app/` 已实现 React Native 跨端 App + Native WebView/xterm 终端页 + 文件/git 视图 + 配对扫码。
 - `mac/agent` 已实现 TypeScript / Node.js Agent，含 runtime 抽象、tmux/PTY、文件/git、auth-key、P2P 升级。
 - `relay/server` 已实现 WSS 转发 + auth + P2P 升级编排 + `/metrics` `/debug/upgrade`。
-- `protocol/` + `packages/protocol-ts` 维护 envelope、auth、session、terminal 与升级链路消息。
+- `protocol/` + `packages/protocol-ts` 维护 envelope、auth、E2E、session、terminal、Codex 与升级链路消息。
+- `packages/e2e-noise` 维护 App-Agent Noise E2E 握手、加解密、seq 防重放与篡改检测。
 
 ## 从 MVP 到企业版的演进
 
-### 当前（已落地 MVP + P2P 升级）
+### 已落地能力（MVP + P2P 升级）
 
 目录重点：
 
@@ -626,7 +648,7 @@ packages/{protocol-ts,relay-client,terminal-core}
 - 支持断线重连。
 - 支持 Relay → P2P 直连升级、灰度、退避与降级。
 
-### 企业化阶段
+### 企业化能力
 
 目录重点（待补）：
 
@@ -645,9 +667,9 @@ tests/security/
 - Relay 不记录完整 key。
 - LaunchAgent / 公证 / 签名。
 - 审计与告警。
-- Keychain 长期凭证能力。
+- Keychain 持久凭证能力。
 
-### 结构化 Codex 阶段
+### 结构化 Codex 能力
 
 目录重点（待补）：
 
@@ -726,8 +748,8 @@ remote-control/
 - 新增跨端字段，先改 `packages/protocol-ts` 与（如属于跨语言契约）`protocol/*.schema.json`。
 - 新增手机业务能力，放 `app/src/features/` 或新增 `app/src/screens/`。
 - 新增 Mac 本地能力，优先放 `mac/agent/src/` 的对应模块。
-- 新增 Relay 能力，放 `relay/server/src/` 对应文件，未来 Go/Rust 重写时按 `relay/internal/` 切分领域。
-- 生成代码（如未来 codegen 产物）只放 `generated/`，不手改。
+- 新增 Relay 能力，放 `relay/server/src/` 对应文件，可选 Go/Rust 重写时按 `relay/internal/` 切分领域。
+- 生成代码（如codegen 产物）只放 `generated/`，不手改。
 - 临时验证代码放 `scripts/verify/` 或规划中的 `tools/`，不能被生产路径依赖。
 - 真实 secret、临时 key、token、证书不进入仓库。
 - 任何代码改动都必须同步检查并更新相关文档（见 `AGENTS.md`）。
@@ -737,13 +759,13 @@ remote-control/
 1. 维护 `protocol/` 与 `packages/protocol-ts`，所有协议变更先在这里落地。
 2. 维护 `relay/server/`，对齐 `OMNIWORK_UPGRADE_*` 等环境变量与 `/metrics` `/debug/upgrade` 调试面。
 3. 维护 `mac/agent/src/transport/`，与 App 端 `app/src/lib/transport/` 保持对称（升级状态机、降级路径）。
-4. 业务能力新增按"先 protocol-ts → 再 mac/agent → 再 app"顺序落地，避免单端先行。
-5. 企业化阶段补 `mac/macos/`、`mac/native/`、`infra/`、`tests/`。
+4. 业务能力新增按"protocol-ts → mac/agent → app"依赖顺序落地，避免单端漂移。
+5. 企业化能力补 `mac/macos/`、`mac/native/`、`infra/`、`tests/`。
 6. 接入 Codex app-server 时补 `protocol/codex/`、`mac/agent/src/runtime/codex-structured/`、`app/src/features/codex-structured/`。
 
 ## 最终建议
 
-本项目当前的核心目录：
+本项目核心目录：
 
 ```text
 app/       # Android/iOS/Web 共用的 React Native App
@@ -752,7 +774,7 @@ relay/     # 公司内网中继（含 P2P 升级编排）
 protocol/  # 跨端 JSON Schema 契约
 packages/  # TS 共享包（protocol-ts / relay-client / terminal-core）
 scripts/   # 验证与开发脚本
-docs/      # 长期设计文档
+docs/      # 项目设计文档
 ```
 
-这个结构能保证 app 和 mac 都在同一工程下，同时保留 Relay、协议、安全和企业部署的清晰边界。后续按"规划中目录"小节按需补齐，避免预先创建空目录。
+这个结构能保证 app 和 mac 都在同一工程下，同时保留 Relay、协议、安全和企业部署的清晰边界。演进按"规划中目录"小节按需补齐，避免预先创建空目录。
