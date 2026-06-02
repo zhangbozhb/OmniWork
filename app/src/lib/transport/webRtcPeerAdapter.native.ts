@@ -134,6 +134,11 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
 
   private attachDataChannel(channel: any): void {
     this.dataChannel = channel;
+    try {
+      channel.binaryType = "arraybuffer";
+    } catch {
+      /* ignore: 部分实现不支持赋值 */
+    }
     channel.onopen = () => {
       // SCTP 握手完成：先 flush 暂存的业务消息，再向上层广播 connected。
       this.flushPendingSends();
@@ -147,11 +152,12 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
       }
     };
     channel.onmessage = (event: any) => {
-      const data = event?.data;
-      if (typeof data === "string") {
-        for (const handler of this.dataHandlers) {
-          handler(data);
-        }
+      const decoded = decodeDataChannelMessage(event?.data);
+      if (decoded === null) {
+        return;
+      }
+      for (const handler of this.dataHandlers) {
+        handler(decoded);
       }
     };
   }
@@ -281,4 +287,91 @@ export function createMobileWebRtcPeerAdapter(
   }
   const pc = new mod.RTCPeerConnection({ iceServers: opts.iceServers });
   return new MobileWebRtcPeerAdapter(pc, mod, opts.role);
+}
+
+function decodeDataChannelMessage(data: unknown): string | null {
+  if (typeof data === "string") {
+    return data;
+  }
+  if (data instanceof ArrayBuffer) {
+    return decodeUtf8Bytes(new Uint8Array(data));
+  }
+  if (ArrayBuffer.isView(data)) {
+    const view = data as ArrayBufferView;
+    return decodeUtf8Bytes(
+      new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+    );
+  }
+  return null;
+}
+
+function decodeUtf8Bytes(bytes: Uint8Array): string | null {
+  try {
+    let result = "";
+    for (let index = 0; index < bytes.length; ) {
+      const first = bytes[index];
+      if ((first & 0x80) === 0) {
+        result += String.fromCharCode(first);
+        index += 1;
+        continue;
+      }
+      if ((first & 0xe0) === 0xc0) {
+        const second = bytes[index + 1];
+        if (second === undefined || (second & 0xc0) !== 0x80) {
+          return null;
+        }
+        result += String.fromCharCode(((first & 0x1f) << 6) | (second & 0x3f));
+        index += 2;
+        continue;
+      }
+      if ((first & 0xf0) === 0xe0) {
+        const second = bytes[index + 1];
+        const third = bytes[index + 2];
+        if (
+          second === undefined ||
+          third === undefined ||
+          (second & 0xc0) !== 0x80 ||
+          (third & 0xc0) !== 0x80
+        ) {
+          return null;
+        }
+        result += String.fromCharCode(
+          ((first & 0x0f) << 12) | ((second & 0x3f) << 6) | (third & 0x3f),
+        );
+        index += 3;
+        continue;
+      }
+      if ((first & 0xf8) === 0xf0) {
+        const second = bytes[index + 1];
+        const third = bytes[index + 2];
+        const fourth = bytes[index + 3];
+        if (
+          second === undefined ||
+          third === undefined ||
+          fourth === undefined ||
+          (second & 0xc0) !== 0x80 ||
+          (third & 0xc0) !== 0x80 ||
+          (fourth & 0xc0) !== 0x80
+        ) {
+          return null;
+        }
+        const codePoint =
+          ((first & 0x07) << 18) |
+          ((second & 0x3f) << 12) |
+          ((third & 0x3f) << 6) |
+          (fourth & 0x3f);
+        const adjusted = codePoint - 0x10000;
+        result += String.fromCharCode(
+          0xd800 | (adjusted >> 10),
+          0xdc00 | (adjusted & 0x3ff),
+        );
+        index += 4;
+        continue;
+      }
+      return null;
+    }
+    return result;
+  } catch {
+    return null;
+  }
 }

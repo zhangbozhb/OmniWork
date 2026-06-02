@@ -320,7 +320,10 @@ export class E2ENoiseSession {
 
     const frame = fromBase64Url(payload.ciphertext);
     if (frame.byteLength < AEAD_TAG_LEN) {
-      throw new E2ENoiseError("decrypt_failed", "Ciphertext frame is too short.");
+      throw new E2ENoiseError(
+        "decrypt_failed",
+        "Ciphertext frame is too short.",
+      );
     }
 
     try {
@@ -330,7 +333,7 @@ export class E2ENoiseSession {
         this.messageAad(payload.seq, "rx"),
       );
       const plaintext = decipher.decrypt(frame);
-      const decoded = JSON.parse(new TextDecoder().decode(plaintext)) as InnerEnvelope;
+      const decoded = JSON.parse(decodeUtf8(plaintext)) as InnerEnvelope;
       this.expectedRxSeq += 1;
       return decoded;
     } catch (error) {
@@ -505,7 +508,121 @@ function blake2s(data: Uint8Array): Uint8Array {
 }
 
 function encode(value: string): Uint8Array {
-  return new TextEncoder().encode(value);
+  const bytes: number[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    let codePoint = value.charCodeAt(index);
+    if (
+      codePoint >= 0xd800 &&
+      codePoint <= 0xdbff &&
+      index + 1 < value.length
+    ) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        codePoint = 0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
+        index += 1;
+      }
+    }
+
+    if (codePoint < 0x80) {
+      bytes.push(codePoint);
+    } else if (codePoint < 0x800) {
+      bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
+    } else if (codePoint < 0x10000) {
+      bytes.push(
+        0xe0 | (codePoint >> 12),
+        0x80 | ((codePoint >> 6) & 0x3f),
+        0x80 | (codePoint & 0x3f),
+      );
+    } else {
+      bytes.push(
+        0xf0 | (codePoint >> 18),
+        0x80 | ((codePoint >> 12) & 0x3f),
+        0x80 | ((codePoint >> 6) & 0x3f),
+        0x80 | (codePoint & 0x3f),
+      );
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+function decodeUtf8(value: Uint8Array): string {
+  let result = "";
+  for (let index = 0; index < value.length; ) {
+    const first = value[index];
+    if ((first & 0x80) === 0) {
+      result += String.fromCharCode(first);
+      index += 1;
+      continue;
+    }
+    if ((first & 0xe0) === 0xc0) {
+      const second = value[index + 1];
+      if (second === undefined || (second & 0xc0) !== 0x80) {
+        throw new E2ENoiseError(
+          "decrypt_failed",
+          "Invalid UTF-8 continuation byte.",
+        );
+      }
+      const codePoint = ((first & 0x1f) << 6) | (second & 0x3f);
+      result += String.fromCharCode(codePoint);
+      index += 2;
+      continue;
+    }
+    if ((first & 0xf0) === 0xe0) {
+      const second = value[index + 1];
+      const third = value[index + 2];
+      if (
+        second === undefined ||
+        third === undefined ||
+        (second & 0xc0) !== 0x80 ||
+        (third & 0xc0) !== 0x80
+      ) {
+        throw new E2ENoiseError(
+          "decrypt_failed",
+          "Invalid UTF-8 continuation byte.",
+        );
+      }
+      const codePoint =
+        ((first & 0x0f) << 12) | ((second & 0x3f) << 6) | (third & 0x3f);
+      result += String.fromCharCode(codePoint);
+      index += 3;
+      continue;
+    }
+    if ((first & 0xf8) === 0xf0) {
+      const second = value[index + 1];
+      const third = value[index + 2];
+      const fourth = value[index + 3];
+      if (
+        second === undefined ||
+        third === undefined ||
+        fourth === undefined ||
+        (second & 0xc0) !== 0x80 ||
+        (third & 0xc0) !== 0x80 ||
+        (fourth & 0xc0) !== 0x80
+      ) {
+        throw new E2ENoiseError(
+          "decrypt_failed",
+          "Invalid UTF-8 continuation byte.",
+        );
+      }
+      const codePoint =
+        ((first & 0x07) << 18) |
+        ((second & 0x3f) << 12) |
+        ((third & 0x3f) << 6) |
+        (fourth & 0x3f);
+      const adjusted = codePoint - 0x10000;
+      result += String.fromCharCode(
+        0xd800 | (adjusted >> 10),
+        0xdc00 | (adjusted & 0x3ff),
+      );
+      index += 4;
+      continue;
+    }
+    throw new E2ENoiseError(
+      "decrypt_failed",
+      "Unsupported UTF-8 leading byte.",
+    );
+  }
+  return result;
 }
 
 function concat(...chunks: Uint8Array[]): Uint8Array {
