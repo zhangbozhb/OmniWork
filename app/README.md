@@ -90,7 +90,9 @@ iOS release build (signed):
 pnpm --filter @omniwork/app build:ios
 ```
 
-This wraps `app/scripts/buildIosRelease.mjs`, which runs `pod install` and then
+This runs `app/scripts/ensureIosPods.mjs` before
+`app/scripts/buildIosRelease.mjs`; the Pods step skips `pod install` when
+`Podfile.lock` already matches `Pods/Manifest.lock`, then invokes
 `react-native build-ios --mode Release`. It requires
 `OMNIWORK_IOS_DEVELOPMENT_TEAM` and `OMNIWORK_IOS_PROVISIONING_PROFILE` (CI
 injected) and exits with a clear error if either is missing.
@@ -104,6 +106,9 @@ iOS unsigned smoke build (local / CI compile check, do not distribute):
 ```sh
 pnpm --filter @omniwork/app build:ios:dev
 ```
+
+Use `pnpm --filter @omniwork/app pods:ios` to force a full `pod install` after
+native dependency changes.
 
 See [app/.env.example](./.env.example) for the full list of release
 environment variables.
