@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import type { TransportPreference } from "../../../../packages/protocol-ts/src/index.ts";
 import { Button } from "../../ui/components";
@@ -20,26 +21,10 @@ export type ConnectionPreferenceContentProps = Pick<
   "transportPreference" | "onChangeTransportPreference"
 >;
 
-const TRANSPORT_PREFERENCE_OPTIONS: ReadonlyArray<{
-  value: TransportPreference;
-  label: string;
-  hint: string;
-}> = [
-  {
-    value: "auto",
-    label: "Auto",
-    hint: "Recommended. Prefer direct, use relay when needed.",
-  },
-  {
-    value: "prefer_p2p",
-    label: "Direct only",
-    hint: "No relay carries session payload after direct link is ready.",
-  },
-  {
-    value: "relay_only",
-    label: "Relay only",
-    hint: "Use relay path only. Session data remains encrypted.",
-  },
+const TRANSPORT_PREFERENCE_VALUES: ReadonlyArray<TransportPreference> = [
+  "auto",
+  "prefer_p2p",
+  "relay_only",
 ];
 
 export function ConnectionPreferenceScreen({
@@ -47,23 +32,26 @@ export function ConnectionPreferenceScreen({
   onChangeTransportPreference,
   onBack,
 }: ConnectionPreferenceScreenProps): JSX.Element {
+  const { t } = useTranslation();
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={styles.header}>
         {onBack ? (
           <Button
-            accessibilityLabel="Back"
+            accessibilityLabel={t("common.back")}
             icon="arrowLeft"
             iconOnly
             style={styles.backButton}
             onPress={onBack}
           >
-            Back
+            {t("common.back")}
           </Button>
         ) : null}
         <View style={styles.headerText}>
-          <Text style={styles.headerEyebrow}>Settings</Text>
-          <Text style={styles.headerTitle}>Connection mode</Text>
+          <Text style={styles.headerEyebrow}>{t("settings.eyebrow")}</Text>
+          <Text style={styles.headerTitle}>
+            {t("connectionPreference.title")}
+          </Text>
         </View>
       </View>
 
@@ -79,31 +67,31 @@ export function ConnectionPreferenceContent({
   transportPreference,
   onChangeTransportPreference,
 }: ConnectionPreferenceContentProps): JSX.Element {
+  const { t } = useTranslation();
   return (
     <>
       <Text style={styles.sectionHint}>
-        Choose how OmniWork connects to the Mac Agent. Direct means session
-        payload data is not carried by relay after the direct link is ready.
-        Relay can help when networks block a direct path; the setting is saved
-        on this device and reconnects immediately.
+        {t("connectionPreference.description")}
       </Text>
 
       <View style={styles.optionList}>
-        {TRANSPORT_PREFERENCE_OPTIONS.map((option) => {
-          const selected = option.value === transportPreference;
+        {TRANSPORT_PREFERENCE_VALUES.map((value) => {
+          const selected = value === transportPreference;
+          const label = t(`connectionPreference.options.${value}.label`);
+          const hint = t(`connectionPreference.options.${value}.hint`);
           return (
             <Pressable
-              key={option.value}
+              key={value}
               accessibilityRole="button"
               accessibilityState={{ selected }}
-              accessibilityLabel={`${option.label}: ${option.hint}`}
+              accessibilityLabel={`${label}: ${hint}`}
               style={({ pressed }) => [
                 styles.optionRow,
                 selected && styles.optionRowActive,
                 pressed && styles.optionRowPressed,
               ]}
               onPress={() => {
-                if (!selected) onChangeTransportPreference(option.value);
+                if (!selected) onChangeTransportPreference(value);
               }}
             >
               <View style={styles.optionText}>
@@ -113,9 +101,9 @@ export function ConnectionPreferenceContent({
                     selected && styles.optionLabelActive,
                   ]}
                 >
-                  {option.label}
+                  {label}
                 </Text>
-                <Text style={styles.optionHint}>{option.hint}</Text>
+                <Text style={styles.optionHint}>{hint}</Text>
               </View>
               <View
                 style={[styles.radio, selected && styles.radioActive]}

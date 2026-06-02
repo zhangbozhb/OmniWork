@@ -9,3 +9,4 @@ app/android/app/.cxx
 app/android/.kotlin
 xtermWebViewAssets.ts
 local.properties
+.env

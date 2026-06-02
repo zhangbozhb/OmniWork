@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import type {
   AgentProviderDefinition,
@@ -94,6 +95,13 @@ import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
 import { MobileRelayPath, MobileSessionTransport } from "../lib/transport";
 import { UpgradeCoordinator } from "../lib/transport/upgradeCoordinator";
 import { createMobileWebRtcPeerAdapter } from "../lib/transport/webRtcPeerAdapter";
+import i18n from "../i18n";
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGE_STORAGE_KEY,
+  isAppLanguage,
+  type AppLanguage,
+} from "../i18n/language";
 import {
   addAppUrlListener,
   getInitialAppUrl,
@@ -169,6 +177,7 @@ export default function App(): JSX.Element {
 }
 
 function AppContent(): JSX.Element {
+  const { t } = useTranslation();
   const [pairings, setPairings] = useState<PairingConfig[]>([]);
   const [pairing, setPairing] = useState<PairingConfig | null>(null);
   const [view, setView] = useState<AppView>("pairing");
@@ -213,6 +222,7 @@ function AppContent(): JSX.Element {
   // 且大多数用户（默认 auto）启动时不会经历额外重连。
   const [transportPreference, setTransportPreferenceState] =
     useState<TransportPreference>(appConfig.transportPreference);
+  const [language, setLanguage] = useState<AppLanguage>(DEFAULT_LANGUAGE);
   const [terminalTextSize, setTerminalTextSizeState] =
     useState<TerminalTextSize>(() =>
       getDefaultTerminalTextSize(Dimensions.get("window")),
@@ -231,13 +241,19 @@ function AppContent(): JSX.Element {
   const canUseWorkspace = pairings.length > 0;
   const showPrimaryTabs = canUseWorkspace && isPrimaryTabView(view);
   const title = useMemo(() => {
-    if (view === "pairing") return editingPairing ? "Edit Device" : "Pair Mac";
-    if (view === "terminal") return selectedSession?.title ?? "Terminal";
-    if (view === "sessions") return "Workspaces";
-    if (view === "connectionPreference") return "Connection Mode";
-    if (view === "settings") return "Settings";
-    return "Devices";
-  }, [editingPairing, selectedSession?.title, view]);
+    if (view === "pairing") {
+      return editingPairing
+        ? t("app.titles.editDevice")
+        : t("app.titles.pairMac");
+    }
+    if (view === "terminal") {
+      return selectedSession?.title ?? t("app.titles.terminal");
+    }
+    if (view === "sessions") return t("app.titles.workspaces");
+    if (view === "connectionPreference") return t("app.titles.connectionMode");
+    if (view === "settings") return t("app.titles.settings");
+    return t("app.titles.devices");
+  }, [editingPairing, selectedSession?.title, t, view]);
 
   const selectedFrame = selectedSession
     ? (terminalFrames[selectedSession.session_id] ?? EMPTY_TERMINAL_FRAME)
@@ -339,19 +355,42 @@ function AppContent(): JSX.Element {
     };
   }, []);
 
-  const handleChangeTerminalTextSize = useCallback(
-    (next: TerminalTextSize) => {
-      setTerminalTextSizeState(next);
-      if (!terminalTextSizeLoadedRef.current) {
-        return;
-      }
-
-      AsyncStorage.setItem(TERMINAL_TEXT_SIZE_STORAGE_KEY, next).catch(() => {
-        // 字号偏好持久化失败不影响终端使用。
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(LANGUAGE_STORAGE_KEY)
+      .then((raw) => {
+        if (!active || !isAppLanguage(raw)) {
+          return;
+        }
+        setLanguage(raw);
+        void i18n.changeLanguage(raw);
+      })
+      .catch(() => {
+        // 语言偏好读取失败不影响启动；使用默认英文。
       });
-    },
-    [],
-  );
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleChangeLanguage = useCallback((next: AppLanguage) => {
+    setLanguage(next);
+    void i18n.changeLanguage(next);
+    AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, next).catch(() => {
+      // 语言偏好持久化失败仅影响下次启动恢复。
+    });
+  }, []);
+
+  const handleChangeTerminalTextSize = useCallback((next: TerminalTextSize) => {
+    setTerminalTextSizeState(next);
+    if (!terminalTextSizeLoadedRef.current) {
+      return;
+    }
+
+    AsyncStorage.setItem(TERMINAL_TEXT_SIZE_STORAGE_KEY, next).catch(() => {
+      // 字号偏好持久化失败不影响终端使用。
+    });
+  }, []);
 
   // 用户切换偏好时持久化；首次加载未完成前不写回，避免覆盖磁盘值。
   // 切换会立即触发 useEffect 重建 transport（因为 transportPreference 是依赖项），
@@ -1228,7 +1267,7 @@ function AppContent(): JSX.Element {
         setCreatingSession(false);
         pendingCreateRef.current = false;
         setWorkspaceLoading(false);
-        const detail = payload.message || "Terminal error from Mac Agent.";
+        const detail = payload.message || t("app.errors.terminalError");
         setConnectionMessage(detail);
         if (payload.code === "TMUX_TARGET_MISSING") {
           setSelectedSession(null);
@@ -1239,14 +1278,14 @@ function AppContent(): JSX.Element {
         // 让用户明确感知失败原因，避免"按了创建但什么也没发生"的体感。
         const title =
           payload.code === "SESSION_CREATE_FAILED"
-            ? "Failed to create session"
+            ? t("app.errors.failedCreateSession")
             : payload.code === "TMUX_TARGET_MISSING"
-              ? "Session no longer available"
-              : "Mac Agent error";
+              ? t("app.errors.sessionUnavailable")
+              : t("app.errors.macAgentError");
         confirm({
           title,
           message: detail,
-          confirmText: "OK",
+          confirmText: t("app.actions.ok"),
           cancelText: "",
           tone: "danger",
         }).catch(() => {
@@ -1278,7 +1317,7 @@ function AppContent(): JSX.Element {
             <Text style={styles.title}>{title}</Text>
             {canUseWorkspace ? (
               <Text style={styles.subtitle}>
-                {getHeaderSubtitle(view, pairings.length, pairing)}
+                {getHeaderSubtitle(view, pairings.length, pairing, t)}
               </Text>
             ) : null}
           </View>
@@ -1289,7 +1328,9 @@ function AppContent(): JSX.Element {
             <PairingScreen
               errorMessage={pairingError}
               initialPairing={editingPairing}
-              submitLabel={editingPairing ? "Save Device" : "Pair Mac"}
+              submitLabel={
+                editingPairing ? t("app.actions.saveDevice") : undefined
+              }
               onCancel={pairings.length > 0 ? handleCancelPairing : undefined}
               onPair={handlePair}
             />
@@ -1309,6 +1350,8 @@ function AppContent(): JSX.Element {
           ) : view === "settings" ? (
             <SettingsScreen
               terminalTextSize={terminalTextSize}
+              language={language}
+              onChangeLanguage={handleChangeLanguage}
               onChangeTerminalTextSize={handleChangeTerminalTextSize}
               onOpenConnectionPreference={() => setView("connectionPreference")}
             />
@@ -1357,7 +1400,7 @@ function AppContent(): JSX.Element {
                 selectedSessionCapabilities?.canInput
                   ? undefined
                   : (selectedSessionCapabilities?.unavailableReason ??
-                    "This session is not interactive right now.")
+                    t("app.errors.readOnlySession"))
               }
               canInput={Boolean(selectedSessionCapabilities?.canInput)}
               canResize={Boolean(selectedSessionCapabilities?.canResize)}
@@ -1652,11 +1695,10 @@ const styles = StyleSheet.create({
 
 const PRIMARY_TABS: ReadonlyArray<{
   icon: IconName;
-  label: string;
   value: PrimaryTabView;
 }> = [
-  { icon: "device", label: "Devices", value: "devices" },
-  { icon: "settings", label: "Settings", value: "settings" },
+  { icon: "device", value: "devices" },
+  { icon: "settings", value: "settings" },
 ];
 
 function PrimaryTabBar({
@@ -1666,17 +1708,19 @@ function PrimaryTabBar({
   activeView: PrimaryTabView;
   onChange(view: PrimaryTabView): void;
 }): JSX.Element {
+  const { t } = useTranslation();
   return (
     <View style={styles.tabBar} accessibilityRole="tablist">
       {PRIMARY_TABS.map((tab) => {
         const selected = tab.value === activeView;
         const tintColor = selected ? "#30c48d" : "#94a3ad";
+        const label = t(`app.tabs.${tab.value}`);
         return (
           <Pressable
             key={tab.value}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            accessibilityLabel={tab.label}
+            accessibilityLabel={label}
             style={({ pressed }) => [
               styles.tabButton,
               selected && styles.tabButtonActive,
@@ -1686,7 +1730,7 @@ function PrimaryTabBar({
           >
             <Icon name={tab.icon} color={tintColor} size={20} />
             <Text style={[styles.tabLabel, selected && styles.tabLabelActive]}>
-              {tab.label}
+              {label}
             </Text>
           </Pressable>
         );
@@ -1735,15 +1779,16 @@ function getHeaderSubtitle(
   view: AppView,
   deviceCount: number,
   activePairing: PairingConfig | null,
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   if (view === "devices") {
-    return `${deviceCount} linked ${deviceCount === 1 ? "device" : "devices"}`;
+    return t("app.subtitle.linkedDevices", { count: deviceCount });
   }
   if (view === "settings") {
-    return "Global preferences";
+    return t("app.subtitle.globalPreferences");
   }
   if (view === "connectionPreference") {
-    return "Connection settings";
+    return t("app.subtitle.connectionSettings");
   }
 
   return activePairing?.deviceId ?? "";
@@ -1764,7 +1809,7 @@ function formatErrorMessage(error: unknown): string {
   try {
     return JSON.stringify(error);
   } catch {
-    return "Unknown error";
+    return i18n.t("app.errors.unknown");
   }
 }
 

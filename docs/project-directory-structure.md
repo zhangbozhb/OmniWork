@@ -112,6 +112,7 @@ app/
 |   |   |-- sessions/            # sessionCapabilities / sessionMessages
 |   |   |-- terminal/            # terminalLayout / terminalMessages
 |   |   |-- workspaces/          # workspaceMessages
+|   |   |-- i18n/                  # App/Web 共用多语言初始化、语言枚举与资源
 |   |-- lib/
 |   |   |-- relay-client/        # mobileRelaySession.ts
 |   |   |-- transport/           # SessionTransport / UpgradeCoordinator / WebRTC peer adapter（native/web 双实现）
@@ -144,6 +145,12 @@ app/
 - 按业务能力拆分。
 - 每个 feature 内部可以有自己的 state、消息编解码、hooks、组件。
 - 不跨 feature 深层引用，只通过公开入口引用。
+
+`i18n/`：
+
+- 维护 App/Web 共用的多语言资源、语言枚举与 i18next 初始化。
+- 用户可见 UI 文案优先通过翻译 key 管理；协议字段、日志和调试信息不纳入 UI 多语言资源。
+- 语言偏好保存为当前设备/浏览器本地设置，不作为跨设备账号配置。
 
 `lib/relay-client/`：
 

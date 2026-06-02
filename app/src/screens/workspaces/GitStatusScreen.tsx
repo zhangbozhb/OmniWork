@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import type {
   WorkspaceDefinition,
@@ -49,35 +50,36 @@ export function GitStatusScreen({
   onRefresh,
   onOpenDiff,
 }: GitStatusScreenProps): JSX.Element {
+  const { t } = useTranslation();
   return (
     <View style={[styles.screen, embedded && styles.embeddedScreen]}>
       {!embedded ? (
       <View style={styles.toolbar}>
         <Button
-          accessibilityLabel="Back to sessions"
+          accessibilityLabel={t("git.backToSessions")}
           icon="arrowLeft"
           iconOnly
           style={styles.backButton}
           onPress={onBack ?? noop}
         >
-          Back
+          {t("common.back")}
         </Button>
         <View style={styles.titleArea}>
           <Text numberOfLines={1} style={styles.title}>
-            {getWorkspaceDisplayName(workspace)} Git
+            {t("git.title", { workspace: getWorkspaceDisplayName(workspace) })}
           </Text>
           <Text numberOfLines={1} style={styles.subtitle}>
             {workspace.gitRoot ?? workspace.path}
           </Text>
         </View>
         <Button
-          accessibilityLabel="Refresh Git status"
+          accessibilityLabel={t("git.refresh")}
           icon="refresh"
           iconOnly
           style={styles.iconButton}
           onPress={onRefresh}
         >
-          Refresh
+          {t("common.refresh")}
         </Button>
       </View>
       ) : null}
@@ -85,9 +87,9 @@ export function GitStatusScreen({
       <ScrollView contentContainerStyle={styles.content}>
         {!workspace.isGitRepository ? (
           <Card style={styles.card}>
-            <Text style={styles.cardTitle}>No Git repository</Text>
+            <Text style={styles.cardTitle}>{t("git.noRepository")}</Text>
             <Text style={styles.meta}>
-              Git tools only appear for workspaces inside a Git repository.
+              {t("git.noRepositoryHint")}
             </Text>
           </Card>
         ) : (
@@ -95,7 +97,7 @@ export function GitStatusScreen({
             <Card style={styles.card}>
               <View style={styles.summaryHeader}>
                 <Text style={styles.cardTitle}>
-                  {status?.branch ?? "Unknown branch"}
+                  {status?.branch ?? t("git.unknownBranch")}
                 </Text>
                 <Badge
                   backgroundColor={
@@ -103,14 +105,16 @@ export function GitStatusScreen({
                   }
                   color={status?.hasChanges ? colors.warning : colors.success}
                 >
-                  {status?.hasChanges ? "Changes" : "Clean"}
+                  {status?.hasChanges ? t("git.changes") : t("git.clean")}
                 </Badge>
               </View>
               <Text style={styles.meta}>
-                {status?.headSha ? `HEAD ${status.headSha}` : "HEAD unknown"}
-                {typeof status?.ahead === "number" ? ` · ahead ${status.ahead}` : ""}
+                {status?.headSha ? `HEAD ${status.headSha}` : t("git.headUnknown")}
+                {typeof status?.ahead === "number"
+                  ? ` · ${t("git.ahead", { count: status.ahead })}`
+                  : ""}
                 {typeof status?.behind === "number"
-                  ? ` · behind ${status.behind}`
+                  ? ` · ${t("git.behind", { count: status.behind })}`
                   : ""}
               </Text>
               <Button
@@ -118,7 +122,7 @@ export function GitStatusScreen({
                 style={styles.fullDiffButton}
                 onPress={() => onOpenDiff()}
               >
-                View workspace diff
+                {t("git.viewWorkspaceDiff")}
               </Button>
             </Card>
 
@@ -143,7 +147,7 @@ export function GitStatusScreen({
                           <Text
                             style={[styles.groupLabel, { color: groupColor }]}
                           >
-                            {groupStatus}
+                            {t(`git.status.${groupStatus}`)}
                           </Text>
                           <Text style={styles.groupCount}>
                             {groupFiles.length}
@@ -174,20 +178,20 @@ export function GitStatusScreen({
                   })
                 : null}
               {status && status.files.length === 0 ? (
-                <Text style={styles.empty}>No changed files.</Text>
+                <Text style={styles.empty}>{t("git.noChangedFiles")}</Text>
               ) : null}
               {!status && loading ? (
-                <Text style={styles.empty}>Loading Git status...</Text>
+                <Text style={styles.empty}>{t("git.loadingStatus")}</Text>
               ) : null}
             </View>
 
             {typeof diff === "string" ? (
               <Card style={styles.diffCard}>
                 <Text numberOfLines={1} style={styles.cardTitle}>
-                  {selectedPath ?? "Workspace diff"}
+                  {selectedPath ?? t("git.workspaceDiff")}
                 </Text>
                 <Text selectable style={styles.diffText}>
-                  {diff || "No diff."}
+                  {diff || t("git.noDiff")}
                 </Text>
               </Card>
             ) : null}

@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import type {
   CodexSession,
@@ -25,6 +26,7 @@ import {
   sanitizeTerminalText,
   type TerminalControlKey,
 } from "../../../../packages/terminal-core/src/index.ts";
+import i18n from "../../i18n";
 import {
   computeTerminalLayout,
   TERMINAL_TEXT_SIZE_OPTIONS,
@@ -124,6 +126,7 @@ export function TerminalScreen({
   onInput,
   onResize,
 }: TerminalScreenProps): JSX.Element {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState("");
   const [bottomDockHeight, setBottomDockHeight] = useState(
     INITIAL_BOTTOM_DOCK_HEIGHT,
@@ -241,15 +244,21 @@ export function TerminalScreen({
     setTextSizeControlsVisible(false);
   }
 
+  function dismissTextSizeControls(): void {
+    setTextSizeControlsVisible(false);
+  }
+
   function enterTerminalInputMode(): void {
     if (readOnly) {
       return;
     }
+    dismissTextSizeControls();
     setTerminalInputEnabled(true);
   }
 
   function disableTerminalInputMode(): void {
     setTerminalInputEnabled(false);
+    dismissTextSizeControls();
   }
 
   function exitTerminalInputMode(): void {
@@ -300,7 +309,10 @@ export function TerminalScreen({
           <Pressable
             accessibilityLabel={statusLabel ?? agentStatus.accessibilityLabel}
             style={styles.sessionMetaArea}
-            onPress={Keyboard.dismiss}
+            onPress={() => {
+              dismissTextSizeControls();
+              Keyboard.dismiss();
+            }}
           >
             <Text
               numberOfLines={1}
@@ -331,7 +343,10 @@ export function TerminalScreen({
                 styles.inputToggleButton,
                 !composerVisible && styles.inputToggleButtonActive,
               ]}
-              onPress={toggleComposerVisible}
+              onPress={() => {
+                dismissTextSizeControls();
+                toggleComposerVisible();
+              }}
             >
               {composerVisible ? "Hide input" : "Show input"}
             </Button>
@@ -341,13 +356,19 @@ export function TerminalScreen({
 
       {!focusMode && textSizeControlsVisible ? (
         <View style={styles.textSizePopover}>
-          <Text style={styles.textSizePopoverTitle}>Text size</Text>
+          <Text style={styles.textSizePopoverTitle}>
+            {t("terminal.textSize.title")}
+          </Text>
           <View style={styles.textSizeOptionRow}>
             {TERMINAL_TEXT_SIZE_OPTIONS.map((item) => {
               const selected = textSize === item.key;
+              const label = t(`settings.terminalFontSize.options.${item.key}`);
               return (
                 <Pressable
-                  accessibilityLabel={`Use ${item.label} terminal text size`}
+                  accessibilityLabel={t(
+                    "settings.terminalFontSize.accessibility",
+                    { label },
+                  )}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
                   key={item.key}
@@ -363,7 +384,7 @@ export function TerminalScreen({
                       selected && styles.textSizeOptionTextSelected,
                     ]}
                   >
-                    {item.label}
+                    {label}
                   </Text>
                 </Pressable>
               );
@@ -388,6 +409,7 @@ export function TerminalScreen({
         ]}
         onLayout={handleTerminalAreaLayout}
         onStartShouldSetResponderCapture={() => {
+          dismissTextSizeControls();
           if (!terminalInputEnabled) {
             Keyboard.dismiss();
           }
@@ -413,17 +435,23 @@ export function TerminalScreen({
           },
         ]}
         onLayout={handleBottomDockLayout}
+        onStartShouldSetResponderCapture={() => {
+          dismissTextSizeControls();
+          return false;
+        }}
       >
         {!focusMode && readOnly && readOnlyReason ? (
           <View style={styles.readOnlyBanner}>
-            <Text style={styles.readOnlyTitle}>Session is read-only</Text>
+            <Text style={styles.readOnlyTitle}>
+              {t("terminal.readOnlyTitle")}
+            </Text>
             <Text style={styles.readOnlyText}>{readOnlyReason}</Text>
             <Button
               icon="refresh"
               style={styles.readOnlyAction}
               onPress={onRefreshSessions}
             >
-              Refresh Sessions
+              {t("terminal.refreshSessions")}
             </Button>
           </View>
         ) : null}
@@ -438,7 +466,7 @@ export function TerminalScreen({
           >
             {quickKeys.map((item) => (
               <Pressable
-                accessibilityLabel={`Send ${item.label} key`}
+                accessibilityLabel={t("terminal.sendKey", { key: item.label })}
                 accessibilityRole="button"
                 key={item.key}
                 disabled={readOnly}
@@ -455,7 +483,7 @@ export function TerminalScreen({
               style={[styles.keyButton, !draft && styles.disabled]}
               onPress={() => setDraft("")}
             >
-              Clear
+              {t("common.clear")}
             </Button>
             {!canShowAllQuickKeys ? (
               <Button
@@ -464,7 +492,7 @@ export function TerminalScreen({
                 style={styles.keyButton}
                 onPress={() => setAdvancedKeysVisible((visible) => !visible)}
               >
-                {advancedKeysVisible ? "Less" : "More"}
+                {advancedKeysVisible ? t("common.less") : t("common.more")}
               </Button>
             ) : null}
           </ScrollView>
@@ -479,7 +507,9 @@ export function TerminalScreen({
                 autoCapitalize="none"
                 autoCorrect={false}
                 multiline
-                placeholder={`Ask ${runtimeLabel} to inspect, edit, test, or explain...`}
+                placeholder={t("terminal.composerPlaceholder", {
+                  runtime: runtimeLabel,
+                })}
                 placeholderTextColor="#66727c"
                 editable={!readOnly}
                 returnKeyType="default"
@@ -499,7 +529,7 @@ export function TerminalScreen({
                 ]}
                 onPress={handlePrimaryComposerAction}
               >
-                {canHideKeyboard ? "Hide" : "Send"}
+                {canHideKeyboard ? t("terminal.hide") : t("terminal.send")}
               </Button>
             </View>
           </View>
@@ -512,10 +542,16 @@ export function TerminalScreen({
             bottom: floatingControlsBottom,
           },
         ]}
+        onStartShouldSetResponderCapture={() => {
+          dismissTextSizeControls();
+          return false;
+        }}
       >
         <Button
           accessibilityLabel={
-            focusMode ? "Exit focus mode" : "Enter focus mode"
+            focusMode
+              ? t("terminal.exitFocusMode")
+              : t("terminal.enterFocusMode")
           }
           icon={focusMode ? "minimize" : "maximize"}
           iconOnly
@@ -525,14 +561,14 @@ export function TerminalScreen({
             setTextSizeControlsVisible(false);
           }}
         >
-          {focusMode ? "Exit focus" : "Focus"}
+          {focusMode ? t("terminal.exitFocus") : t("terminal.focus")}
         </Button>
         {!focusMode ? (
           <Button
             accessibilityLabel={
               terminalInputEnabled
-                ? "Exit terminal input mode"
-                : "Enter terminal input mode"
+                ? t("terminal.exitTerminalInput")
+                : t("terminal.enterTerminalInput")
             }
             disabled={readOnly}
             icon="keyboard"
@@ -550,7 +586,9 @@ export function TerminalScreen({
               enterTerminalInputMode();
             }}
           >
-            {terminalInputEnabled ? "Browse" : "Terminal input"}
+            {terminalInputEnabled
+              ? t("terminal.browse")
+              : t("terminal.terminalInput")}
           </Button>
         ) : null}
       </View>
@@ -565,24 +603,24 @@ function getAgentStatusPresentation(status: TerminalConnectionStatus): {
   switch (status) {
     case "authenticated":
       return {
-        accessibilityLabel: "Agent connected",
+        accessibilityLabel: i18n.t("terminal.agentStatus.connected"),
         color: colors.success,
       };
     case "connecting":
     case "authenticating":
       return {
-        accessibilityLabel: "Agent connecting",
+        accessibilityLabel: i18n.t("terminal.agentStatus.connecting"),
         color: colors.warning,
       };
     case "failed":
       return {
-        accessibilityLabel: "Agent disconnected",
+        accessibilityLabel: i18n.t("terminal.agentStatus.disconnected"),
         color: colors.danger,
       };
     case "idle":
     default:
       return {
-        accessibilityLabel: "Agent idle",
+        accessibilityLabel: i18n.t("terminal.agentStatus.idle"),
         color: colors.textDim,
       };
   }

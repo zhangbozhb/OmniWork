@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import type {
   FilesReadPayload,
@@ -35,36 +36,37 @@ export function FileBrowserScreen({
   onOpenDirectory,
   onReadFile,
 }: FileBrowserScreenProps): JSX.Element {
+  const { t } = useTranslation();
   const currentParts = relativePath.split("/").filter(Boolean);
   return (
     <View style={[styles.screen, embedded && styles.embeddedScreen]}>
       {!embedded ? (
       <View style={styles.toolbar}>
         <Button
-          accessibilityLabel="Back to sessions"
+          accessibilityLabel={t("files.backToSessions")}
           icon="arrowLeft"
           iconOnly
           style={styles.backButton}
           onPress={onBack ?? noop}
         >
-          Back
+          {t("common.back")}
         </Button>
         <View style={styles.titleArea}>
           <Text numberOfLines={1} style={styles.title}>
-            {getWorkspaceDisplayName(workspace)} Files
+            {t("files.title", { workspace: getWorkspaceDisplayName(workspace) })}
           </Text>
           <Text numberOfLines={1} style={styles.subtitle}>
             {relativePath || "."}
           </Text>
         </View>
         <Button
-          accessibilityLabel="Refresh files"
+          accessibilityLabel={t("files.refresh")}
           icon="refresh"
           iconOnly
           style={styles.iconButton}
           onPress={onRefresh}
         >
-          Refresh
+          {t("common.refresh")}
         </Button>
       </View>
       ) : null}
@@ -76,7 +78,7 @@ export function FileBrowserScreen({
             expanded
             icon="folder"
             label={getWorkspaceDisplayName(workspace)}
-            meta="workspace root"
+            meta={t("files.workspaceRoot")}
             onPress={() => onOpenDirectory("")}
           />
 
@@ -89,7 +91,11 @@ export function FileBrowserScreen({
                 icon="folder"
                 key={path}
                 label={part}
-                meta={index === currentParts.length - 1 ? "current directory" : "directory"}
+                meta={
+                  index === currentParts.length - 1
+                    ? t("files.currentDirectory")
+                    : t("files.directory")
+                }
                 onPress={() => onOpenDirectory(path)}
               />
             );
@@ -101,7 +107,7 @@ export function FileBrowserScreen({
               icon={entry.type === "directory" ? "folder" : "file"}
               key={entry.relativePath}
               label={entry.name}
-              meta={formatEntryMeta(entry)}
+              meta={formatEntryMeta(entry, t)}
               selected={file?.relativePath === entry.relativePath}
               onPress={() =>
                 entry.type === "directory"
@@ -113,7 +119,9 @@ export function FileBrowserScreen({
         </View>
 
         {entries.length === 0 ? (
-          <Text style={styles.empty}>{loading ? "Loading..." : "No files."}</Text>
+          <Text style={styles.empty}>
+            {loading ? t("common.loading") : t("files.empty")}
+          </Text>
         ) : null}
 
         {file ? (
@@ -131,8 +139,8 @@ export function FileBrowserScreen({
             ) : (
               <Text style={styles.hint}>
                 {file.encoding === "too_large"
-                  ? `File is too large to preview (${formatBytes(file.size)}).`
-                  : "Binary file preview is disabled."}
+                  ? t("files.tooLarge", { size: formatBytes(file.size) })
+                  : t("files.binaryDisabled")}
               </Text>
             )}
           </Card>
@@ -217,9 +225,12 @@ function formatBytes(value: number): string {
   return `${Math.round(value / 1024 / 1024)} MB`;
 }
 
-function formatEntryMeta(entry: WorkspaceFileEntry): string {
+function formatEntryMeta(
+  entry: WorkspaceFileEntry,
+  t: (key: string) => string,
+): string {
   const size = typeof entry.size === "number" ? ` · ${formatBytes(entry.size)}` : "";
-  return `${entry.type}${size}`;
+  return `${entry.type === "directory" ? t("files.directory") : entry.type}${size}`;
 }
 
 const styles = StyleSheet.create({

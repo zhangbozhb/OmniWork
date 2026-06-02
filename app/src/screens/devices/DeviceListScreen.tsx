@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import type { TransportPath } from "../../../../packages/protocol-ts/src/index.ts";
 import type { PairingConfig } from "../../features/auth/types";
@@ -43,14 +44,17 @@ export function DeviceListScreen({
   onOpenDevice,
   onRefreshSessions,
 }: DeviceListScreenProps): JSX.Element {
+  const { t } = useTranslation();
   const ready = connectionStatus === "authenticated";
   const activeStatus = getDeviceStatusPresentation(
     connectionStatus,
+    t,
     connectionMessage,
   );
   const activePathStatus = getConnectionPathPresentation(
     connectionStatus,
     connectionPath,
+    t,
   );
 
   const [refreshing, setRefreshing] = useState(false);
@@ -103,37 +107,36 @@ export function DeviceListScreen({
         >
           <Text style={styles.webRefreshIndicatorText}>
             {refreshing
-              ? "Refreshing..."
+              ? t("devices.refreshing")
               : webPullOffset >= WEB_PULL_THRESHOLD
-                ? "Release to refresh"
-                : "Pull to refresh"}
+                ? t("devices.releaseToRefresh")
+                : t("devices.pullToRefresh")}
           </Text>
         </View>
       ) : null}
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.headerEyebrow}>Device Center</Text>
+          <Text style={styles.headerEyebrow}>{t("devices.eyebrow")}</Text>
           <Text style={styles.headerTitle}>
-            {pairings.length} linked{" "}
-            {pairings.length === 1 ? "device" : "devices"}
+            {t("devices.linkedDevices", { count: pairings.length })}
           </Text>
         </View>
         <Button
-          accessibilityLabel="Refresh"
+          accessibilityLabel={t("common.refresh")}
           icon="refresh"
           iconOnly
           style={styles.headerIconButton}
           onPress={handleRefresh}
         >
-          Refresh
+          {t("common.refresh")}
         </Button>
       </View>
 
       {pairings.length === 0 ? (
         <Card style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No linked devices</Text>
+          <Text style={styles.emptyTitle}>{t("devices.emptyTitle")}</Text>
           <Text style={styles.emptyText}>
-            Add a Mac Agent link to start using OmniWork.
+            {t("devices.emptyText")}
           </Text>
         </Card>
       ) : (
@@ -147,7 +150,7 @@ export function DeviceListScreen({
           const canOpen = !active || ready;
           const status = active
             ? activeStatus
-            : getSavedDeviceStatusPresentation();
+            : getSavedDeviceStatusPresentation(t);
           const pathStatus = active ? activePathStatus : undefined;
           const primaryAction =
             active && !ready ? onRefreshSessions : () => onOpenDevice(pairing);
@@ -189,7 +192,7 @@ export function DeviceListScreen({
                 )}
                 <View style={styles.flexFiller} />
                 <Button
-                  accessibilityLabel="More actions"
+                  accessibilityLabel={t("devices.moreActions")}
                   icon="more"
                   iconOnly
                   style={styles.moreButton}
@@ -197,7 +200,7 @@ export function DeviceListScreen({
                     setExpandedDevice(expanded ? null : pairingKey)
                   }
                 >
-                  More
+                  {t("common.more")}
                 </Button>
               </View>
 
@@ -211,7 +214,7 @@ export function DeviceListScreen({
                       onEditDevice(pairing);
                     }}
                   >
-                    Edit
+                    {t("common.edit")}
                   </Button>
                   <Button
                     icon="trash"
@@ -222,7 +225,7 @@ export function DeviceListScreen({
                       onDeleteDevice(pairing);
                     }}
                   >
-                    Delete
+                    {t("common.delete")}
                   </Button>
                 </View>
               ) : null}
@@ -232,14 +235,14 @@ export function DeviceListScreen({
       )}
 
       <Button
-        accessibilityLabel="Add Link"
+        accessibilityLabel={t("devices.addLink")}
         icon="add"
         iconOnly
         style={styles.fab}
         tone="primary"
         onPress={onAddDevice}
       >
-        Add Link
+        {t("devices.addLink")}
       </Button>
     </ScrollView>
   );
@@ -373,17 +376,20 @@ function formatRelayUrl(relayUrl: string): string {
   }
 }
 
-function getSavedDeviceStatusPresentation(): DeviceStatusPresentation {
+function getSavedDeviceStatusPresentation(
+  t: (key: string) => string,
+): DeviceStatusPresentation {
   return {
     backgroundColor: "rgba(148, 163, 173, 0.16)",
     color: colors.textMuted,
-    detail: "Tap to connect.",
-    label: "Idle",
+    detail: "",
+    label: t("devices.status.idle"),
   };
 }
 
 function getDeviceStatusPresentation(
   status: string,
+  t: (key: string) => string,
   message?: string,
 ): DeviceStatusPresentation {
   switch (status) {
@@ -391,30 +397,30 @@ function getDeviceStatusPresentation(
       return {
         backgroundColor: colors.successSoft,
         color: colors.success,
-        detail: "Connected to Mac Agent.",
-        label: "Online",
+        detail: "",
+        label: t("devices.status.online"),
       };
     case "connecting":
     case "authenticating":
       return {
         backgroundColor: colors.warningSoft,
         color: colors.warning,
-        detail: message ?? "Opening secure connection...",
-        label: "Connecting",
+        detail: message ?? "",
+        label: t("devices.status.connecting"),
       };
     case "failed":
       return {
         backgroundColor: colors.dangerSoft,
         color: colors.danger,
-        detail: message ?? "Connection failed.",
-        label: "Offline",
+        detail: message ?? "",
+        label: t("devices.status.offline"),
       };
     default:
       return {
         backgroundColor: colors.neutralSoft,
         color: colors.textMuted,
-        detail: message ?? "Not connected.",
-        label: "Idle",
+        detail: message ?? "",
+        label: t("devices.status.idle"),
       };
   }
 }
@@ -422,6 +428,7 @@ function getDeviceStatusPresentation(
 function getConnectionPathPresentation(
   status: string,
   path: TransportPath,
+  t: (key: string) => string,
 ): ConnectionPathPresentation | undefined {
   if (status !== "authenticated") {
     return undefined;
@@ -430,13 +437,13 @@ function getConnectionPathPresentation(
     return {
       backgroundColor: colors.successSoft,
       color: colors.success,
-      label: "Direct",
+      label: t("devices.status.direct"),
     };
   }
   return {
     backgroundColor: colors.neutralSoft,
     color: colors.textSecondary,
-    label: "Relay assisted",
+    label: t("devices.status.relayAssisted"),
   };
 }
 

@@ -20,6 +20,13 @@
  */
 import { spawnSync } from "node:child_process";
 import process from "node:process";
+import path from "node:path";
+
+try {
+  process.loadEnvFile(path.resolve(process.cwd(), ".env"));
+} catch (e) {
+  // Ignore if .env doesn't exist
+}
 
 const env = process.env;
 
@@ -47,13 +54,13 @@ const codeSignStyle = env.OMNIWORK_IOS_CODE_SIGN_STYLE ?? "Manual";
 const codeSignIdentity = env.OMNIWORK_IOS_CODE_SIGN_IDENTITY ?? "Apple Distribution";
 
 const extraParams = [
-  `MARKETING_VERSION=${appVersion}`,
-  `CURRENT_PROJECT_VERSION=${buildNumber}`,
-  `PRODUCT_BUNDLE_IDENTIFIER=${bundleId}`,
-  `DEVELOPMENT_TEAM=${required.OMNIWORK_IOS_DEVELOPMENT_TEAM}`,
-  `PROVISIONING_PROFILE_SPECIFIER=${required.OMNIWORK_IOS_PROVISIONING_PROFILE}`,
-  `CODE_SIGN_STYLE=${codeSignStyle}`,
-  `CODE_SIGN_IDENTITY=${codeSignIdentity}`,
+  `MARKETING_VERSION="${appVersion}"`,
+  `CURRENT_PROJECT_VERSION="${buildNumber}"`,
+  `PRODUCT_BUNDLE_IDENTIFIER="${bundleId}"`,
+  `DEVELOPMENT_TEAM="${required.OMNIWORK_IOS_DEVELOPMENT_TEAM}"`,
+  `PROVISIONING_PROFILE_SPECIFIER="${required.OMNIWORK_IOS_PROVISIONING_PROFILE}"`,
+  `CODE_SIGN_STYLE="${codeSignStyle}"`,
+  `CODE_SIGN_IDENTITY="${codeSignIdentity}"`,
   // 显式确保签名开启，避免被本地 xcconfig 关闭。
   "CODE_SIGNING_ALLOWED=YES",
   "CODE_SIGNING_REQUIRED=YES",

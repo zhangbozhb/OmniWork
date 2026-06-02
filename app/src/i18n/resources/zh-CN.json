@@ -1,0 +1,273 @@
+{
+  "app": {
+    "titles": {
+      "editDevice": "编辑设备",
+      "pairMac": "配对 Mac",
+      "terminal": "终端",
+      "workspaces": "工作区",
+      "connectionMode": "连接模式",
+      "settings": "设置",
+      "devices": "设备"
+    },
+    "tabs": {
+      "devices": "设备",
+      "settings": "设置"
+    },
+    "subtitle": {
+      "linkedDevices": "已连接 {{count}} 台设备",
+      "linkedDevices_plural": "已连接 {{count}} 台设备",
+      "globalPreferences": "全局偏好",
+      "connectionSettings": "连接设置"
+    },
+    "actions": {
+      "ok": "确定",
+      "saveDevice": "保存设备"
+    },
+    "errors": {
+      "unknown": "未知错误",
+      "terminalError": "Mac Agent 返回终端错误。",
+      "failedCreateSession": "创建会话失败",
+      "sessionUnavailable": "会话已不可用",
+      "macAgentError": "Mac Agent 错误",
+      "readOnlySession": "此会话当前不可交互。"
+    }
+  },
+  "common": {
+    "back": "返回",
+    "cancel": "取消",
+    "clear": "清空",
+    "create": "创建",
+    "default": "默认",
+    "delete": "删除",
+    "done": "完成",
+    "edit": "编辑",
+    "hidden": "隐藏",
+    "hide": "隐藏",
+    "less": "收起",
+    "loading": "加载中...",
+    "more": "更多",
+    "refresh": "刷新",
+    "reset": "重置",
+    "save": "保存",
+    "show": "显示",
+    "starting": "启动中...",
+    "up": "上移",
+    "down": "下移",
+    "unknown": "未知"
+  },
+  "devices": {
+    "refreshing": "刷新中...",
+    "releaseToRefresh": "松开刷新",
+    "pullToRefresh": "下拉刷新",
+    "eyebrow": "设备中心",
+    "linkedDevices": "已连接 {{count}} 台设备",
+    "linkedDevices_plural": "已连接 {{count}} 台设备",
+    "emptyTitle": "暂无连接设备",
+    "emptyText": "添加一个 Mac Agent 连接即可开始使用 OmniWork。",
+    "addLink": "添加连接",
+    "moreActions": "更多操作",
+    "status": {
+      "idle": "空闲",
+      "online": "在线",
+      "connecting": "连接中",
+      "offline": "离线",
+      "direct": "直连",
+      "relayAssisted": "Relay 辅助"
+    }
+  },
+  "pairing": {
+    "submit": {
+      "pairMac": "配对 Mac",
+      "saving": "保存中..."
+    },
+    "validation": {
+      "invalidKeyTitle": "密钥无效",
+      "invalidKeyMessage": "请输入 Mac Agent 生成的 32 位字符密钥。",
+      "missingDetailsTitle": "连接信息缺失",
+      "missingDetailsMessage": "Relay URL 和设备 ID 必填。",
+      "invalidQrTitle": "二维码无效",
+      "invalidQrMessage": "扫描到的配对密钥无效。"
+    },
+    "scan": {
+      "recommended": "推荐",
+      "title": "扫描 Mac Agent 二维码",
+      "text": "扫描 Mac Agent 终端中打印的二维码。OmniWork 会自动导入 Relay URL、设备 ID 和临时密钥。",
+      "accessibility": "扫描 Mac Agent 二维码",
+      "button": "在 App 中扫描"
+    },
+    "web": {
+      "eyebrow": "Web 配对",
+      "title": "粘贴 Mac Agent 信息",
+      "text": "Web 以单页应用运行，不使用摄像头扫码。请粘贴 Mac Agent 生成的 Relay URL、设备 ID 和临时密钥。"
+    },
+    "manualFallback": "手动备用方式",
+    "manualPairing": "手动配对",
+    "fields": {
+      "relayUrl": "Relay URL",
+      "deviceId": "Mac 设备 ID",
+      "temporaryKey": "临时密钥",
+      "keyPlaceholder": "32 位字符密钥"
+    }
+  },
+  "settings": {
+    "eyebrow": "设置",
+    "title": "偏好设置",
+    "language": {
+      "title": "语言",
+      "hint": "选择此应用的显示语言。",
+      "accessibility": "使用 {{label}} 作为显示语言"
+    },
+    "terminalFontSize": {
+      "title": "终端字号",
+      "hint": "控制当前设备上的终端文字大小。",
+      "fallback": "默认",
+      "accessibility": "使用 {{label}} 终端字号",
+      "options": {
+        "small": "小",
+        "normal": "默认",
+        "big": "大"
+      }
+    },
+    "connection": {
+      "title": "连接",
+      "mode": "连接模式",
+      "hint": "控制何时使用 Direct 或 Relay 链路。",
+      "accessibility": "打开连接模式设置"
+    }
+  },
+  "connectionPreference": {
+    "title": "连接模式",
+    "description": "选择 OmniWork 连接 Mac Agent 的方式。Direct 表示直连建立后，会话载荷数据不再经过 Relay。网络阻止直连时 Relay 可辅助连接；该设置会保存在当前设备，并立即重连生效。",
+    "options": {
+      "auto": {
+        "label": "自动",
+        "hint": "推荐。优先直连，必要时使用 Relay。"
+      },
+      "prefer_p2p": {
+        "label": "仅直连",
+        "hint": "直连建立后，Relay 不承载会话载荷。"
+      },
+      "relay_only": {
+        "label": "仅 Relay",
+        "hint": "只使用 Relay 链路，会话数据仍保持加密。"
+      }
+    }
+  },
+  "workspaces": {
+    "title": "工作区",
+    "meta": "{{workspaceCount}} 个工作区 · {{sessionCount}} 个会话",
+    "empty": "这个 Mac Agent 暂无工作区。",
+    "backToWorkspaces": "返回工作区",
+    "backToDevices": "返回设备",
+    "refreshSessions": "刷新会话",
+    "manageProviders": "管理 Provider",
+    "noSessions": "此工作区还没有会话。",
+    "newSession": "新建会话",
+    "newWorkspace": "新建工作区",
+    "newProviderSession": "新建 {{provider}} 会话",
+    "add": "添加",
+    "unassigned": "未分配",
+    "tabs": {
+      "sessions": "会话",
+      "git": "Git",
+      "files": "文件"
+    },
+    "modal": {
+      "workingDirectory": "工作目录",
+      "renameSession": "重命名会话",
+      "sessionTitle": "会话标题",
+      "providerPreferences": "Provider 偏好"
+    },
+    "details": {
+      "folder": "目录",
+      "created": "创建时间"
+    },
+    "actions": {
+      "manageSession": "管理 {{title}}",
+      "rename": "重命名",
+      "closing": "关闭中...",
+      "forget": "忘记",
+      "remove": "移除",
+      "closeSession": "关闭会话",
+      "killing": "终止中...",
+      "killTmux": "终止 tmux",
+      "moveUp": "上移 {{provider}}",
+      "moveDown": "下移 {{provider}}"
+    },
+    "provider": {
+      "other": "其他",
+      "otherSummary": "未匹配到已配置 Agent CLI 的现有 tmux 会话"
+    },
+    "time": {
+      "justNow": "刚刚",
+      "minutesAgo": "{{count}} 分钟前",
+      "hoursAgo": "{{count}} 小时前",
+      "daysAgo": "{{count}} 天前"
+    },
+    "fallback": {
+      "workspace": "工作区",
+      "otherWorkspace": "其他工作区"
+    }
+  },
+  "files": {
+    "title": "{{workspace}} 文件",
+    "backToSessions": "返回会话",
+    "refresh": "刷新文件",
+    "workspaceRoot": "工作区根目录",
+    "currentDirectory": "当前目录",
+    "directory": "目录",
+    "empty": "暂无文件。",
+    "tooLarge": "文件过大，无法预览（{{size}}）。",
+    "binaryDisabled": "二进制文件预览已禁用。"
+  },
+  "git": {
+    "title": "{{workspace}} Git",
+    "backToSessions": "返回会话",
+    "refresh": "刷新 Git 状态",
+    "noRepository": "不是 Git 仓库",
+    "noRepositoryHint": "Git 工具仅在 Git 仓库内的工作区显示。",
+    "unknownBranch": "未知分支",
+    "changes": "有变更",
+    "clean": "干净",
+    "headUnknown": "HEAD 未知",
+    "ahead": "领先 {{count}}",
+    "behind": "落后 {{count}}",
+    "viewWorkspaceDiff": "查看工作区 diff",
+    "noChangedFiles": "没有变更文件。",
+    "loadingStatus": "正在加载 Git 状态...",
+    "workspaceDiff": "工作区 diff",
+    "noDiff": "没有 diff。",
+    "status": {
+      "modified": "已修改",
+      "added": "已新增",
+      "deleted": "已删除",
+      "renamed": "已重命名",
+      "untracked": "未跟踪"
+    }
+  },
+  "terminal": {
+    "textSize": {
+      "title": "字号"
+    },
+    "readOnlyTitle": "会话只读",
+    "refreshSessions": "刷新会话",
+    "sendKey": "发送 {{key}} 键",
+    "composerPlaceholder": "让 {{runtime}} 检查、编辑、测试或解释...",
+    "hide": "隐藏",
+    "send": "发送",
+    "focus": "专注",
+    "exitFocus": "退出专注",
+    "enterFocusMode": "进入专注模式",
+    "exitFocusMode": "退出专注模式",
+    "terminalInput": "终端输入",
+    "browse": "浏览",
+    "enterTerminalInput": "进入终端输入模式",
+    "exitTerminalInput": "退出终端输入模式",
+    "agentStatus": {
+      "connected": "Agent 已连接",
+      "connecting": "Agent 连接中",
+      "disconnected": "Agent 已断开",
+      "idle": "Agent 空闲"
+    }
+  }
+}

@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTranslation } from "react-i18next";
 
 import type {
   AgentCapability,
@@ -29,6 +30,7 @@ import {
   getCreatableAgentProviders,
   isCreatableRuntimeKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
+import i18n from "../../i18n";
 import { getSessionCapabilities } from "../../features/sessions/sessionCapabilities";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";
@@ -124,6 +126,7 @@ export function SessionListScreen({
   onRenameSession,
   onKillTmuxSession,
 }: SessionListScreenProps): JSX.Element {
+  const { t } = useTranslation();
   const [providerPreferences, setProviderPreferences] =
     useState<ProviderPreferences>(EMPTY_PROVIDER_PREFERENCES);
   const [providerPreferencesLoaded, setProviderPreferencesLoaded] =
@@ -183,13 +186,12 @@ export function SessionListScreen({
       })),
       {
         kind: "other",
-        label: "Other",
-        summary:
-          "Existing tmux sessions that do not match a configured Agent CLI",
+        label: t("workspaces.provider.other"),
+        summary: t("workspaces.provider.otherSummary"),
         creatable: true,
       },
     ],
-    [effectiveDefaultKind, orderedProviders, providerPreferences],
+    [effectiveDefaultKind, orderedProviders, providerPreferences, t],
   );
 
   useEffect(() => {
@@ -330,12 +332,14 @@ export function SessionListScreen({
             {session.title}
           </Text>
           <Text numberOfLines={1} style={styles.sessionRowMeta}>
-            {formatRelativeTime(session.last_active_at)}
+            {formatRelativeTime(session.last_active_at, t)}
             {external ? " · ext" : ""}
           </Text>
         </View>
         <Pressable
-          accessibilityLabel={`Manage ${session.title}`}
+          accessibilityLabel={t("workspaces.actions.manageSession", {
+            title: session.title,
+          })}
           hitSlop={8}
           style={styles.sessionRowMore}
           onPress={() => setManagingSession(session)}
@@ -377,46 +381,51 @@ export function SessionListScreen({
       <View style={styles.actions}>
         <Button
           accessibilityLabel={
-            activeWorkspace ? "Back to workspaces" : "Back to devices"
+            activeWorkspace
+              ? t("workspaces.backToWorkspaces")
+              : t("workspaces.backToDevices")
           }
           icon="arrowLeft"
           iconOnly
           style={styles.backButton}
           onPress={activeWorkspace ? () => setSelectedWorkspace(null) : onBack}
         >
-          Back
+          {t("common.back")}
         </Button>
         <View style={styles.toolbarTitleArea}>
           <Text style={styles.toolbarTitle}>
             {activeWorkspace
               ? getWorkspaceDisplayName(activeWorkspace)
-              : "Workspaces"}
+              : t("workspaces.title")}
           </Text>
           <Text numberOfLines={1} style={styles.toolbarMeta}>
             {activeWorkspace
               ? activeWorkspace.path
-              : `${realWorkspaceGroups.length} workspaces · ${sessions.length} sessions`}
+              : t("workspaces.meta", {
+                  workspaceCount: realWorkspaceGroups.length,
+                  sessionCount: sessions.length,
+                })}
           </Text>
         </View>
         {!activeWorkspace ? (
           <>
             <Button
-              accessibilityLabel="Refresh sessions"
+              accessibilityLabel={t("workspaces.refreshSessions")}
               icon="refresh"
               iconOnly
               style={styles.toolbarIconButton}
               onPress={onRefreshSessions}
             >
-              Refresh
+              {t("common.refresh")}
             </Button>
             <Button
-              accessibilityLabel="Manage providers"
+              accessibilityLabel={t("workspaces.manageProviders")}
               icon="provider"
               iconOnly
               style={styles.toolbarIconButton}
               onPress={() => setProvidersModalVisible(true)}
             >
-              Providers
+              {t("workspaces.manageProviders")}
             </Button>
           </>
         ) : null}
@@ -430,7 +439,7 @@ export function SessionListScreen({
                 {activeProviderGroups.length === 0 ? (
                   <View style={styles.sessionsEmptyState}>
                     <Text style={styles.empty}>
-                      No sessions in this workspace yet.
+                      {t("workspaces.noSessions")}
                     </Text>
                     <Button
                       disabled={
@@ -450,7 +459,7 @@ export function SessionListScreen({
                         )
                       }
                     >
-                      New Session
+                      {t("workspaces.newSession")}
                     </Button>
                   </View>
                 ) : (
@@ -462,7 +471,10 @@ export function SessionListScreen({
                             {group.label} · {group.sessions.length}
                           </Text>
                           <Button
-                            accessibilityLabel={`New ${group.label} session`}
+                            accessibilityLabel={t(
+                              "workspaces.newProviderSession",
+                              { provider: group.label },
+                            )}
                             disabled={creating || !group.creatable}
                             icon="add"
                             iconOnly
@@ -474,7 +486,7 @@ export function SessionListScreen({
                               )
                             }
                           >
-                            Add
+                            {t("workspaces.add")}
                           </Button>
                         </View>
                         {group.sessions.map((session) =>
@@ -518,7 +530,7 @@ export function SessionListScreen({
           <>
             {realWorkspaceGroups.length === 0 ? (
               <Text style={styles.empty}>
-                No workspaces from this Mac Agent yet.
+                {t("workspaces.empty")}
               </Text>
             ) : (
               <View style={styles.workspaceList}>
@@ -569,7 +581,9 @@ export function SessionListScreen({
 
             {unassignedSessions.length > 0 ? (
               <View style={styles.runtimeSection}>
-                <Text style={styles.sessionGroupLabel}>Unassigned</Text>
+                <Text style={styles.sessionGroupLabel}>
+                  {t("workspaces.unassigned")}
+                </Text>
                 <View style={styles.sessionGroup}>
                   {unassignedSessions.map((session) =>
                     renderSessionRow(session),
@@ -592,7 +606,7 @@ export function SessionListScreen({
             ]}
             onPress={() => setActiveWorkspaceTab("sessions")}
           >
-            Sessions
+            {t("workspaces.tabs.sessions")}
           </Button>
           {activeWorkspace.isGitRepository ? (
             <Button
@@ -603,7 +617,7 @@ export function SessionListScreen({
               ]}
               onPress={() => openWorkspaceTab(activeWorkspace, "git")}
             >
-              Git
+              {t("workspaces.tabs.git")}
             </Button>
           ) : null}
           <Button
@@ -614,14 +628,14 @@ export function SessionListScreen({
             ]}
             onPress={() => openWorkspaceTab(activeWorkspace, "files")}
           >
-            Files
+            {t("workspaces.tabs.files")}
           </Button>
         </View>
       ) : null}
 
       {!activeWorkspace ? (
         <Button
-          accessibilityLabel="New workspace"
+          accessibilityLabel={t("workspaces.newWorkspace")}
           icon="add"
           iconOnly
           style={styles.floatingCreateButton}
@@ -634,7 +648,7 @@ export function SessionListScreen({
             setCreateModalVisible(true);
           }}
         >
-          New Workspace
+          {t("workspaces.newWorkspace")}
         </Button>
       ) : null}
 
@@ -658,7 +672,9 @@ export function SessionListScreen({
             <Pressable onPress={() => {}}>
               <Card style={styles.modalCard}>
                 <Text style={styles.modalTitle}>
-                  {createWorkspaceLocked ? "New Session" : "New Workspace"}
+                  {createWorkspaceLocked
+                    ? t("workspaces.newSession")
+                    : t("workspaces.newWorkspace")}
                 </Text>
                 <ScrollView
                   horizontal
@@ -737,7 +753,7 @@ export function SessionListScreen({
                     }}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    placeholder="Working directory"
+                    placeholder={t("workspaces.modal.workingDirectory")}
                     placeholderTextColor="#66727c"
                     style={styles.cwdInput}
                   />
@@ -748,7 +764,7 @@ export function SessionListScreen({
                     style={styles.modalSecondaryButton}
                     onPress={() => setCreateModalVisible(false)}
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                   <Button
                     disabled={!createCwd.trim() || creating}
@@ -757,7 +773,7 @@ export function SessionListScreen({
                     tone="primary"
                     onPress={confirmCreateSession}
                   >
-                    {creating ? "Starting..." : "Create"}
+                    {creating ? t("common.starting") : t("common.create")}
                   </Button>
                 </View>
               </Card>
@@ -785,14 +801,16 @@ export function SessionListScreen({
           >
             <Pressable onPress={() => {}}>
               <Card style={styles.modalCard}>
-                <Text style={styles.modalTitle}>Rename Session</Text>
+                <Text style={styles.modalTitle}>
+                  {t("workspaces.modal.renameSession")}
+                </Text>
                 <TextInput
                   value={renameTitle}
                   onChangeText={setRenameTitle}
                   autoCapitalize="sentences"
                   autoCorrect
                   maxLength={80}
-                  placeholder="Session title"
+                  placeholder={t("workspaces.modal.sessionTitle")}
                   placeholderTextColor="#66727c"
                   style={styles.cwdInput}
                 />
@@ -802,7 +820,7 @@ export function SessionListScreen({
                     style={styles.modalSecondaryButton}
                     onPress={() => setRenamingSession(null)}
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                   <Button
                     disabled={!renameTitle.trim()}
@@ -811,7 +829,7 @@ export function SessionListScreen({
                     tone="primary"
                     onPress={confirmRenameSession}
                   >
-                    Save
+                    {t("common.save")}
                   </Button>
                 </View>
               </Card>
@@ -867,11 +885,11 @@ export function SessionListScreen({
                         </View>
                         <View style={styles.manageDetails}>
                           <DetailRow
-                            label="Folder"
+                            label={t("workspaces.details.folder")}
                             value={formatCompactPath(session.cwd)}
                           />
                           <DetailRow
-                            label="Created"
+                            label={t("workspaces.details.created")}
                             value={formatAbsoluteTime(session.created_at)}
                           />
                         </View>
@@ -889,7 +907,7 @@ export function SessionListScreen({
                               openRenameModal(session);
                             }}
                           >
-                            Rename
+                            {t("workspaces.actions.rename")}
                           </Button>
                         </View>
                         <View style={styles.manageDangerRow}>
@@ -905,10 +923,10 @@ export function SessionListScreen({
                               }}
                             >
                               {closing
-                                ? "Closing..."
+                                ? t("workspaces.actions.closing")
                                 : external
-                                  ? "Forget"
-                                  : getCloseActionLabel(session)}
+                                  ? t("workspaces.actions.forget")
+                                  : getCloseActionLabel(session, t)}
                             </Button>
                           ) : null}
                           <Button
@@ -921,7 +939,9 @@ export function SessionListScreen({
                               onKillTmuxSession(session);
                             }}
                           >
-                            {killing ? "Killing..." : "Kill tmux"}
+                            {killing
+                              ? t("workspaces.actions.killing")
+                              : t("workspaces.actions.killTmux")}
                           </Button>
                         </View>
                       </>
@@ -946,7 +966,9 @@ export function SessionListScreen({
         >
           <Pressable onPress={() => {}}>
             <Card style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Provider Preferences</Text>
+              <Text style={styles.modalTitle}>
+                {t("workspaces.modal.providerPreferences")}
+              </Text>
               <ScrollView contentContainerStyle={styles.providerStack}>
                 {orderedProviders.map((provider, index) => {
                   const hidden = providerPreferences.hiddenKinds.includes(
@@ -972,7 +994,7 @@ export function SessionListScreen({
                               color={colors.success}
                               style={styles.defaultBadge}
                             >
-                              Default
+                              {t("common.default")}
                             </Badge>
                           ) : null}
                           {hidden ? (
@@ -981,7 +1003,7 @@ export function SessionListScreen({
                               color={colors.textMuted}
                               style={styles.defaultBadge}
                             >
-                              Hidden
+                              {t("common.hidden")}
                             </Badge>
                           ) : null}
                         </View>
@@ -991,24 +1013,28 @@ export function SessionListScreen({
                       </View>
                       <View style={styles.providerActions}>
                         <Button
-                          accessibilityLabel={`Move ${provider.displayName} up`}
+                          accessibilityLabel={t("workspaces.actions.moveUp", {
+                            provider: provider.displayName,
+                          })}
                           disabled={index === 0}
                           icon="chevronUp"
                           iconOnly
                           style={styles.providerActionButton}
                           onPress={() => moveProvider(provider.kind, -1)}
                         >
-                          Up
+                          {t("common.up")}
                         </Button>
                         <Button
-                          accessibilityLabel={`Move ${provider.displayName} down`}
+                          accessibilityLabel={t("workspaces.actions.moveDown", {
+                            provider: provider.displayName,
+                          })}
                           disabled={index === orderedProviders.length - 1}
                           icon="chevronDown"
                           iconOnly
                           style={styles.providerActionButton}
                           onPress={() => moveProvider(provider.kind, 1)}
                         >
-                          Down
+                          {t("common.down")}
                         </Button>
                         <Button
                           icon={hidden ? "eye" : "eyeOff"}
@@ -1016,7 +1042,7 @@ export function SessionListScreen({
                           style={styles.providerActionButton}
                           onPress={() => toggleProviderHidden(provider.kind)}
                         >
-                          {hidden ? "Show" : "Hide"}
+                          {hidden ? t("common.show") : t("common.hide")}
                         </Button>
                         <Button
                           disabled={hidden || isDefault || !provider.creatable}
@@ -1029,7 +1055,7 @@ export function SessionListScreen({
                           tone={isDefault ? "primary" : "secondary"}
                           onPress={() => setDefaultProvider(provider.kind)}
                         >
-                          Default
+                          {t("common.default")}
                         </Button>
                       </View>
                     </View>
@@ -1042,7 +1068,7 @@ export function SessionListScreen({
                   style={styles.modalSecondaryButton}
                   onPress={resetProviderPreferences}
                 >
-                  Reset
+                  {t("common.reset")}
                 </Button>
                 <Button
                   icon="check"
@@ -1050,7 +1076,7 @@ export function SessionListScreen({
                   tone="primary"
                   onPress={() => setProvidersModalVisible(false)}
                 >
-                  Done
+                  {t("common.done")}
                 </Button>
               </View>
             </Card>
@@ -1731,35 +1757,38 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function formatRelativeTime(value: string): string {
+function formatRelativeTime(
+  value: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) {
-    return "unknown";
+    return t("common.unknown");
   }
 
   const diffSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (diffSeconds < 60) {
-    return "just now";
+    return t("workspaces.time.justNow");
   }
 
   const diffMinutes = Math.floor(diffSeconds / 60);
   if (diffMinutes < 60) {
-    return `${diffMinutes}m ago`;
+    return t("workspaces.time.minutesAgo", { count: diffMinutes });
   }
 
   const diffHours = Math.floor(diffMinutes / 60);
   if (diffHours < 24) {
-    return `${diffHours}h ago`;
+    return t("workspaces.time.hoursAgo", { count: diffHours });
   }
 
   const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+  return t("workspaces.time.daysAgo", { count: diffDays });
 }
 
 function formatAbsoluteTime(value: string): string {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) {
-    return "unknown";
+    return i18n.t("common.unknown");
   }
 
   return new Intl.DateTimeFormat(undefined, {
@@ -1854,7 +1883,7 @@ function findSessionWorkspace(
     return matched;
   }
   return {
-    name: session.workspace_name ?? "Other Workspace",
+    name: session.workspace_name ?? i18n.t("workspaces.fallback.otherWorkspace"),
     path: UNASSIGNED_WORKSPACE_PATH,
     isGitRepository: Boolean(session.git_repository),
     status: "available",
@@ -1878,15 +1907,18 @@ function getWorkspaceDisplayName(workspace: WorkspaceDefinition): string {
 function basename(path: string): string {
   const normalized = path.replace(/\/+$/g, "");
   const parts = normalized.split("/").filter(Boolean);
-  return parts.at(-1) ?? "Workspace";
+  return parts.at(-1) ?? i18n.t("workspaces.fallback.workspace");
 }
 
-function getCloseActionLabel(session: CodexSession): string {
+function getCloseActionLabel(
+  session: CodexSession,
+  t: (key: string) => string,
+): string {
   if (session.status === "exited" || session.status === "archived") {
-    return "Remove";
+    return t("workspaces.actions.remove");
   }
 
-  return "Close Session";
+  return t("workspaces.actions.closeSession");
 }
 
 function getStatusColors(tone: "success" | "warning" | "danger" | "neutral"): {
