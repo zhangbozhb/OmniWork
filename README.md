@@ -36,6 +36,7 @@ pnpm dev:relay
 pnpm dev:mac
 pnpm dev:app
 pnpm dev:web
+pnpm app:setup:ios
 pnpm app:build:android:apk
 pnpm app:build:android:aab
 pnpm app:build:ios

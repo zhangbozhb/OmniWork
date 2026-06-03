@@ -9,6 +9,7 @@ import {
 import {
   Alert,
   AppState,
+  type AppStateStatus,
   Dimensions,
   Pressable,
   StatusBar,
@@ -22,6 +23,7 @@ import { useTranslation } from "react-i18next";
 
 import type {
   AgentProviderDefinition,
+  AppNetworkChangedPayload,
   AuthFailedPayload,
   CodexSession,
   FilesListPayload,
@@ -129,6 +131,11 @@ type ConnectionStatus =
   | "authenticating"
   | "authenticated"
   | "failed";
+type NetworkChangeDetails = {
+  networkType?: string;
+  isConnected?: boolean;
+  isInternetReachable?: boolean;
+};
 
 type AppSessionTransport = Omit<SessionTransport, "close"> & {
   connect(): Promise<void>;
@@ -154,6 +161,10 @@ type AppSessionTransport = Omit<SessionTransport, "close"> & {
    */
   pauseForBackground(): void;
   resumeForForeground(): void;
+  requestP2pReconnect(
+    reason: AppNetworkChangedPayload["reason"],
+    details?: NetworkChangeDetails,
+  ): void;
   /**
    * 是否运行在 Direct only 模式（由 transportPreference === "prefer_p2p" 推导）。
    */
@@ -229,6 +240,7 @@ function AppContent(): JSX.Element {
       getDefaultTerminalTextSize(Dimensions.get("window")),
     );
   const relayRef = useRef<AppSessionTransport | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const pendingCreateRef = useRef(false);
   const pendingAutoOpenSessionsRef = useRef(false);
   const pairingsRef = useRef<PairingConfig[]>([]);
@@ -510,21 +522,23 @@ function AppContent(): JSX.Element {
     };
   }, [pairing, transportPreference]);
 
-  // 阶段 5：进入后台时主动降级到 relay path（PeerConnection 在后台会被系统挂起），
-  // 回到前台后由下次 propose 周期重新尝试 upgrade。NetInfo 网络变化暂未接入，
-  // TODO(阶段 5)：订阅 NetInfo，发生网络切换时同样调用 forceDowngrade 并清理 backoff。
-  // 严格 P2P 模式下不能 forceDowngrade（那等价于把业务消息切回 Relay），改为
-  // pauseForBackground/resumeForForeground：暂停 ping/buffered 采样并暂停业务消息，
-  // 前台恢复后等下次 propose 重新建链。
+  // 进入后台时释放 P2P；回到前台后主动通知 Relay 清退避并立即 propose，
+  // 不再依赖下一轮被动升级窗口。strict P2P 下业务消息仍由 strict 队列暂存，
+  // 不会回退到 relay path 承载。
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (next) => {
       const relay = relayRef.current;
+      const previous = appStateRef.current;
+      appStateRef.current = next;
       if (!relay) {
         return;
       }
       if (relay.isStrictP2p()) {
         if (next === "active") {
           relay.resumeForForeground();
+          if (previous !== "active") {
+            relay.requestP2pReconnect("foreground_resume");
+          }
         } else {
           relay.pauseForBackground();
         }
@@ -532,9 +546,17 @@ function AppContent(): JSX.Element {
       }
       if (next !== "active") {
         relay.forceDowngrade("app_background");
+      } else if (previous !== "active") {
+        relay.requestP2pReconnect("foreground_resume");
       }
     });
     return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    return subscribeNetworkChanges((event) => {
+      relayRef.current?.requestP2pReconnect("network_changed", event);
+    });
   }, []);
 
   useEffect(() => {
@@ -1634,7 +1656,73 @@ function createAppSessionTransport(
     },
     pauseForBackground: () => transport.pauseForBackground(),
     resumeForForeground: () => transport.resumeForForeground(),
+    requestP2pReconnect: (reason, details = {}) => {
+      const appConnectionId = session.getAppConnectionId();
+      if (!appConnectionId) {
+        return;
+      }
+      coordinator.prepareForReconnect(reason);
+      transport.prepareForReconnect(reason);
+      session.send(
+        createMessage<AppNetworkChangedPayload>(
+          "app.network.changed",
+          {
+            app_connection_id: appConnectionId,
+            reason,
+            network_type: details.networkType,
+            is_connected: details.isConnected,
+            is_internet_reachable: details.isInternetReachable,
+          },
+          { device_id: pairing.deviceId },
+        ),
+      );
+    },
     isStrictP2p: () => transport.isStrictP2p(),
+  };
+}
+
+function subscribeNetworkChanges(
+  handler: (event: NetworkChangeDetails) => void,
+): () => void {
+  const maybeWindow =
+    typeof window === "undefined"
+      ? null
+      : (window as Window & {
+          addEventListener?: Window["addEventListener"];
+          removeEventListener?: Window["removeEventListener"];
+        });
+  const maybeNavigator =
+    typeof navigator === "undefined"
+      ? null
+      : (navigator as Navigator & {
+          connection?: {
+            type?: string;
+            effectiveType?: string;
+            addEventListener?: (type: "change", listener: () => void) => void;
+            removeEventListener?: (
+              type: "change",
+              listener: () => void,
+            ) => void;
+          };
+        });
+
+  const emit = () => {
+    handler({
+      networkType:
+        maybeNavigator?.connection?.type ??
+        maybeNavigator?.connection?.effectiveType,
+      isConnected: maybeNavigator?.onLine,
+    });
+  };
+
+  maybeWindow?.addEventListener?.("online", emit);
+  maybeWindow?.addEventListener?.("offline", emit);
+  maybeNavigator?.connection?.addEventListener?.("change", emit);
+
+  return () => {
+    maybeWindow?.removeEventListener?.("online", emit);
+    maybeWindow?.removeEventListener?.("offline", emit);
+    maybeNavigator?.connection?.removeEventListener?.("change", emit);
   };
 }
 

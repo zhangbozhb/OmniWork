@@ -47,26 +47,28 @@ function isStrictControlMessage(envelopeType: string): boolean {
 
 const DRAIN_DELAY_MS = 100;
 const PING_INTERVAL_MS = 5_000;
-const PING_TIMEOUT_MS = 1_000;
-const PING_TIMEOUT_THRESHOLD = 3;
+const PING_TIMEOUT_MS = 2_500;
+const PING_TIMEOUT_THRESHOLD = 4;
 /**
  * strict 模式下心跳采用更宽松的阈值，避免 4G/5G 弱网偶发丢包就触发不可恢复的 forceClose。
- * - INTERVAL 缩短到 3s：仍然在合理范围内快速发现连接断裂；
- * - TIMEOUT 放宽到 3s：覆盖 RTT 较高的跨大洲 / 移动网络场景；
- * - THRESHOLD 提升到 5：单次成功收到 pong 即清零，连续 5 次未收到才算"真死"。
+ * - INTERVAL 使用 4s：降低移动弱网和 JS 短暂停顿下的探测噪声；
+ * - TIMEOUT 放宽到 5s：覆盖 RTT 较高的跨大洲 / 移动网络场景；
+ * - THRESHOLD 提升到 6：单次成功收到 pong 即清零，连续 6 次未收到才算"真死"。
  */
-const STRICT_PING_INTERVAL_MS = 3_000;
-const STRICT_PING_TIMEOUT_MS = 3_000;
-const STRICT_PING_TIMEOUT_THRESHOLD = 5;
+const STRICT_PING_INTERVAL_MS = 4_000;
+const STRICT_PING_TIMEOUT_MS = 5_000;
+const STRICT_PING_TIMEOUT_THRESHOLD = 6;
+const PING_TIMER_STALL_GRACE_MS = 5_000;
+const STRICT_PING_TIMER_STALL_GRACE_MS = 8_000;
 const BUFFERED_AMOUNT_LIMIT = 1_000_000;
 const BUFFERED_AMOUNT_SAMPLE_INTERVAL_MS = 1_000;
 const BUFFERED_AMOUNT_OVERFLOW_SECONDS = 5;
-const ICE_DISCONNECTED_GRACE_MS = 3_000;
+const ICE_DISCONNECTED_GRACE_MS = 8_000;
 /**
- * strict 模式下 ICE disconnected → connected 的容忍窗口拉长到 10s，
+ * strict 模式下 ICE disconnected → connected 的容忍窗口拉长到 16s，
  * 避免移动端 LTE/Wi-Fi 漫游瞬间的 ICE 抖动直接 forceClose。
  */
-const STRICT_ICE_DISCONNECTED_GRACE_MS = 10_000;
+const STRICT_ICE_DISCONNECTED_GRACE_MS = 16_000;
 /**
  * strict 模式下 P2P 未就绪期间业务消息暂存队列的上限。超过此上限说明
  * 协商窗口异常长（>10s 的 negotiation 超时配合上层重试已足够暴露问题），
@@ -473,6 +475,17 @@ export class MobileSessionTransport implements SessionTransport {
     this.emitEvent({ type: "background_resume" });
   }
 
+  /**
+   * 前台恢复 / 网络变化时主动放弃旧 P2P peer，等待 Relay 立即下发新 propose。
+   * strict 模式下 currentPath 会标回 relay 入口，但业务消息仍受 strict 守门
+   * 暂存，不会回退到 relay path 发送。
+   */
+  prepareForReconnect(reason: string): void {
+    this.emitEvent({ type: "downgrade", reason });
+    this.detachP2pPeer();
+    this.resetPathState();
+  }
+
   isStrictP2p(): boolean {
     return this.strictP2p;
   }
@@ -652,6 +665,15 @@ export class MobileSessionTransport implements SessionTransport {
       return;
     }
     this.pendingPings.delete(seq);
+    const timeoutMs = this.strictP2p ? STRICT_PING_TIMEOUT_MS : PING_TIMEOUT_MS;
+    const stallGraceMs = this.strictP2p
+      ? STRICT_PING_TIMER_STALL_GRACE_MS
+      : PING_TIMER_STALL_GRACE_MS;
+    if (Date.now() - pending.sentAt > timeoutMs + stallGraceMs) {
+      // JS 线程被 GC / 后台恢复 / 长任务卡住时，timeout 回调会延迟触发。
+      // 这种情况先丢弃本次探测，等待下一轮 ping 验证，避免误判链路死亡。
+      return;
+    }
     this.pongTimeoutCount += 1;
     this.emitEvent({
       type: "ping_timeout",

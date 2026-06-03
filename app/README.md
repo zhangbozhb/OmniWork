@@ -107,6 +107,12 @@ iOS unsigned smoke build (local / CI compile check, do not distribute):
 pnpm --filter @omniwork/app build:ios:dev
 ```
 
+Prepare the iOS workspace for building in Xcode:
+
+```sh
+pnpm --filter @omniwork/app setup:ios
+```
+
 Use `pnpm --filter @omniwork/app pods:ios` to force a full `pod install` after
 native dependency changes.
 

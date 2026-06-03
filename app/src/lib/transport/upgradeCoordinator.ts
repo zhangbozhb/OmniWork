@@ -315,6 +315,30 @@ export class UpgradeCoordinator {
     this.resetToIdle();
   }
 
+  /**
+   * App 前台恢复 / 网络变化时，本地放弃旧 peer 并回到 idle，允许 Relay 立即
+   * propose 新的 P2P 链路。与 downgrade() 不同，本方法不会触发 strict
+   * onForceClose，也不会把业务路径切到 relay。
+   */
+  prepareForReconnect(reason: string, notifyRemote = true): void {
+    if (this.state === "idle") {
+      return;
+    }
+    const upgradeId = this.upgradeId;
+    if (notifyRemote && upgradeId) {
+      this.sendUpgrade<TunnelUpgradeDowngradePayload>(
+        "tunnel.upgrade.downgrade",
+        {
+          upgrade_id: upgradeId,
+          app_connection_id: this.requireAppConnectionId(),
+          reason,
+        },
+      );
+    }
+    this.cleanupPeer();
+    this.resetToIdle();
+  }
+
   private fail(reason: string): void {
     this.state = "failed";
     this.downgrade(reason);

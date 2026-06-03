@@ -32,6 +32,7 @@ export type MessageType =
   | "auth.verify"
   | "auth.ok"
   | "auth.failed"
+  | "app.network.changed"
   | "e2e.handshake.init"
   | "e2e.handshake.reply"
   | "e2e.ready"
@@ -142,6 +143,16 @@ export interface MobileConnectPayload {
    *   backoff 约束）；Web 等无 PeerConnection 的环境下 session 直接不可建立。
    */
   transport_preference?: TransportPreference;
+}
+
+export type AppNetworkChangedReason = "foreground_resume" | "network_changed";
+
+export interface AppNetworkChangedPayload {
+  app_connection_id: string;
+  reason: AppNetworkChangedReason;
+  network_type?: string;
+  is_connected?: boolean;
+  is_internet_reachable?: boolean;
 }
 
 export type TransportPreference = "auto" | "relay_only" | "prefer_p2p";

@@ -76,9 +76,9 @@ App                       Relay                       Agent
 
 | 触发源 | 条件 | reason |
 |---|---|---|
-| 应用层心跳 | `transport.pong` 连续超时 ≥ 3 次（间隔 5s，单次超时 1s） | `pong_timeout` |
+| 应用层心跳 | `transport.pong` 连续超时 ≥ 4 次（间隔 5s，单次超时 2.5s；strict 模式为 4s / 5s / 6 次） | `pong_timeout` |
 | DataChannel 背压 | `bufferedAmount > 1MB` 持续 ≥ 5s（每 1s 采样） | `buffered_overflow` |
-| ICE 状态 | `disconnected` 持续 ≥ 3s | `ice_disconnected` |
+| ICE 状态 | `disconnected` 持续 ≥ 8s（strict 模式 16s） | `ice_disconnected` |
 | ICE 状态 | `failed` | `ice_failed` |
 | App 生命周期 | `AppState` ≠ `active`（进入 background / inactive） | `app_background` |
 | 客户端协商 | 升级总超时 | `timeout` |
@@ -86,9 +86,9 @@ App                       Relay                       Agent
 | 任意端业务异常 | 调用 `forceDowngrade(reason)` | 自定义 |
 | 客户端主动关闭 | App `transport.close()` 时 `currentPath==='p2p'`（如切换 `transport_preference`、退出账号） | `client_closing` |
 
-降级后 Relay 端按 `(device_id, app_connection_id)` 累计失败次数指数退避：30s → 2min → 10min → 永不再尝试（直到对应 App 重连或重新进入流程）。双端任一次 `committed` 成功都会清零该 App 连接的 backoff 计数。`client_closing` 例外——它表达"用户主动切换偏好/退出账号"的礼貌降级，仅用于让对端立即清理 PeerConnection 与 metrics 计数，不计入退避，避免 `prefer_p2p ↔ relay_only` 反复切换时第二次回到 `prefer_p2p` 落入 `backoff_active` 死锁。
+降级后 Relay 端按 `(device_id, app_connection_id)` 累计失败次数指数退避：30s → 2min → 10min → 永不再尝试（直到对应 App 重连或重新进入流程）。双端任一次 `committed` 成功都会清零该 App 连接的 backoff 计数。`client_closing` / `app_background` / `foreground_resume` / `network_changed` 例外——它们表达用户主动关闭、生命周期恢复或网络环境变化，仅用于清理旧 PeerConnection 与 metrics 计数，不计入退避，避免网络恢复后落入 `backoff_active`。
 
-> 严格 P2P 模式（`transport_preference=prefer_p2p`）下，上述任意触发源都不会切回 relay path：`UpgradeCoordinator` 仍会发送 `tunnel.upgrade.downgrade`（用于 metrics 与退避），但本地不调用 `switchPath('relay')`，而是经 `SessionTransport.forceClose(reason)` 关闭整个 session。`AppState` 进入后台时改走 `pauseForBackground()` / `resumeForForeground()`，不算协商失败，不计入退避。详见 §6.1。
+> 严格 P2P 模式（`transport_preference=prefer_p2p`）下，上述任意触发源都不会切回 relay path：`UpgradeCoordinator` 仍会发送 `tunnel.upgrade.downgrade`（用于 metrics 与退避），但本地不调用 `switchPath('relay')`，而是经 `SessionTransport.forceClose(reason)` 关闭整个 session。`AppState` 进入后台时改走 `pauseForBackground()`；前台恢复和网络变化会发送 `app.network.changed`，Relay 清理该 App 连接的 backoff 并立即 propose 新 P2P，不算协商失败，不触发 `forceClose`。详见 §6.1。
 
 ## 5. Relay 配置项
 
@@ -177,9 +177,9 @@ App 端偏好的双层来源：
 - **close 与 forceClose 正交（P2-3E）**：`close()` 表达"session 生命周期结束"，仅做 detach + 释放回调注册表；`forceClose()` 表达"strict 模式下不可用，需上报上层"。两者互不调用，`close()` 不会触发 `forceCloseHandler`，避免 sessionTransport 关停时被误识别为 strict 失败。两者均设 `closed` / `forceClosed` 重入哨兵。
 - **状态机完整 reset**：`forceClose` 与（agent 端的）`configureStrictP2p` 都会调用 `resetPathState()`，把 `currentPath` 切回 `relay`、清掉 `outboundQueue / switching` 标记并广播 `path_change`；让 transport 跨多次 mobile 连接复用时回归"刚创建未升级"的初始态，避免下一轮 propose 因 `currentPath==='p2p'` 残留导致 `switchPath('p2p')` 被 short-circuit。
 - **降级处理**：协商失败（`timeout` / `peer_unavailable` / `ice_failed` 等）或运行期降级触发源（`pong_timeout` / `buffered_overflow` / `ice_disconnected` 等）都不会回退 relay。`UpgradeCoordinator` 发出 `tunnel.upgrade.downgrade`（仍计入 Relay metrics 与退避）后，调用 `SessionTransport.forceClose(reason)` 关闭整个 session。业务上层收到 `force_close` 事件，由用户决定是否重连或切换偏好。
-- **心跳/超时阈值**：strict 模式下 `SessionTransport` 使用更宽松的健康阈值（`STRICT_PING_INTERVAL=3s` / `STRICT_PING_TIMEOUT=3s` / 连续 5 次未收到 pong 才计入失败 / `STRICT_ICE_DISCONNECTED_GRACE=10s`），避免移动网络瞬时丢包或 ICE 抖动直接触发不可恢复的 `forceClose`。`auto` 模式仍走原始阈值（5s / 1s / 3 次 / 3s）。
+- **心跳/超时阈值**：strict 模式下 `SessionTransport` 使用更宽松的健康阈值（`STRICT_PING_INTERVAL=4s` / `STRICT_PING_TIMEOUT=5s` / 连续 6 次未收到 pong 才计入失败 / `STRICT_ICE_DISCONNECTED_GRACE=16s`），并在 timeout 回调明显晚于预期时视为 JS 线程卡顿而跳过本次误判。`auto` 模式为 5s / 2.5s / 4 次 / 8s。
 - **Relay 守门主动下发 downgrade**：`prefer_p2p` 偏好被 Relay 端 `enabled=false` / `deviceBlocklist` / 退避窗口命中时，orchestrator 不再静默吞掉 propose，而是主动向 mobile 下发 `tunnel.upgrade.downgrade(reason="strict_unavailable:<cause>")`（cause ∈ `relay_disabled` / `blocklisted` / `backoff_active`），并写入 `metrics.downgrade["strict_unavailable:<cause>"]`。App 端在收到该 reason 时直接调用 `transport.forceClose(reason)`，由 UI 把原因翻译成面向用户的友好文案。
-- **后台处理**：`AppState` 进入 background / inactive 时走 `pauseForBackground()`，标记 `awaiting_resume`，session 保持但暂停 P2P 心跳；回到 foreground 时 `resumeForForeground()` 重新提议升级。该过程不算协商失败，不增加退避，也不触发 `forceClose`。
+- **后台与网络变化处理**：`AppState` 进入 background / inactive 时走 `pauseForBackground()`，session 保持但暂停 P2P 心跳；回到 foreground 时 App 先本地复位旧 coordinator/peer，再发送 `app.network.changed(reason="foreground_resume")`，Relay 清退避并立即 propose。浏览器 `online/offline` / Network Information API 变化会发送 `reason="network_changed"` 走同一路径。该过程不算协商失败，不增加退避，也不触发 `forceClose`。
 - **TURN 默认禁用**：`webRtcPeerAdapter` 在 `onicecandidate` 环节过滤掉所有 `typ relay` candidate，确保仅打通 host / srflx / prflx 直连路径。如严苛 NAT 下 ICE 失败，按上一条直接关闭 session。
 - **Web/wrtc 加载失败**：`peerFactory` 返回 null 时 coordinator 立即 `downgrade("peer_unavailable")`，严格模式下转 `forceClose`，不建立 session。
 - **Metrics**：协商期失败仍按 `failed[reason]` 计入（`timeout` / `peer_unavailable` / `ice_failed` 等），Relay backoff 与 `auto` 模式一致；可在监控侧按 `prefs.prefer_p2p` × `failed[reason]` 维度过滤出严格模式失败率。

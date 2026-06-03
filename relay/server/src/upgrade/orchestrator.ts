@@ -83,6 +83,12 @@ export interface OrchestratorMetricsSnapshot extends OrchestratorMetricsState {
  * 仅用于 /metrics 输出 p50/p95/max；超过窗口大小后丢弃最旧值。
  */
 const UPGRADE_DURATION_WINDOW = 100;
+const BACKOFF_EXEMPT_REASONS = new Set([
+  "app_background",
+  "foreground_resume",
+  "network_changed",
+  "client_closing",
+]);
 
 export interface RelayUpgradeOrchestratorOptions {
   config: UpgradeOrchestratorConfig;
@@ -274,6 +280,51 @@ export class RelayUpgradeOrchestrator {
   }
 
   /**
+   * App 端在前台恢复或网络变化时调用：清理该 App 连接的 P2P 退避，并在
+   * E2E/agent 已就绪时立即发起新一轮 propose，避免等待下一次被动触发。
+   */
+  handleConnectivityChanged(
+    deviceId: string,
+    mobile: UpgradeOrchestratorConnection,
+  ): string | null {
+    const preference = this.resolvePreference(mobile);
+    const appKey = sessionKey(deviceId, mobile.id);
+    this.backoffByApp.delete(appKey);
+    this.activeP2pApps.delete(appKey);
+
+    if (!this.config.enabled) {
+      this.notifyStrictUnavailable(
+        deviceId,
+        mobile,
+        preference,
+        "relay_disabled",
+      );
+      return null;
+    }
+    if (this.config.deviceBlocklist.has(deviceId)) {
+      this.notifyStrictUnavailable(deviceId, mobile, preference, "blocklisted");
+      return null;
+    }
+    if (preference === "relay_only") {
+      return null;
+    }
+    if (
+      preference !== "prefer_p2p" &&
+      !shouldRollout(deviceId, this.config.rolloutPercent)
+    ) {
+      return null;
+    }
+    if (this.hasInFlightForApp(deviceId, mobile.id)) {
+      return null;
+    }
+    const agent = this.getAgent(deviceId);
+    if (!agent) {
+      return null;
+    }
+    return this.triggerUpgrade(deviceId, mobile, agent, preference === "prefer_p2p");
+  }
+
+  /**
    * 处理 Relay 透传的 tunnel.upgrade.committed / tunnel.upgrade.downgrade。
    * 其他升级控制消息（offer/answer/candidate）不会进入 metrics 统计。
    */
@@ -330,7 +381,7 @@ export class RelayUpgradeOrchestrator {
         // 失败；不应纳入 backoff 表，否则 prefer_p2p ↔ relay_only 反复切换时
         // 第二次切回 prefer_p2p 会落入 backoff_active 永远不发 propose，
         // strict 模式下业务消息全部堆积在 strictPendingQueue 触发 UI 卡死。
-        if (reason !== "client_closing") {
+        if (!BACKOFF_EXEMPT_REASONS.has(reason)) {
           this.recordFailure(deviceId, reason, appConnectionId);
         }
       }
@@ -341,7 +392,6 @@ export class RelayUpgradeOrchestrator {
    * 记一次失败，并按文档 4.2 的退避表更新 backoffByApp：
    * 1 次 → 30s，2 次 → 2min，3 次 → 10min，4+ → MAX_SAFE_INTEGER。
    *
-   * TODO(阶段 5)：收到 app.network.changed 时清空 backoffByApp 中的相关条目。
    */
   recordFailure(
     deviceId: string,
@@ -366,6 +416,18 @@ export class RelayUpgradeOrchestrator {
       entry.nextAvailableAt = Number.MAX_SAFE_INTEGER;
     }
     this.backoffByApp.set(key, entry);
+  }
+
+  private hasInFlightForApp(deviceId: string, appConnectionId: string): boolean {
+    for (const entry of this.inFlightUpgrades.values()) {
+      if (
+        entry.deviceId === deviceId &&
+        entry.appConnectionId === appConnectionId
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

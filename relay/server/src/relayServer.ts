@@ -10,6 +10,7 @@ import {
   createMessage,
   isTransportPreference,
   type AgentHelloPayload,
+  type AppNetworkChangedPayload,
   type AuthFailedPayload,
   type AuthOkPayload,
   type BusinessSecurityMode,
@@ -286,6 +287,12 @@ export class RelayServer {
       case "auth.failed":
         this.handleAuthResult(connection, message);
         break;
+      case "app.network.changed":
+        this.handleAppNetworkChanged(
+          connection,
+          message as MessageEnvelope<AppNetworkChangedPayload>,
+        );
+        break;
       case "e2e.handshake.init":
         this.handleE2EHandshakeInit(
           connection,
@@ -521,6 +528,37 @@ export class RelayServer {
         { device_id: pending.deviceId },
       ),
     );
+  }
+
+  private handleAppNetworkChanged(
+    connection: RelayConnection,
+    message: MessageEnvelope<AppNetworkChangedPayload>,
+  ): void {
+    if (
+      connection.role !== "mobile" ||
+      !connection.authenticated ||
+      !connection.deviceId ||
+      message.payload.app_connection_id !== connection.id
+    ) {
+      this.rejectInvalidState(connection, message.type);
+      return;
+    }
+    if (!this.isBusinessChannelReadyForApp(connection.id, connection.deviceId)) {
+      this.rejectInvalidState(connection, message.type);
+      return;
+    }
+
+    const upgradeId = this.orchestrator.handleConnectivityChanged(
+      connection.deviceId,
+      connection,
+    );
+    logUpgradeEvent({
+      event: message.type,
+      device_id: connection.deviceId,
+      upgrade_id: upgradeId ?? undefined,
+      reason: message.payload.reason,
+      source_role: connection.role,
+    });
   }
 
   private handleAuthResult(

@@ -10,6 +10,7 @@
     "ios": "pnpm run generate:xterm-assets && react-native run-ios",
     "build:android:apk": "pnpm run generate:xterm-assets && react-native build-android --mode release --tasks assembleRelease",
     "build:android:aab": "pnpm run generate:xterm-assets && react-native build-android --mode release --tasks bundleRelease",
+    "setup:ios": "pnpm run generate:xterm-assets && pnpm run pods:ios:ensure",
     "pods:ios": "cd ios && mkdir -p ../.cocoapods-home && CP_HOME_DIR=\"$PWD/../.cocoapods-home\" pod install",
     "pods:ios:ensure": "node ./scripts/ensureIosPods.mjs",
     "build:ios:dev": "pnpm run generate:xterm-assets && pnpm run pods:ios:ensure && react-native build-ios --mode Release --extra-params \"CODE_SIGNING_ALLOWED=NO\"",
