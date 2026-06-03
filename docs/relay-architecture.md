@@ -45,7 +45,7 @@
 - 安全态：App 通过 `mobile.connect` + `auth.proof` 完成 Relay 接入鉴权后，必须继续完成 App-Agent E2E 握手；业务消息只允许通过 `e2e.message` 传输。
 - Relay 为每个 mobile WebSocket 分配 canonical `app_connection_id`；E2E 握手、ready 和密文消息都按该连接 ID 绑定并定向路由。
 - Relay 只在对应 App 的 E2E pair ready 后触发 P2P propose；P2P 升级按 `app_connection_id` 独立编排。
-- `tunnel.upgrade.propose` 是 Relay 定向升级提示；演进 offer / answer / candidate / committed / downgrade 通过 App-Agent E2E 通道承载。
+- `tunnel.upgrade.propose` 是 Relay 定向升级提示；offer / answer / candidate / committed / downgrade 属于 P2P 控制面信令，只在 App-Agent E2E pair ready 后由 Relay 按 `app_connection_id` 透传。业务 payload 仍必须通过 `e2e.message` 承载，SDP/ICE 信令不被视为业务明文。
 
 ### 3.2 协商
 

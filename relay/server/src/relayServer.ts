@@ -337,10 +337,8 @@ export class RelayServer {
       case "tunnel.upgrade.candidate":
       case "tunnel.upgrade.committed":
       case "tunnel.upgrade.downgrade":
-        if (this.shouldRejectPlaintextBusiness(connection)) {
-          this.rejectPlaintextBusiness(connection, message.type);
-          return;
-        }
+        // P2P upgrade 信令是 Relay 控制面消息，不是业务明文 payload。E2E
+        // required 模式下只要求 App-Agent E2E pair 已就绪，然后允许 Relay 透传。
         if (
           this.businessSecurityModeFor(connection) === "e2e_required" &&
           !this.isE2EPairReady(connection)
@@ -1059,8 +1057,7 @@ function isPlaintextBusinessMessage(type: string): boolean {
     type.startsWith("workspace.") ||
     type.startsWith("files.") ||
     type.startsWith("git.") ||
-    type.startsWith("codex.") ||
-    type.startsWith("tunnel.upgrade.")
+    type.startsWith("codex.")
   );
 }
 

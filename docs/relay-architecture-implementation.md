@@ -137,7 +137,7 @@ closed
 P2P 已经作为传输能力落地；E2E 改造对 P2P 控制面做了如下收口：
 
 - relay path 和 p2p path 使用统一 E2E 安全模型。
-- `tunnel.upgrade.propose` 仅作为 Relay 定向升级提示；演进信令走 E2E。
+- `tunnel.upgrade.propose` 仅作为 Relay 定向升级提示；offer / answer / candidate / committed / downgrade 属于 P2P 控制面信令，只在对应 App-Agent E2E pair ready 后由 Relay 按 `app_connection_id` 透传，不承载业务 payload。
 - Relay 自动 propose 只在对应 App 的 E2E pair ready 后触发。
 - `/debug/upgrade` 必须显式传入 `app_connection_id`，并要求对应 E2E pair ready。
 - 路径切换不能引入明文业务 fallback。

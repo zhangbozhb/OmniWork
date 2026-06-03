@@ -18,7 +18,7 @@ MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密
 - 同一个 Agent 已支持多个 App 同时连接；每个 App 使用 Relay 分配的 `app_connection_id` 建立独立 E2E session。
 - `packages/e2e-noise` 已覆盖 NNpsk0 握手、ChaCha20-Poly1305 加解密、`seq` 防重放、篡改检测和 key mismatch 测试。
 - `auth.proof` 仍只用于 Relay 接入校验和失败限流；Agent 额外记录已处理 nonce，拒绝同一 `key_id + nonce` 的 `auth.verify` 重放。
-- P2P per App connection 已完成基础收口：Relay 只对 E2E ready 的 App 连接触发 propose，演进信令按 `app_connection_id` 绑定并复用 App-Agent E2E 通道。
+- P2P per App connection 已完成基础收口：Relay 只对 E2E ready 的 App 连接触发 propose，升级控制信令按 `app_connection_id` 绑定并由 Relay 透传；业务 payload 仍复用 App-Agent E2E 通道。
 
 ## 设计基线
 
@@ -26,8 +26,8 @@ MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密
 - Relay 不可信，只负责外层路由、状态校验、限流和升级协调。
 - P2P 是传输路径优化，不能单独作为业务安全边界。
 - 默认模式下所有业务消息必须封装为 `e2e.message`，Relay 不转发明文 `session.*`、
-  `terminal.*`、`workspace.*`、`files.*`、`git.*`、`codex.*`、
-  `tunnel.upgrade.*`。
+  `terminal.*`、`workspace.*`、`files.*`、`git.*`、`codex.*`。`tunnel.upgrade.*`
+  是 P2P 控制面信令，只允许在对应 App-Agent E2E pair ready 后按 `app_connection_id` 透传。
 - Agent 可通过 `OMNIWORK_AGENT_REQUIRE_E2E=false` 显式声明
   `business_security_mode=plaintext_allowed`；同一 Relay 可同时承载
   `e2e_required` 与 `plaintext_allowed` Agent，并按目标 Agent 模式路由。
@@ -84,6 +84,6 @@ MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密
 
 - Relay path 和 p2p path 复用同一个 App-Agent E2E session。
 - P2P 切换不重新暴露业务明文，也不新增明文 fallback。
-- `tunnel.upgrade.propose` 是 Relay 定向升级提示；offer / answer / candidate / committed / downgrade 通过 E2E 密文通道传递。
+- `tunnel.upgrade.propose` 是 Relay 定向升级提示；offer / answer / candidate / committed / downgrade 是 P2P 控制面信令，只在 E2E pair ready 后由 Relay 按 `app_connection_id` 透传。
 - P2P 升级失败只影响路径选择，不影响业务 payload 的 E2E 安全。
 - P2P 多 App 实现边界记录在 `p2p-per-app-connection.md`。

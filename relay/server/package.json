@@ -9,7 +9,7 @@
     "start": "node --experimental-strip-types src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types src/main.ts --check"
+    "test": "node --experimental-strip-types tests/upgrade/orchestrator.test.ts && node --experimental-strip-types tests/relayServer.test.ts && node --experimental-strip-types src/main.ts --check"
   },
   "dependencies": {
     "@omniwork/protocol-ts": "workspace:*"

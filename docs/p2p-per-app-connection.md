@@ -22,7 +22,7 @@ P2P 升级粒度已从 `device_id` 下沉到 `(device_id, app_connection_id)`。
 - `tunnel.upgrade.*` 必须携带 `app_connection_id`。
 - Relay 以 mobile WebSocket connection id 作为 canonical `app_connection_id`。
 - `tunnel.upgrade.propose` 由 Relay 按已 ready 的 App 连接定向下发，只作为 P2P 升级提示。
-- offer / answer / candidate / committed / downgrade 继续通过 App-Agent E2E 封装传递。
+- offer / answer / candidate / committed / downgrade 属于 P2P 控制面信令，只在对应 App-Agent E2E pair ready 后由 Relay 按 `app_connection_id` 透传；业务 payload 仍通过 App-Agent E2E 封装传递。
 - Mobile -> Agent 与 Agent -> Mobile 的升级控制消息都必须绑定同一个 `app_connection_id`。
 
 ## Relay 改造
