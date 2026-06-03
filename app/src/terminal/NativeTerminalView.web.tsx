@@ -61,6 +61,7 @@ export function NativeTerminalView({
   const isPointerDownRef = useRef(false);
   const isUserScrollingRef = useRef(false);
   const pendingFrameRef = useRef<string | null>(null);
+  const lastWrittenFrameRef = useRef<string | null>(null);
   const scrollUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -73,6 +74,18 @@ export function NativeTerminalView({
   onResizeRef.current = onResize;
   readOnlyRef.current = readOnly;
   const selectableText = useMemo(() => toSelectableText(frame), [frame]);
+
+  const writeSnapshotFrame = useCallback(
+    (terminal: Terminal, nextFrame: string): void => {
+      if (lastWrittenFrameRef.current === nextFrame) {
+        return;
+      }
+      lastWrittenFrameRef.current = nextFrame;
+      terminal.reset();
+      terminal.write(nextFrame);
+    },
+    [],
+  );
 
   const reportSize = useCallback(() => {
     const terminal = terminalRef.current;
@@ -171,8 +184,7 @@ export function NativeTerminalView({
       const pendingFrame = pendingFrameRef.current;
       if (pendingFrame !== null) {
         pendingFrameRef.current = null;
-        terminal.reset();
-        terminal.write(pendingFrame);
+        writeSnapshotFrame(terminal, pendingFrame);
       }
     };
     host.addEventListener("pointerdown", handlePointerDown);
@@ -193,8 +205,7 @@ export function NativeTerminalView({
         const pendingFrame = pendingFrameRef.current;
         if (pendingFrame !== null) {
           pendingFrameRef.current = null;
-          terminal.reset();
-          terminal.write(pendingFrame);
+          writeSnapshotFrame(terminal, pendingFrame);
         }
       }, SCROLL_LOCK_MS);
     };
@@ -284,9 +295,8 @@ export function NativeTerminalView({
       pendingFrameRef.current = frame;
       return;
     }
-    terminal.reset();
-    terminal.write(frame);
-  }, [frame]);
+    writeSnapshotFrame(terminal, frame);
+  }, [frame, writeSnapshotFrame]);
 
   // 字号变化后交给 xterm 重新实测可见 rows/cols，再由 reportSize 同步给后端。
   useEffect(() => {

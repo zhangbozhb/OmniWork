@@ -1,5 +1,11 @@
+import {
+  P2P_CHANNEL_KINDS,
+  P2P_CHANNEL_LABELS,
+  p2pChannelKindFromLabel,
+} from "../../../../packages/protocol-ts/src/index";
 import type {
   IceCandidateInit,
+  P2pChannelKind,
   PeerState,
   WebRtcPeerAdapter,
 } from "../../../../packages/protocol-ts/src/index";
@@ -16,7 +22,7 @@ export interface MobileWebRtcPeerAdapterOptions {
 }
 
 type CandidateHandler = (c: IceCandidateInit) => void;
-type DataHandler = (data: string) => void;
+type DataHandler = (data: string, channel?: P2pChannelKind) => void;
 type StateHandler = (state: PeerState) => void;
 
 interface WrtcModule {
@@ -48,12 +54,11 @@ function loadWrtc(): WrtcModule | null {
  * dataChannel 尚未 open 时 send() 的最多暂存条数，防御 SCTP 握手卡顿场景。
  */
 const PENDING_SEND_LIMIT = 256;
-
 class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
   private readonly pc: any;
   private readonly mod: WrtcModule;
   private readonly role: "offerer" | "answerer";
-  private dataChannel: any = null;
+  private readonly dataChannels = new Map<P2pChannelKind, any>();
   private readonly candidateHandlers = new Set<CandidateHandler>();
   private readonly dataHandlers = new Set<DataHandler>();
   private readonly stateHandlers = new Set<StateHandler>();
@@ -61,7 +66,7 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
    * dataChannel 尚未 open 时 send() 的暂存队列；onopen 后一次性 flush。
    * 解决 ICE connected 与 SCTP open 不同步导致 commit 后首批业务消息被静默丢弃的问题。
    */
-  private pendingSends: string[] = [];
+  private pendingSends = new Map<P2pChannelKind, string[]>();
   private closed = false;
 
   constructor(pc: any, mod: WrtcModule, role: "offerer" | "answerer") {
@@ -100,10 +105,27 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
     pc.onconnectionstatechange = emitState;
 
     if (this.role === "offerer") {
-      this.attachDataChannel(pc.createDataChannel("omniwork"));
+      this.attachDataChannel(
+        "control",
+        pc.createDataChannel(P2P_CHANNEL_LABELS.control),
+      );
+      this.attachDataChannel(
+        "input",
+        pc.createDataChannel(P2P_CHANNEL_LABELS.input),
+      );
+      this.attachDataChannel(
+        "display",
+        pc.createDataChannel(P2P_CHANNEL_LABELS.display, {
+          ordered: false,
+          maxRetransmits: 1,
+        }),
+      );
     } else {
       pc.ondatachannel = (event: any) => {
-        this.attachDataChannel(event.channel);
+        this.attachDataChannel(
+          p2pChannelKindFromLabel(event.channel?.label),
+          event.channel,
+        );
       };
     }
   }
@@ -132,8 +154,8 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
     }
   }
 
-  private attachDataChannel(channel: any): void {
-    this.dataChannel = channel;
+  private attachDataChannel(kind: P2pChannelKind, channel: any): void {
+    this.dataChannels.set(kind, channel);
     try {
       channel.binaryType = "arraybuffer";
     } catch {
@@ -141,14 +163,18 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
     }
     channel.onopen = () => {
       // SCTP 握手完成：先 flush 暂存的业务消息，再向上层广播 connected。
-      this.flushPendingSends();
-      for (const handler of this.stateHandlers) {
-        handler("connected");
+      this.flushPendingSends(kind);
+      if (kind === "control") {
+        for (const handler of this.stateHandlers) {
+          handler("connected");
+        }
       }
     };
     channel.onclose = () => {
-      for (const handler of this.stateHandlers) {
-        handler("closed");
+      if (kind === "control") {
+        for (const handler of this.stateHandlers) {
+          handler("closed");
+        }
       }
     };
     channel.onmessage = (event: any) => {
@@ -157,9 +183,12 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
         return;
       }
       for (const handler of this.dataHandlers) {
-        handler(decoded);
+        handler(decoded, kind);
       }
     };
+    if (channel.readyState === "open") {
+      this.flushPendingSends(kind);
+    }
   }
 
   async createOffer(): Promise<string> {
@@ -212,31 +241,33 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
     };
   }
 
-  send(data: string): void {
+  send(data: string, channel: P2pChannelKind = "control"): void {
     if (this.closed) {
       return;
     }
-    const channel = this.dataChannel;
-    if (channel && channel.readyState === "open") {
-      channel.send(data);
+    const dataChannel = this.dataChannels.get(channel);
+    if (dataChannel && dataChannel.readyState === "open") {
+      dataChannel.send(data);
       return;
     }
-    if (channel && channel.readyState === "connecting") {
-      // SCTP 握手中：暂存到 channel.onopen 时再 flush；超出上限丢最旧的。
-      if (this.pendingSends.length >= PENDING_SEND_LIMIT) {
-        this.pendingSends.shift();
-      }
-      this.pendingSends.push(data);
+    if (!dataChannel || dataChannel.readyState === "connecting") {
+      // SCTP 握手或 answerer 尚未收到 ondatachannel：暂存到 attach/onopen 时再 flush。
+      this.queuePendingSend(channel, data);
       return;
     }
-    // closing / closed / 未创建：静默丢弃，由上层 health check 触发降级。
+    // closing / closed：静默丢弃，由上层 health check 触发降级。
   }
 
-  getBufferedAmount(): number {
-    if (!this.dataChannel || this.dataChannel.readyState !== "open") {
-      return 0;
+  getBufferedAmount(channel?: P2pChannelKind): number {
+    if (!channel) {
+      return P2P_CHANNEL_KINDS.reduce(
+        (total, kind) => total + this.getBufferedAmount(kind),
+        0,
+      );
     }
-    const value = this.dataChannel.bufferedAmount;
+    const dataChannel = this.dataChannels.get(channel);
+    if (!dataChannel || dataChannel.readyState !== "open") return 0;
+    const value = dataChannel.bufferedAmount;
     return typeof value === "number" && Number.isFinite(value) ? value : 0;
   }
 
@@ -245,11 +276,13 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
       return;
     }
     this.closed = true;
-    this.pendingSends = [];
-    try {
-      this.dataChannel?.close();
-    } catch {
-      /* ignore */
+    this.pendingSends.clear();
+    for (const channel of this.dataChannels.values()) {
+      try {
+        channel.close();
+      } catch {
+        /* ignore */
+      }
     }
     try {
       this.pc.close();
@@ -258,16 +291,17 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
     }
   }
 
-  private flushPendingSends(): void {
-    if (this.pendingSends.length === 0) {
+  private flushPendingSends(kind: P2pChannelKind): void {
+    const pending = this.pendingSends.get(kind);
+    if (!pending || pending.length === 0) {
       return;
     }
-    const channel = this.dataChannel;
+    const channel = this.dataChannels.get(kind);
     if (!channel || channel.readyState !== "open") {
       return;
     }
-    const queued = this.pendingSends;
-    this.pendingSends = [];
+    const queued = pending;
+    this.pendingSends.delete(kind);
     for (const data of queued) {
       try {
         channel.send(data);
@@ -275,6 +309,15 @@ class MobileWebRtcPeerAdapter implements WebRtcPeerAdapter {
         /* ignore: 单条失败不影响后续 flush */
       }
     }
+  }
+
+  private queuePendingSend(kind: P2pChannelKind, data: string): void {
+    const pending = this.pendingSends.get(kind) ?? [];
+    if (pending.length >= PENDING_SEND_LIMIT) {
+      pending.shift();
+    }
+    pending.push(data);
+    this.pendingSends.set(kind, pending);
   }
 }
 

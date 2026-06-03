@@ -170,7 +170,7 @@ App 端偏好的双层来源：
 
 收到 `propose.strict=true` 后：
 
-- **控制面准入门 + 业务消息暂存**：`SessionTransport` 在 `currentPath==='relay'` 时只放行控制面消息（`tunnel.upgrade.*` / `transport.*`）。其他业务消息**不再 throw**，而是暂存到 `strictPendingQueue`（上限 `STRICT_PENDING_QUEUE_LIMIT=256`，与 `WebRtcPeerAdapter.pendingSends` 对齐）；一旦双端 `committed`、`switchPath('p2p')` 完成，队列会被 flush 出去并恢复正常下发。队列超过上限时直接 emit `pending_drop(reason="queue_overflow", count)` 并触发 `forceClose('strict_pending_overflow')`，不再静默丢弃；`close` / `forceClose` 时若队列非空，亦各自 emit `pending_drop(reason="session_close" | "force_close")`，由业务侧记录度量。agent 端的 `configureStrictP2p` 仅用于切换偏好语义，仍走静默清空路径。
+- **控制面准入门 + 业务消息暂存**：`SessionTransport` 在 `currentPath==='relay'` 时只放行控制面消息（`tunnel.upgrade.*` / `transport.*`）。其他业务消息**不再 throw**，而是连同 P2P channel hint 一起暂存到 `strictPendingQueue`（上限 `STRICT_PENDING_QUEUE_LIMIT=256`，与 `WebRtcPeerAdapter.pendingSends` 对齐）；一旦双端 `committed`、`switchPath('p2p')` 完成，队列会被 flush 出去并恢复正常下发。队列超过上限时直接 emit `pending_drop(reason="queue_overflow", count)` 并触发 `forceClose('strict_pending_overflow')`，不再静默丢弃；`close` / `forceClose` 时若队列非空，亦各自 emit `pending_drop(reason="session_close" | "force_close")`，由业务侧记录度量。agent 端的 `configureStrictP2p` 仅用于切换偏好语义，仍走静默清空路径。
 - **DataChannel 未 open 防丢失**：双端 `WebRtcPeerAdapter.send()` 在 `dataChannel.readyState === 'connecting'` 时把消息暂存到 adapter 内部 `pendingSends` 队列（上限 256，超出丢最旧），`dataChannel.onopen` 时统一 flush。这样即便 ICE `connected` 抢跑 SCTP 握手，commit 后从 `strictPendingQueue` flush 到 peer 的首批业务消息也不会被静默丢弃。
 - **dispatchSend 守门**：`SessionTransport.dispatchSend()` 在严格模式下若处于 `currentPath==='p2p'` 但 `peer===null` 的脱钩状态（健康降级竞态、forceClose 后状态机未及时复位等），不会 fallback 到 relay path，而是发出 `strict_send_blocked` 事件并触发 `forceClose('peer_missing')` 关闭整个 session，避免业务消息泄漏到 Relay。
 - **forceClose 唯一入口（P2-3D）**：所有 strict 关闭路径——coordinator 协商失败 / 运行期健康降级 / Relay 主动 `strict_unavailable` / `dispatchSend` peer 脱钩——统一汇聚到 `SessionTransport.forceClose(reason)`：先 emit `force_close`、`detachP2pPeer`、`resetPathState`、非空时 emit `pending_drop("force_close")`，再回调 `downgradeHandler` 让 coordinator 发出 `tunnel.upgrade.downgrade`（保留 Relay metrics 与退避计数），最后回调 `forceCloseHandler` 让业务上层提示用户。`forceClose` 自带重入保护，重复调用立即返回。
@@ -225,6 +225,12 @@ P2P propose 恢复后，Relay 只下发按 `app_connection_id` 定向的 propose
 ### 8.4 P2P 路径上消息卡顿
 
 - `getMetrics().active_p2p` 不为 0 但业务无响应：在客户端开 `OMNIWORK_LOG_TRANSPORT=1`，确认是否 `pong_received rtt_ms` 异常增长；可手工 `forceDowngrade("manual")` 切回 relay 验证。
+- `terminal.frame` / `terminal.snapshot` 是全量展示型状态帧，不承载用户输入语义。Agent 会为每个 session 复用外层 `MessageEnvelope.seq` 维护统一画面水位，`terminal.frame` payload 只附加 `captured_at` / `byte_length`；App 仅应用更新的 envelope `seq`，snapshot 会推进水位，避免旧 frame 延迟到达后覆盖刚校准的画面。
+- P2P 使用三条 DataChannel：`control`（可靠有序，控制面/加密业务）、`input`（可靠有序，plaintext 模式下的 `terminal.input` / `terminal.resize`）、`display`（unordered + 有限重传，plaintext 模式下的 `terminal.frame`）。在默认 encrypted-only 模式下，`e2e.message` 受 E2E replay seq 约束，必须固定走 `control` 的可靠有序流；否则 display 的乱序/丢包会破坏 E2E 全局 seq，导致后续密文被判为 replay。display 面优化需要等未来引入按通道独立的 E2E stream/seq 后再承载加密 `terminal.frame`。
+- 当 plaintext / 未来独立 E2E display stream 的 P2P display `bufferedAmount >= 256KB` 时，Agent 不再排队所有旧 `terminal.frame`，而是按 `(app_connection_id, session_id)` 只保留最新帧；待缓冲下降后再发送最新帧。默认 encrypted-only 模式下，业务密文统一走 `control`，因此该优化不会牺牲 E2E replay 顺序。
+- App 收到 `terminal.frame` 后按约 16ms 合并渲染，只把最新帧写入 `terminalFrames` 状态，避免弱网或 WebView 大字符串写入时形成 UI 队列。
+- App 在 P2P 切入、前台恢复、网络变化和当前 session 超过 3s 没有新 frame 时，会限频请求 `terminal.snapshot` 校准画面；snapshot 请求最短间隔 2s。
+- 如果 `display_frame_deferred` 日志持续出现，说明 P2P display 面被背压；该日志主要适用于 plaintext / 未来独立 E2E display stream。默认 encrypted-only 模式下若仍出现卡顿，应优先排查 `control` 上的 E2E 密文队列和 RTT。
 
 ### 8.5 手工触发 upgrade（调试）
 

@@ -98,6 +98,7 @@ import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
 import { MobileRelayPath, MobileSessionTransport } from "../lib/transport";
 import { UpgradeCoordinator } from "../lib/transport/upgradeCoordinator";
 import { createMobileWebRtcPeerAdapter } from "../lib/transport/webRtcPeerAdapter";
+import { terminalFrameWatermarkAfterSnapshot } from "./terminalFrameWatermark";
 import i18n from "../i18n";
 import {
   DEFAULT_LANGUAGE,
@@ -243,9 +244,17 @@ function AppContent(): JSX.Element {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const pendingCreateRef = useRef(false);
   const pendingAutoOpenSessionsRef = useRef(false);
+  const pairingRef = useRef<PairingConfig | null>(null);
   const pairingsRef = useRef<PairingConfig[]>([]);
   const selectedSessionRef = useRef<CodexSession | null>(null);
   const terminalTextSizeLoadedRef = useRef(false);
+  const terminalFrameSeqRef = useRef<Record<string, number>>({});
+  const terminalLastFrameAtRef = useRef<Record<string, number>>({});
+  const terminalLastSnapshotRequestAtRef = useRef<Record<string, number>>({});
+  const pendingTerminalFramesRef = useRef<Record<string, string>>({});
+  const terminalFrameFlushTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   // 标记当前失败状态是否已经在交互流程中提示过用户，避免重复弹出
   // "Connection lost" 对话框（例如重试再次失败时立刻又弹一次）。
   const failureDialogActiveRef = useRef(false);
@@ -268,6 +277,44 @@ function AppContent(): JSX.Element {
     return t("app.titles.devices");
   }, [editingPairing, selectedSession?.title, t, view]);
 
+  const flushPendingTerminalFrames = useCallback(() => {
+    terminalFrameFlushTimerRef.current = null;
+    const pending = pendingTerminalFramesRef.current;
+    pendingTerminalFramesRef.current = {};
+    if (Object.keys(pending).length === 0) {
+      return;
+    }
+    setTerminalFrames((current) => ({
+      ...current,
+      ...pending,
+    }));
+  }, []);
+
+  const queueTerminalFrame = useCallback(
+    (sessionId: string, payload: TerminalFramePayload, seq?: number) => {
+      if (typeof seq === "number") {
+        const lastSeq = terminalFrameSeqRef.current[sessionId] ?? 0;
+        if (seq <= lastSeq) {
+          return;
+        }
+        terminalFrameSeqRef.current[sessionId] = seq;
+      }
+      terminalLastFrameAtRef.current[sessionId] = Date.now();
+      pendingTerminalFramesRef.current = {
+        ...pendingTerminalFramesRef.current,
+        [sessionId]: payload.data,
+      };
+      if (terminalFrameFlushTimerRef.current) {
+        return;
+      }
+      terminalFrameFlushTimerRef.current = setTimeout(
+        flushPendingTerminalFrames,
+        16,
+      );
+    },
+    [flushPendingTerminalFrames],
+  );
+
   const selectedFrame = selectedSession
     ? (terminalFrames[selectedSession.session_id] ?? EMPTY_TERMINAL_FRAME)
     : EMPTY_TERMINAL_FRAME;
@@ -276,6 +323,10 @@ function AppContent(): JSX.Element {
   useEffect(() => {
     selectedSessionRef.current = selectedSession;
   }, [selectedSession]);
+
+  useEffect(() => {
+    pairingRef.current = pairing;
+  }, [pairing]);
 
   useEffect(() => {
     pairingsRef.current = pairings;
@@ -314,6 +365,15 @@ function AppContent(): JSX.Element {
 
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (terminalFrameFlushTimerRef.current) {
+        clearTimeout(terminalFrameFlushTimerRef.current);
+        terminalFrameFlushTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -538,6 +598,7 @@ function AppContent(): JSX.Element {
           relay.resumeForForeground();
           if (previous !== "active") {
             relay.requestP2pReconnect("foreground_resume");
+            requestTerminalSnapshotForCurrentSession();
           }
         } else {
           relay.pauseForBackground();
@@ -548,6 +609,7 @@ function AppContent(): JSX.Element {
         relay.forceDowngrade("app_background");
       } else if (previous !== "active") {
         relay.requestP2pReconnect("foreground_resume");
+        requestTerminalSnapshotForCurrentSession();
       }
     });
     return () => subscription.remove();
@@ -556,8 +618,33 @@ function AppContent(): JSX.Element {
   useEffect(() => {
     return subscribeNetworkChanges((event) => {
       relayRef.current?.requestP2pReconnect("network_changed", event);
+      requestTerminalSnapshotForCurrentSession();
     });
   }, []);
+
+  useEffect(() => {
+    if (connectionPath === "p2p" && connectionStatus === "authenticated") {
+      requestTerminalSnapshotForCurrentSession();
+    }
+  }, [connectionPath, connectionStatus, selectedSession?.session_id]);
+
+  useEffect(() => {
+    if (connectionPath !== "p2p" || connectionStatus !== "authenticated") {
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      const session = selectedSessionRef.current;
+      if (!session) {
+        return;
+      }
+      const lastFrameAt =
+        terminalLastFrameAtRef.current[session.session_id] ?? 0;
+      if (Date.now() - lastFrameAt >= 3_000) {
+        requestTerminalSnapshotForCurrentSession();
+      }
+    }, 3_000);
+    return () => clearInterval(timer);
+  }, [connectionPath, connectionStatus]);
 
   useEffect(() => {
     if (
@@ -1097,6 +1184,24 @@ function AppContent(): JSX.Element {
     sendToRelay(terminalSnapshotRequest(deviceId, sessionId));
   }
 
+  function requestTerminalSnapshotForCurrentSession(): void {
+    const activePairing = pairingRef.current;
+    const session = selectedSessionRef.current;
+    if (!activePairing || !session) {
+      return;
+    }
+    const now = Date.now();
+    const lastRequest =
+      terminalLastSnapshotRequestAtRef.current[session.session_id] ?? 0;
+    if (now - lastRequest < 2_000) {
+      return;
+    }
+    terminalLastSnapshotRequestAtRef.current[session.session_id] = now;
+    sendToRelay(
+      terminalSnapshotRequest(activePairing.deviceId, session.session_id),
+    );
+  }
+
   function sendToRelay(message: MessageEnvelope): void {
     try {
       relayRef.current?.send(message);
@@ -1192,6 +1297,10 @@ function AppContent(): JSX.Element {
           for (const sessionId of Object.keys(nextFrames)) {
             if (!remoteSessionIds.has(sessionId)) {
               delete nextFrames[sessionId];
+              delete terminalFrameSeqRef.current[sessionId];
+              delete terminalLastFrameAtRef.current[sessionId];
+              delete terminalLastSnapshotRequestAtRef.current[sessionId];
+              delete pendingTerminalFramesRef.current[sessionId];
             }
           }
           return nextFrames;
@@ -1272,6 +1381,17 @@ function AppContent(): JSX.Element {
       case "terminal.snapshot": {
         const payload = message.payload as TerminalSnapshotPayload;
         if (message.session_id) {
+          const nextWatermark = terminalFrameWatermarkAfterSnapshot(
+            terminalFrameSeqRef.current[message.session_id],
+            message.seq,
+          );
+          if (typeof nextWatermark === "number") {
+            terminalFrameSeqRef.current[message.session_id] = nextWatermark;
+          } else {
+            delete terminalFrameSeqRef.current[message.session_id];
+          }
+          delete pendingTerminalFramesRef.current[message.session_id];
+          terminalLastFrameAtRef.current[message.session_id] = Date.now();
           setTerminalFrames((current) => ({
             ...current,
             [message.session_id as string]: payload.data,
@@ -1282,10 +1402,7 @@ function AppContent(): JSX.Element {
       case "terminal.frame": {
         const payload = message.payload as TerminalFramePayload;
         if (message.session_id) {
-          setTerminalFrames((current) => ({
-            ...current,
-            [message.session_id as string]: payload.data,
-          }));
+          queueTerminalFrame(message.session_id, payload, message.seq);
         }
         break;
       }

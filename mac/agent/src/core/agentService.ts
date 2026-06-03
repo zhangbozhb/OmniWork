@@ -7,6 +7,7 @@ import {
   PROTOCOL_SUPPORT_V1,
   createMessage,
   type MessageEnvelope,
+  type P2pChannelKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
 import type {
   AgentHelloPayload,
@@ -66,7 +67,11 @@ import {
   printPairingDetailsWithoutRelay,
   printPairingQr,
 } from "../pairing/pairingQr.ts";
-import { AgentRelayPath, AgentSessionTransport } from "../transport/index.ts";
+import {
+  AgentRelayPath,
+  AgentSessionTransport,
+  DISPLAY_FRAME_BUFFERED_AMOUNT_LIMIT,
+} from "../transport/index.ts";
 import { UpgradeCoordinator } from "../transport/upgradeCoordinator.ts";
 import { createAgentWebRtcPeerAdapter } from "../transport/webRtcPeerAdapter.ts";
 
@@ -107,7 +112,9 @@ export class AgentService {
    */
   private readonly terminalPushers = new Map<string, NodeJS.Timeout>();
   private readonly terminalLastFrameHash = new Map<string, string>();
+  private readonly terminalFrameSeq = new Map<string, number>();
   private readonly terminalSubscribers = new Map<string, Set<string>>();
+  private readonly pendingTerminalFrames = new Map<string, MessageEnvelope>();
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -204,6 +211,14 @@ export class AgentService {
           break;
         case "downgrade":
           this.logger.warn("transport downgrade", { reason: event.reason });
+          break;
+        case "display_frame_deferred":
+          if (this.logTransport) {
+            this.logger.debug("display frame deferred", {
+              app_connection_id: event.app_connection_id,
+              buffered_amount: event.buffered_amount,
+            });
+          }
           break;
       }
     });
@@ -1029,11 +1044,15 @@ export class AgentService {
       throw error;
     }
 
+    const snapshotSeq = (this.terminalFrameSeq.get(session.session_id) ?? 0) + 1;
+    this.terminalFrameSeq.set(session.session_id, snapshotSeq);
+
     this.sendToApp(
       context,
       createMessage("terminal.snapshot", snapshot, {
         device_id: this.config.deviceId,
         session_id: session.session_id,
+        seq: snapshotSeq,
       }),
     );
     this.terminalLastFrameHash.set(
@@ -1098,7 +1117,13 @@ export class AgentService {
       this.terminalPushers.delete(sessionId);
     }
     this.terminalLastFrameHash.delete(sessionId);
+    this.terminalFrameSeq.delete(sessionId);
     this.terminalSubscribers.delete(sessionId);
+    for (const key of [...this.pendingTerminalFrames.keys()]) {
+      if (key.endsWith(`|${sessionId}`)) {
+        this.pendingTerminalFrames.delete(key);
+      }
+    }
   }
 
   private async pushTerminalFrameIfChanged(sessionId: string): Promise<void> {
@@ -1126,27 +1151,93 @@ export class AgentService {
       return;
     }
 
+    const subscribers = this.terminalSubscribers.get(sessionId);
+    if (!subscribers || subscribers.size === 0) {
+      return;
+    }
+
+    this.flushPendingTerminalFrames(sessionId, subscribers);
+
     const hash = createHash("sha1").update(frame.data).digest("hex");
     if (this.terminalLastFrameHash.get(sessionId) === hash) {
       return;
     }
     this.terminalLastFrameHash.set(sessionId, hash);
+    const frameSeq = (this.terminalFrameSeq.get(sessionId) ?? 0) + 1;
+    this.terminalFrameSeq.set(sessionId, frameSeq);
+    const enrichedFrame: TerminalFramePayload = {
+      ...frame,
+      captured_at: new Date().toISOString(),
+      byte_length: Buffer.byteLength(frame.data, "utf8"),
+    };
 
     const frameMessage = createMessage<TerminalFramePayload>(
       "terminal.frame",
-      frame,
+      enrichedFrame,
       {
         device_id: this.config.deviceId,
         session_id: sessionId,
+        seq: frameSeq,
       },
     );
-    const subscribers = this.terminalSubscribers.get(sessionId);
-    if (!subscribers || subscribers.size === 0) {
+    for (const appConnectionId of subscribers) {
+      this.sendDisplayFrameToApp(appConnectionId, sessionId, frameMessage);
+    }
+  }
+
+  private flushPendingTerminalFrames(
+    sessionId: string,
+    subscribers: Set<string>,
+  ): void {
+    for (const appConnectionId of subscribers) {
+      const key = terminalFramePendingKey(appConnectionId, sessionId);
+      const pending = this.pendingTerminalFrames.get(key);
+      if (!pending || this.isDisplayFrameBackpressured(appConnectionId)) {
+        continue;
+      }
+      this.pendingTerminalFrames.delete(key);
+      this.sendToAppByConnectionId(appConnectionId, pending, "display");
+    }
+  }
+
+  private sendDisplayFrameToApp(
+    appConnectionId: string,
+    sessionId: string,
+    frameMessage: MessageEnvelope<TerminalFramePayload>,
+  ): void {
+    const pendingKey = terminalFramePendingKey(appConnectionId, sessionId);
+    if (this.isDisplayFrameBackpressured(appConnectionId)) {
+      if (this.pendingTerminalFrames.has(pendingKey) && this.logTransport) {
+        this.logger.debug("terminal display frame dropped", {
+          app_connection_id: appConnectionId,
+          session_id: sessionId,
+        });
+      }
+      this.pendingTerminalFrames.set(pendingKey, frameMessage);
       return;
     }
-    for (const appConnectionId of subscribers) {
-      this.sendToAppByConnectionId(appConnectionId, frameMessage);
+
+    const pending = this.pendingTerminalFrames.get(pendingKey);
+    if (pending) {
+      this.pendingTerminalFrames.delete(pendingKey);
+      if (this.logTransport) {
+        this.logger.debug("terminal display frame replaced", {
+          app_connection_id: appConnectionId,
+          session_id: sessionId,
+        });
+      }
     }
+    this.sendToAppByConnectionId(appConnectionId, frameMessage, "display");
+  }
+
+  private isDisplayFrameBackpressured(appConnectionId: string): boolean {
+    const bufferedAmount =
+      this.transport?.getBufferedAmountForApp(appConnectionId) ?? 0;
+    if (bufferedAmount < DISPLAY_FRAME_BUFFERED_AMOUNT_LIMIT) {
+      return false;
+    }
+    this.transport?.emitDisplayFrameDeferred(appConnectionId, bufferedAmount);
+    return true;
   }
 
   private send(message: MessageEnvelope): void {
@@ -1181,6 +1272,7 @@ export class AgentService {
   private sendToAppByConnectionId(
     appConnectionId: string,
     message: MessageEnvelope,
+    channel?: P2pChannelKind,
   ): void {
     if (!this.transport) {
       this.logger.warn("cannot send without transport", {
@@ -1190,10 +1282,13 @@ export class AgentService {
     }
     const peer = this.e2ePeers.get(appConnectionId);
     if (this.config.businessSecurityMode === "plaintext_allowed") {
-      this.transport.send({
-        ...message,
-        app_connection_id: appConnectionId,
-      });
+      this.transport.send(
+        {
+          ...message,
+          app_connection_id: appConnectionId,
+        },
+        channel,
+      );
       return;
     }
     if (!peer?.ready) {
@@ -1208,6 +1303,7 @@ export class AgentService {
       createMessage("e2e.message", encrypted.payload, {
         device_id: this.config.deviceId,
       }),
+      channel,
     );
   }
 
@@ -1288,6 +1384,13 @@ function formatRelayConnectionError(error: unknown): string {
   }
 }
 
+function terminalFramePendingKey(
+  appConnectionId: string,
+  sessionId: string,
+): string {
+  return `${appConnectionId}|${sessionId}`;
+}
+
 function isE2EBusinessMessage(type: string): boolean {
   return (
     type.startsWith("session.") ||
@@ -1306,6 +1409,7 @@ function messageToInner(message: MessageEnvelope): InnerEnvelope {
     id: message.id,
     type: message.type,
     created_at: message.ts,
+    seq: message.seq,
     session_id: message.session_id,
     payload: message.payload,
   };
@@ -1321,6 +1425,7 @@ function innerToMessage(
     type: inner.type,
     device_id: deviceId,
     session_id: inner.session_id,
+    seq: inner.seq,
     ts: inner.created_at,
     payload: inner.payload,
   };

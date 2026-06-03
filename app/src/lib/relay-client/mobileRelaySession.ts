@@ -24,7 +24,7 @@ import {
   type InitiatorHandshakeState,
 } from "@omniwork/e2e-noise";
 import type { PairingConfig } from "../../features/auth/types";
-import { createKeyProof } from "../../features/auth/keyProof";
+import { createKeyProof } from "../../features/auth/keyProof.ts";
 
 export interface MobileRelaySessionOptions {
   /**
@@ -36,6 +36,7 @@ export interface MobileRelaySessionOptions {
 
 export class MobileRelaySession {
   private readonly client: RelayClient;
+  private readonly pairing: PairingConfig;
   private readonly options: MobileRelaySessionOptions;
   private readonly handlers = new Set<(message: MessageEnvelope) => void>();
   private e2eHandshake: InitiatorHandshakeState | null = null;
@@ -48,9 +49,10 @@ export class MobileRelaySession {
   private pendingBusinessMessages: MessageEnvelope[] = [];
 
   constructor(
-    private readonly pairing: PairingConfig,
+    pairing: PairingConfig,
     options: MobileRelaySessionOptions = {},
   ) {
+    this.pairing = pairing;
     this.client = new RelayClient({ url: pairing.relayUrl });
     this.options = options;
   }
@@ -90,31 +92,54 @@ export class MobileRelaySession {
   }
 
   send(message: MessageEnvelope): void {
+    const encoded = this.encodeOutgoingMessage(message, {
+      queueIfNotReady: true,
+    });
+    if (!encoded) {
+      return;
+    }
+    this.client.send(encoded);
+  }
+
+  encodeForP2p(message: MessageEnvelope): MessageEnvelope | null {
+    return this.encodeOutgoingMessage(message, { queueIfNotReady: false });
+  }
+
+  receiveFromP2p(message: MessageEnvelope): void {
+    this.handleMessage(message).catch(() => {
+      // The screen layer owns user-visible error reporting.
+    });
+  }
+
+  private encodeOutgoingMessage(
+    message: MessageEnvelope,
+    options: { queueIfNotReady: boolean },
+  ): MessageEnvelope | null {
     if (isE2EBusinessMessage(message.type)) {
       if (this.businessSecurityMode === "plaintext_allowed") {
         if (!this.plaintextReady) {
-          this.pendingBusinessMessages.push(message);
-          return;
+          if (options.queueIfNotReady) {
+            this.pendingBusinessMessages.push(message);
+          }
+          return null;
         }
-        this.client.send(message);
-        return;
+        return message;
       }
       if (!this.e2eSession || !this.e2ePeerReady) {
-        this.pendingBusinessMessages.push(message);
-        return;
+        if (options.queueIfNotReady) {
+          this.pendingBusinessMessages.push(message);
+        }
+        return null;
       }
-      this.client.send(
-        createMessage(
-          "e2e.message",
-          this.e2eSession.encrypt(messageToInner(message)).payload,
-          {
-            device_id: this.pairing.deviceId,
-          },
-        ),
+      return createMessage(
+        "e2e.message",
+        this.e2eSession.encrypt(messageToInner(message)).payload,
+        {
+          device_id: this.pairing.deviceId,
+        },
       );
-      return;
     }
-    this.client.send(message);
+    return message;
   }
 
   close(): void {
@@ -301,6 +326,7 @@ function messageToInner(message: MessageEnvelope): InnerEnvelope {
     id: message.id,
     type: message.type,
     created_at: message.ts,
+      seq: message.seq,
     session_id: message.session_id,
     payload: message.payload,
   };
@@ -316,6 +342,7 @@ function innerToMessage(
     type: inner.type,
     device_id: deviceId,
     session_id: inner.session_id,
+      seq: inner.seq,
     ts: inner.created_at,
     payload: inner.payload,
   };

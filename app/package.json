@@ -25,7 +25,7 @@
     "verify:targets": "pnpm run typecheck && pnpm run bundle:ios && pnpm run bundle:android && pnpm run web:build",
     "typecheck": "pnpm run generate:xterm-assets && tsc -p tsconfig.json",
     "lint": "pnpm run generate:xterm-assets && tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run generate:xterm-assets && tsc -p tsconfig.json --noEmit"
+    "test": "pnpm run generate:xterm-assets && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/*.test.ts && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@omniwork/e2e-noise": "workspace:*",

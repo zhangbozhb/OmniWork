@@ -13,6 +13,14 @@ export class MobileRelayPath {
     this.session.send(envelope);
   }
 
+  encodeForP2p(envelope: MessageEnvelope): MessageEnvelope | null {
+    return this.session.encodeForP2p(envelope);
+  }
+
+  receiveFromP2p(envelope: MessageEnvelope): void {
+    this.session.receiveFromP2p(envelope);
+  }
+
   onMessage(handler: (envelope: MessageEnvelope) => void): () => void {
     return this.session.onMessage(handler);
   }

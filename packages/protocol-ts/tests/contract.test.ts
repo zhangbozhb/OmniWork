@@ -228,6 +228,7 @@ describe("e2e v1 schemas", () => {
       id: "inner_1",
       type: "terminal.input",
       created_at: new Date().toISOString(),
+      seq: 1,
       payload: { data: "ls\n" },
     });
   });
@@ -251,6 +252,11 @@ describe("terminal payload schemas", () => {
   it("validates terminal.frame and terminal.snapshot", () => {
     terminalFramePayloadSchema.parse({ data: "abc" });
     terminalFramePayloadSchema.parse({ data: "abc", snapshot: true });
+    terminalFramePayloadSchema.parse({
+      data: "abc",
+      captured_at: new Date().toISOString(),
+      byte_length: 3,
+    });
     terminalSnapshotPayloadSchema.parse({
       data: "abc",
       size: { cols: 80, rows: 24 },

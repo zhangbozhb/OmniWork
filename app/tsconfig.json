@@ -5,5 +5,5 @@
     "moduleResolution": "Bundler",
     "types": ["react", "react-native", "node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "index.web.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "index.web.tsx"]
 }

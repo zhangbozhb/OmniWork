@@ -1,6 +1,7 @@
 import {
   createMessage,
   type MessageEnvelope,
+  type P2pChannelKind,
   type SessionTransport,
   type TransportPath,
   type TransportPingPayload,
@@ -14,6 +15,10 @@ type MessageHandler = (envelope: MessageEnvelope) => void;
 type PathChangeHandler = (path: TransportPath) => void;
 type DowngradeReasonHandler = (reason: string) => void;
 type ForceCloseHandler = (reason: string) => void;
+type QueuedSend = {
+  envelope: MessageEnvelope;
+  channel?: P2pChannelKind;
+};
 type TransportEvent =
   | { type: "path_change"; from: TransportPath; to: TransportPath }
   | { type: "ping_timeout"; seq: number; count: number }
@@ -126,13 +131,13 @@ export class MobileSessionTransport implements SessionTransport {
   private closed = false;
   private peer: WebRtcPeerAdapter | null = null;
   private detachPeerListeners: (() => void) | null = null;
-  private outboundQueue: MessageEnvelope[] | null = null;
+  private outboundQueue: QueuedSend[] | null = null;
   /**
    * 严格 P2P 模式下、currentPath !== "p2p" 时业务消息的暂存队列。
    * - 升级到 p2p 后由 switchPath() flush；
    * - forceClose / close 时丢弃（业务上层会重建 session 后重新发起请求）。
    */
-  private strictPendingQueue: MessageEnvelope[] = [];
+  private strictPendingQueue: QueuedSend[] = [];
   private switching = false;
   private downgradeHandler: DowngradeReasonHandler | null = null;
   private upgradeId: string | null = null;
@@ -167,7 +172,7 @@ export class MobileSessionTransport implements SessionTransport {
     this.relayPath.onMessage((message) => this.dispatch(message));
   }
 
-  send(envelope: MessageEnvelope): void {
+  send(envelope: MessageEnvelope, channel?: P2pChannelKind): void {
     if (this.closed) {
       throw new Error("MobileSessionTransport is closed");
     }
@@ -199,14 +204,14 @@ export class MobileSessionTransport implements SessionTransport {
         this.forceClose("strict_pending_overflow");
         return;
       }
-      this.strictPendingQueue.push(envelope);
+      this.strictPendingQueue.push({ envelope, channel });
       return;
     }
     if (this.outboundQueue) {
-      this.outboundQueue.push(envelope);
+      this.outboundQueue.push({ envelope, channel });
       return;
     }
-    this.dispatchSend(envelope);
+    this.dispatchSend(envelope, channel);
   }
 
   onMessage(handler: MessageHandler): () => void {
@@ -302,7 +307,7 @@ export class MobileSessionTransport implements SessionTransport {
         );
         return;
       }
-      this.dispatch(envelope);
+      this.relayPath.receiveFromP2p(envelope);
     });
     const offState = peer.onStateChange((state) => {
       if (state === "failed") {
@@ -522,8 +527,8 @@ export class MobileSessionTransport implements SessionTransport {
       const queued = this.outboundQueue;
       this.outboundQueue = null;
       if (queued) {
-        for (const envelope of queued) {
-          this.dispatchSend(envelope);
+        for (const item of queued) {
+          this.dispatchSend(item.envelope, item.channel);
         }
       }
       if (target === "p2p") {
@@ -533,8 +538,8 @@ export class MobileSessionTransport implements SessionTransport {
         if (this.strictPendingQueue.length > 0) {
           const pending = this.strictPendingQueue;
           this.strictPendingQueue = [];
-          for (const envelope of pending) {
-            this.dispatchSend(envelope);
+          for (const item of pending) {
+            this.dispatchSend(item.envelope, item.channel);
           }
         }
       } else {
@@ -546,9 +551,19 @@ export class MobileSessionTransport implements SessionTransport {
     }
   }
 
-  private dispatchSend(envelope: MessageEnvelope): void {
+  private dispatchSend(
+    envelope: MessageEnvelope,
+    channel?: P2pChannelKind,
+  ): void {
     if (this.currentPath === "p2p" && this.peer) {
-      this.peer.send(JSON.stringify(envelope));
+      const encoded = this.relayPath.encodeForP2p(envelope);
+      if (!encoded) {
+        return;
+      }
+      this.peer.send(
+        JSON.stringify(encoded),
+        channelForP2pEnvelope(envelope, encoded, channel),
+      );
       return;
     }
     // strict 模式守门：currentPath 已经升到 p2p 但 peer 已被 detach（例如健康
@@ -614,7 +629,7 @@ export class MobileSessionTransport implements SessionTransport {
       sent_at: new Date(sentAt).toISOString(),
     });
     try {
-      this.peer.send(JSON.stringify(envelope));
+      this.peer.send(JSON.stringify(envelope), "control");
     } catch {
       /* ignore */
     }
@@ -638,7 +653,7 @@ export class MobileSessionTransport implements SessionTransport {
       received_at: new Date().toISOString(),
     });
     try {
-      this.peer.send(JSON.stringify(reply));
+      this.peer.send(JSON.stringify(reply), "control");
     } catch {
       /* ignore */
     }
@@ -787,4 +802,28 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function channelForEnvelope(envelope: MessageEnvelope): P2pChannelKind {
+  switch (envelope.type) {
+    case "terminal.input":
+    case "terminal.resize":
+      return "input";
+    case "terminal.frame":
+      return "display";
+    default:
+      return "control";
+  }
+}
+
+function channelForP2pEnvelope(
+  original: MessageEnvelope,
+  encoded: MessageEnvelope,
+  channel?: P2pChannelKind,
+): P2pChannelKind {
+  if (encoded.type === "e2e.message") {
+    // Current E2E replay protection requires a single strictly ordered stream.
+    return "control";
+  }
+  return channel ?? channelForEnvelope(original);
 }

@@ -283,6 +283,7 @@ export interface InnerEnvelope<TPayload = unknown> {
   id: string;
   type: MessageType;
   created_at: string;
+  seq?: number;
   request_id?: string;
   session_id?: string;
   payload: TPayload;
@@ -566,6 +567,8 @@ export interface TerminalInputPayload {
 export interface TerminalFramePayload {
   data: string;
   snapshot?: boolean;
+  captured_at?: string;
+  byte_length?: number;
 }
 
 export interface TerminalSnapshotPayload {

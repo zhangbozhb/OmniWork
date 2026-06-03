@@ -255,6 +255,7 @@ export const innerEnvelopeSchema = z
     id: messageId,
     type: z.string().min(1),
     created_at: isoDateTime,
+    seq: z.number().int().nonnegative().optional(),
     request_id: z.string().min(1).optional(),
     session_id: z.string().min(1).optional(),
     payload: z.unknown(),
@@ -274,6 +275,8 @@ export const terminalInputPayloadSchema = z.object({
 export const terminalFramePayloadSchema = z.object({
   data: z.string(),
   snapshot: z.boolean().optional(),
+  captured_at: isoDateTime.optional(),
+  byte_length: z.number().int().nonnegative().optional(),
 });
 
 export const terminalSnapshotPayloadSchema = z.object({
