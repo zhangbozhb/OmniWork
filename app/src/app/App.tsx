@@ -27,6 +27,7 @@ import type {
   FilesListPayload,
   FilesReadPayload,
   GitDiffPayload,
+  GitDiffScope,
   GitStatusPayload,
   MessageEnvelope,
   RuntimeKind,
@@ -880,7 +881,10 @@ function AppContent(): JSX.Element {
     );
   }
 
-  function handleOpenGitDiff(relativePath?: string): void {
+  function handleOpenGitDiff(
+    relativePath?: string,
+    scope: GitDiffScope = "unstaged",
+  ): void {
     if (
       !pairing ||
       !selectedWorkspace ||
@@ -893,6 +897,7 @@ function AppContent(): JSX.Element {
       gitDiffRequest(pairing.deviceId, {
         workspacePath: selectedWorkspace.path,
         relativePath,
+        scope,
       }),
     );
   }

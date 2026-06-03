@@ -20,6 +20,7 @@ import type {
   CodexSession,
   FilesReadPayload,
   GitDiffPayload,
+  GitDiffScope,
   RuntimeKind,
   WorkspaceDefinition,
   WorkspaceFileEntry,
@@ -76,7 +77,7 @@ export interface SessionListScreenProps {
   onOpenWorkspaceGit(workspace: WorkspaceDefinition): void;
   onOpenDirectory(relativePath: string): void;
   onReadFile(relativePath: string): void;
-  onOpenGitDiff(relativePath?: string): void;
+  onOpenGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
   onRenameSession(session: CodexSession, title: string): void;
@@ -504,8 +505,7 @@ export function SessionListScreen({
                 embedded
                 workspace={activeWorkspace}
                 status={gitStatus}
-                diff={gitDiff?.diff}
-                selectedPath={gitDiff?.relativePath}
+                diff={gitDiff}
                 loading={workspaceLoading}
                 onRefresh={() => onOpenWorkspaceGit(activeWorkspace)}
                 onOpenDiff={onOpenGitDiff}

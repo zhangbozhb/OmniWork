@@ -639,7 +639,18 @@ export interface WorkspaceGitStatus {
   hasChanges: boolean;
   files: Array<{
     path: string;
+    oldPath?: string;
     status: "modified" | "added" | "deleted" | "renamed" | "untracked";
+    indexStatus?: string;
+    worktreeStatus?: string;
+    staged?: boolean;
+    unstaged?: boolean;
+    stagedAdditions?: number;
+    stagedDeletions?: number;
+    unstagedAdditions?: number;
+    unstagedDeletions?: number;
+    additions?: number;
+    deletions?: number;
   }>;
 }
 
@@ -652,14 +663,18 @@ export interface GitStatusPayload {
   status: WorkspaceGitStatus;
 }
 
+export type GitDiffScope = "all" | "staged" | "unstaged" | "untracked";
+
 export interface GitDiffRequestPayload {
   workspacePath: string;
   relativePath?: string;
+  scope?: GitDiffScope;
 }
 
 export interface GitDiffPayload {
   workspacePath: string;
   relativePath?: string;
+  scope?: GitDiffScope;
   diff: string;
 }
 

@@ -233,10 +233,32 @@
     "ahead": "领先 {{count}}",
     "behind": "落后 {{count}}",
     "viewWorkspaceDiff": "查看工作区 diff",
+    "reviewChanges": "审阅变更",
+    "overview": "概览",
     "noChangedFiles": "没有变更文件。",
     "loadingStatus": "正在加载 Git 状态...",
+    "loadingDiff": "正在加载 diff...",
     "workspaceDiff": "工作区 diff",
     "noDiff": "没有 diff。",
+    "untrackedNoDiff": "未跟踪文件已列出，但在暂存或纳入跟踪前不会生成 diff。",
+    "summary": {
+      "files": "文件",
+      "additions": "新增",
+      "deletions": "删除"
+    },
+    "scope": {
+      "all": "全部",
+      "staged": "已暂存",
+      "unstaged": "未暂存",
+      "untracked": "未跟踪"
+    },
+    "review": {
+      "title": "审阅变更",
+      "progress": "{{current}} / {{total}}",
+      "noFiles": "此范围内没有文件。",
+      "previous": "上一个",
+      "next": "下一个"
+    },
     "status": {
       "modified": "已修改",
       "added": "已新增",

@@ -659,7 +659,10 @@ export class AgentService {
     message: MessageEnvelope,
     trustedE2E: boolean,
   ): boolean {
-    if (trustedE2E || this.config.businessSecurityMode === "plaintext_allowed") {
+    if (
+      trustedE2E ||
+      this.config.businessSecurityMode === "plaintext_allowed"
+    ) {
       return false;
     }
     this.logger.warn("rejected plaintext business message", {
@@ -844,7 +847,11 @@ export class AgentService {
       context,
       createMessage(
         "git.diff",
-        await this.git.diff(workspace, message.payload.relativePath),
+        await this.git.diff(
+          workspace,
+          message.payload.relativePath,
+          message.payload.scope,
+        ),
         {
           device_id: this.config.deviceId,
           id: message.id,

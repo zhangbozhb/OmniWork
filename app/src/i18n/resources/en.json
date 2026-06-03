@@ -233,10 +233,32 @@
     "ahead": "ahead {{count}}",
     "behind": "behind {{count}}",
     "viewWorkspaceDiff": "View workspace diff",
+    "reviewChanges": "Review changes",
+    "overview": "Overview",
     "noChangedFiles": "No changed files.",
     "loadingStatus": "Loading Git status...",
+    "loadingDiff": "Loading diff...",
     "workspaceDiff": "Workspace diff",
     "noDiff": "No diff.",
+    "untrackedNoDiff": "Untracked files are listed here, but no diff is available until they are staged or tracked.",
+    "summary": {
+      "files": "files",
+      "additions": "added",
+      "deletions": "deleted"
+    },
+    "scope": {
+      "all": "All",
+      "staged": "Staged",
+      "unstaged": "Unstaged",
+      "untracked": "Untracked"
+    },
+    "review": {
+      "title": "Review changes",
+      "progress": "{{current}} / {{total}}",
+      "noFiles": "No files in this scope.",
+      "previous": "Previous",
+      "next": "Next"
+    },
     "status": {
       "modified": "modified",
       "added": "added",

@@ -139,6 +139,7 @@ app/
 
 - 移动端导航级页面，包含 `devices` / `pairing` / `sessions` / `settings` / `terminal` / `workspaces`。
 - 不直接实现复杂业务逻辑；组合 `features/` 与 `lib/`。
+- `workspaces/GitStatusScreen` 采用 Git Overview + Review 分层：概览页展示分支、摘要与变更文件，Review 视图按 scope 与文件阅读 diff，避免在概览页底部堆叠完整 diff。
 
 `features/`：
 
