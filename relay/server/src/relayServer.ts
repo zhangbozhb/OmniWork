@@ -135,9 +135,11 @@ export class RelayServer {
       server.listen(this.config.port, this.config.host, resolve);
     });
 
-    console.log(
-      `[omniwork-relay] listening on ${this.config.host}:${this.config.port}`,
-    );
+    logRelayEvent({
+      event: "server.listening",
+      host: this.config.host,
+      port: this.config.port,
+    });
   }
 
   private handleHttp(request: IncomingMessage, response: ServerResponse): void {
@@ -453,7 +455,8 @@ export class RelayServer {
     );
 
     if (this.authLimiter.isBlocked(limiterKey)) {
-      console.warn("[omniwork-relay] auth rate limit hit", {
+      logRelayEvent({
+        event: "auth.rate_limit",
         key_id: message.payload.key_id,
         device_id: pending?.deviceId ?? connection.deviceId,
         remote_ip: connection.remoteIp,
@@ -1130,14 +1133,44 @@ interface UpgradeLogFields {
 }
 
 function logUpgradeEvent(fields: UpgradeLogFields): void {
-  const record: Record<string, unknown> = {
-    ts: new Date().toISOString(),
-    component: "omniwork-relay",
-    event: fields.event,
-  };
+  const record: Record<string, unknown> = {};
   if (fields.upgrade_id) record.upgrade_id = fields.upgrade_id;
   if (fields.device_id) record.device_id = fields.device_id;
   if (fields.reason) record.reason = fields.reason;
   if (fields.source_role) record.source_role = fields.source_role;
+  logRelayEvent({ event: fields.event, ...record });
+}
+
+function logRelayEvent(fields: Record<string, unknown>): void {
+  const record: Record<string, unknown> = {
+    ts: formatLocalTimestamp(),
+    component: "omniwork-relay",
+    ...fields,
+  };
   console.info(JSON.stringify(record));
+}
+
+function formatLocalTimestamp(date = new Date()): string {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffsetMinutes = Math.abs(offsetMinutes);
+  const offsetHours = Math.floor(absoluteOffsetMinutes / 60);
+  const offsetRemainderMinutes = absoluteOffsetMinutes % 60;
+
+  return [
+    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
+    "T",
+    `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(
+      date.getSeconds(),
+    )}.${pad3(date.getMilliseconds())}`,
+    `${sign}${pad2(offsetHours)}:${pad2(offsetRemainderMinutes)}`,
+  ].join("");
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function pad3(value: number): string {
+  return String(value).padStart(3, "0");
 }

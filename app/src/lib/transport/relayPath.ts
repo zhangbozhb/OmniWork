@@ -1,6 +1,6 @@
-import type { MessageEnvelope } from "../../../../packages/protocol-ts/src/index";
-import type { RelayCloseEvent } from "../../../../packages/relay-client/src/index";
-import type { MobileRelaySession } from "../relay-client/mobileRelaySession";
+import type { MessageEnvelope } from "../../../../packages/protocol-ts/src/index.ts";
+import type { RelayCloseEvent } from "../../../../packages/relay-client/src/index.ts";
+import type { MobileRelaySession } from "../relay-client/mobileRelaySession.ts";
 
 export class MobileRelayPath {
   private readonly session: MobileRelaySession;
@@ -27,5 +27,9 @@ export class MobileRelayPath {
 
   onClose(handler: (event: RelayCloseEvent) => void): () => void {
     return this.session.onClose(handler);
+  }
+
+  onBusinessReady(handler: () => void): () => void {
+    return this.session.onBusinessReady(handler);
   }
 }

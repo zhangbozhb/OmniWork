@@ -10,6 +10,7 @@ import type {
 import { isSupportedSessionStatus } from "../../../../packages/protocol-ts/src/index.ts";
 import { clampTerminalSize } from "../../../../packages/terminal-core/src/index.ts";
 import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
+import { formatLocalTimestamp } from "../telemetry/logger.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
 import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
 import { WorkspaceManager } from "../workspace/workspaceManager.ts";
@@ -63,6 +64,7 @@ export class SessionManager {
       // eslint-disable-next-line no-console
       console.info(
         JSON.stringify({
+          ts: formatLocalTimestamp(),
           event: "session_store.startup_patch.summary",
           scanned: 0,
           dropped: 0,
@@ -86,6 +88,7 @@ export class SessionManager {
     // eslint-disable-next-line no-console
     console.info(
       JSON.stringify({
+        ts: formatLocalTimestamp(),
         event: "session_store.startup_patch.summary",
         scanned: stored.length,
         dropped: droppedIds.length,

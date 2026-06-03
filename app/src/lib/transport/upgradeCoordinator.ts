@@ -10,7 +10,7 @@ import {
   type TunnelUpgradeOfferPayload,
   type TunnelUpgradeProposePayload,
   type WebRtcPeerAdapter,
-} from "../../../../packages/protocol-ts/src/index";
+} from "../../../../packages/protocol-ts/src/index.ts";
 
 export type UpgradeState =
   | "idle"
@@ -114,10 +114,9 @@ export class UpgradeCoordinator {
 
   async propose(payload: TunnelUpgradeProposePayload): Promise<void> {
     if (this.state !== "idle") {
-      console.warn(
-        "[omniwork-upgrade] propose ignored: coordinator not idle",
-        { state: this.state },
-      );
+      console.warn("[omniwork-upgrade] propose ignored: coordinator not idle", {
+        state: this.state,
+      });
       return;
     }
 
@@ -180,14 +179,11 @@ export class UpgradeCoordinator {
     try {
       await this.peer.setRemoteDescription(payload.sdp, "offer");
       const sdp = await this.peer.createAnswer();
-      this.sendUpgrade<TunnelUpgradeAnswerPayload>(
-        "tunnel.upgrade.answer",
-        {
-          upgrade_id: payload.upgrade_id,
-          app_connection_id: payload.app_connection_id,
-          sdp,
-        },
-      );
+      this.sendUpgrade<TunnelUpgradeAnswerPayload>("tunnel.upgrade.answer", {
+        upgrade_id: payload.upgrade_id,
+        app_connection_id: payload.app_connection_id,
+        sdp,
+      });
     } catch (error) {
       console.warn("[omniwork-upgrade] handleOffer failed", {
         error: (error as Error)?.message,
@@ -217,9 +213,7 @@ export class UpgradeCoordinator {
     }
   }
 
-  async handleCandidate(
-    payload: TunnelUpgradeCandidatePayload,
-  ): Promise<void> {
+  async handleCandidate(payload: TunnelUpgradeCandidatePayload): Promise<void> {
     if (
       !this.peer ||
       this.upgradeId !== payload.upgrade_id ||
@@ -449,9 +443,16 @@ export class UpgradeCoordinator {
       | "tunnel.upgrade.downgrade",
     payload: TPayload,
   ): void {
-    this.sendControl(
-      createMessage<TPayload>(type, payload, { device_id: this.deviceId }),
-    );
+    try {
+      this.sendControl(
+        createMessage<TPayload>(type, payload, { device_id: this.deviceId }),
+      );
+    } catch (error) {
+      console.warn("[omniwork-upgrade] send control failed", {
+        type,
+        error: (error as Error)?.message,
+      });
+    }
   }
 
   private requireAppConnectionId(): string {

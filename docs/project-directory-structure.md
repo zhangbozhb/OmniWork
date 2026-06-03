@@ -273,7 +273,7 @@ mac/
 
 `tmux-manager/`：创建、列出、attach、detach、关闭 `tmux` session；从现有 `tmux` 恢复 session registry。
 
-`session-store/`：本地会话状态持久化（默认 JSON 文件）。
+`session-store/`：本地会话状态持久化（默认 SQLite `sessions.sqlite`；旧 `sessions.json` 仅作为首次导入来源）。
 
 `workspace/` / `files/` / `git/`：手机端 workspace/files/git 协议消息的 Agent 端实现。
 
@@ -285,7 +285,7 @@ mac/
 
 `config/`：读取默认配置、用户配置、环境变量；对外提供类型安全配置对象。
 
-`telemetry/`：logger（日志命名空间 `omniwork-agent`、`omniwork-upgrade`）。
+`telemetry/`：logger（日志命名空间 `omniwork-agent`、`omniwork-upgrade`），结构化日志 `ts` 使用本地时区偏移，协议/业务时间字段仍保持 UTC ISO。
 
 `protocol/`：转出 `packages/protocol-ts` 中需要在 Agent 内部使用的类型，避免业务代码到处 import 长相对路径。
 

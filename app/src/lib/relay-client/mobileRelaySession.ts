@@ -39,6 +39,7 @@ export class MobileRelaySession {
   private readonly pairing: PairingConfig;
   private readonly options: MobileRelaySessionOptions;
   private readonly handlers = new Set<(message: MessageEnvelope) => void>();
+  private readonly businessReadyHandlers = new Set<() => void>();
   private e2eHandshake: InitiatorHandshakeState | null = null;
   private e2eSession: E2ENoiseSession | null = null;
   private e2ePeerReady = false;
@@ -89,6 +90,11 @@ export class MobileRelaySession {
 
   onClose(handler: (event: RelayCloseEvent) => void): () => void {
     return this.client.onClose(handler);
+  }
+
+  onBusinessReady(handler: () => void): () => void {
+    this.businessReadyHandlers.add(handler);
+    return () => this.businessReadyHandlers.delete(handler);
   }
 
   send(message: MessageEnvelope): void {
@@ -215,6 +221,7 @@ export class MobileRelaySession {
       payload.business_security_mode ?? "e2e_required";
     if (this.businessSecurityMode === "plaintext_allowed") {
       this.plaintextReady = true;
+      this.dispatchBusinessReady();
       this.flushPendingBusinessMessages();
       return;
     }
@@ -257,6 +264,7 @@ export class MobileRelaySession {
       return;
     }
     this.e2ePeerReady = true;
+    this.dispatchBusinessReady();
     this.flushPendingBusinessMessages();
   }
 
@@ -288,6 +296,12 @@ export class MobileRelaySession {
     this.pendingBusinessMessages = [];
     for (const message of pending) {
       this.send(message);
+    }
+  }
+
+  private dispatchBusinessReady(): void {
+    for (const handler of this.businessReadyHandlers) {
+      handler();
     }
   }
 
@@ -326,7 +340,7 @@ function messageToInner(message: MessageEnvelope): InnerEnvelope {
     id: message.id,
     type: message.type,
     created_at: message.ts,
-      seq: message.seq,
+    seq: message.seq,
     session_id: message.session_id,
     payload: message.payload,
   };

@@ -6,6 +6,7 @@ import type {
   CodexSession,
   RuntimeKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
+import { formatLocalTimestamp } from "../telemetry/logger.ts";
 
 interface SessionRow {
   session_id: string;
@@ -105,6 +106,7 @@ export class SQLiteSessionStore {
       // eslint-disable-next-line no-console
       console.info(
         JSON.stringify({
+          ts: formatLocalTimestamp(),
           event: "session_store.remove",
           session_id: sessionId,
           reason: reason ?? "unspecified",

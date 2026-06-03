@@ -29,7 +29,7 @@ export class Logger {
 
   private write(level: LogLevel, message: string, fields?: Record<string, unknown>): void {
     const entry = {
-      ts: new Date().toISOString(),
+      ts: formatLocalTimestamp(),
       level,
       namespace: this.namespace,
       message,
@@ -42,6 +42,31 @@ export class Logger {
       console.log(output);
     }
   }
+}
+
+export function formatLocalTimestamp(date = new Date()): string {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffsetMinutes = Math.abs(offsetMinutes);
+  const offsetHours = Math.floor(absoluteOffsetMinutes / 60);
+  const offsetRemainderMinutes = absoluteOffsetMinutes % 60;
+
+  return [
+    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
+    "T",
+    `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(
+      date.getSeconds(),
+    )}.${pad3(date.getMilliseconds())}`,
+    `${sign}${pad2(offsetHours)}:${pad2(offsetRemainderMinutes)}`,
+  ].join("");
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function pad3(value: number): string {
+  return String(value).padStart(3, "0");
 }
 
 function redact(fields: Record<string, unknown> | undefined): Record<string, unknown> {

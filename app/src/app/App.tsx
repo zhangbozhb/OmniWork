@@ -155,6 +155,7 @@ type AppSessionTransport = Omit<SessionTransport, "close"> & {
    */
   forceClose(reason: string): void;
   handleUpgradeMessage(message: MessageEnvelope): void;
+  onBusinessReady(handler: () => void): () => void;
   /**
    * Direct only（底层 prefer_p2p）模式下，AppState 进/出后台时调用：暂停时不会触发协商失败，
    * 仅暂停 ping/buffered 采样并把 currentPath 标记回 relay 入口（业务消息
@@ -255,6 +256,7 @@ function AppContent(): JSX.Element {
   const terminalFrameFlushTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const directBusinessReadyRef = useRef(false);
   // 标记当前失败状态是否已经在交互流程中提示过用户，避免重复弹出
   // "Connection lost" 对话框（例如重试再次失败时立刻又弹一次）。
   const failureDialogActiveRef = useRef(false);
@@ -532,6 +534,10 @@ function AppContent(): JSX.Element {
       },
     });
     relayRef.current = relay;
+    directBusinessReadyRef.current = false;
+    if (transportPreference === "prefer_p2p") {
+      clearLocalAgentData();
+    }
     setConnectionStatus("connecting");
     setConnectionPath(relay.getCurrentPath());
     setConnectionMessage("Opening secure connection...");
@@ -551,6 +557,22 @@ function AppContent(): JSX.Element {
     });
     const unsubscribePathChange = relay.onPathChange((path) => {
       setConnectionPath(path);
+      if (
+        transportPreference === "prefer_p2p" &&
+        path === "p2p" &&
+        directBusinessReadyRef.current
+      ) {
+        markDirectConnectionReady();
+      }
+    });
+    const unsubscribeBusinessReady = relay.onBusinessReady(() => {
+      directBusinessReadyRef.current = true;
+      if (
+        transportPreference === "prefer_p2p" &&
+        relay.getCurrentPath() === "p2p"
+      ) {
+        markDirectConnectionReady();
+      }
     });
 
     relay
@@ -575,6 +597,7 @@ function AppContent(): JSX.Element {
       unsubscribe();
       unsubscribeClose();
       unsubscribePathChange();
+      unsubscribeBusinessReady();
       relay.close();
       if (relayRef.current === relay) {
         relayRef.current = null;
@@ -624,9 +647,17 @@ function AppContent(): JSX.Element {
 
   useEffect(() => {
     if (connectionPath === "p2p" && connectionStatus === "authenticated") {
+      if (transportPreference !== "prefer_p2p") {
+        requestAgentStateRefresh();
+      }
       requestTerminalSnapshotForCurrentSession();
     }
-  }, [connectionPath, connectionStatus, selectedSession?.session_id]);
+  }, [
+    connectionPath,
+    connectionStatus,
+    selectedSession?.session_id,
+    transportPreference,
+  ]);
 
   useEffect(() => {
     if (connectionPath !== "p2p" || connectionStatus !== "authenticated") {
@@ -1202,6 +1233,45 @@ function AppContent(): JSX.Element {
     );
   }
 
+  function requestAgentStateRefresh(): void {
+    const activePairing = pairingRef.current;
+    if (!activePairing) {
+      return;
+    }
+    sendToRelay(listSessionsRequest(activePairing.deviceId));
+    sendToRelay(listWorkspacesRequest(activePairing.deviceId));
+  }
+
+  function markDirectConnectionReady(): void {
+    setConnectionStatus("authenticated");
+    setConnectionMessage("Direct P2P connection is ready.");
+    requestAgentStateRefresh();
+    if (pendingAutoOpenSessionsRef.current) {
+      pendingAutoOpenSessionsRef.current = false;
+      setView("sessions");
+    }
+  }
+
+  function clearLocalAgentData(): void {
+    setSessions([]);
+    setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+    setWorkspaces([]);
+    setSelectedSession(null);
+    setSelectedWorkspace(null);
+    setFileEntries([]);
+    setFileRelativePath("");
+    setSelectedFile(undefined);
+    setGitStatus(undefined);
+    setGitDiff(undefined);
+    setWorkspaceLoading(false);
+    setDefaultSessionCwd("");
+    setTerminalFrames({});
+    pendingTerminalFramesRef.current = {};
+    terminalFrameSeqRef.current = {};
+    terminalLastFrameAtRef.current = {};
+    terminalLastSnapshotRequestAtRef.current = {};
+  }
+
   function sendToRelay(message: MessageEnvelope): void {
     try {
       relayRef.current?.send(message);
@@ -1226,14 +1296,20 @@ function AppContent(): JSX.Element {
         setConnectionMessage("Verifying temporary key...");
         break;
       case "auth.ok":
-        setConnectionStatus("authenticated");
-        setConnectionMessage("Connected to Mac Agent.");
         failureDialogActiveRef.current = false;
-        relay.send(listSessionsRequest(activePairing.deviceId));
-        relay.send(listWorkspacesRequest(activePairing.deviceId));
-        if (pendingAutoOpenSessionsRef.current) {
-          pendingAutoOpenSessionsRef.current = false;
-          setView("sessions");
+        if (relay.isStrictP2p()) {
+          clearLocalAgentData();
+          setConnectionStatus("authenticating");
+          setConnectionMessage("Establishing direct P2P connection...");
+        } else {
+          setConnectionStatus("authenticated");
+          setConnectionMessage("Connected to Mac Agent.");
+          relay.send(listSessionsRequest(activePairing.deviceId));
+          relay.send(listWorkspacesRequest(activePairing.deviceId));
+          if (pendingAutoOpenSessionsRef.current) {
+            pendingAutoOpenSessionsRef.current = false;
+            setView("sessions");
+          }
         }
         break;
       case "auth.failed": {
@@ -1696,6 +1772,7 @@ function createAppSessionTransport(
     onMessage: (handler) => transport.onMessage(handler),
     onClose: (handler) => relayPath.onClose(handler),
     send: (message) => transport.send(message),
+    onBusinessReady: (handler) => session.onBusinessReady(handler),
     close: () => {
       // 切偏好/退出时若 currentPath==='p2p'，先让 coordinator 发出
       // tunnel.upgrade.downgrade(reason="client_closing")，让 agent 端
@@ -1780,19 +1857,26 @@ function createAppSessionTransport(
       }
       coordinator.prepareForReconnect(reason);
       transport.prepareForReconnect(reason);
-      session.send(
-        createMessage<AppNetworkChangedPayload>(
-          "app.network.changed",
-          {
-            app_connection_id: appConnectionId,
-            reason,
-            network_type: details.networkType,
-            is_connected: details.isConnected,
-            is_internet_reachable: details.isInternetReachable,
-          },
-          { device_id: pairing.deviceId },
-        ),
-      );
+      try {
+        session.send(
+          createMessage<AppNetworkChangedPayload>(
+            "app.network.changed",
+            {
+              app_connection_id: appConnectionId,
+              reason,
+              network_type: details.networkType,
+              is_connected: details.isConnected,
+              is_internet_reachable: details.isInternetReachable,
+            },
+            { device_id: pairing.deviceId },
+          ),
+        );
+      } catch (error) {
+        console.warn("[omniwork-app] network change control send failed", {
+          reason,
+          error: (error as Error)?.message,
+        });
+      }
     },
     isStrictP2p: () => transport.isStrictP2p(),
   };

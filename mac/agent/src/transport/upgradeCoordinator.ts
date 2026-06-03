@@ -439,9 +439,16 @@ export class UpgradeCoordinator {
       | "tunnel.upgrade.downgrade",
     payload: TPayload,
   ): void {
-    this.sendControl(
-      createMessage<TPayload>(type, payload, { device_id: this.deviceId }),
-    );
+    try {
+      this.sendControl(
+        createMessage<TPayload>(type, payload, { device_id: this.deviceId }),
+      );
+    } catch (error) {
+      console.warn("[omniwork-upgrade] send control failed", {
+        type,
+        error: (error as Error)?.message,
+      });
+    }
   }
 
   private requireAppConnectionId(): string {

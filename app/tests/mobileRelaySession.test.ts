@@ -121,3 +121,23 @@ test("encodeForP2p does not send plaintext business messages before E2E is ready
 
   assert.equal(relaySession.encodeForP2p(input), null);
 });
+
+test("onBusinessReady fires when E2E peer becomes ready", () => {
+  const { appSession } = createSessionPair();
+  const relaySession = createReadyRelaySession(appSession);
+  const internals = relaySession as unknown as {
+    e2eSession: E2ENoiseSession;
+    e2ePeerReady: boolean;
+    appConnectionId: string;
+    handleE2EReady: (payload: ReturnType<E2ENoiseSession["readyPayload"]>) => void;
+  };
+  internals.e2ePeerReady = false;
+  let readyCount = 0;
+  relaySession.onBusinessReady(() => {
+    readyCount += 1;
+  });
+
+  internals.handleE2EReady(internals.e2eSession.readyPayload());
+
+  assert.equal(readyCount, 1);
+});

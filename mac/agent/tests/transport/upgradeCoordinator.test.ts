@@ -379,4 +379,31 @@ const sleep = (ms: number) =>
   );
 }
 
+// 8. Relay control socket 已关闭时，downgrade 发送失败不应打断本地清理。
+{
+  const pathChanges: TransportPath[] = [];
+  const coordinator = new UpgradeCoordinator({
+    role: "offerer",
+    deviceId: "device-test",
+    peerFactory: () => new MockPeer(),
+    sendControl: () => {
+      throw new Error("Relay socket is not open");
+    },
+    onSwitchPath: (p) => pathChanges.push(p),
+    timeoutMs: 1_000,
+  });
+
+  await assert.doesNotReject(
+    coordinator.propose({
+      upgrade_id: UPGRADE_ID,
+      app_connection_id: APP_CONNECTION_ID,
+      ice_servers: ICE_SERVERS,
+      role: "offerer",
+    }),
+  );
+  assert.doesNotThrow(() => coordinator.downgrade("client_closing"));
+  assert.equal(coordinator.getState(), "idle");
+  assert.deepEqual(pathChanges, ["relay"]);
+}
+
 console.log("upgrade-coordinator tests passed");

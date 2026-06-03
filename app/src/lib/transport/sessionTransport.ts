@@ -7,9 +7,9 @@ import {
   type TransportPingPayload,
   type TransportPongPayload,
   type WebRtcPeerAdapter,
-} from "../../../../packages/protocol-ts/src/index";
-import type { RelayCloseEvent } from "../../../../packages/relay-client/src/index";
-import type { MobileRelayPath } from "./relayPath";
+} from "../../../../packages/protocol-ts/src/index.ts";
+import type { RelayCloseEvent } from "../../../../packages/relay-client/src/index.ts";
+import type { MobileRelayPath } from "./relayPath.ts";
 
 type MessageHandler = (envelope: MessageEnvelope) => void;
 type PathChangeHandler = (path: TransportPath) => void;
@@ -135,6 +135,7 @@ export class MobileSessionTransport implements SessionTransport {
   /**
    * 严格 P2P 模式下、currentPath !== "p2p" 时业务消息的暂存队列。
    * - 升级到 p2p 后由 switchPath() flush；
+   * - 如果 P2P 先于 E2E ready，flush 会重新入队，等 onBusinessReady 再发送；
    * - forceClose / close 时丢弃（业务上层会重建 session 后重新发起请求）。
    */
   private strictPendingQueue: QueuedSend[] = [];
@@ -170,6 +171,11 @@ export class MobileSessionTransport implements SessionTransport {
     this.strictP2p = options.strictP2p ?? false;
     this.forceCloseHandler = options.onForceClose ?? null;
     this.relayPath.onMessage((message) => this.dispatch(message));
+    this.relayPath.onBusinessReady(() => {
+      if (this.currentPath === "p2p") {
+        this.flushPendingP2pBusinessMessages();
+      }
+    });
   }
 
   send(envelope: MessageEnvelope, channel?: P2pChannelKind): void {
@@ -204,7 +210,7 @@ export class MobileSessionTransport implements SessionTransport {
         this.forceClose("strict_pending_overflow");
         return;
       }
-      this.strictPendingQueue.push({ envelope, channel });
+      this.queuePendingBusinessSend(envelope, channel);
       return;
     }
     if (this.outboundQueue) {
@@ -536,11 +542,7 @@ export class MobileSessionTransport implements SessionTransport {
         this.startBufferedSampler();
         // strict 模式下业务消息暂存队列在 P2P 就绪后一次性 flush。
         if (this.strictPendingQueue.length > 0) {
-          const pending = this.strictPendingQueue;
-          this.strictPendingQueue = [];
-          for (const item of pending) {
-            this.dispatchSend(item.envelope, item.channel);
-          }
+          this.flushPendingP2pBusinessMessages();
         }
       } else {
         this.stopPingLoop();
@@ -558,6 +560,7 @@ export class MobileSessionTransport implements SessionTransport {
     if (this.currentPath === "p2p" && this.peer) {
       const encoded = this.relayPath.encodeForP2p(envelope);
       if (!encoded) {
+        this.queuePendingBusinessSend(envelope, channel);
         return;
       }
       this.peer.send(
@@ -579,6 +582,32 @@ export class MobileSessionTransport implements SessionTransport {
       return;
     }
     this.relayPath.send(envelope);
+  }
+
+  private queuePendingBusinessSend(
+    envelope: MessageEnvelope,
+    channel?: P2pChannelKind,
+  ): void {
+    if (this.strictPendingQueue.length >= STRICT_PENDING_QUEUE_LIMIT) {
+      const dropped = this.strictPendingQueue.length;
+      this.strictPendingQueue = [];
+      this.emitEvent({
+        type: "pending_drop",
+        reason: "queue_overflow",
+        count: dropped,
+      });
+      this.forceClose("strict_pending_overflow");
+      return;
+    }
+    this.strictPendingQueue.push({ envelope, channel });
+  }
+
+  private flushPendingP2pBusinessMessages(): void {
+    const pending = this.strictPendingQueue;
+    this.strictPendingQueue = [];
+    for (const item of pending) {
+      this.dispatchSend(item.envelope, item.channel);
+    }
   }
 
   private dispatch(message: MessageEnvelope): void {
