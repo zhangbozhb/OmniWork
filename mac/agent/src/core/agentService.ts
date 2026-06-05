@@ -18,13 +18,11 @@ import type {
   E2EMessagePayload,
   E2EReadyPayload,
   AuthVerifyPayload,
-  CodexSession,
   FilesListRequestPayload,
   FilesReadRequestPayload,
   GitDiffRequestPayload,
   GitStatusRequestPayload,
   SessionCreatePayload,
-  SessionListPayload,
   SessionRenamePayload,
   TerminalErrorPayload,
   TerminalInputPayload,
@@ -59,9 +57,6 @@ import {
   TmuxTargetMissingError,
 } from "../tmux-manager/tmuxManager.ts";
 import { Logger } from "../telemetry/logger.ts";
-import { FileService } from "../files/fileService.ts";
-import { GitService } from "../git/gitService.ts";
-import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 import {
   createPairingQrDetails,
   printPairingDetailsWithoutRelay,
@@ -70,6 +65,10 @@ import {
 import { AgentRelayPath, AgentSessionTransport } from "../transport/index.ts";
 import { UpgradeCoordinator } from "../transport/upgradeCoordinator.ts";
 import { createAgentWebRtcPeerAdapter } from "../transport/webRtcPeerAdapter.ts";
+import { AuthReplayCache } from "./authReplayCache.ts";
+import { WorkspaceManager } from "../workspace/workspaceManager.ts";
+import { ResourceRequestHandler } from "./resourceRequestHandler.ts";
+import { SessionRequestHandler } from "./sessionRequestHandler.ts";
 import { TerminalFramePusher } from "./terminalFramePusher.ts";
 
 interface AppE2EPeer {
@@ -88,9 +87,9 @@ export class AgentService {
   private readonly tmux = new TmuxManager();
   private readonly runtimes: RuntimeRegistry;
   private readonly workspaces: WorkspaceManager;
-  private readonly files = new FileService();
-  private readonly git = new GitService();
   private readonly sessionManager: SessionManager;
+  private readonly resourceRequests: ResourceRequestHandler;
+  private readonly sessionRequests: SessionRequestHandler;
   private readonly terminalBridge: TerminalBridge;
   private readonly terminalFramePusher: TerminalFramePusher;
   private readonly config: AgentConfig;
@@ -100,8 +99,7 @@ export class AgentService {
   private readonly upgradeCoordinators = new Map<string, UpgradeCoordinator>();
   private readonly e2ePeers = new Map<string, AppE2EPeer>();
   private readonly authenticatedAppConnectionIds = new Set<string>();
-  private readonly seenAuthNonces: string[] = [];
-  private readonly seenAuthNonceSet = new Set<string>();
+  private readonly authReplayCache = new AuthReplayCache();
   private readonly logTransport =
     (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
   constructor(config: AgentConfig) {
@@ -122,6 +120,12 @@ export class AgentService {
         terminalSize: config.terminalSize,
       },
     );
+    this.resourceRequests = new ResourceRequestHandler({
+      deviceId: this.config.deviceId,
+      workspaces: this.workspaces,
+      listSessions: () => this.sessionManager.list(),
+      sendToApp: (context, message) => this.sendToApp(context, message),
+    });
     this.terminalBridge = new TerminalBridge(this.tmux);
     this.terminalFramePusher = new TerminalFramePusher({
       deviceId: this.config.deviceId,
@@ -140,6 +144,17 @@ export class AgentService {
         this.sendToAppByConnectionId(appConnectionId, message, channel),
       onMissingTmuxTarget: (sessionId, error) =>
         this.handleMissingTmuxTarget(sessionId, error),
+    });
+    this.sessionRequests = new SessionRequestHandler({
+      deviceId: this.config.deviceId,
+      defaultCwd: this.config.defaultCwd,
+      runtimes: this.runtimes,
+      workspaces: this.workspaces,
+      sessionManager: this.sessionManager,
+      terminalFramePusher: this.terminalFramePusher,
+      sendToApp: (context, message) => this.sendToApp(context, message),
+      handleTerminalSnapshot: (message, context) =>
+        this.handleTerminalSnapshot(message, context),
     });
   }
 
@@ -327,66 +342,61 @@ export class AgentService {
         break;
       case "session.list":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleSessionList(message, dispatchContext);
+        await this.sessionRequests.handleList(message, dispatchContext);
         break;
       case "session.create":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleSessionCreate(
+        await this.sessionRequests.handleCreate(
           message as MessageEnvelope<SessionCreatePayload>,
           dispatchContext,
         );
         break;
       case "session.close":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        if (message.session_id) {
-          this.terminalFramePusher.stop(message.session_id);
-          await this.sessionManager.close(message.session_id);
-          await this.handleSessionList(message, dispatchContext);
-        }
+        await this.sessionRequests.handleClose(message, dispatchContext);
         break;
       case "session.rename":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleSessionRename(
+        await this.sessionRequests.handleRename(
           message as MessageEnvelope<SessionRenamePayload>,
           dispatchContext,
         );
         break;
       case "session.kill_tmux":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        if (message.session_id) {
-          this.terminalFramePusher.stop(message.session_id);
-          await this.sessionManager.killTmux(message.session_id);
-          await this.handleSessionList(message, dispatchContext);
-        }
+        await this.sessionRequests.handleKillTmux(message, dispatchContext);
         break;
       case "workspace.list":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleWorkspaceList(message, dispatchContext);
+        await this.resourceRequests.handleWorkspaceList(
+          message,
+          dispatchContext,
+        );
         break;
       case "files.list":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleFilesList(
+        await this.resourceRequests.handleFilesList(
           message as MessageEnvelope<FilesListRequestPayload>,
           dispatchContext,
         );
         break;
       case "files.read":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleFilesRead(
+        await this.resourceRequests.handleFilesRead(
           message as MessageEnvelope<FilesReadRequestPayload>,
           dispatchContext,
         );
         break;
       case "git.status":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleGitStatus(
+        await this.resourceRequests.handleGitStatus(
           message as MessageEnvelope<GitStatusRequestPayload>,
           dispatchContext,
         );
         break;
       case "git.diff":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleGitDiff(
+        await this.resourceRequests.handleGitDiff(
           message as MessageEnvelope<GitDiffRequestPayload>,
           dispatchContext,
         );
@@ -405,7 +415,7 @@ export class AgentService {
         break;
       case "session.attach":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
-        await this.handleSessionAttach(message, dispatchContext);
+        await this.sessionRequests.handleAttach(message, dispatchContext);
         break;
       case "terminal.snapshot":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
@@ -701,7 +711,7 @@ export class AgentService {
   private handleAuthVerify(message: MessageEnvelope<AuthVerifyPayload>): void {
     const keyRecord = this.requireKeyRecord();
     const authNonceKey = `${message.payload.key_id}:${message.payload.nonce}`;
-    if (this.seenAuthNonceSet.has(authNonceKey)) {
+    if (this.authReplayCache.has(authNonceKey)) {
       this.logger.warn("rejected replayed auth nonce", {
         key_id: message.payload.key_id,
       });
@@ -724,7 +734,7 @@ export class AgentService {
       verifyProof(keyRecord.key, message.payload.nonce, message.payload.proof);
 
     if (valid) {
-      this.rememberAuthNonce(authNonceKey);
+      this.authReplayCache.remember(authNonceKey);
       if (message.payload.connection_id) {
         this.authenticatedAppConnectionIds.add(message.payload.connection_id);
       }
@@ -753,236 +763,6 @@ export class AgentService {
         ),
       );
     }
-  }
-
-  private rememberAuthNonce(nonceKey: string): void {
-    this.seenAuthNonceSet.add(nonceKey);
-    this.seenAuthNonces.push(nonceKey);
-    while (this.seenAuthNonces.length > 1024) {
-      const oldest = this.seenAuthNonces.shift();
-      if (oldest) {
-        this.seenAuthNonceSet.delete(oldest);
-      }
-    }
-  }
-
-  private async handleSessionList(
-    message: MessageEnvelope,
-    context?: AgentDispatchContext,
-  ): Promise<void> {
-    const sessions = await this.sessionManager.list();
-    const payload: SessionListPayload = {
-      default_cwd: this.config.defaultCwd,
-      providers: this.runtimes.providers(),
-      workspaces: await this.workspaces.list(sessions),
-      sessions,
-    };
-    this.sendToApp(
-      context,
-      createMessage("session.list", payload, {
-        device_id: this.config.deviceId,
-        id: message.id,
-      }),
-    );
-  }
-
-  private async handleWorkspaceList(
-    message: MessageEnvelope,
-    context?: AgentDispatchContext,
-  ): Promise<void> {
-    this.sendToApp(
-      context,
-      createMessage(
-        "workspace.list",
-        {
-          workspaces: await this.workspaces.list(
-            await this.sessionManager.list(),
-          ),
-        },
-        {
-          device_id: this.config.deviceId,
-          id: message.id,
-        },
-      ),
-    );
-  }
-
-  private async handleFilesList(
-    message: MessageEnvelope<FilesListRequestPayload>,
-    context?: AgentDispatchContext,
-  ): Promise<void> {
-    const workspace = await this.requireWorkspace(
-      message.payload.workspacePath,
-    );
-    this.sendToApp(
-      context,
-      createMessage(
-        "files.list",
-        await this.files.list(workspace, message.payload.relativePath),
-        {
-          device_id: this.config.deviceId,
-          id: message.id,
-        },
-      ),
-    );
-  }
-
-  private async handleFilesRead(
-    message: MessageEnvelope<FilesReadRequestPayload>,
-    context?: AgentDispatchContext,
-  ): Promise<void> {
-    const workspace = await this.requireWorkspace(
-      message.payload.workspacePath,
-    );
-    this.sendToApp(
-      context,
-      createMessage(
-        "files.read",
-        await this.files.read(workspace, message.payload.relativePath),
-        {
-          device_id: this.config.deviceId,
-          id: message.id,
-        },
-      ),
-    );
-  }
-
-  private async handleGitStatus(
-    message: MessageEnvelope<GitStatusRequestPayload>,
-    context?: AgentDispatchContext,
-  ): Promise<void> {
-    const workspace = await this.requireWorkspace(
-      message.payload.workspacePath,
-    );
-    this.sendToApp(
-      context,
-      createMessage("git.status", await this.git.status(workspace), {
-        device_id: this.config.deviceId,
-        id: message.id,
-      }),
-    );
-  }
-
-  private async handleGitDiff(
-    message: MessageEnvelope<GitDiffRequestPayload>,
-    context?: AgentDispatchContext,
-  ): Promise<void> {
-    const workspace = await this.requireWorkspace(
-      message.payload.workspacePath,
-    );
-    this.sendToApp(
-      context,
-      createMessage(
-        "git.diff",
-        await this.git.diff(
-          workspace,
-          message.payload.relativePath,
-          message.payload.scope,
-        ),
-        {
-          device_id: this.config.deviceId,
-          id: message.id,
-        },
-      ),
-    );
-  }
-
-  private async handleSessionCreate(
-    message: MessageEnvelope<SessionCreatePayload>,
-    context?: AgentDispatchContext,
-  ): Promise<void> {
-    let session;
-    try {
-      session = await this.sessionManager.create(
-        message.payload ?? {},
-        (nextSession) => this.sendSessionStatus(nextSession),
-      );
-    } catch (error) {
-      this.sendToApp(
-        context,
-        createMessage<TerminalErrorPayload>(
-          "terminal.error",
-          {
-            code: "SESSION_CREATE_FAILED",
-            message: formatRelayConnectionError(error),
-          },
-          { device_id: this.config.deviceId },
-        ),
-      );
-      return;
-    }
-    this.sendSessionStatus(session);
-    if (session.status !== "running" && session.status !== "detached") {
-      return;
-    }
-
-    await this.handleTerminalSnapshot(
-      {
-        ...message,
-        session_id: session.session_id,
-      },
-      context,
-    );
-    if (context) {
-      this.terminalFramePusher.addSubscriber(session.session_id, context.appConnectionId);
-    }
-    this.terminalFramePusher.start(session.session_id);
-  }
-
-  private async handleSessionRename(
-    message: MessageEnvelope<SessionRenamePayload>,
-    context?: AgentDispatchContext,
-  ): Promise<void> {
-    const sessionId = message.payload.session_id || message.session_id;
-    if (!sessionId) {
-      return;
-    }
-
-    const session = await this.sessionManager.rename(
-      sessionId,
-      message.payload.title,
-    );
-    if (session) {
-      this.sendSessionStatus(session);
-    }
-    await this.handleSessionList(message, context);
-  }
-
-  private async handleSessionAttach(
-    message: MessageEnvelope,
-    context?: AgentDispatchContext,
-  ): Promise<void> {
-    if (!message.session_id) {
-      return;
-    }
-
-    const session = await this.sessionManager.attach(message.session_id);
-    if (!session) {
-      return;
-    }
-
-    this.sendToApp(
-      context,
-      createMessage(
-        "session.status",
-        { session },
-        {
-          device_id: this.config.deviceId,
-          session_id: session.session_id,
-        },
-      ),
-    );
-    if (context) {
-      this.terminalFramePusher.addSubscriber(session.session_id, context.appConnectionId);
-    }
-    await this.handleTerminalSnapshot(
-      {
-        ...message,
-        session_id: session.session_id,
-      },
-      context,
-    );
-    this.terminalFramePusher.start(session.session_id);
   }
 
   private async handleTerminalInput(
@@ -1066,7 +846,10 @@ export class AgentService {
         seq: snapshotSeq,
       }),
     );
-    this.terminalFramePusher.rememberFrameData(session.session_id, snapshot.data);
+    this.terminalFramePusher.rememberFrameData(
+      session.session_id,
+      snapshot.data,
+    );
   }
 
   private async handleMissingTmuxTarget(
@@ -1093,7 +876,7 @@ export class AgentService {
         },
       ),
     );
-    await this.handleSessionList(
+    await this.sessionRequests.handleList(
       createMessage(
         "session.list",
         {},
@@ -1190,27 +973,6 @@ export class AgentService {
       ...E2E_SUPPORT_V1,
       required: this.config.businessSecurityMode === "e2e_required",
     };
-  }
-
-  private sendSessionStatus(session: CodexSession): void {
-    this.send(
-      createMessage(
-        "session.status",
-        { session },
-        {
-          device_id: this.config.deviceId,
-          session_id: session.session_id,
-        },
-      ),
-    );
-  }
-
-  private async requireWorkspace(workspacePath: string) {
-    const workspace = await this.workspaces.get(workspacePath);
-    if (!workspace) {
-      throw new Error(`Workspace not found: ${workspacePath}`);
-    }
-    return workspace;
   }
 
   private requireKeyRecord(): SessionKeyRecord {

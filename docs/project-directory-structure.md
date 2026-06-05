@@ -213,7 +213,7 @@ mac/
 |   |-- src/
 |   |   |-- main.ts
 |   |   |-- agentd/              # startAgent 主入口
-|   |   |-- core/                # agentService / sessionManager / terminalFramePusher
+|   |   |-- core/                # agentService / sessionManager / sessionRequestHandler / resourceRequestHandler / terminalFramePusher
 |   |   |-- relay-client/        # agentRelayClient
 |   |   |-- transport/           # SessionTransport / UpgradeCoordinator / WebRtcPeerAdapter / relayPath
 |   |   |-- runtime/             # runtimeAdapter（Codex/Claude/Gemini provider 抽象）
@@ -259,7 +259,7 @@ mac/
 
 `agentd/`：Agent 主进程入口（`startAgent.ts`），解析配置、启动各子系统、处理 shutdown。
 
-`core/`：Agent 领域模型。`agentService` 负责生命周期与协议分发，`sessionManager` 负责 session 持久化与 tmux 生命周期，`terminalFramePusher` 负责终端帧推流、去重、订阅者与背压队列。
+`core/`：Agent 领域模型。`agentService` 负责生命周期与协议分发，`sessionManager` 负责 session 持久化与 tmux 生命周期，`sessionRequestHandler` 负责 session list/create/rename/attach/close/kill 请求处理，`resourceRequestHandler` 负责 workspace/files/git 查询处理，`terminalFramePusher` 负责终端帧推流、去重、订阅者与背压队列，`authReplayCache` 负责鉴权 nonce replay 缓存。
 
 `relay-client/`：与 Relay 的出站连接，WebSocket、临时 key proof、重连、心跳。不直接管理 runtime 进程。
 
