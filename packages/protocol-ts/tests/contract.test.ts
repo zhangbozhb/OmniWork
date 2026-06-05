@@ -34,6 +34,7 @@ import {
   isTransportPreference,
   messageEnvelopeSchema,
   parsePairingLink,
+  parseMessageEnvelope,
   protocolErrorPayloadSchema,
   sessionAttachPayloadSchema,
   sessionClosePayloadSchema,
@@ -79,6 +80,16 @@ describe("messageEnvelopeSchema", () => {
       messageEnvelopeSchema.safeParse({ v: PROTOCOL_VERSION }).success,
       false,
     );
+  });
+
+  it("parseMessageEnvelope rejects malformed known payloads", () => {
+    const envelope = createMessage("mobile.connect", {
+      v: PROTOCOL_VERSION,
+      device_id: "device-1",
+      protocol: PROTOCOL_SUPPORT_V1,
+      e2e: E2E_SUPPORT_V1,
+    });
+    assert.equal(parseMessageEnvelope(envelope), null);
   });
 });
 

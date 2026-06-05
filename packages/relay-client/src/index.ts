@@ -1,4 +1,7 @@
-import type { MessageEnvelope } from "../../protocol-ts/src/index.ts";
+import {
+  parseMessageEnvelope,
+  type MessageEnvelope,
+} from "../../protocol-ts/src/index.ts";
 
 type WebSocketLike = {
   readyState: number;
@@ -95,7 +98,20 @@ export class RelayClient {
       return;
     }
 
-    const parsed = JSON.parse(raw) as MessageEnvelope;
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(raw);
+    } catch {
+      this.close(1003, "invalid json");
+      return;
+    }
+
+    const parsed = parseMessageEnvelope(decoded);
+    if (!parsed) {
+      this.close(1003, "invalid protocol message");
+      return;
+    }
+
     for (const handler of this.handlers) {
       handler(parsed);
     }

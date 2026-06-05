@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import {
   createMessage,
   E2E_SUPPORT_V1,
+  PROTOCOL_SUPPORT_V1,
   type MessageEnvelope,
   type TunnelUpgradeOfferPayload,
 } from "../../../packages/protocol-ts/src/index.ts";
@@ -16,6 +17,38 @@ interface FakeSocket {
   onClose(handler: () => void): () => void;
   sendText(message: string): void;
   close(code?: number, reason?: string): void;
+}
+
+// 入站协议边界必须拒绝已知类型的畸形 payload，避免后续业务逻辑依赖类型断言。
+{
+  const server = createServer();
+  const mobileSocket = createFakeSocket();
+  const mobile = {
+    id: "conn_mobile_invalid",
+    endpoint: "mobile",
+    role: "unknown",
+    state: "socket_connected",
+    socket: mobileSocket,
+    authenticated: false,
+    remoteIp: "127.0.0.1",
+  };
+
+  const internals = server as unknown as {
+    handleRawMessage(connection: unknown, raw: string): void;
+  };
+  const malformed = createMessage("mobile.connect", {
+    v: PROTOCOL_SUPPORT_V1.current,
+    device_id: "device_1",
+    protocol: PROTOCOL_SUPPORT_V1,
+    e2e: E2E_SUPPORT_V1,
+  });
+
+  internals.handleRawMessage(mobile, JSON.stringify(malformed));
+
+  assert.deepEqual(mobileSocket.closed[0], {
+    code: 1003,
+    reason: "invalid protocol message",
+  });
 }
 
 function createFakeSocket(): FakeSocket {

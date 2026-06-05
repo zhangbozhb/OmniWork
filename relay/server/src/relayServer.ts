@@ -9,6 +9,7 @@ import type { Socket } from "node:net";
 import {
   createMessage,
   isTransportPreference,
+  parseMessageEnvelope,
   type AgentHelloPayload,
   type AppNetworkChangedPayload,
   type AuthFailedPayload,
@@ -252,11 +253,16 @@ export class RelayServer {
   }
 
   private handleRawMessage(connection: RelayConnection, raw: string): void {
-    let message: MessageEnvelope;
+    let decoded: unknown;
     try {
-      message = JSON.parse(raw) as MessageEnvelope;
+      decoded = JSON.parse(raw);
     } catch {
       connection.socket.close(1003, "invalid json");
+      return;
+    }
+    const message = parseMessageEnvelope(decoded);
+    if (!message) {
+      connection.socket.close(1003, "invalid protocol message");
       return;
     }
 
@@ -544,7 +550,9 @@ export class RelayServer {
       this.rejectInvalidState(connection, message.type);
       return;
     }
-    if (!this.isBusinessChannelReadyForApp(connection.id, connection.deviceId)) {
+    if (
+      !this.isBusinessChannelReadyForApp(connection.id, connection.deviceId)
+    ) {
       this.rejectInvalidState(connection, message.type);
       return;
     }

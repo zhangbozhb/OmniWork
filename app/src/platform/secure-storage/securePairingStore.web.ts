@@ -3,11 +3,13 @@ import { type PairingConfig } from "../../features/auth/types";
 const PAIRING_KEY = "omniwork.pairings";
 
 export async function savePairings(pairings: PairingConfig[]): Promise<void> {
-  localStorage.setItem(PAIRING_KEY, JSON.stringify(pairings));
+  localStorage.removeItem(PAIRING_KEY);
+  sessionStorage.setItem(PAIRING_KEY, JSON.stringify(pairings));
 }
 
 export async function loadPairings(): Promise<PairingConfig[]> {
-  const saved = localStorage.getItem(PAIRING_KEY);
+  localStorage.removeItem(PAIRING_KEY);
+  const saved = sessionStorage.getItem(PAIRING_KEY);
   if (!saved) {
     return [];
   }
@@ -16,7 +18,7 @@ export async function loadPairings(): Promise<PairingConfig[]> {
     | Partial<PairingConfig>
     | Array<Partial<PairingConfig>>;
   const pairings = Array.isArray(parsed) ? parsed : [parsed];
-  return pairings.map(normalizePairingConfig);
+  return pairings.map(normalizePairingConfig).filter(hasSessionKey);
 }
 
 export async function savePairing(pairing: PairingConfig): Promise<void> {
@@ -29,6 +31,7 @@ export async function loadPairing(): Promise<PairingConfig | null> {
 
 export async function clearPairing(): Promise<void> {
   localStorage.removeItem(PAIRING_KEY);
+  sessionStorage.removeItem(PAIRING_KEY);
 }
 
 function normalizePairingConfig(
@@ -40,4 +43,8 @@ function normalizePairingConfig(
     key: pairing.key ?? "",
     keyId: pairing.keyId,
   };
+}
+
+function hasSessionKey(pairing: PairingConfig): boolean {
+  return pairing.key.length > 0;
 }

@@ -2,11 +2,12 @@
  * Zod schemas for the OmniWork wire protocol.
  *
  * Goal: 在 TypeScript 类型之外，再为关键报文提供运行时校验来源。
- * 范围：当前覆盖跨端最频繁、最敏感的 envelope + 鉴权 + 终端 + 会话四类报文，
- * 后续可逐步补全其余 message_type。其余类型仍在 src/index.ts 中维护，
- * 本文件不做重复声明，避免双向漂移。
+ * 范围：覆盖跨端最频繁、最敏感的 envelope、鉴权、E2E、终端、会话、
+ * workspace/files/git、P2P upgrade 与 transport health 报文；暂未建模的
+ * codex.* 扩展消息仍只校验 envelope。
  */
 import { z } from "zod";
+import type { MessageEnvelope, MessageType } from "./index.ts";
 
 import {
   E2E_PROTOCOL_VERSION,
@@ -21,6 +22,66 @@ const isoDateTime = z
   .min(1, "ts must be a non-empty ISO timestamp string");
 
 const messageId = z.string().min(1, "id must be a non-empty string");
+const emptyPayloadSchema = z.object({}).strict();
+
+export const messageTypeSchema = z.enum([
+  "agent.hello",
+  "agent.heartbeat",
+  "mobile.connect",
+  "auth.challenge",
+  "auth.proof",
+  "auth.verify",
+  "auth.ok",
+  "auth.failed",
+  "app.network.changed",
+  "e2e.handshake.init",
+  "e2e.handshake.reply",
+  "e2e.ready",
+  "e2e.message",
+  "e2e.failed",
+  "e2e.rekey.init",
+  "e2e.rekey.reply",
+  "e2e.rekey.ready",
+  "e2e.close",
+  "protocol.error",
+  "device.list",
+  "session.list",
+  "session.create",
+  "session.rename",
+  "session.close",
+  "session.kill_tmux",
+  "session.attach",
+  "session.detach",
+  "session.status",
+  "workspace.list",
+  "workspace.status",
+  "files.list",
+  "files.read",
+  "git.status",
+  "git.diff",
+  "terminal.frame",
+  "terminal.input",
+  "terminal.resize",
+  "terminal.snapshot",
+  "terminal.ack",
+  "terminal.error",
+  "codex.thread.list",
+  "codex.thread.start",
+  "codex.thread.resume",
+  "codex.turn.event",
+  "codex.approval.request",
+  "codex.approval.answer",
+  "codex.diff.event",
+  "codex.error",
+  "tunnel.upgrade.propose",
+  "tunnel.upgrade.offer",
+  "tunnel.upgrade.answer",
+  "tunnel.upgrade.candidate",
+  "tunnel.upgrade.committed",
+  "tunnel.upgrade.downgrade",
+  "transport.ping",
+  "transport.pong",
+] as const satisfies readonly [MessageType, ...MessageType[]]);
 
 /**
  * 通用信封 schema，仅校验跨端通信都依赖的元字段，payload 留给具体消息 schema。
@@ -28,7 +89,7 @@ const messageId = z.string().min(1, "id must be a non-empty string");
 export const messageEnvelopeSchema = z.object({
   v: z.literal(PROTOCOL_VERSION),
   id: messageId,
-  type: z.string().min(1),
+  type: messageTypeSchema,
   device_id: z.string().min(1).optional(),
   session_id: z.string().min(1).optional(),
   app_connection_id: z.string().min(1).optional(),
@@ -151,6 +212,16 @@ export const mobileConnectPayloadSchema = z
     transport_preference: z
       .enum(["auto", "relay_only", "prefer_p2p"])
       .optional(),
+  })
+  .strict();
+
+export const appNetworkChangedPayloadSchema = z
+  .object({
+    app_connection_id: z.string().min(1),
+    reason: z.enum(["foreground_resume", "network_changed"]),
+    network_type: z.string().optional(),
+    is_connected: z.boolean().optional(),
+    is_internet_reachable: z.boolean().optional(),
   })
   .strict();
 
@@ -292,6 +363,13 @@ export const terminalErrorPayloadSchema = z.object({
   message: z.string(),
 });
 
+export const terminalAckPayloadSchema = z
+  .object({
+    ack_seq: z.number().int().nonnegative(),
+    received_bytes: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
 /**
  * 会话相关 schemas。
  *
@@ -340,7 +418,7 @@ const agentProviderDefinitionSchema = z
   })
   .strict();
 
-const workspaceDefinitionSchema = z
+export const workspaceDefinitionSchema = z
   .object({
     name: z.string().optional(),
     path: z.string().min(1),
@@ -401,3 +479,255 @@ export const sessionKillTmuxPayloadSchema = z
     session_id: z.string().min(1),
   })
   .strict();
+
+export const workspaceListPayloadSchema = z
+  .object({
+    workspaces: z.array(workspaceDefinitionSchema),
+  })
+  .strict();
+
+export const workspaceStatusPayloadSchema = z
+  .object({
+    workspace: workspaceDefinitionSchema,
+  })
+  .strict();
+
+export const filesListRequestPayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    relativePath: z.string().optional(),
+  })
+  .strict();
+
+const workspaceFileEntrySchema = z
+  .object({
+    name: z.string(),
+    path: z.string(),
+    relativePath: z.string(),
+    type: z.enum(["file", "directory"]),
+    size: z.number().int().nonnegative().optional(),
+    modifiedAt: isoDateTime.optional(),
+  })
+  .strict();
+
+export const filesListPayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    relativePath: z.string(),
+    entries: z.array(workspaceFileEntrySchema),
+  })
+  .strict();
+
+export const filesReadRequestPayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    relativePath: z.string().min(1),
+  })
+  .strict();
+
+export const filesReadPayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    relativePath: z.string().min(1),
+    content: z.string().optional(),
+    encoding: z.enum(["utf8", "binary", "too_large"]),
+    size: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const workspaceGitStatusSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    isGitRepository: z.boolean(),
+    branch: z.string().optional(),
+    headSha: z.string().optional(),
+    ahead: z.number().int().optional(),
+    behind: z.number().int().optional(),
+    hasChanges: z.boolean(),
+    files: z.array(
+      z
+        .object({
+          path: z.string(),
+          oldPath: z.string().optional(),
+          status: z.enum([
+            "modified",
+            "added",
+            "deleted",
+            "renamed",
+            "untracked",
+          ]),
+          indexStatus: z.string().optional(),
+          worktreeStatus: z.string().optional(),
+          staged: z.boolean().optional(),
+          unstaged: z.boolean().optional(),
+          stagedAdditions: z.number().int().nonnegative().optional(),
+          stagedDeletions: z.number().int().nonnegative().optional(),
+          unstagedAdditions: z.number().int().nonnegative().optional(),
+          unstagedDeletions: z.number().int().nonnegative().optional(),
+          additions: z.number().int().nonnegative().optional(),
+          deletions: z.number().int().nonnegative().optional(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export const gitStatusRequestPayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+  })
+  .strict();
+
+export const gitStatusPayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    status: workspaceGitStatusSchema,
+  })
+  .strict();
+
+export const gitDiffRequestPayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    relativePath: z.string().optional(),
+    scope: z.enum(["all", "staged", "unstaged", "untracked"]).optional(),
+  })
+  .strict();
+
+export const gitDiffPayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    relativePath: z.string().optional(),
+    scope: z.enum(["all", "staged", "unstaged", "untracked"]).optional(),
+    diff: z.string(),
+  })
+  .strict();
+
+const iceServerConfigSchema = z
+  .object({
+    urls: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
+    username: z.string().optional(),
+    credential: z.string().optional(),
+  })
+  .strict();
+
+export const tunnelUpgradeProposePayloadSchema = z
+  .object({
+    upgrade_id: z.string().min(1),
+    app_connection_id: z.string().min(1),
+    ice_servers: z.array(iceServerConfigSchema),
+    role: z.enum(["offerer", "answerer"]),
+    strict: z.boolean().optional(),
+  })
+  .strict();
+
+export const tunnelUpgradeOfferPayloadSchema = z
+  .object({
+    upgrade_id: z.string().min(1),
+    app_connection_id: z.string().min(1),
+    sdp: z.string(),
+  })
+  .strict();
+
+export const tunnelUpgradeAnswerPayloadSchema =
+  tunnelUpgradeOfferPayloadSchema;
+
+export const tunnelUpgradeCandidatePayloadSchema = z
+  .object({
+    upgrade_id: z.string().min(1),
+    app_connection_id: z.string().min(1),
+    candidate: z.string(),
+    sdp_mid: z.string().nullable(),
+    sdp_mline_index: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
+export const tunnelUpgradeCommittedPayloadSchema = z
+  .object({
+    upgrade_id: z.string().min(1),
+    app_connection_id: z.string().min(1),
+  })
+  .strict();
+
+export const tunnelUpgradeDowngradePayloadSchema =
+  tunnelUpgradeCommittedPayloadSchema.extend({
+    reason: z.string(),
+  });
+
+export const transportPingPayloadSchema = z
+  .object({
+    upgrade_id: z.string().min(1).optional(),
+    seq: z.number().int().nonnegative(),
+    sent_at: isoDateTime,
+  })
+  .strict();
+
+export const transportPongPayloadSchema = transportPingPayloadSchema.extend({
+  received_at: isoDateTime,
+});
+
+const payloadSchemaByType = {
+  "agent.hello": agentHelloPayloadSchema,
+  "mobile.connect": mobileConnectPayloadSchema,
+  "auth.challenge": authChallengePayloadSchema,
+  "auth.proof": authProofPayloadSchema,
+  "auth.verify": authVerifyPayloadSchema,
+  "auth.ok": authOkPayloadSchema,
+  "auth.failed": authFailedPayloadSchema,
+  "app.network.changed": appNetworkChangedPayloadSchema,
+  "e2e.handshake.init": e2eHandshakeInitPayloadSchema,
+  "e2e.handshake.reply": e2eHandshakeReplyPayloadSchema,
+  "e2e.ready": e2eReadyPayloadSchema,
+  "e2e.message": e2eMessagePayloadSchema,
+  "e2e.failed": e2eFailedPayloadSchema,
+  "protocol.error": protocolErrorPayloadSchema,
+  "session.list": z.union([emptyPayloadSchema, sessionListPayloadSchema]),
+  "session.create": sessionCreatePayloadSchema,
+  "session.rename": sessionRenamePayloadSchema,
+  "session.close": sessionClosePayloadSchema,
+  "session.kill_tmux": sessionKillTmuxPayloadSchema,
+  "session.attach": sessionAttachPayloadSchema,
+  "session.status": sessionCreatedPayloadSchema,
+  "workspace.list": z.union([emptyPayloadSchema, workspaceListPayloadSchema]),
+  "workspace.status": workspaceStatusPayloadSchema,
+  "files.list": z.union([filesListRequestPayloadSchema, filesListPayloadSchema]),
+  "files.read": z.union([filesReadRequestPayloadSchema, filesReadPayloadSchema]),
+  "git.status": z.union([gitStatusRequestPayloadSchema, gitStatusPayloadSchema]),
+  "git.diff": z.union([gitDiffRequestPayloadSchema, gitDiffPayloadSchema]),
+  "terminal.frame": terminalFramePayloadSchema,
+  "terminal.input": terminalInputPayloadSchema,
+  "terminal.resize": terminalResizePayloadSchema,
+  "terminal.snapshot": z.union([emptyPayloadSchema, terminalSnapshotPayloadSchema]),
+  "terminal.ack": terminalAckPayloadSchema,
+  "terminal.error": terminalErrorPayloadSchema,
+  "tunnel.upgrade.propose": tunnelUpgradeProposePayloadSchema,
+  "tunnel.upgrade.offer": tunnelUpgradeOfferPayloadSchema,
+  "tunnel.upgrade.answer": tunnelUpgradeAnswerPayloadSchema,
+  "tunnel.upgrade.candidate": tunnelUpgradeCandidatePayloadSchema,
+  "tunnel.upgrade.committed": tunnelUpgradeCommittedPayloadSchema,
+  "tunnel.upgrade.downgrade": tunnelUpgradeDowngradePayloadSchema,
+  "transport.ping": transportPingPayloadSchema,
+  "transport.pong": transportPongPayloadSchema,
+} satisfies Partial<Record<MessageType, z.ZodType<unknown>>>;
+
+export function parseMessageEnvelope(input: unknown): MessageEnvelope | null {
+  const envelopeResult = messageEnvelopeSchema.safeParse(input);
+  if (!envelopeResult.success) {
+    return null;
+  }
+
+  const envelope = envelopeResult.data;
+  const payloadSchema = payloadSchemaByType[envelope.type];
+  if (!payloadSchema) {
+    return envelope as MessageEnvelope;
+  }
+
+  const payloadResult = payloadSchema.safeParse(envelope.payload);
+  if (!payloadResult.success) {
+    return null;
+  }
+
+  return {
+    ...envelope,
+    payload: payloadResult.data,
+  } as MessageEnvelope;
+}

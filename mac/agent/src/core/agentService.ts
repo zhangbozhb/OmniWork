@@ -6,6 +6,7 @@ import {
   PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_SUPPORT_V1,
   createMessage,
+  parseMessageEnvelope,
   type MessageEnvelope,
   type P2pChannelKind,
 } from "../../../../packages/protocol-ts/src/index.ts";
@@ -650,13 +651,19 @@ export class AgentService {
     }
     try {
       const inner = peer.session.decrypt(message.payload);
-      await this.handleRelayMessage(
+      const decoded = parseMessageEnvelope(
         innerToMessage(inner, this.config.deviceId),
-        {
-          appConnectionId: message.payload.app_connection_id,
-          trustedE2E: true,
-        },
       );
+      if (!decoded) {
+        this.logger.warn("rejected invalid e2e business message", {
+          app_connection_id: message.payload.app_connection_id,
+        });
+        return;
+      }
+      await this.handleRelayMessage(decoded, {
+        appConnectionId: message.payload.app_connection_id,
+        trustedE2E: true,
+      });
     } catch (error) {
       this.logger.warn("failed to decrypt e2e message", {
         error: String(error),

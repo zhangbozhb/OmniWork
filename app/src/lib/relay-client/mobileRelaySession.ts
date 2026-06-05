@@ -7,6 +7,7 @@ import {
   INNER_PROTOCOL_VERSION,
   PROTOCOL_SUPPORT_V1,
   createMessage,
+  parseMessageEnvelope,
   type AuthChallengePayload,
   type AuthOkPayload,
   type BusinessSecurityMode,
@@ -277,9 +278,12 @@ export class MobileRelaySession {
       return;
     }
     try {
-      this.dispatch(
+      const message = parseMessageEnvelope(
         innerToMessage(this.e2eSession.decrypt(payload), this.pairing.deviceId),
       );
+      if (message) {
+        this.dispatch(message);
+      }
     } catch (error) {
       if (
         error instanceof E2ENoiseError &&

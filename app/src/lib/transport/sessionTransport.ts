@@ -1,5 +1,6 @@
 import {
   createMessage,
+  parseMessageEnvelope,
   type MessageEnvelope,
   type P2pChannelKind,
   type SessionTransport,
@@ -292,12 +293,13 @@ export class MobileSessionTransport implements SessionTransport {
     this.upgradeId = options.upgradeId ?? null;
 
     const offMessage = peer.onDataMessage((data) => {
-      let envelope: MessageEnvelope | null = null;
+      let decoded: unknown;
       try {
-        envelope = JSON.parse(data) as MessageEnvelope;
+        decoded = JSON.parse(data);
       } catch {
-        envelope = null;
+        decoded = null;
       }
+      const envelope = parseMessageEnvelope(decoded);
       if (!envelope) {
         return;
       }
