@@ -3,7 +3,7 @@
 //
 // Usage:
 //   node scripts/verify/mobile-upgrade-simulator.mjs \
-//     --relay ws://127.0.0.1:8787/mobile \
+//     --relay ws://127.0.0.1:8787/relay/ws/mobile \
 //     --device test-device \
 //     --key <KEY> \
 //     --key-id <KEY_ID>
@@ -18,7 +18,7 @@ const require = createRequire(
 const wrtc = require("@roamhq/wrtc");
 
 const args = parseArgs(process.argv.slice(2));
-const relayUrl = args.relay ?? "ws://127.0.0.1:8787/mobile";
+const relayUrl = args.relay ?? "ws://127.0.0.1:8787/relay/ws/mobile";
 const deviceId = args.device ?? "test-device";
 const key = required(args, "key");
 const keyId = required(args, "key-id");

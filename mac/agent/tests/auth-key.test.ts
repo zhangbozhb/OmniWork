@@ -35,7 +35,7 @@ const path = join(dir, "nested", "session-key.json");
 const record = await createAndPersistSessionKey({
   path,
   agentInstanceId: createAgentInstanceId(new Date("2026-05-12T00:00:00Z")),
-  relayUrl: "wss://relay.example/agent",
+  relayUrl: "wss://relay.example/relay/ws/agent",
   now: new Date("2026-05-12T00:00:00Z"),
 });
 
@@ -48,7 +48,7 @@ const baseConfig: AgentConfig = {
   agentVersion: "test",
   deviceId: "test-mac",
   hostname: "test.local",
-  relayUrl: "wss://relay.example/agent",
+  relayUrl: "wss://relay.example/relay/ws/agent",
   agentProviders: [...DEFAULT_AGENT_PROVIDER_DEFINITIONS],
   defaultCwd: dir,
   appSupportDir: dir,
@@ -60,12 +60,12 @@ const baseConfig: AgentConfig = {
 
 assert.equal(
   createPairingQrDetails(baseConfig, record)?.payload.relay_url,
-  "wss://relay.example/mobile",
+  "wss://relay.example/relay/ws/mobile",
 );
 assert.equal(
   parsePairingLink(createPairingQrDetails(baseConfig, record)?.link ?? "")
     ?.relay_url,
-  "wss://relay.example/mobile",
+  "wss://relay.example/relay/ws/mobile",
 );
 
 assert.equal(

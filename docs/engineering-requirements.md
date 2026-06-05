@@ -175,7 +175,7 @@ Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.m
 
 - `pnpm verify:relay`：Relay 配置自检。
 - `pnpm verify:mac-key`：Agent 临时 key 写入与权限校验。
-- `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/mobile --device <id> --key <KEY> --key-id <KEY_ID>`：连接已启动的 Relay 与 Mac Agent，用 mobile simulator 跑通 propose → committed → DataChannel 验证链路。脚本入口 [scripts/verify/mobile-upgrade-simulator.mjs](../scripts/verify/mobile-upgrade-simulator.mjs)。
+- `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY> --key-id <KEY_ID>`：连接已启动的 Relay 与 Mac Agent，用 mobile simulator 跑通 propose → committed → DataChannel 验证链路。脚本入口 [scripts/verify/mobile-upgrade-simulator.mjs](../scripts/verify/mobile-upgrade-simulator.mjs)。
 - `pnpm verify:security`：运行 `@omniwork/e2e-noise` 测试，覆盖 Noise 握手、加解密、seq 防重放和篡改检测。
 
 ## 共享包要求

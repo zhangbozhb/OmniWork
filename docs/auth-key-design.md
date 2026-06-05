@@ -65,7 +65,7 @@ mode: 0600
   "key_id": "sha256:8f2b7d62d9b0",
   "created_at": "<ISO_TIMESTAMP>",
   "agent_instance_id": "agent_20260512000001_a1b2c3d4",
-  "relay_url": "wss://relay.company.example/agent"
+  "relay_url": "wss://relay.company.example/relay/ws/agent"
 }
 ```
 

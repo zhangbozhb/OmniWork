@@ -24,7 +24,7 @@ node --experimental-strip-types src/main.ts
 Useful environment variables:
 
 ```sh
-OMNIWORK_RELAY_URL=wss://relay.company.example/agent
+OMNIWORK_RELAY_URL=wss://relay.company.example/relay/ws/agent
 OMNIWORK_DEVICE_ID=my-mac
 OMNIWORK_CODEX_COMMAND=codex
 OMNIWORK_CLAUDE_COMMAND=claude

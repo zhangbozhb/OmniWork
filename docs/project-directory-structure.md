@@ -491,7 +491,7 @@ scripts/
 - `verify:upgrade:simulator`
 - `verify:security`
 
-> P2P 升级 e2e 验证脚本是 mobile simulator：需要先启动真实 Relay 与 Mac Agent，再运行 `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/mobile --device <id> --key <KEY> --key-id <KEY_ID>`。安全基础验证运行 `pnpm verify:security`，等价于 `@omniwork/e2e-noise` 测试。
+> P2P 升级 e2e 验证脚本是 mobile simulator：需要先启动真实 Relay 与 Mac Agent，再运行 `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY> --key-id <KEY_ID>`。安全基础验证运行 `pnpm verify:security`，等价于 `@omniwork/e2e-noise` 测试。
 
 可补：
 

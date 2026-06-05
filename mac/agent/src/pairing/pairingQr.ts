@@ -196,7 +196,7 @@ function toMobilePathname(pathname: string): string {
       ? pathname.slice(0, -1)
       : pathname;
   if (!normalized || normalized === "/") {
-    return "/mobile";
+    return "/relay/ws/mobile";
   }
   if (normalized.endsWith("/agent")) {
     return `${normalized.slice(0, -"/agent".length)}/mobile`;
@@ -204,12 +204,12 @@ function toMobilePathname(pathname: string): string {
   if (normalized.endsWith("/mobile")) {
     return normalized;
   }
-  // 其它自定义后缀（例如 /custom）一律改写为兄弟路径 /mobile，
-  // 与 Relay `/agent` <-> `/mobile` 双 pool 约定保持一致，避免手机端
+  // 其它自定义后缀（例如 /custom）一律改写为兄弟路径 mobile，
+  // 与 Relay `/relay/ws/agent` <-> `/relay/ws/mobile` 双 pool 约定保持一致，避免手机端
   // 落入仅供 Agent 使用的 path。
   const lastSlash = normalized.lastIndexOf("/");
   if (lastSlash <= 0) {
-    return "/mobile";
+    return "/relay/ws/mobile";
   }
   return `${normalized.slice(0, lastSlash)}/mobile`;
 }

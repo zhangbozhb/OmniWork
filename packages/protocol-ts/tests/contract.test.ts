@@ -311,7 +311,7 @@ describe("terminal payload schemas", () => {
 describe("pairing link round-trip", () => {
   const samplePayload = {
     v: PROTOCOL_VERSION,
-    relay_url: "wss://relay.example/mobile",
+    relay_url: "wss://relay.example/relay/ws/mobile",
     device_id: "mac-host-01",
     key: "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
     key_id: "sha256:8f2b7d62d9b0",

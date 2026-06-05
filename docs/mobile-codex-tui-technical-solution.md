@@ -375,7 +375,7 @@ Mac Agent 的本地端口策略：
 手机与 Relay：
 
 ```text
-ws://relay.example/mobile 或 wss://relay.example/mobile
+ws://relay.example/relay/ws/mobile 或 wss://relay.example/relay/ws/mobile
 auth.proof: HMAC_SHA256(session_key, relay_nonce)
 e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 ```
@@ -383,7 +383,7 @@ e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 Mac Agent 与 Relay：
 
 ```text
-ws://relay.example/agent 或 wss://relay.example/agent
+ws://relay.example/relay/ws/agent 或 wss://relay.example/relay/ws/agent
 agent.hello: device_id + agent_instance_id + key_id
 e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 ```

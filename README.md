@@ -46,7 +46,7 @@ pnpm verify:app:targets
 pnpm verify:app-auth
 pnpm verify:relay
 pnpm verify:mac-key
-pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/mobile --device <id> --key <KEY> --key-id <KEY_ID>
+pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY> --key-id <KEY_ID>
 pnpm verify:security
 ```
 

@@ -62,7 +62,7 @@ class FakeSocket {
 test("RelayClient closes on malformed protocol payload", async () => {
   const socket = new FakeSocket();
   const client = new RelayClient({
-    url: "wss://relay.example/mobile",
+    url: "wss://relay.example/relay/ws/mobile",
     webSocketFactory: () => socket,
   });
   const connected = client.connect();

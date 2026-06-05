@@ -163,7 +163,7 @@ export function PairingScreen({
         autoCorrect={false}
         value={relayUrl}
         onChangeText={setRelayUrl}
-        placeholder="wss://relay.company.example/mobile"
+        placeholder="wss://relay.company.example/relay/ws/mobile"
         placeholderTextColor="#66727c"
         style={styles.input}
       />

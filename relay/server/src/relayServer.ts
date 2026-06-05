@@ -121,7 +121,7 @@ export class RelayServer {
       if (endpoint !== "agent" && endpoint !== "mobile") {
         rejectWebSocketUpgrade(
           socket as Socket,
-          "Use /agent or /mobile for OmniWork connections.",
+          "Use /relay/ws/agent or /relay/ws/mobile for OmniWork connections.",
         );
         return;
       }
@@ -1093,10 +1093,10 @@ function resolveRemoteIp(request: IncomingMessage, socket: Socket): string {
 function parseRelayEndpoint(request: IncomingMessage): RelayEndpoint | null {
   const url = new URL(request.url ?? "/", "http://relay.local");
   const pathname = normalizeRelayPathname(url.pathname);
-  if (pathname === "/agent") {
+  if (pathname === "/relay/ws/agent") {
     return "agent";
   }
-  if (pathname === "/mobile") {
+  if (pathname === "/relay/ws/mobile") {
     return "mobile";
   }
   return null;

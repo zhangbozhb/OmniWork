@@ -23,7 +23,7 @@ type AppGlobal = typeof globalThis & {
 const extra = (globalThis as AppGlobal).__OMNIWORK_APP_CONFIG__ ?? {};
 
 export const appConfig = {
-  defaultRelayUrl: extra.defaultRelayUrl ?? "wss://relay.company.example/mobile",
+  defaultRelayUrl: extra.defaultRelayUrl ?? "wss://relay.company.example/relay/ws/mobile",
   transportPreference: isTransportPreference(extra.transportPreference)
     ? extra.transportPreference
     : ("auto" as TransportPreference),

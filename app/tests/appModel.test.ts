@@ -33,7 +33,7 @@ test("upsertSession inserts and replaces by session_id", () => {
 
 test("upsertPairing replaces by relay URL and device ID", () => {
   const first = {
-    relayUrl: "wss://relay.example/mobile",
+    relayUrl: "wss://relay.example/relay/ws/mobile",
     deviceId: "mac-1",
     key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   };

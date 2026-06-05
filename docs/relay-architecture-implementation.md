@@ -49,7 +49,7 @@ App <-- ws/wss --> Relay <-- ws/wss --> Agent
    \====== App-Agent E2E encrypted path =====/
 ```
 
-- Relay 只接受 `/mobile` 和 `/agent` WebSocket endpoint。
+- Relay 只接受 `/relay/ws/mobile` 和 `/relay/ws/agent` WebSocket endpoint。
 - App 通过 `mobile.connect` 进入 Relay 接入流程。
 - Agent 通过 `agent.hello` 注册 `device_id`、`agent_instance_id`、`key_id`、协议版本和能力。
 - `auth.proof` 只用于 Relay 接入校验和限流，不代表业务通道可用。
