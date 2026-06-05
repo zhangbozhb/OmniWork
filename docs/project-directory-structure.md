@@ -107,6 +107,9 @@ app/
 |   |-- app/
 |   |   |-- App.tsx
 |   |   |-- appConfig.ts
+|   |   |-- appModel.ts           # App 纯业务工具：pairing/session upsert、状态文案、标题辅助
+|   |   |-- appTransport.ts       # App 传输装配：Relay/P2P wiring 与网络变化订阅
+|   |   |-- appTypes.ts           # App 顶层视图、连接状态与传输适配类型
 |   |-- features/
 |   |   |-- auth/                # hmacSha256 + keyProof + 类型
 |   |   |-- sessions/            # sessionCapabilities / sessionMessages

@@ -23,7 +23,6 @@ import { useTranslation } from "react-i18next";
 
 import type {
   AgentProviderDefinition,
-  AppNetworkChangedPayload,
   AuthFailedPayload,
   CodexSession,
   FilesListPayload,
@@ -34,7 +33,6 @@ import type {
   MessageEnvelope,
   RuntimeKind,
   SessionListPayload,
-  SessionTransport,
   TerminalErrorPayload,
   TerminalFramePayload,
   TerminalInputPayload,
@@ -42,12 +40,6 @@ import type {
   TerminalSnapshotPayload,
   TransportPath,
   TransportPreference,
-  TunnelUpgradeAnswerPayload,
-  TunnelUpgradeCandidatePayload,
-  TunnelUpgradeCommittedPayload,
-  TunnelUpgradeDowngradePayload,
-  TunnelUpgradeOfferPayload,
-  TunnelUpgradeProposePayload,
   WorkspaceDefinition,
   WorkspaceFileEntry,
   WorkspaceGitStatus,
@@ -58,8 +50,28 @@ import {
   createMessage,
   isTransportPreference,
 } from "@omniwork/protocol-ts";
-import type { RelayCloseEvent } from "@omniwork/relay-client";
 import { appConfig } from "./appConfig";
+import type {
+  AppSessionTransport,
+  AppView,
+  ConnectionStatus,
+  PrimaryTabView,
+} from "./appTypes";
+import {
+  formatErrorMessage,
+  formatRelayCloseMessage,
+  formatStrictForceCloseMessage,
+  getHeaderSubtitle,
+  isPrimaryTabView,
+  isSamePairing,
+  isTransitionalSessionStatus,
+  upsertPairing,
+  upsertSession,
+} from "./appModel";
+import {
+  createAppSessionTransport,
+  subscribeNetworkChanges,
+} from "./appTransport";
 import { PairingScreen } from "../screens/pairing/PairingScreen";
 import { DeviceListScreen } from "../screens/devices/DeviceListScreen";
 import { ConnectionPreferenceScreen } from "../screens/settings/ConnectionPreferenceScreen";
@@ -94,10 +106,6 @@ import {
   isTerminalTextSize,
   type TerminalTextSize,
 } from "../features/terminal/terminalLayout";
-import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
-import { MobileRelayPath, MobileSessionTransport } from "../lib/transport";
-import { UpgradeCoordinator } from "../lib/transport/upgradeCoordinator";
-import { createMobileWebRtcPeerAdapter } from "../lib/transport/webRtcPeerAdapter";
 import { terminalFrameWatermarkAfterSnapshot } from "./terminalFrameWatermark";
 import i18n from "../i18n";
 import {
@@ -117,61 +125,6 @@ import {
 } from "../platform/secure-storage/securePairingStore";
 import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
 import { Icon, type IconName } from "../ui/icons";
-
-type AppView =
-  | "pairing"
-  | "devices"
-  | "settings"
-  | "connectionPreference"
-  | "sessions"
-  | "terminal";
-type PrimaryTabView = "devices" | "settings";
-type ConnectionStatus =
-  | "idle"
-  | "connecting"
-  | "authenticating"
-  | "authenticated"
-  | "failed";
-type NetworkChangeDetails = {
-  networkType?: string;
-  isConnected?: boolean;
-  isInternetReachable?: boolean;
-};
-
-type AppSessionTransport = Omit<SessionTransport, "close"> & {
-  connect(): Promise<void>;
-  onClose(handler: (event: RelayCloseEvent) => void): () => void;
-  close(reason?: string): void;
-  getCurrentPath(): TransportPath;
-  onPathChange(handler: (path: TransportPath) => void): () => void;
-  /**
-   * 阶段 5：暴露给业务层用于在 AppState 变化、网络变化时主动触发降级，
-   * 以及处理来自 Relay 的 tunnel.upgrade.* 控制消息。
-   */
-  forceDowngrade(reason: string): void;
-  /**
-   * Direct only（底层 prefer_p2p）模式下，Relay 主动下发 strict_unavailable 时由 wiring 层调用，
-   * 直接让 transport 进入 forceClose 并通知 onForceClose handler。
-   */
-  forceClose(reason: string): void;
-  handleUpgradeMessage(message: MessageEnvelope): void;
-  onBusinessReady(handler: () => void): () => void;
-  /**
-   * Direct only（底层 prefer_p2p）模式下，AppState 进/出后台时调用：暂停时不会触发协商失败，
-   * 仅暂停 ping/buffered 采样并把 currentPath 标记回 relay 入口（业务消息
-   * 仍受 strict 准入门保护，不会真的发到 relay）。
-   */
-  pauseForBackground(): void;
-  resumeForForeground(): void;
-  requestP2pReconnect(
-    reason: AppNetworkChangedPayload["reason"],
-    details?: NetworkChangeDetails,
-  ): void;
-  /**
-   * 是否运行在 Direct only 模式（由 transportPreference === "prefer_p2p" 推导）。
-   */
-  isStrictP2p(): boolean;
-};
 
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
 
@@ -1641,292 +1594,6 @@ function AppContent(): JSX.Element {
   );
 }
 
-function createAppSessionTransport(
-  pairing: PairingConfig,
-  transportPreference: TransportPreference,
-  options: { onForceClose?: (reason: string) => void } = {},
-): AppSessionTransport {
-  const session = new MobileRelaySession(pairing, { transportPreference });
-  const relayPath = new MobileRelayPath(session);
-  const strictP2p = transportPreference === "prefer_p2p";
-  const onForceClose = options.onForceClose;
-  const transport = new MobileSessionTransport(relayPath, {
-    strictP2p,
-    onForceClose,
-  });
-  const logTransport =
-    typeof process !== "undefined" &&
-    process.env?.OMNIWORK_LOG_TRANSPORT === "1";
-
-  // App 端固定为 offerer。
-  const coordinator = new UpgradeCoordinator({
-    role: "offerer",
-    deviceId: pairing.deviceId,
-    // 防御性兜底：即便 Relay 端 respectClientPreference 被运维关闭，
-    // 用户选择 relay_only 时 App 仍拒绝创建 PeerConnection，触发 coordinator
-    // 的 peer_unavailable 失败计数让链路稳定回退到 relay。
-    // 严格 P2P 模式下若 react-native-webrtc / wrtc 不可用同样返回 null，
-    // coordinator 会调用 onForceClose("peer_unavailable") 关闭 session。
-    peerFactory: (opts) => {
-      if (transportPreference === "relay_only") {
-        console.info("[omniwork-app] upgrade refused by transport_preference", {
-          preference: transportPreference,
-        });
-        return null;
-      }
-      return createMobileWebRtcPeerAdapter({
-        iceServers: opts.iceServers,
-        role: opts.role,
-      });
-    },
-    sendControl: (envelope) => session.send(envelope),
-    onSwitchPath: (path) => {
-      if (path === "p2p") {
-        const peer = coordinator.getPeer();
-        const upgradeId = coordinator.getUpgradeId();
-        if (peer) {
-          transport.attachP2pPeer(peer, {
-            upgradeId: upgradeId ?? undefined,
-            onDowngrade: (reason) => coordinator.downgrade(reason),
-          });
-        }
-      }
-      void transport.switchPath(path);
-    },
-    onForceClose: (reason) => {
-      // 协商期失败 → 让 transport 通过 forceCloseHandler 通知上层
-      transport.forceClose(reason);
-    },
-  });
-
-  transport.onEvent((event) => {
-    switch (event.type) {
-      case "path_change":
-        console.info("[omniwork-app] transport path changed", {
-          from: event.from,
-          to: event.to,
-        });
-        break;
-      case "ping_timeout":
-        console.warn("[omniwork-app] transport ping timeout", {
-          seq: event.seq,
-          count: event.count,
-        });
-        break;
-      case "pong_received":
-        if (logTransport) {
-          console.info("[omniwork-app] transport pong received", {
-            seq: event.seq,
-            rtt_ms: event.rtt_ms,
-          });
-        }
-        break;
-      case "downgrade":
-        console.warn("[omniwork-app] transport downgrade", {
-          reason: event.reason,
-        });
-        break;
-      case "force_close":
-        console.warn("[omniwork-app] strict_p2p force_close", {
-          reason: event.reason,
-        });
-        break;
-      case "strict_send_blocked":
-        console.warn("[omniwork-app] strict_p2p send blocked", {
-          envelope_type: event.envelope_type,
-        });
-        break;
-      case "background_pause":
-        console.info("[omniwork-app] strict_p2p background pause");
-        break;
-      case "background_resume":
-        console.info("[omniwork-app] strict_p2p background resume");
-        break;
-    }
-  });
-
-  coordinator.onEvent((event) => {
-    switch (event.type) {
-      case "propose":
-        console.info("[omniwork-app] upgrade propose", {
-          upgrade_id: event.upgrade_id,
-          role: event.role,
-        });
-        break;
-      case "upgrade_success":
-        console.info("[omniwork-app] upgrade success", {
-          upgrade_id: event.upgrade_id,
-        });
-        break;
-      case "upgrade_failed":
-        console.warn("[omniwork-app] upgrade failed", {
-          upgrade_id: event.upgrade_id,
-          reason: event.reason,
-        });
-        break;
-    }
-  });
-
-  return {
-    connect: () => session.connect(),
-    onMessage: (handler) => transport.onMessage(handler),
-    onClose: (handler) => relayPath.onClose(handler),
-    send: (message) => transport.send(message),
-    onBusinessReady: (handler) => session.onBusinessReady(handler),
-    close: () => {
-      // 切偏好/退出时若 currentPath==='p2p'，先让 coordinator 发出
-      // tunnel.upgrade.downgrade(reason="client_closing")，让 agent 端
-      // 立即 cleanup PeerConnection，避免之后 agent 仅靠 pong_timeout
-      // (~5s) 才被动感知，期间 strict 端会出现 strict_p2p_disconnect 噪音、
-      // auto 端业务消息（如新链路鉴权）也得不到清场。
-      if (transport.getCurrentPath() === "p2p") {
-        coordinator.downgrade("client_closing");
-      }
-      transport.close("client closing");
-      session.close();
-    },
-    getCurrentPath: () => transport.getCurrentPath(),
-    onPathChange: (handler) => transport.onPathChange(handler),
-    forceDowngrade: (reason) => {
-      transport.forceDowngrade(reason);
-      coordinator.downgrade(reason);
-    },
-    forceClose: (reason) => transport.forceClose(reason),
-    handleUpgradeMessage: (message) => {
-      const appConnectionId = session.getAppConnectionId();
-      const payloadAppConnectionId = (
-        message.payload as { app_connection_id?: string }
-      ).app_connection_id;
-      if (!appConnectionId || payloadAppConnectionId !== appConnectionId) {
-        return;
-      }
-      switch (message.type) {
-        case "tunnel.upgrade.propose":
-          void coordinator.propose(
-            (message as MessageEnvelope<TunnelUpgradeProposePayload>).payload,
-          );
-          break;
-        case "tunnel.upgrade.offer":
-          void coordinator.handleOffer(
-            (message as MessageEnvelope<TunnelUpgradeOfferPayload>).payload,
-          );
-          break;
-        case "tunnel.upgrade.answer":
-          void coordinator.handleAnswer(
-            (message as MessageEnvelope<TunnelUpgradeAnswerPayload>).payload,
-          );
-          break;
-        case "tunnel.upgrade.candidate":
-          void coordinator.handleCandidate(
-            (message as MessageEnvelope<TunnelUpgradeCandidatePayload>).payload,
-          );
-          break;
-        case "tunnel.upgrade.committed":
-          coordinator.handleCommitted(
-            (message as MessageEnvelope<TunnelUpgradeCommittedPayload>).payload,
-          );
-          break;
-        case "tunnel.upgrade.downgrade": {
-          const reason = (
-            message as MessageEnvelope<TunnelUpgradeDowngradePayload>
-          ).payload.reason;
-          // strict 偏好下，Relay 端 enabled/blocklist/backoff 守门会主动
-          // 下发 reason="strict_unavailable:*" —— 此时 coordinator 还在
-          // idle，downgrade() 直接 return 不会触发 forceClose；这里兜底
-          // 让 strict transport 立即关闭 session 让 UI 透出原因。
-          if (
-            reason.startsWith("strict_unavailable") &&
-            transport.isStrictP2p()
-          ) {
-            transport.forceClose(reason);
-            break;
-          }
-          coordinator.downgrade(reason);
-          break;
-        }
-        default:
-          break;
-      }
-    },
-    pauseForBackground: () => transport.pauseForBackground(),
-    resumeForForeground: () => transport.resumeForForeground(),
-    requestP2pReconnect: (reason, details = {}) => {
-      const appConnectionId = session.getAppConnectionId();
-      if (!appConnectionId) {
-        return;
-      }
-      coordinator.prepareForReconnect(reason);
-      transport.prepareForReconnect(reason);
-      try {
-        session.send(
-          createMessage<AppNetworkChangedPayload>(
-            "app.network.changed",
-            {
-              app_connection_id: appConnectionId,
-              reason,
-              network_type: details.networkType,
-              is_connected: details.isConnected,
-              is_internet_reachable: details.isInternetReachable,
-            },
-            { device_id: pairing.deviceId },
-          ),
-        );
-      } catch (error) {
-        console.warn("[omniwork-app] network change control send failed", {
-          reason,
-          error: (error as Error)?.message,
-        });
-      }
-    },
-    isStrictP2p: () => transport.isStrictP2p(),
-  };
-}
-
-function subscribeNetworkChanges(
-  handler: (event: NetworkChangeDetails) => void,
-): () => void {
-  const maybeWindow =
-    typeof window === "undefined"
-      ? null
-      : (window as Window & {
-          addEventListener?: Window["addEventListener"];
-          removeEventListener?: Window["removeEventListener"];
-        });
-  const maybeNavigator =
-    typeof navigator === "undefined"
-      ? null
-      : (navigator as Navigator & {
-          connection?: {
-            type?: string;
-            effectiveType?: string;
-            addEventListener?: (type: "change", listener: () => void) => void;
-            removeEventListener?: (
-              type: "change",
-              listener: () => void,
-            ) => void;
-          };
-        });
-
-  const emit = () => {
-    handler({
-      networkType:
-        maybeNavigator?.connection?.type ??
-        maybeNavigator?.connection?.effectiveType,
-      isConnected: maybeNavigator?.onLine,
-    });
-  };
-
-  maybeWindow?.addEventListener?.("online", emit);
-  maybeWindow?.addEventListener?.("offline", emit);
-  maybeNavigator?.connection?.addEventListener?.("change", emit);
-
-  return () => {
-    maybeWindow?.removeEventListener?.("online", emit);
-    maybeWindow?.removeEventListener?.("offline", emit);
-    maybeNavigator?.connection?.removeEventListener?.("change", emit);
-  };
-}
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -2031,138 +1698,4 @@ function PrimaryTabBar({
       })}
     </View>
   );
-}
-
-function upsertSession(
-  sessions: CodexSession[],
-  nextSession: CodexSession,
-): CodexSession[] {
-  const index = sessions.findIndex(
-    (session) => session.session_id === nextSession.session_id,
-  );
-  if (index < 0) {
-    return [nextSession, ...sessions];
-  }
-
-  const nextSessions = [...sessions];
-  nextSessions[index] = nextSession;
-  return nextSessions;
-}
-
-function upsertPairing(
-  pairings: PairingConfig[],
-  nextPairing: PairingConfig,
-): PairingConfig[] {
-  const index = pairings.findIndex((pairing) =>
-    isSamePairing(pairing, nextPairing),
-  );
-  if (index < 0) {
-    return [...pairings, nextPairing];
-  }
-
-  const nextPairings = [...pairings];
-  nextPairings[index] = nextPairing;
-  return nextPairings;
-}
-
-function isSamePairing(left: PairingConfig, right: PairingConfig): boolean {
-  return left.relayUrl === right.relayUrl && left.deviceId === right.deviceId;
-}
-
-function getHeaderSubtitle(
-  view: AppView,
-  deviceCount: number,
-  activePairing: PairingConfig | null,
-  t: (key: string, options?: Record<string, unknown>) => string,
-): string {
-  if (view === "devices") {
-    return t("app.subtitle.linkedDevices", { count: deviceCount });
-  }
-  if (view === "settings") {
-    return t("app.subtitle.globalPreferences");
-  }
-  if (view === "connectionPreference") {
-    return t("app.subtitle.connectionSettings");
-  }
-
-  return activePairing?.deviceId ?? "";
-}
-
-function isPrimaryTabView(view: AppView): view is PrimaryTabView {
-  return view === "devices" || view === "settings";
-}
-
-function formatErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return i18n.t("app.errors.unknown");
-  }
-}
-
-function isTransitionalSessionStatus(status: CodexSession["status"]): boolean {
-  return status === "created" || status === "starting";
-}
-
-function formatRelayCloseMessage(event: {
-  code?: number;
-  reason?: string;
-}): string {
-  const reason = event.reason ? `: ${event.reason}` : "";
-  return `Connection closed${event.code ? ` (${event.code})` : ""}${reason}`;
-}
-
-/**
- * 把 transport.forceClose 透出来的 strict 失败 reason 翻译成面向用户的 UI 文案。
- * - 协商期失败（peer_unavailable / create_offer_failed / handle_offer_failed /
- *   handle_answer_failed / timeout）：常见于双端 ICE/SDP 错配，提示用户重连或换偏好；
- * - 运行期降级（pong_timeout / ice_failed / ice_disconnected / buffered_overflow /
- *   peer_closed / peer_missing）：通常是网络抖动，提示用户重连；
- * - relay 主动 strict_unavailable:*：来自 P1-1E/1F 守门，附带 cause 供排查。
- *
- * 未识别的 reason 走兜底文案 + 原始 token，便于线上抓 bug。
- */
-function formatStrictForceCloseMessage(reason: string): string {
-  if (reason.startsWith("strict_unavailable:")) {
-    const cause = reason.slice("strict_unavailable:".length);
-    if (cause === "relay_disabled") {
-      return "Direct only is unavailable on this Relay. Switch Connection mode or contact the operator.";
-    }
-    if (cause === "blocklisted") {
-      return "Direct only is unavailable: this device is blocked by the Relay.";
-    }
-    if (cause === "backoff_active") {
-      return "Direct only is cooling down after recent failures. Retry in a few minutes or switch Connection mode.";
-    }
-    return `Direct only unavailable (${cause}). Switch Connection mode or reconnect.`;
-  }
-  switch (reason) {
-    case "peer_unavailable":
-      return "Direct connection unavailable. Check that the App and Mac Agent are reachable and try again.";
-    case "create_offer_failed":
-    case "handle_offer_failed":
-    case "handle_answer_failed":
-      return "Direct connection setup failed. Reconnect, and if the issue persists switch Connection mode.";
-    case "timeout":
-      return "Direct connection setup timed out. Check the network and retry.";
-    case "pong_timeout":
-      return "Direct connection lost (no heartbeat). Reconnect or switch Connection mode.";
-    case "ice_failed":
-    case "ice_disconnected":
-      return "Direct connection lost. Reconnect or switch Connection mode.";
-    case "buffered_overflow":
-      return "Direct connection lost (send buffer overflow). Reconnect or switch Connection mode.";
-    case "peer_closed":
-    case "peer_missing":
-      return "Direct connection closed unexpectedly. Reconnect or switch Connection mode.";
-    default:
-      return `Direct connection unavailable: ${reason}. Switch Connection mode or reconnect.`;
-  }
 }
