@@ -31,7 +31,10 @@ import {
   e2eMessagePayloadSchema,
   e2eReadyPayloadSchema,
   innerEnvelopeSchema,
+  innerToMessage,
+  isE2EBusinessMessage,
   isTransportPreference,
+  messageToInner,
   messageEnvelopeSchema,
   parsePairingLink,
   parseMessageEnvelope,
@@ -242,6 +245,26 @@ describe("e2e v1 schemas", () => {
       seq: 1,
       payload: { data: "ls\n" },
     });
+  });
+});
+
+describe("e2e business message helpers", () => {
+  it("classifies encrypted business messages consistently", () => {
+    assert.equal(isE2EBusinessMessage("session.list"), true);
+    assert.equal(isE2EBusinessMessage("terminal.input"), true);
+    assert.equal(isE2EBusinessMessage("tunnel.upgrade.offer"), true);
+    assert.equal(isE2EBusinessMessage("auth.ok"), false);
+    assert.equal(isE2EBusinessMessage("e2e.message"), false);
+  });
+
+  it("round-trips outer messages through inner envelopes", () => {
+    const message = createMessage(
+      "terminal.input",
+      { kind: "text", data: "ls\n" },
+      { device_id: "device-1", session_id: "sess-1", seq: 7 },
+    );
+    const restored = innerToMessage(messageToInner(message), "device-1");
+    assert.deepEqual(restored, message);
   });
 });
 

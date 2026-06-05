@@ -2,10 +2,12 @@ import {
   E2E_NOISE_NNPSK0_CAPABILITY_V1,
   E2E_SUPPORT_V1,
   ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
-  INNER_PROTOCOL_VERSION,
   PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_SUPPORT_V1,
   createMessage,
+  innerToMessage,
+  isE2EBusinessMessage,
+  messageToInner,
   parseMessageEnvelope,
   type MessageEnvelope,
   type P2pChannelKind,
@@ -21,7 +23,6 @@ import type {
   FilesReadRequestPayload,
   GitDiffRequestPayload,
   GitStatusRequestPayload,
-  InnerEnvelope,
   SessionCreatePayload,
   SessionListPayload,
   SessionRenamePayload,
@@ -1051,7 +1052,8 @@ export class AgentService {
       throw error;
     }
 
-    const snapshotSeq = (this.terminalFrameSeq.get(session.session_id) ?? 0) + 1;
+    const snapshotSeq =
+      (this.terminalFrameSeq.get(session.session_id) ?? 0) + 1;
     this.terminalFrameSeq.set(session.session_id, snapshotSeq);
 
     this.sendToApp(
@@ -1396,44 +1398,4 @@ function terminalFramePendingKey(
   sessionId: string,
 ): string {
   return `${appConnectionId}|${sessionId}`;
-}
-
-function isE2EBusinessMessage(type: string): boolean {
-  return (
-    type.startsWith("session.") ||
-    type.startsWith("terminal.") ||
-    type.startsWith("workspace.") ||
-    type.startsWith("files.") ||
-    type.startsWith("git.") ||
-    type.startsWith("codex.") ||
-    type.startsWith("tunnel.upgrade.")
-  );
-}
-
-function messageToInner(message: MessageEnvelope): InnerEnvelope {
-  return {
-    v: INNER_PROTOCOL_VERSION,
-    id: message.id,
-    type: message.type,
-    created_at: message.ts,
-    seq: message.seq,
-    session_id: message.session_id,
-    payload: message.payload,
-  };
-}
-
-function innerToMessage(
-  inner: InnerEnvelope,
-  deviceId: string,
-): MessageEnvelope {
-  return {
-    v: PROTOCOL_SUPPORT_V1.current,
-    id: inner.id,
-    type: inner.type,
-    device_id: deviceId,
-    session_id: inner.session_id,
-    seq: inner.seq,
-    ts: inner.created_at,
-    payload: inner.payload,
-  };
 }
