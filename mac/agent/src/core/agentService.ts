@@ -27,7 +27,6 @@ import type {
   SessionListPayload,
   SessionRenamePayload,
   TerminalErrorPayload,
-  TerminalFramePayload,
   TerminalInputPayload,
   TerminalResizePayload,
   TunnelUpgradeAnswerPayload,
@@ -42,7 +41,6 @@ import {
   acceptInitiatorHandshake,
   type E2ENoiseSession,
 } from "@omniwork/e2e-noise";
-import { createHash } from "node:crypto";
 
 import type { AgentConfig } from "../config/config.ts";
 import {
@@ -69,13 +67,10 @@ import {
   printPairingDetailsWithoutRelay,
   printPairingQr,
 } from "../pairing/pairingQr.ts";
-import {
-  AgentRelayPath,
-  AgentSessionTransport,
-  DISPLAY_FRAME_BUFFERED_AMOUNT_LIMIT,
-} from "../transport/index.ts";
+import { AgentRelayPath, AgentSessionTransport } from "../transport/index.ts";
 import { UpgradeCoordinator } from "../transport/upgradeCoordinator.ts";
 import { createAgentWebRtcPeerAdapter } from "../transport/webRtcPeerAdapter.ts";
+import { TerminalFramePusher } from "./terminalFramePusher.ts";
 
 interface AppE2EPeer {
   appConnectionId: string;
@@ -97,6 +92,7 @@ export class AgentService {
   private readonly git = new GitService();
   private readonly sessionManager: SessionManager;
   private readonly terminalBridge: TerminalBridge;
+  private readonly terminalFramePusher: TerminalFramePusher;
   private readonly config: AgentConfig;
   private keyRecord: SessionKeyRecord | null = null;
   private relay: AgentRelayClient | null = null;
@@ -108,16 +104,6 @@ export class AgentService {
   private readonly seenAuthNonceSet = new Set<string>();
   private readonly logTransport =
     (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
-  /**
-   * 每个 session 的终端推流定时器：基于内容哈希去重，仅在变化时推送 terminal.frame，
-   * 取代 App 端 3s 全量轮询 + 输入后多次轮询。
-   */
-  private readonly terminalPushers = new Map<string, NodeJS.Timeout>();
-  private readonly terminalLastFrameHash = new Map<string, string>();
-  private readonly terminalFrameSeq = new Map<string, number>();
-  private readonly terminalSubscribers = new Map<string, Set<string>>();
-  private readonly pendingTerminalFrames = new Map<string, MessageEnvelope>();
-
   constructor(config: AgentConfig) {
     this.config = config;
     this.runtimes = new RuntimeRegistry({
@@ -137,6 +123,24 @@ export class AgentService {
       },
     );
     this.terminalBridge = new TerminalBridge(this.tmux);
+    this.terminalFramePusher = new TerminalFramePusher({
+      deviceId: this.config.deviceId,
+      logTransport: this.logTransport,
+      logger: this.logger,
+      sessionManager: this.sessionManager,
+      terminalBridge: this.terminalBridge,
+      getBufferedAmountForApp: (appConnectionId) =>
+        this.transport?.getBufferedAmountForApp(appConnectionId) ?? 0,
+      emitDisplayFrameDeferred: (appConnectionId, bufferedAmount) =>
+        this.transport?.emitDisplayFrameDeferred(
+          appConnectionId,
+          bufferedAmount,
+        ),
+      sendToAppByConnectionId: (appConnectionId, message, channel) =>
+        this.sendToAppByConnectionId(appConnectionId, message, channel),
+      onMissingTmuxTarget: (sessionId, error) =>
+        this.handleMissingTmuxTarget(sessionId, error),
+    });
   }
 
   async start(): Promise<void> {
@@ -335,7 +339,7 @@ export class AgentService {
       case "session.close":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         if (message.session_id) {
-          this.stopTerminalPusher(message.session_id);
+          this.terminalFramePusher.stop(message.session_id);
           await this.sessionManager.close(message.session_id);
           await this.handleSessionList(message, dispatchContext);
         }
@@ -350,7 +354,7 @@ export class AgentService {
       case "session.kill_tmux":
         if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
         if (message.session_id) {
-          this.stopTerminalPusher(message.session_id);
+          this.terminalFramePusher.stop(message.session_id);
           await this.sessionManager.killTmux(message.session_id);
           await this.handleSessionList(message, dispatchContext);
         }
@@ -920,9 +924,9 @@ export class AgentService {
       context,
     );
     if (context) {
-      this.addTerminalSubscriber(session.session_id, context.appConnectionId);
+      this.terminalFramePusher.addSubscriber(session.session_id, context.appConnectionId);
     }
-    this.startTerminalPusher(session.session_id);
+    this.terminalFramePusher.start(session.session_id);
   }
 
   private async handleSessionRename(
@@ -969,7 +973,7 @@ export class AgentService {
       ),
     );
     if (context) {
-      this.addTerminalSubscriber(session.session_id, context.appConnectionId);
+      this.terminalFramePusher.addSubscriber(session.session_id, context.appConnectionId);
     }
     await this.handleTerminalSnapshot(
       {
@@ -978,7 +982,7 @@ export class AgentService {
       },
       context,
     );
-    this.startTerminalPusher(session.session_id);
+    this.terminalFramePusher.start(session.session_id);
   }
 
   private async handleTerminalInput(
@@ -1052,9 +1056,7 @@ export class AgentService {
       throw error;
     }
 
-    const snapshotSeq =
-      (this.terminalFrameSeq.get(session.session_id) ?? 0) + 1;
-    this.terminalFrameSeq.set(session.session_id, snapshotSeq);
+    const snapshotSeq = this.terminalFramePusher.nextSeq(session.session_id);
 
     this.sendToApp(
       context,
@@ -1064,17 +1066,14 @@ export class AgentService {
         seq: snapshotSeq,
       }),
     );
-    this.terminalLastFrameHash.set(
-      session.session_id,
-      createHash("sha1").update(snapshot.data).digest("hex"),
-    );
+    this.terminalFramePusher.rememberFrameData(session.session_id, snapshot.data);
   }
 
   private async handleMissingTmuxTarget(
     sessionId: string,
     error: TmuxTargetMissingError,
   ): Promise<void> {
-    this.stopTerminalPusher(sessionId);
+    this.terminalFramePusher.stop(sessionId);
     this.logger.warn("tmux target no longer exists; removing stale session", {
       session_id: sessionId,
       tmux_target: error.tmuxTarget,
@@ -1103,150 +1102,6 @@ export class AgentService {
         },
       ),
     );
-  }
-
-  private startTerminalPusher(sessionId: string): void {
-    if (this.terminalPushers.has(sessionId)) {
-      return;
-    }
-    const intervalMs = 450;
-    const timer = setInterval(() => {
-      void this.pushTerminalFrameIfChanged(sessionId);
-    }, intervalMs);
-    if (typeof timer.unref === "function") {
-      timer.unref();
-    }
-    this.terminalPushers.set(sessionId, timer);
-  }
-
-  private stopTerminalPusher(sessionId: string): void {
-    const timer = this.terminalPushers.get(sessionId);
-    if (timer) {
-      clearInterval(timer);
-      this.terminalPushers.delete(sessionId);
-    }
-    this.terminalLastFrameHash.delete(sessionId);
-    this.terminalFrameSeq.delete(sessionId);
-    this.terminalSubscribers.delete(sessionId);
-    for (const key of [...this.pendingTerminalFrames.keys()]) {
-      if (key.endsWith(`|${sessionId}`)) {
-        this.pendingTerminalFrames.delete(key);
-      }
-    }
-  }
-
-  private async pushTerminalFrameIfChanged(sessionId: string): Promise<void> {
-    const session = await this.sessionManager.get(sessionId);
-    if (!session) {
-      this.stopTerminalPusher(sessionId);
-      return;
-    }
-    if (session.status !== "running" && session.status !== "detached") {
-      return;
-    }
-
-    let frame: TerminalFramePayload;
-    try {
-      frame = await this.terminalBridge.frame(session);
-    } catch (error) {
-      if (error instanceof TmuxTargetMissingError) {
-        await this.handleMissingTmuxTarget(sessionId, error);
-        return;
-      }
-      this.logger.warn("terminal frame capture failed", {
-        session_id: sessionId,
-        error: String(error),
-      });
-      return;
-    }
-
-    const subscribers = this.terminalSubscribers.get(sessionId);
-    if (!subscribers || subscribers.size === 0) {
-      return;
-    }
-
-    this.flushPendingTerminalFrames(sessionId, subscribers);
-
-    const hash = createHash("sha1").update(frame.data).digest("hex");
-    if (this.terminalLastFrameHash.get(sessionId) === hash) {
-      return;
-    }
-    this.terminalLastFrameHash.set(sessionId, hash);
-    const frameSeq = (this.terminalFrameSeq.get(sessionId) ?? 0) + 1;
-    this.terminalFrameSeq.set(sessionId, frameSeq);
-    const enrichedFrame: TerminalFramePayload = {
-      ...frame,
-      captured_at: new Date().toISOString(),
-      byte_length: Buffer.byteLength(frame.data, "utf8"),
-    };
-
-    const frameMessage = createMessage<TerminalFramePayload>(
-      "terminal.frame",
-      enrichedFrame,
-      {
-        device_id: this.config.deviceId,
-        session_id: sessionId,
-        seq: frameSeq,
-      },
-    );
-    for (const appConnectionId of subscribers) {
-      this.sendDisplayFrameToApp(appConnectionId, sessionId, frameMessage);
-    }
-  }
-
-  private flushPendingTerminalFrames(
-    sessionId: string,
-    subscribers: Set<string>,
-  ): void {
-    for (const appConnectionId of subscribers) {
-      const key = terminalFramePendingKey(appConnectionId, sessionId);
-      const pending = this.pendingTerminalFrames.get(key);
-      if (!pending || this.isDisplayFrameBackpressured(appConnectionId)) {
-        continue;
-      }
-      this.pendingTerminalFrames.delete(key);
-      this.sendToAppByConnectionId(appConnectionId, pending, "display");
-    }
-  }
-
-  private sendDisplayFrameToApp(
-    appConnectionId: string,
-    sessionId: string,
-    frameMessage: MessageEnvelope<TerminalFramePayload>,
-  ): void {
-    const pendingKey = terminalFramePendingKey(appConnectionId, sessionId);
-    if (this.isDisplayFrameBackpressured(appConnectionId)) {
-      if (this.pendingTerminalFrames.has(pendingKey) && this.logTransport) {
-        this.logger.debug("terminal display frame dropped", {
-          app_connection_id: appConnectionId,
-          session_id: sessionId,
-        });
-      }
-      this.pendingTerminalFrames.set(pendingKey, frameMessage);
-      return;
-    }
-
-    const pending = this.pendingTerminalFrames.get(pendingKey);
-    if (pending) {
-      this.pendingTerminalFrames.delete(pendingKey);
-      if (this.logTransport) {
-        this.logger.debug("terminal display frame replaced", {
-          app_connection_id: appConnectionId,
-          session_id: sessionId,
-        });
-      }
-    }
-    this.sendToAppByConnectionId(appConnectionId, frameMessage, "display");
-  }
-
-  private isDisplayFrameBackpressured(appConnectionId: string): boolean {
-    const bufferedAmount =
-      this.transport?.getBufferedAmountForApp(appConnectionId) ?? 0;
-    if (bufferedAmount < DISPLAY_FRAME_BUFFERED_AMOUNT_LIMIT) {
-      return false;
-    }
-    this.transport?.emitDisplayFrameDeferred(appConnectionId, bufferedAmount);
-    return true;
   }
 
   private send(message: MessageEnvelope): void {
@@ -1337,16 +1192,6 @@ export class AgentService {
     };
   }
 
-  private addTerminalSubscriber(
-    sessionId: string,
-    appConnectionId: string,
-  ): void {
-    const subscribers =
-      this.terminalSubscribers.get(sessionId) ?? new Set<string>();
-    subscribers.add(appConnectionId);
-    this.terminalSubscribers.set(sessionId, subscribers);
-  }
-
   private sendSessionStatus(session: CodexSession): void {
     this.send(
       createMessage(
@@ -1391,11 +1236,4 @@ function formatRelayConnectionError(error: unknown): string {
   } catch {
     return String(error);
   }
-}
-
-function terminalFramePendingKey(
-  appConnectionId: string,
-  sessionId: string,
-): string {
-  return `${appConnectionId}|${sessionId}`;
 }
