@@ -10,7 +10,7 @@ import {
   type P2pChannelKind,
   type PeerState,
   type WebRtcPeerAdapter,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 type MessageHandler = (envelope: MessageEnvelope) => void;
 

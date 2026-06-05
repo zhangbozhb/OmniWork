@@ -2,7 +2,7 @@ import {
   createMessage,
   type TerminalInputPayload,
   type TerminalResizePayload,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 export function terminalInputRequest(
   deviceId: string,

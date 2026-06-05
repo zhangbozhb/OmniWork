@@ -1,13 +1,13 @@
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
-import { DEFAULT_TERMINAL_SIZE } from "../../../../packages/terminal-core/src/index.ts";
+import { DEFAULT_TERMINAL_SIZE } from "@omniwork/terminal-core";
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
   type BusinessSecurityMode,
   type AgentProviderDefinition,
-} from "../../../../packages/protocol-ts/src/index.ts";
-import type { TerminalSize } from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
+import type { TerminalSize } from "@omniwork/protocol-ts";
 
 export interface AgentConfig {
   agentVersion: string;

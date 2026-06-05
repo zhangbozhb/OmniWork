@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { SQLiteSessionStore } from "../src/session-store/sessionStore.ts";
-import type { CodexSession } from "../../../packages/protocol-ts/src/index.ts";
+import type { CodexSession } from "@omniwork/protocol-ts";
 
 function fakeSession(overrides: Partial<CodexSession> = {}): CodexSession {
   const now = new Date().toISOString();

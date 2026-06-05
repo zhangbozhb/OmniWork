@@ -25,6 +25,7 @@
     "verify:app:web": "pnpm --filter @omniwork/app verify:web",
     "verify:app:bundle:ios": "pnpm --filter @omniwork/app verify:bundle:ios",
     "verify:app:bundle:android": "pnpm --filter @omniwork/app verify:bundle:android",
+    "verify:package-boundaries": "node scripts/verify/package-boundaries.mjs",
     "verify:relay": "node --experimental-strip-types relay/server/src/main.ts --check",
     "verify:mac-key": "node --experimental-strip-types mac/agent/tests/auth-key.test.ts",
     "verify:upgrade:simulator": "node --experimental-strip-types scripts/verify/mobile-upgrade-simulator.mjs",

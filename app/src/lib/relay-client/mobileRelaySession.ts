@@ -1,7 +1,7 @@
 import {
   RelayClient,
   type RelayCloseEvent,
-} from "../../../../packages/relay-client/src/index.ts";
+} from "@omniwork/relay-client";
 import {
   E2E_SUPPORT_V1,
   INNER_PROTOCOL_VERSION,
@@ -17,7 +17,7 @@ import {
   type InnerEnvelope,
   type MessageEnvelope,
   type TransportPreference,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import {
   E2ENoiseError,
   createInitiatorHandshake,

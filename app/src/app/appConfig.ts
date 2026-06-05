@@ -1,7 +1,7 @@
 import {
   isTransportPreference,
   type TransportPreference,
-} from "../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 type ExtraConfig = {
   defaultRelayUrl?: string;

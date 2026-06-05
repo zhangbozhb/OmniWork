@@ -5,7 +5,7 @@ import {
   type IceCandidateInit,
   type PeerState,
   type WebRtcPeerAdapter,
-} from "../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import { UpgradeCoordinator } from "../src/lib/transport/upgradeCoordinator.ts";
 
 class MockPeer implements WebRtcPeerAdapter {

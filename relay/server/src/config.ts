@@ -1,4 +1,4 @@
-import type { IceServerConfig } from "../../../packages/protocol-ts/src/index.ts";
+import type { IceServerConfig } from "@omniwork/protocol-ts";
 
 /**
  * Relay 升级编排相关配置（阶段 4 引入）。

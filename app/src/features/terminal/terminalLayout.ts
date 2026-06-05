@@ -1,5 +1,5 @@
 import { Dimensions, PixelRatio, Platform } from "react-native";
-import type { TerminalSize } from "../../../../packages/protocol-ts/src/index.ts";
+import type { TerminalSize } from "@omniwork/protocol-ts";
 
 export type TerminalTextSize = "small" | "normal" | "big";
 

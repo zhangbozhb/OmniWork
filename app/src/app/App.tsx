@@ -52,13 +52,13 @@ import type {
   WorkspaceFileEntry,
   WorkspaceGitStatus,
   WorkspaceListPayload,
-} from "../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
   createMessage,
   isTransportPreference,
-} from "../../../packages/protocol-ts/src/index.ts";
-import type { RelayCloseEvent } from "../../../packages/relay-client/src/index.ts";
+} from "@omniwork/protocol-ts";
+import type { RelayCloseEvent } from "@omniwork/relay-client";
 import { appConfig } from "./appConfig";
 import { PairingScreen } from "../screens/pairing/PairingScreen";
 import { DeviceListScreen } from "../screens/devices/DeviceListScreen";

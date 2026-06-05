@@ -5,7 +5,7 @@ import {
   PROTOCOL_VERSION,
   createPairingLink,
   type PairingLinkPayload,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
 import type { SessionKeyRecord } from "../auth-key/authKey.ts";
 

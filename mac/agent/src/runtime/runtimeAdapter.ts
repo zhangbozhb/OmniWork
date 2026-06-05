@@ -2,7 +2,7 @@ import {
   type AgentCapability,
   type AgentProviderDefinition,
   type RuntimeKind,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 export interface RuntimeAdapter {
   readonly kind: RuntimeKind;

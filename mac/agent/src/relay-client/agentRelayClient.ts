@@ -1,5 +1,5 @@
-import { RelayClient } from "../../../../packages/relay-client/src/index.ts";
-import type { MessageEnvelope } from "../../../../packages/protocol-ts/src/index.ts";
+import { RelayClient } from "@omniwork/relay-client";
+import type { MessageEnvelope } from "@omniwork/protocol-ts";
 
 export class AgentRelayClient {
   private readonly client: RelayClient;

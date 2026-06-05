@@ -9,7 +9,7 @@ import {
   parseMessageEnvelope,
   type MessageEnvelope,
   type P2pChannelKind,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import type {
   AgentHelloPayload,
   E2EHandshakeInitPayload,
@@ -35,7 +35,7 @@ import type {
   TunnelUpgradeDowngradePayload,
   TunnelUpgradeOfferPayload,
   TunnelUpgradeProposePayload,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import {
   E2ENoiseError,
   acceptInitiatorHandshake,

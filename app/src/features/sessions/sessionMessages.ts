@@ -1,4 +1,4 @@
-import { createMessage, type SessionCreatePayload } from "../../../../packages/protocol-ts/src/index.ts";
+import { createMessage, type SessionCreatePayload } from "@omniwork/protocol-ts";
 
 export function createSessionRequest(deviceId: string, payload: SessionCreatePayload = {}) {
   return createMessage("session.create", payload, { device_id: deviceId });

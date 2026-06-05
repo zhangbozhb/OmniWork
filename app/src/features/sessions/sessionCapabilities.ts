@@ -1,7 +1,7 @@
 import type {
   CodexSession,
   SessionStatus,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 export interface SessionPendingState {
   closing?: boolean;

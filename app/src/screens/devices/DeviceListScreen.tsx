@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 
-import type { TransportPath } from "../../../../packages/protocol-ts/src/index.ts";
+import type { TransportPath } from "@omniwork/protocol-ts";
 import type { PairingConfig } from "../../features/auth/types";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";

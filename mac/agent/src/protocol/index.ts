@@ -1,1 +1,1 @@
-export * from "../../../../packages/protocol-ts/src/index.ts";
+export * from "@omniwork/protocol-ts";

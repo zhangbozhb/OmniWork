@@ -16,7 +16,7 @@ import { createPairingQrDetails } from "../src/pairing/pairingQr.ts";
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
   parsePairingLink,
-} from "../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 const key = generateSessionKey();
 assert.equal(key.length, 32);

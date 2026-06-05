@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import type {
   CodexSession,
   WorkspaceDefinition,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 const execFileAsync = promisify(execFile);
 

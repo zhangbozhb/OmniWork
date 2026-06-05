@@ -26,7 +26,7 @@ import {
   type MobileConnectPayload,
   type ProtocolErrorPayload,
   type TransportPreference,
-} from "../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 import type { RelayServerConfig } from "./config.ts";
 import { TokenBucketLimiter } from "./tokenBucket.ts";

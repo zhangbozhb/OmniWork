@@ -10,7 +10,7 @@ import {
   type TunnelUpgradeOfferPayload,
   type TunnelUpgradeProposePayload,
   type WebRtcPeerAdapter,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 export type UpgradeState =
   | "idle"

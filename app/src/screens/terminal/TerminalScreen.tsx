@@ -19,13 +19,13 @@ import type {
   CodexSession,
   TerminalInputPayload,
   TerminalResizePayload,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import {
   createControlInput,
   createTextInput,
   sanitizeTerminalText,
   type TerminalControlKey,
-} from "../../../../packages/terminal-core/src/index.ts";
+} from "@omniwork/terminal-core";
 import i18n from "../../i18n";
 import {
   computeTerminalLayout,

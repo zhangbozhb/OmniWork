@@ -6,7 +6,7 @@ import {
   PROTOCOL_SUPPORT_V1,
   type MessageEnvelope,
   type TunnelUpgradeOfferPayload,
-} from "../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import { loadRelayServerConfig } from "../src/config.ts";
 import { RelayServer } from "../src/relayServer.ts";
 

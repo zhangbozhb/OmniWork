@@ -2,7 +2,7 @@ import type { JSX } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
-import type { TransportPreference } from "../../../../packages/protocol-ts/src/index.ts";
+import type { TransportPreference } from "@omniwork/protocol-ts";
 import { Button } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";
 

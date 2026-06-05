@@ -1,4 +1,4 @@
-import type { TerminalInputPayload, TerminalSize } from "../../protocol-ts/src/index.ts";
+import type { TerminalInputPayload, TerminalSize } from "@omniwork/protocol-ts";
 
 export const DEFAULT_TERMINAL_SIZE: TerminalSize = {
   cols: 100,

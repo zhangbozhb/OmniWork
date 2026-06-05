@@ -1,5 +1,5 @@
-import type { MessageEnvelope } from "../../../../packages/protocol-ts/src/index.ts";
-import type { RelayCloseEvent } from "../../../../packages/relay-client/src/index.ts";
+import type { MessageEnvelope } from "@omniwork/protocol-ts";
+import type { RelayCloseEvent } from "@omniwork/relay-client";
 import type { MobileRelaySession } from "../relay-client/mobileRelaySession.ts";
 
 export class MobileRelayPath {

@@ -8,8 +8,8 @@ import {
   type TransportPingPayload,
   type TransportPongPayload,
   type WebRtcPeerAdapter,
-} from "../../../../packages/protocol-ts/src/index.ts";
-import type { RelayCloseEvent } from "../../../../packages/relay-client/src/index.ts";
+} from "@omniwork/protocol-ts";
+import type { RelayCloseEvent } from "@omniwork/relay-client";
 import type { MobileRelayPath } from "./relayPath.ts";
 
 type MessageHandler = (envelope: MessageEnvelope) => void;

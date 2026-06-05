@@ -7,7 +7,7 @@ import type {
   GitDiffScope,
   WorkspaceDefinition,
   WorkspaceGitStatus,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 

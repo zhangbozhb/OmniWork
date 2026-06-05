@@ -1,4 +1,4 @@
-import type { MessageEnvelope } from "../../../../packages/protocol-ts/src/index.ts";
+import type { MessageEnvelope } from "@omniwork/protocol-ts";
 import type { AgentRelayClient } from "../relay-client/agentRelayClient.ts";
 
 export class AgentRelayPath {

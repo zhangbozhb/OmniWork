@@ -10,7 +10,7 @@ import { RuntimeRegistry } from "../src/runtime/runtimeAdapter.ts";
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
   type CodexSession,
-} from "../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 function fakeSession(overrides: Partial<CodexSession>): CodexSession {
   const now = new Date().toISOString();

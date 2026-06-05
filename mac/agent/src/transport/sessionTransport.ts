@@ -8,7 +8,7 @@ import {
   type TransportPingPayload,
   type TransportPongPayload,
   type WebRtcPeerAdapter,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import type { AgentRelayPath } from "./relayPath.ts";
 
 type MessageHandler = (envelope: MessageEnvelope) => void;

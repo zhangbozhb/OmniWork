@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type {
   CodexSession,
   RuntimeKind,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import { formatLocalTimestamp } from "../telemetry/logger.ts";
 
 interface SessionRow {

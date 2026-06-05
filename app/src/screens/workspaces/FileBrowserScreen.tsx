@@ -6,7 +6,7 @@ import type {
   FilesReadPayload,
   WorkspaceDefinition,
   WorkspaceFileEntry,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 import { Icon } from "../../ui/icons";

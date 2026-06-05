@@ -7,7 +7,7 @@ import {
   type P2pChannelKind,
   type PeerState,
   type WebRtcPeerAdapter,
-} from "../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import { MobileSessionTransport } from "../src/lib/transport/sessionTransport.ts";
 
 type MessageHandler = (envelope: MessageEnvelope) => void;

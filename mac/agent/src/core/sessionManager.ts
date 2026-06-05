@@ -6,9 +6,9 @@ import type {
   SessionCreatePayload,
   TerminalSize,
   WorkspaceDefinition,
-} from "../../../../packages/protocol-ts/src/index.ts";
-import { isSupportedSessionStatus } from "../../../../packages/protocol-ts/src/index.ts";
-import { clampTerminalSize } from "../../../../packages/terminal-core/src/index.ts";
+} from "@omniwork/protocol-ts";
+import { isSupportedSessionStatus } from "@omniwork/protocol-ts";
+import { clampTerminalSize } from "@omniwork/terminal-core";
 import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { formatLocalTimestamp } from "../telemetry/logger.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";

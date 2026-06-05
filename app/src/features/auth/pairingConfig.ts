@@ -1,4 +1,4 @@
-import { parsePairingLink } from "../../../../packages/protocol-ts/src/index.ts";
+import { parsePairingLink } from "@omniwork/protocol-ts";
 import { isValidSessionKey } from "./keyProof";
 import type { PairingConfig } from "./types";
 

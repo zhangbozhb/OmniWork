@@ -6,7 +6,7 @@ import type {
   FilesReadPayload,
   WorkspaceDefinition,
   WorkspaceFileEntry,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 const IGNORED_DIRECTORIES = new Set([
   ".git",

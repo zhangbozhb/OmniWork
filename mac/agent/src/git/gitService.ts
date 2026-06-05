@@ -9,7 +9,7 @@ import type {
   GitStatusPayload,
   WorkspaceDefinition,
   WorkspaceGitStatus,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 
 const execFileAsync = promisify(execFile);
 

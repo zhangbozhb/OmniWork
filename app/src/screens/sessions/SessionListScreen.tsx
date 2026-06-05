@@ -25,12 +25,12 @@ import type {
   WorkspaceDefinition,
   WorkspaceFileEntry,
   WorkspaceGitStatus,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import {
   getAgentProviderDefinition,
   getCreatableAgentProviders,
   isCreatableRuntimeKind,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import i18n from "../../i18n";
 import { getSessionCapabilities } from "../../features/sessions/sessionCapabilities";
 import { Badge, Button, Card } from "../../ui/components";

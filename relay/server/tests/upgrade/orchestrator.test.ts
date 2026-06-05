@@ -6,7 +6,7 @@ import {
   type MessageEnvelope,
   type TunnelUpgradeCommittedPayload,
   type TunnelUpgradeDowngradePayload,
-} from "../../../../packages/protocol-ts/src/index.ts";
+} from "@omniwork/protocol-ts";
 import {
   RelayUpgradeOrchestrator,
   type UpgradeOrchestratorConfig,
