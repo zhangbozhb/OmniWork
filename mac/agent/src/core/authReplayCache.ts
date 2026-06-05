@@ -1,8 +1,11 @@
 export class AuthReplayCache {
   private readonly seenOrder: string[] = [];
   private readonly seenSet = new Set<string>();
+  private readonly maxEntries: number;
 
-  constructor(private readonly maxEntries = 1024) {}
+  constructor(maxEntries = 1024) {
+    this.maxEntries = maxEntries;
+  }
 
   has(key: string): boolean {
     return this.seenSet.has(key);

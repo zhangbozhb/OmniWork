@@ -21,7 +21,10 @@ type TerminalFramePusherOptions = {
   sessionManager: SessionManager;
   terminalBridge: TerminalBridge;
   getBufferedAmountForApp(appConnectionId: string): number;
-  emitDisplayFrameDeferred(appConnectionId: string, bufferedAmount: number): void;
+  emitDisplayFrameDeferred(
+    appConnectionId: string,
+    bufferedAmount: number,
+  ): void;
   sendToAppByConnectionId(
     appConnectionId: string,
     message: MessageEnvelope,
@@ -39,8 +42,11 @@ export class TerminalFramePusher {
   private readonly terminalFrameSeq = new Map<string, number>();
   private readonly terminalSubscribers = new Map<string, Set<string>>();
   private readonly pendingTerminalFrames = new Map<string, MessageEnvelope>();
+  private readonly options: TerminalFramePusherOptions;
 
-  constructor(private readonly options: TerminalFramePusherOptions) {}
+  constructor(options: TerminalFramePusherOptions) {
+    this.options = options;
+  }
 
   start(sessionId: string): void {
     if (this.terminalPushers.has(sessionId)) {

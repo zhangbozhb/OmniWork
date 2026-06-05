@@ -32,7 +32,11 @@ type SessionRequestHandlerOptions = {
 };
 
 export class SessionRequestHandler {
-  constructor(private readonly options: SessionRequestHandlerOptions) {}
+  private readonly options: SessionRequestHandlerOptions;
+
+  constructor(options: SessionRequestHandlerOptions) {
+    this.options = options;
+  }
 
   async handleList(
     message: MessageEnvelope,
