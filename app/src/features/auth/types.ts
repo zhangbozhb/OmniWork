@@ -3,4 +3,5 @@ export interface PairingConfig {
   deviceId: string;
   key: string;
   keyId?: string;
+  appInstanceId: string;
 }

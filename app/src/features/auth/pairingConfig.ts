@@ -21,5 +21,11 @@ export function parsePairingConfig(input: string): PairingConfig | null {
     deviceId: payload.device_id,
     key: payload.key,
     keyId: payload.key_id,
+    appInstanceId: createAppInstanceId(),
   };
+}
+
+export function createAppInstanceId(): string {
+  const random = Math.random().toString(36).slice(2, 12);
+  return `app_${Date.now().toString(36)}_${random}`;
 }

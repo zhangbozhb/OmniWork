@@ -1,5 +1,6 @@
 import { RelayClient } from "@omniwork/relay-client";
 import type { MessageEnvelope } from "@omniwork/protocol-ts";
+import type { RelayCloseEvent } from "@omniwork/relay-client";
 
 export class AgentRelayClient {
   private readonly client: RelayClient;
@@ -14,6 +15,10 @@ export class AgentRelayClient {
 
   onMessage(handler: (message: MessageEnvelope) => void): () => void {
     return this.client.onMessage(handler);
+  }
+
+  onClose(handler: (event: RelayCloseEvent) => void): () => void {
+    return this.client.onClose(handler);
   }
 
   send(message: MessageEnvelope): void {

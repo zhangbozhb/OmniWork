@@ -15,9 +15,9 @@ MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密
 ## 安全状态
 
 - 代码已接入 App-Agent Noise E2E：App 在 `auth.ok` 后发起握手，Agent 只执行解密后的 `InnerEnvelope`，业务响应也会封装为 `e2e.message`。
-- 同一个 Agent 已支持多个 App 同时连接；每个 App 使用 Relay 分配的 `app_connection_id` 建立独立 E2E session。
+- 同一个 Agent 已支持多个 App 同时连接；每个 App 使用 `app_info.instance_id` / `app_info.runtime_id` 标识应用实例与运行实例，并使用 Relay 分配的 `app_connection_id` 建立独立 E2E session。
 - `packages/e2e-noise` 已覆盖 NNpsk0 握手、ChaCha20-Poly1305 加解密、`seq` 防重放、篡改检测和 key mismatch 测试。
-- `auth.proof` 仍只用于 Relay 接入校验和失败限流；Agent 额外记录已处理 nonce，拒绝同一 `key_id + nonce` 的 `auth.verify` 重放。
+- `auth.proof` 仍用于 Relay 接入校验和失败限流；签名输入绑定 `nonce`、`app_info.instance_id`、`app_info.runtime_id`，Agent 额外记录已处理 nonce，拒绝同一 `key_id + nonce` 的 `auth.verify` 重放。
 - P2P per App connection 已完成基础收口：Relay 只对 E2E ready 的 App 连接触发 propose，升级控制信令按 `app_connection_id` 绑定并由 Relay 透传；业务 payload 仍复用 App-Agent E2E 通道。
 
 ## 设计基线

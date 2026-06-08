@@ -34,6 +34,8 @@ export const messageTypeSchema = z.enum([
   "auth.ok",
   "auth.failed",
   "app.network.changed",
+  "app.connection.heartbeat",
+  "app.connection.goodbye",
   "e2e.handshake.init",
   "e2e.handshake.reply",
   "e2e.ready",
@@ -105,9 +107,24 @@ export const authChallengePayloadSchema = z.object({
   expires_at: isoDateTime,
 });
 
+const appClientPlatformSchema = z.enum(["ios", "android", "web", "desktop"]);
+
+export const appInfoPayloadSchema = z
+  .object({
+    instance_id: z.string().min(1),
+    runtime_id: z.string().min(1),
+    name: z.string().min(1).optional(),
+    device_name: z.string().min(1).optional(),
+    platform: appClientPlatformSchema.optional(),
+    version: z.string().min(1).optional(),
+    capabilities: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 export const authProofPayloadSchema = z.object({
   key_id: z.string().min(1),
   nonce: z.string().min(1),
+  app_info: appInfoPayloadSchema,
   proof: z.string().min(1),
 });
 
@@ -207,6 +224,7 @@ export const mobileConnectPayloadSchema = z
     v: z.literal(PROTOCOL_VERSION),
     device_id: z.string().min(1),
     key_id: z.string().min(1),
+    app_info: appInfoPayloadSchema,
     protocol: protocolSupportSchema,
     e2e: e2eSupportSchema,
     transport_preference: z
@@ -232,6 +250,19 @@ const protocolVersionsSchema = z
     e2e_v: z.literal(E2E_PROTOCOL_VERSION),
   })
   .strict();
+
+export const appConnectionHeartbeatPayloadSchema = z
+  .object({
+    sent_at: isoDateTime,
+    seq: z.number().int().nonnegative(),
+    current_path: z.enum(["relay", "p2p", "unknown"]).optional(),
+  })
+  .strict();
+
+export const appConnectionGoodbyePayloadSchema =
+  appConnectionHeartbeatPayloadSchema.extend({
+    reason: z.string().min(1).optional(),
+  });
 
 export const e2eHandshakeInitPayloadSchema = z
   .object({
@@ -674,6 +705,8 @@ const payloadSchemaByType = {
   "auth.ok": authOkPayloadSchema,
   "auth.failed": authFailedPayloadSchema,
   "app.network.changed": appNetworkChangedPayloadSchema,
+  "app.connection.heartbeat": appConnectionHeartbeatPayloadSchema,
+  "app.connection.goodbye": appConnectionGoodbyePayloadSchema,
   "e2e.handshake.init": e2eHandshakeInitPayloadSchema,
   "e2e.handshake.reply": e2eHandshakeReplyPayloadSchema,
   "e2e.ready": e2eReadyPayloadSchema,
@@ -716,7 +749,9 @@ export function parseMessageEnvelope(input: unknown): MessageEnvelope | null {
   }
 
   const envelope = envelopeResult.data;
-  const payloadSchema = payloadSchemaByType[envelope.type];
+  const payloadSchema = (
+    payloadSchemaByType as Partial<Record<MessageType, z.ZodType<unknown>>>
+  )[envelope.type];
   if (!payloadSchema) {
     return envelope as MessageEnvelope;
   }

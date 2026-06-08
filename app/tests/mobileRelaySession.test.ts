@@ -19,6 +19,7 @@ const pairing = {
   deviceId: "mac_test",
   key: "test-pairing-key-32-bytes",
   keyId: "key_test",
+  appInstanceId: "app_test_1",
 };
 
 function createSessionPair(): {

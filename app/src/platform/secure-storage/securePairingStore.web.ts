@@ -42,9 +42,15 @@ function normalizePairingConfig(
     deviceId: pairing.deviceId ?? "",
     key: pairing.key ?? "",
     keyId: pairing.keyId,
+    appInstanceId: pairing.appInstanceId ?? createAppInstanceId(),
   };
 }
 
 function hasSessionKey(pairing: PairingConfig): boolean {
   return pairing.key.length > 0;
+}
+
+function createAppInstanceId(): string {
+  const random = Math.random().toString(36).slice(2, 12);
+  return `app_${Date.now().toString(36)}_${random}`;
 }

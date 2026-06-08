@@ -8,7 +8,7 @@ import {
   isSamePairing,
   upsertPairing,
   upsertSession,
-} from "../src/app/appModel";
+} from "../src/app/appModel.ts";
 
 const baseSession: CodexSession = {
   session_id: "sess-1",
@@ -36,6 +36,7 @@ test("upsertPairing replaces by relay URL and device ID", () => {
     relayUrl: "wss://relay.example/relay/ws/mobile",
     deviceId: "mac-1",
     key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    appInstanceId: "app-1",
   };
   const refreshed = { ...first, key: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" };
 

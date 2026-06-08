@@ -1,7 +1,4 @@
-import {
-  RelayClient,
-  type RelayCloseEvent,
-} from "@omniwork/relay-client";
+import { RelayClient, type RelayCloseEvent } from "@omniwork/relay-client";
 import {
   E2E_SUPPORT_V1,
   PROTOCOL_SUPPORT_V1,
@@ -10,6 +7,8 @@ import {
   isE2EBusinessMessage,
   messageToInner,
   parseMessageEnvelope,
+  type AppConnectionGoodbyePayload,
+  type AppConnectionHeartbeatPayload,
   type AuthChallengePayload,
   type AuthOkPayload,
   type BusinessSecurityMode,
@@ -17,6 +16,7 @@ import {
   type E2EMessagePayload,
   type E2EReadyPayload,
   type MessageEnvelope,
+  type TransportPath,
   type TransportPreference,
 } from "@omniwork/protocol-ts";
 import {
@@ -49,13 +49,18 @@ export class MobileRelaySession {
   private plaintextReady = false;
   private pendingKeyId: string | null = null;
   private appConnectionId: string | null = null;
+  private readonly appInstanceId: string;
+  private readonly appRuntimeId = createRuntimeId("runtime");
+  private connectionHeartbeatSeq = 0;
+  private connectionHeartbeatMs = 10000;
+  private connectionHeartbeatTimer: ReturnType<typeof setInterval> | null =
+    null;
+  private currentPath: TransportPath | "unknown" = "relay";
   private pendingBusinessMessages: MessageEnvelope[] = [];
 
-  constructor(
-    pairing: PairingConfig,
-    options: MobileRelaySessionOptions = {},
-  ) {
+  constructor(pairing: PairingConfig, options: MobileRelaySessionOptions = {}) {
     this.pairing = pairing;
+    this.appInstanceId = pairing.appInstanceId ?? createRuntimeId("app");
     this.client = new RelayClient({ url: pairing.relayUrl });
     this.options = options;
   }
@@ -74,6 +79,7 @@ export class MobileRelaySession {
           v: PROTOCOL_SUPPORT_V1.current,
           device_id: this.pairing.deviceId,
           key_id: this.pairing.keyId ?? "unknown",
+          app_info: this.appInfo(),
           protocol: PROTOCOL_SUPPORT_V1,
           e2e: E2E_SUPPORT_V1,
           ...(this.options.transportPreference
@@ -151,11 +157,17 @@ export class MobileRelaySession {
   }
 
   close(): void {
+    this.sendConnectionGoodbye("client_closing");
+    this.stopConnectionHeartbeat();
     this.client.close();
   }
 
   getAppConnectionId(): string | null {
     return this.appConnectionId;
+  }
+
+  setConnectionPath(path: TransportPath): void {
+    this.currentPath = path;
   }
 
   private async handleMessage(message: MessageEnvelope): Promise<void> {
@@ -199,13 +211,18 @@ export class MobileRelaySession {
     challenge: AuthChallengePayload,
   ): Promise<void> {
     this.pendingKeyId = challenge.key_id;
-    const proof = await createKeyProof(this.pairing.key, challenge.nonce);
+    const proof = await createKeyProof(
+      this.pairing.key,
+      challenge.nonce,
+      this.appInfo(),
+    );
     this.client.send(
       createMessage(
         "auth.proof",
         {
           key_id: challenge.key_id,
           nonce: challenge.nonce,
+          app_info: this.appInfo(),
           proof,
         },
         { device_id: this.pairing.deviceId },
@@ -223,6 +240,7 @@ export class MobileRelaySession {
       payload.business_security_mode ?? "e2e_required";
     if (this.businessSecurityMode === "plaintext_allowed") {
       this.plaintextReady = true;
+      this.startConnectionHeartbeat();
       this.dispatchBusinessReady();
       this.flushPendingBusinessMessages();
       return;
@@ -266,6 +284,7 @@ export class MobileRelaySession {
       return;
     }
     this.e2ePeerReady = true;
+    this.startConnectionHeartbeat();
     this.dispatchBusinessReady();
     this.flushPendingBusinessMessages();
   }
@@ -325,4 +344,74 @@ export class MobileRelaySession {
       handler(message);
     }
   }
+
+  private sendConnectionHeartbeat(): void {
+    const payload: AppConnectionHeartbeatPayload = {
+      sent_at: new Date().toISOString(),
+      seq: this.nextConnectionHeartbeatSeq(),
+      current_path: this.currentPath,
+    };
+    this.sendConnectionLifecycleMessage(
+      createMessage("app.connection.heartbeat", payload, {
+        device_id: this.pairing.deviceId,
+      }),
+    );
+  }
+
+  private sendConnectionGoodbye(reason: string): void {
+    const payload: AppConnectionGoodbyePayload = {
+      sent_at: new Date().toISOString(),
+      seq: this.nextConnectionHeartbeatSeq(),
+      reason,
+    };
+    this.sendConnectionLifecycleMessage(
+      createMessage("app.connection.goodbye", payload, {
+        device_id: this.pairing.deviceId,
+      }),
+    );
+  }
+
+  private sendConnectionLifecycleMessage(message: MessageEnvelope): void {
+    try {
+      this.send(message);
+    } catch (error) {
+      console.warn("[omniwork-app] connection lifecycle send failed", {
+        type: message.type,
+        error: (error as Error)?.message,
+      });
+    }
+  }
+
+  private startConnectionHeartbeat(): void {
+    this.stopConnectionHeartbeat();
+    this.connectionHeartbeatTimer = setInterval(() => {
+      this.sendConnectionHeartbeat();
+    }, this.connectionHeartbeatMs);
+    this.connectionHeartbeatTimer.unref?.();
+  }
+
+  private stopConnectionHeartbeat(): void {
+    if (this.connectionHeartbeatTimer) {
+      clearInterval(this.connectionHeartbeatTimer);
+      this.connectionHeartbeatTimer = null;
+    }
+  }
+
+  private nextConnectionHeartbeatSeq(): number {
+    this.connectionHeartbeatSeq += 1;
+    return this.connectionHeartbeatSeq;
+  }
+
+  private appInfo() {
+    return {
+      instance_id: this.appInstanceId,
+      runtime_id: this.appRuntimeId,
+      name: "OmniWork",
+    };
+  }
+}
+
+function createRuntimeId(prefix: string): string {
+  const random = Math.random().toString(36).slice(2, 12);
+  return `${prefix}_${Date.now().toString(36)}_${random}`;
 }

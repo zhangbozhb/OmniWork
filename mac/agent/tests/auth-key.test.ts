@@ -26,9 +26,20 @@ const keyId = createKeyId(key);
 assert.match(keyId, /^sha256:[0-9a-f]{12}$/);
 
 const nonce = "nonce_for_test_123456";
-const proof = createProof(key, nonce);
-assert.equal(verifyProof(key, nonce, proof), true);
-assert.equal(verifyProof(key, nonce, `${proof}x`), false);
+const appInfo = {
+  instance_id: "app_test_1",
+  runtime_id: "runtime_test_1",
+};
+const proof = createProof(key, nonce, appInfo);
+assert.equal(verifyProof(key, nonce, appInfo, proof), true);
+assert.equal(
+  verifyProof(key, nonce, { ...appInfo, instance_id: "app_test_2" }, proof),
+  false,
+);
+assert.equal(
+  verifyProof(key, nonce, appInfo, `${proof}x`),
+  false,
+);
 
 const dir = await mkdtemp(join(tmpdir(), "omniwork-agent-"));
 const path = join(dir, "nested", "session-key.json");
@@ -49,6 +60,15 @@ const baseConfig: AgentConfig = {
   deviceId: "test-mac",
   hostname: "test.local",
   relayUrl: "wss://relay.example/relay/ws/agent",
+  adminEnabled: true,
+  adminHost: "127.0.0.1",
+  adminPort: 17668,
+  connectionHeartbeatMs: 10000,
+  connectionStaleMs: 30000,
+  connectionDisconnectMs: 90000,
+  relayReconnectMaxAttempts: 8,
+  relayReconnectInitialDelayMs: 1000,
+  relayReconnectMaxDelayMs: 30000,
   agentProviders: [...DEFAULT_AGENT_PROVIDER_DEFINITIONS],
   defaultCwd: dir,
   appSupportDir: dir,
@@ -68,16 +88,29 @@ assert.equal(
   "wss://relay.example/relay/ws/mobile",
 );
 
+assert.throws(
+  () => loadAgentConfig({ OMNIWORK_DEVICE_ID: "" }),
+  /OMNIWORK_RELAY_URL is required/,
+);
+const configEnv = {
+  OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
+};
 assert.equal(
-  loadAgentConfig({ OMNIWORK_DEVICE_ID: "" }).deviceId.includes(".local"),
+  loadAgentConfig({ ...configEnv, OMNIWORK_DEVICE_ID: "" }).deviceId.includes(
+    ".local",
+  ),
   false,
 );
 assert.equal(
-  loadAgentConfig({ OMNIWORK_DEVICE_ID: "custom-device" }).deviceId,
+  loadAgentConfig({
+    ...configEnv,
+    OMNIWORK_DEVICE_ID: "custom-device",
+  }).deviceId,
   "custom-device",
 );
 assert.deepEqual(
   loadAgentConfig({
+    ...configEnv,
     OMNIWORK_AGENT_PROVIDERS: JSON.stringify([
       {
         kind: "opencode",

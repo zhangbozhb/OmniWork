@@ -11,6 +11,7 @@ import {
   isTransportPreference,
   parseMessageEnvelope,
   type AgentHelloPayload,
+  type AppInfoPayload,
   type AppNetworkChangedPayload,
   type AuthFailedPayload,
   type AuthOkPayload,
@@ -59,6 +60,7 @@ interface RelayConnection {
   socket: RelaySocket;
   deviceId?: string;
   keyId?: string;
+  appInfo?: RelayAppInfo;
   businessSecurityMode?: BusinessSecurityMode;
   e2e?: E2ESupport;
   authenticated: boolean;
@@ -82,10 +84,21 @@ interface AgentE2EPeerState {
   state: "handshaking" | "ready";
 }
 
+interface RelayAppInfo {
+  instanceId: AppInfoPayload["instance_id"];
+  runtimeId: AppInfoPayload["runtime_id"];
+  name?: string;
+  deviceName?: string;
+  platform?: AppInfoPayload["platform"];
+  version?: string;
+  capabilities?: string[];
+}
+
 interface PendingAuth {
   deviceId: string;
   nonce: string;
   keyId: string;
+  appInfo: RelayAppInfo;
 }
 
 export class RelayServer {
@@ -404,6 +417,8 @@ export class RelayServer {
     connection.role = "mobile";
     connection.state = "mobile_connected";
     connection.deviceId = deviceId;
+    const appInfo = appInfoFromMobileConnect(message.payload);
+    connection.appInfo = appInfo;
 
     const rawPreference = message.payload.transport_preference;
     if (isTransportPreference(rawPreference)) {
@@ -431,6 +446,7 @@ export class RelayServer {
       deviceId,
       nonce,
       keyId: agent.keyId,
+      appInfo,
     });
 
     this.send(
@@ -484,7 +500,9 @@ export class RelayServer {
     if (
       !pending ||
       message.payload.nonce !== pending.nonce ||
-      message.payload.key_id !== pending.keyId
+      message.payload.key_id !== pending.keyId ||
+      message.payload.app_info.instance_id !== pending.appInfo.instanceId ||
+      message.payload.app_info.runtime_id !== pending.appInfo.runtimeId
     ) {
       // 仅对失败的 proof 计数，避免合法重连/切偏好的连续 proof 把桶耗尽
       // 触发 60s 误封禁。limiter.reset 在 auth.ok 时清零，所以正常路径
@@ -529,6 +547,7 @@ export class RelayServer {
         {
           key_id: message.payload.key_id,
           nonce: message.payload.nonce,
+          app_info: appInfoToPayload(pending.appInfo),
           proof: message.payload.proof,
           connection_id: connection.id,
         },
@@ -1043,6 +1062,30 @@ function buildAuthRateLimitKey(
   remoteIp: string | undefined,
 ): string {
   return [keyId ?? "_", deviceId ?? "_", remoteIp ?? "_"].join("|");
+}
+
+function appInfoFromMobileConnect(payload: MobileConnectPayload): RelayAppInfo {
+  return {
+    instanceId: payload.app_info.instance_id,
+    runtimeId: payload.app_info.runtime_id,
+    name: payload.app_info.name,
+    deviceName: payload.app_info.device_name,
+    platform: payload.app_info.platform,
+    version: payload.app_info.version,
+    capabilities: payload.app_info.capabilities,
+  };
+}
+
+function appInfoToPayload(appInfo: RelayAppInfo): AppInfoPayload {
+  return {
+    instance_id: appInfo.instanceId,
+    runtime_id: appInfo.runtimeId,
+    name: appInfo.name,
+    device_name: appInfo.deviceName,
+    platform: appInfo.platform,
+    version: appInfo.version,
+    capabilities: appInfo.capabilities,
+  };
 }
 
 function isMatchingE2EPeer(

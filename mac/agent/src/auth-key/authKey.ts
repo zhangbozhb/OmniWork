@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import { mkdir, writeFile, chmod, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import type { AppInfoPayload } from "@omniwork/protocol-ts";
 
 export interface SessionKeyRecord {
   version: 1;
@@ -56,16 +57,33 @@ export function createKeyId(key: string): string {
   return `sha256:${createHash("sha256").update(key).digest("hex").slice(0, 12)}`;
 }
 
-export function createProof(key: string, nonce: string): string {
-  return createHmac("sha256", key).update(nonce).digest("base64url");
+export function createAuthProofInput(
+  nonce: string,
+  appInfo: Pick<AppInfoPayload, "instance_id" | "runtime_id">,
+): string {
+  return [nonce, appInfo.instance_id, appInfo.runtime_id].join("\n");
+}
+
+export function createProof(
+  key: string,
+  nonce: string,
+  appInfo: AppInfoPayload,
+): string {
+  return createHmac("sha256", key)
+    .update(createAuthProofInput(nonce, appInfo))
+    .digest("base64url");
 }
 
 export function verifyProof(
   key: string,
   nonce: string,
+  appInfo: AppInfoPayload,
   proof: string,
 ): boolean {
-  const expected = Buffer.from(createProof(key, nonce), "utf8");
+  const expected = Buffer.from(
+    createProof(key, nonce, appInfo),
+    "utf8",
+  );
   const received = Buffer.from(proof, "utf8");
 
   if (expected.byteLength !== received.byteLength) {

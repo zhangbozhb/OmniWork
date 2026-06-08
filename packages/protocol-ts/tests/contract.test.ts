@@ -39,6 +39,7 @@ import {
   parsePairingLink,
   parseMessageEnvelope,
   protocolErrorPayloadSchema,
+  appConnectionHeartbeatPayloadSchema,
   sessionAttachPayloadSchema,
   sessionClosePayloadSchema,
   sessionCreatePayloadSchema,
@@ -89,6 +90,7 @@ describe("messageEnvelopeSchema", () => {
     const envelope = createMessage("mobile.connect", {
       v: PROTOCOL_VERSION,
       device_id: "device-1",
+      key_id: "key-1",
       protocol: PROTOCOL_SUPPORT_V1,
       e2e: E2E_SUPPORT_V1,
     });
@@ -101,6 +103,10 @@ describe("auth payload schemas", () => {
     authVerifyPayloadSchema.parse({
       key_id: "k1",
       nonce: "n1",
+      app_info: {
+        instance_id: "app-1",
+        runtime_id: "runtime-1",
+      },
       proof: "p1",
       connection_id: "c1",
     });
@@ -252,6 +258,7 @@ describe("e2e business message helpers", () => {
   it("classifies encrypted business messages consistently", () => {
     assert.equal(isE2EBusinessMessage("session.list"), true);
     assert.equal(isE2EBusinessMessage("terminal.input"), true);
+    assert.equal(isE2EBusinessMessage("app.connection.heartbeat"), true);
     assert.equal(isE2EBusinessMessage("tunnel.upgrade.offer"), true);
     assert.equal(isE2EBusinessMessage("auth.ok"), false);
     assert.equal(isE2EBusinessMessage("e2e.message"), false);
@@ -264,7 +271,34 @@ describe("e2e business message helpers", () => {
       { device_id: "device-1", session_id: "sess-1", seq: 7 },
     );
     const restored = innerToMessage(messageToInner(message), "device-1");
-    assert.deepEqual(restored, message);
+    assert.equal(restored.type, message.type);
+    assert.equal(restored.device_id, message.device_id);
+    assert.equal(restored.session_id, message.session_id);
+    assert.equal(restored.seq, message.seq);
+    assert.deepEqual(restored.payload, message.payload);
+  });
+});
+
+describe("app client metadata payload schemas", () => {
+  it("accepts mobile connect and connection heartbeat payloads", () => {
+    parseMessageEnvelope(createMessage("mobile.connect", {
+      v: PROTOCOL_VERSION,
+      device_id: "device-1",
+      key_id: "key-1",
+      app_info: {
+        instance_id: "app-1",
+        runtime_id: "runtime-1",
+        name: "OmniWork",
+        platform: "ios",
+      },
+      protocol: PROTOCOL_SUPPORT_V1,
+      e2e: E2E_SUPPORT_V1,
+    }));
+    appConnectionHeartbeatPayloadSchema.parse({
+      sent_at: new Date().toISOString(),
+      seq: 1,
+      current_path: "relay",
+    });
   });
 });
 

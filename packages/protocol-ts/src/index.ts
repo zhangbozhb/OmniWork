@@ -33,6 +33,8 @@ export type MessageType =
   | "auth.ok"
   | "auth.failed"
   | "app.network.changed"
+  | "app.connection.heartbeat"
+  | "app.connection.goodbye"
   | "e2e.handshake.init"
   | "e2e.handshake.reply"
   | "e2e.ready"
@@ -127,10 +129,23 @@ export type KnownAgentCapability =
   | "gemini.cli";
 export type AgentCapability = KnownAgentCapability | (string & {});
 
+export type AppClientPlatform = "ios" | "android" | "web" | "desktop";
+
+export interface AppInfoPayload {
+  instance_id: string;
+  runtime_id: string;
+  name?: string;
+  device_name?: string;
+  platform?: AppClientPlatform;
+  version?: string;
+  capabilities?: string[];
+}
+
 export interface MobileConnectPayload {
   v: typeof PROTOCOL_VERSION;
   device_id: string;
   key_id: string;
+  app_info: AppInfoPayload;
   protocol: ProtocolSupport;
   e2e: E2ESupport;
   /**
@@ -153,6 +168,18 @@ export interface AppNetworkChangedPayload {
   network_type?: string;
   is_connected?: boolean;
   is_internet_reachable?: boolean;
+}
+
+export interface AppConnectionHeartbeatPayload {
+  sent_at: string;
+  seq: number;
+  current_path?: "relay" | "p2p" | "unknown";
+}
+
+export interface AppConnectionGoodbyePayload {
+  sent_at: string;
+  seq: number;
+  reason?: string;
 }
 
 export type TransportPreference = "auto" | "relay_only" | "prefer_p2p";
@@ -298,6 +325,7 @@ export interface AuthChallengePayload {
 export interface AuthProofPayload {
   key_id: string;
   nonce: string;
+  app_info: AppInfoPayload;
   proof: string;
 }
 

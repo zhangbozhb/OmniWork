@@ -13,7 +13,17 @@ export interface AgentConfig {
   agentVersion: string;
   deviceId: string;
   hostname: string;
-  relayUrl?: string;
+  relayUrl: string;
+  adminEnabled: boolean;
+  adminHost: string;
+  adminPort: number;
+  adminToken?: string;
+  connectionHeartbeatMs: number;
+  connectionStaleMs: number;
+  connectionDisconnectMs: number;
+  relayReconnectMaxAttempts: number;
+  relayReconnectInitialDelayMs: number;
+  relayReconnectMaxDelayMs: number;
   agentProviders: AgentProviderDefinition[];
   defaultCwd: string;
   appSupportDir: string;
@@ -29,12 +39,44 @@ export function loadAgentConfig(
   const appSupportDir =
     env.OMNIWORK_APP_SUPPORT_DIR ??
     join(homedir(), "Library", "Application Support", "OmniWork", "agent");
+  const relayUrl = requireNonEmptyString(
+    env.OMNIWORK_RELAY_URL,
+    "OMNIWORK_RELAY_URL",
+  );
 
   return {
     agentVersion: env.OMNIWORK_AGENT_VERSION ?? "0.1.0",
     deviceId: resolveDeviceId(env.OMNIWORK_DEVICE_ID),
     hostname: hostname(),
-    relayUrl: env.OMNIWORK_RELAY_URL,
+    relayUrl,
+    adminEnabled: parseBoolean(env.OMNIWORK_AGENT_ADMIN_ENABLED, true),
+    adminHost: env.OMNIWORK_AGENT_ADMIN_HOST ?? "127.0.0.1",
+    adminPort: parsePositiveInteger(env.OMNIWORK_AGENT_ADMIN_PORT, 17668),
+    adminToken: env.OMNIWORK_AGENT_ADMIN_TOKEN?.trim() || undefined,
+    connectionHeartbeatMs: parsePositiveInteger(
+      env.OMNIWORK_AGENT_CONNECTION_HEARTBEAT_MS,
+      10000,
+    ),
+    connectionStaleMs: parsePositiveInteger(
+      env.OMNIWORK_AGENT_CONNECTION_STALE_MS,
+      30000,
+    ),
+    connectionDisconnectMs: parsePositiveInteger(
+      env.OMNIWORK_AGENT_CONNECTION_DISCONNECT_MS,
+      90000,
+    ),
+    relayReconnectMaxAttempts: parsePositiveInteger(
+      env.OMNIWORK_AGENT_RELAY_RECONNECT_MAX_ATTEMPTS,
+      8,
+    ),
+    relayReconnectInitialDelayMs: parsePositiveInteger(
+      env.OMNIWORK_AGENT_RELAY_RECONNECT_INITIAL_DELAY_MS,
+      1000,
+    ),
+    relayReconnectMaxDelayMs: parsePositiveInteger(
+      env.OMNIWORK_AGENT_RELAY_RECONNECT_MAX_DELAY_MS,
+      30000,
+    ),
     agentProviders: resolveAgentProviders(
       env,
       readDefaultProviderCommandOverrides(env),
@@ -52,6 +94,17 @@ export function loadAgentConfig(
   };
 }
 
+function requireNonEmptyString(
+  value: string | undefined,
+  name: string,
+): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    throw new Error(`${name} is required.`);
+  }
+  return trimmed;
+}
+
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
@@ -64,6 +117,17 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
     return false;
   }
   return fallback;
+}
+
+function parsePositiveInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function readDefaultProviderCommandOverrides(

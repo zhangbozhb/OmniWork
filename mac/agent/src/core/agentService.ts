@@ -9,6 +9,8 @@ import {
   isE2EBusinessMessage,
   messageToInner,
   parseMessageEnvelope,
+  type AppConnectionGoodbyePayload,
+  type AppConnectionHeartbeatPayload,
   type MessageEnvelope,
   type P2pChannelKind,
 } from "@omniwork/protocol-ts";
@@ -70,6 +72,9 @@ import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 import { ResourceRequestHandler } from "./resourceRequestHandler.ts";
 import { SessionRequestHandler } from "./sessionRequestHandler.ts";
 import { TerminalFramePusher } from "./terminalFramePusher.ts";
+import { AppConnectionRegistry } from "./appConnectionRegistry.ts";
+import { AgentAdminServer } from "./adminServer.ts";
+import type { RelayCloseEvent } from "@omniwork/relay-client";
 
 interface AppE2EPeer {
   appConnectionId: string;
@@ -94,16 +99,28 @@ export class AgentService {
   private readonly terminalFramePusher: TerminalFramePusher;
   private readonly config: AgentConfig;
   private keyRecord: SessionKeyRecord | null = null;
+  private agentStartedAt = Date.now();
+  private agentInstanceId = "";
   private relay: AgentRelayClient | null = null;
   private transport: AgentSessionTransport | null = null;
+  private adminServer: AgentAdminServer | null = null;
   private readonly upgradeCoordinators = new Map<string, UpgradeCoordinator>();
   private readonly e2ePeers = new Map<string, AppE2EPeer>();
   private readonly authenticatedAppConnectionIds = new Set<string>();
   private readonly authReplayCache = new AuthReplayCache();
+  private readonly appConnections: AppConnectionRegistry;
+  private relayReconnectAttempts = 0;
+  private relayReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopping = false;
   private readonly logTransport =
     (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
   constructor(config: AgentConfig) {
     this.config = config;
+    this.appConnections = new AppConnectionRegistry({
+      heartbeatIntervalMs: config.connectionHeartbeatMs,
+      staleTimeoutMs: config.connectionStaleMs,
+      disconnectTimeoutMs: config.connectionDisconnectMs,
+    });
     this.runtimes = new RuntimeRegistry({
       providers: config.agentProviders,
     });
@@ -159,44 +176,60 @@ export class AgentService {
   }
 
   async start(): Promise<void> {
-    const agentInstanceId = createAgentInstanceId();
-    this.keyRecord = await createAndPersistSessionKey({
-      path: this.config.sessionKeyPath,
-      agentInstanceId,
-      relayUrl: this.config.relayUrl,
-    });
+    try {
+      this.stopping = false;
+      const agentInstanceId = createAgentInstanceId();
+      this.agentStartedAt = Date.now();
+      this.agentInstanceId = agentInstanceId;
+      this.keyRecord = await createAndPersistSessionKey({
+        path: this.config.sessionKeyPath,
+        agentInstanceId,
+        relayUrl: this.config.relayUrl,
+      });
 
-    this.logger.info("generated temporary session key", {
-      key_id: this.keyRecord.key_id,
-      key_path: this.config.sessionKeyPath,
-      agent_instance_id: this.keyRecord.agent_instance_id,
-    });
-    const pairingQr = createPairingQrDetails(this.config, this.keyRecord);
-    if (pairingQr) {
-      printPairingQr(pairingQr);
-    } else {
-      printPairingDetailsWithoutRelay(this.config, this.keyRecord);
+      this.logger.info("generated temporary session key", {
+        key_id: this.keyRecord.key_id,
+        key_path: this.config.sessionKeyPath,
+        agent_instance_id: this.keyRecord.agent_instance_id,
+      });
+      const pairingQr = createPairingQrDetails(this.config, this.keyRecord);
+      if (pairingQr) {
+        printPairingQr(pairingQr);
+      } else {
+        printPairingDetailsWithoutRelay(this.config, this.keyRecord);
+      }
+
+      const tmuxAvailable = await this.tmux.isAvailable();
+      if (!tmuxAvailable) {
+        this.logger.warn(
+          "tmux is not available; session creation will fail until tmux is installed",
+        );
+      }
+
+      // 对持久化 session store 做一次性补丁（清理已废弃的 status 等），与运行期
+      // reconcile 的职责分离；具体规则集中在 SessionManager.applyStartupPatches。
+      await this.sessionManager.applyStartupPatches();
+      await this.startAdminServer();
+
+      await this.connectRelayWithRetry(this.config.relayUrl);
+    } catch (error) {
+      this.stop();
+      throw error;
     }
+  }
 
-    const tmuxAvailable = await this.tmux.isAvailable();
-    if (!tmuxAvailable) {
-      this.logger.warn(
-        "tmux is not available; session creation will fail until tmux is installed",
-      );
+  stop(): void {
+    this.stopping = true;
+    if (this.relayReconnectTimer) {
+      clearTimeout(this.relayReconnectTimer);
+      this.relayReconnectTimer = null;
     }
-
-    // 对持久化 session store 做一次性补丁（清理已废弃的 status 等），与运行期
-    // reconcile 的职责分离；具体规则集中在 SessionManager.applyStartupPatches。
-    await this.sessionManager.applyStartupPatches();
-
-    if (!this.config.relayUrl) {
-      this.logger.info(
-        "OMNIWORK_RELAY_URL is not set; running without relay connection",
-      );
-      return;
-    }
-
-    await this.connectRelay(this.config.relayUrl);
+    this.transport?.close("agent stopping");
+    this.transport = null;
+    this.relay?.close();
+    this.relay = null;
+    this.adminServer?.close();
+    this.adminServer = null;
   }
 
   private async connectRelay(url: string): Promise<void> {
@@ -255,10 +288,10 @@ export class AgentService {
         });
       });
     });
-
     try {
       await relay.connect();
     } catch (error) {
+      this.cleanupRelayResources(relay, transport);
       throw new Error(
         [
           `Unable to connect to OMNIWORK_RELAY_URL: ${url}`,
@@ -267,6 +300,7 @@ export class AgentService {
         ].join("\n"),
       );
     }
+    relay.onClose((event) => this.handleRelayClose(event));
 
     relay.send(
       createMessage<AgentHelloPayload>(
@@ -308,6 +342,129 @@ export class AgentService {
       relay_url: url,
       key_id: keyRecord.key_id,
     });
+    this.relayReconnectAttempts = 0;
+  }
+
+  private async connectRelayWithRetry(url: string): Promise<void> {
+    let lastError: unknown = null;
+    while (!this.stopping) {
+      const nextAttempt = this.relayReconnectAttempts + 1;
+      if (nextAttempt > this.config.relayReconnectMaxAttempts) {
+        throw new Error(
+          [
+            `Unable to connect to OMNIWORK_RELAY_URL after ${this.relayReconnectAttempts} attempts: ${url}`,
+            `Original error: ${formatRelayConnectionError(lastError)}`,
+          ].join("\n"),
+        );
+      }
+
+      try {
+        this.relayReconnectAttempts = nextAttempt;
+        await this.connectRelay(url);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (isRelayExplicitRejectionError(error)) {
+          throw error;
+        }
+        if (nextAttempt >= this.config.relayReconnectMaxAttempts) {
+          continue;
+        }
+        const delayMs = this.reconnectDelayMs(nextAttempt);
+        this.logger.warn("relay connect attempt failed; retrying", {
+          attempt: nextAttempt,
+          max_attempts: this.config.relayReconnectMaxAttempts,
+          delay_ms: delayMs,
+          error: formatRelayConnectionError(error),
+        });
+        await sleep(delayMs);
+      }
+    }
+  }
+
+  private handleRelayClose(event: RelayCloseEvent): void {
+    if (this.stopping) {
+      return;
+    }
+
+    this.logger.warn("relay connection closed", {
+      code: event.code,
+      reason: event.reason ?? "",
+    });
+
+    this.cleanupRelayResources(this.relay, this.transport);
+    if (isRelayExplicitRejection(event)) {
+      this.logger.error("relay explicitly rejected agent connection", {
+        code: event.code,
+        reason: event.reason ?? "",
+      });
+      this.stop();
+      process.exitCode = 1;
+      return;
+    }
+
+    this.scheduleRelayReconnect();
+  }
+
+  private scheduleRelayReconnect(): void {
+    if (this.stopping || this.relayReconnectTimer) {
+      return;
+    }
+
+    const nextAttempt = this.relayReconnectAttempts + 1;
+    if (nextAttempt > this.config.relayReconnectMaxAttempts) {
+      this.logger.error("relay reconnect attempts exhausted", {
+        attempts: this.relayReconnectAttempts,
+        max_attempts: this.config.relayReconnectMaxAttempts,
+      });
+      this.stop();
+      process.exitCode = 1;
+      return;
+    }
+
+    const delayMs = this.reconnectDelayMs(nextAttempt);
+    this.logger.warn("scheduling relay reconnect", {
+      attempt: nextAttempt,
+      max_attempts: this.config.relayReconnectMaxAttempts,
+      delay_ms: delayMs,
+    });
+    this.relayReconnectTimer = setTimeout(() => {
+      this.relayReconnectTimer = null;
+      this.reconnectRelay().catch((error: unknown) => {
+        this.logger.warn("relay reconnect failed", {
+          attempt: nextAttempt,
+          error: String(error),
+        });
+        this.scheduleRelayReconnect();
+      });
+    }, delayMs);
+  }
+
+  private async reconnectRelay(): Promise<void> {
+    if (this.stopping) {
+      return;
+    }
+    this.relayReconnectAttempts += 1;
+    await this.connectRelay(this.config.relayUrl);
+  }
+
+  private reconnectDelayMs(attempt: number): number {
+    const exponent = Math.max(0, attempt - 1);
+    const rawDelay = this.config.relayReconnectInitialDelayMs * 2 ** exponent;
+    return Math.min(rawDelay, this.config.relayReconnectMaxDelayMs);
+  }
+
+  private cleanupRelayResources(
+    relay: AgentRelayClient | null,
+    transport: AgentSessionTransport | null,
+  ): void {
+    if (this.transport === transport) {
+      this.transport = null;
+    }
+    if (this.relay === relay) {
+      this.relay = null;
+    }
+    transport?.close("relay disconnected");
   }
 
   private async handleRelayMessage(
@@ -340,85 +497,127 @@ export class AgentService {
           message as MessageEnvelope<E2EMessagePayload>,
         );
         break;
+      case "app.connection.heartbeat":
+        this.handleConnectionHeartbeat(
+          message as MessageEnvelope<AppConnectionHeartbeatPayload>,
+          dispatchContext,
+          trustedE2E,
+        );
+        break;
+      case "app.connection.goodbye":
+        this.handleConnectionGoodbye(
+          message as MessageEnvelope<AppConnectionGoodbyePayload>,
+          dispatchContext,
+          trustedE2E,
+        );
+        break;
       case "session.list":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.sessionRequests.handleList(message, dispatchContext);
         break;
       case "session.create":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.sessionRequests.handleCreate(
           message as MessageEnvelope<SessionCreatePayload>,
           dispatchContext,
         );
         break;
       case "session.close":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.sessionRequests.handleClose(message, dispatchContext);
         break;
       case "session.rename":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.sessionRequests.handleRename(
           message as MessageEnvelope<SessionRenamePayload>,
           dispatchContext,
         );
         break;
       case "session.kill_tmux":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.sessionRequests.handleKillTmux(message, dispatchContext);
         break;
       case "workspace.list":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.resourceRequests.handleWorkspaceList(
           message,
           dispatchContext,
         );
         break;
       case "files.list":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.resourceRequests.handleFilesList(
           message as MessageEnvelope<FilesListRequestPayload>,
           dispatchContext,
         );
         break;
       case "files.read":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.resourceRequests.handleFilesRead(
           message as MessageEnvelope<FilesReadRequestPayload>,
           dispatchContext,
         );
         break;
       case "git.status":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.resourceRequests.handleGitStatus(
           message as MessageEnvelope<GitStatusRequestPayload>,
           dispatchContext,
         );
         break;
       case "git.diff":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.resourceRequests.handleGitDiff(
           message as MessageEnvelope<GitDiffRequestPayload>,
           dispatchContext,
         );
         break;
       case "terminal.input":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.handleTerminalInput(
           message as MessageEnvelope<TerminalInputPayload>,
         );
         break;
       case "terminal.resize":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.handleTerminalResize(
           message as MessageEnvelope<TerminalResizePayload>,
         );
         break;
       case "session.attach":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.sessionRequests.handleAttach(message, dispatchContext);
         break;
       case "terminal.snapshot":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         await this.handleTerminalSnapshot(message, dispatchContext);
         break;
       case "tunnel.upgrade.propose": {
@@ -433,13 +632,25 @@ export class AgentService {
           this.rejectPlaintextBusiness(message, trustedE2E);
           return;
         }
+        if (
+          !this.recordInboundBusinessForConnection(
+            message,
+            payload.app_connection_id,
+            trustedE2E,
+            { skipPlaintextReject: true },
+          )
+        ) {
+          return;
+        }
         await this.getUpgradeCoordinator(payload.app_connection_id).propose(
           payload,
         );
         break;
       }
       case "tunnel.upgrade.offer":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         {
           const payload = (
             message as MessageEnvelope<TunnelUpgradeOfferPayload>
@@ -450,7 +661,9 @@ export class AgentService {
         }
         break;
       case "tunnel.upgrade.answer":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         {
           const payload = (
             message as MessageEnvelope<TunnelUpgradeAnswerPayload>
@@ -461,7 +674,9 @@ export class AgentService {
         }
         break;
       case "tunnel.upgrade.candidate":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         {
           const payload = (
             message as MessageEnvelope<TunnelUpgradeCandidatePayload>
@@ -472,7 +687,9 @@ export class AgentService {
         }
         break;
       case "tunnel.upgrade.committed":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         {
           const payload = (
             message as MessageEnvelope<TunnelUpgradeCommittedPayload>
@@ -483,7 +700,9 @@ export class AgentService {
         }
         break;
       case "tunnel.upgrade.downgrade":
-        if (this.rejectPlaintextBusiness(message, trustedE2E)) return;
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
         {
           const payload = (
             message as MessageEnvelope<TunnelUpgradeDowngradePayload>
@@ -519,6 +738,7 @@ export class AgentService {
       sendControl: (envelope) =>
         this.sendToAppByConnectionId(appConnectionId, envelope),
       onSwitchPath: (path) => {
+        this.appConnections.setPath(appConnectionId, path);
         if (path === "p2p") {
           const peer = coordinator.getPeer();
           const upgradeId = coordinator.getUpgradeId();
@@ -566,9 +786,50 @@ export class AgentService {
     return coordinator;
   }
 
+  private handleConnectionHeartbeat(
+    message: MessageEnvelope<AppConnectionHeartbeatPayload>,
+    context: AgentDispatchContext | undefined,
+    trustedE2E: boolean,
+  ): void {
+    if (!context) {
+      return;
+    }
+    if (!this.recordInboundBusiness(message, context, trustedE2E)) {
+      return;
+    }
+    this.appConnections.acceptHeartbeat(
+      context.appConnectionId,
+      message.payload,
+    );
+  }
+
+  private handleConnectionGoodbye(
+    message: MessageEnvelope<AppConnectionGoodbyePayload>,
+    context: AgentDispatchContext | undefined,
+    trustedE2E: boolean,
+  ): void {
+    if (!context) {
+      return;
+    }
+    if (!this.recordInboundBusiness(message, context, trustedE2E)) {
+      return;
+    }
+    this.appConnections.markGoodbye(context.appConnectionId, message.payload);
+  }
+
   private handleE2EHandshakeInit(
     message: MessageEnvelope<E2EHandshakeInitPayload>,
   ): void {
+    if (
+      !this.appConnections.hasAuthenticatedConnection(
+        message.payload.app_connection_id,
+      )
+    ) {
+      this.logger.warn("rejected e2e handshake before authenticated tracking", {
+        app_connection_id: message.payload.app_connection_id,
+      });
+      return;
+    }
     const keyRecord = this.requireKeyRecord();
     try {
       const result = acceptInitiatorHandshake(
@@ -646,6 +907,7 @@ export class AgentService {
       return;
     }
     peer.ready = true;
+    this.appConnections.markE2EReady(message.payload.app_connection_id);
     this.logger.info("e2e ready confirmed", {
       app_connection_id: message.payload.app_connection_id,
       handshake_id: message.payload.handshake_id,
@@ -675,6 +937,7 @@ export class AgentService {
         });
         return;
       }
+      this.appConnections.markE2EReady(message.payload.app_connection_id);
       await this.handleRelayMessage(decoded, {
         appConnectionId: message.payload.app_connection_id,
         trustedE2E: true,
@@ -708,6 +971,50 @@ export class AgentService {
     return true;
   }
 
+  private recordInboundBusiness(
+    message: MessageEnvelope,
+    context: AgentDispatchContext | undefined,
+    trustedE2E: boolean,
+  ): boolean {
+    return this.recordInboundBusinessForConnection(
+      message,
+      context?.appConnectionId ?? appConnectionIdFromMessage(message),
+      trustedE2E,
+    );
+  }
+
+  private recordInboundBusinessForConnection(
+    message: MessageEnvelope,
+    appConnectionId: string | undefined,
+    trustedE2E: boolean,
+    options: { skipPlaintextReject?: boolean } = {},
+  ): boolean {
+    if (
+      !options.skipPlaintextReject &&
+      this.rejectPlaintextBusiness(message, trustedE2E)
+    ) {
+      return false;
+    }
+    if (!appConnectionId) {
+      this.logger.warn("rejected business message without app connection", {
+        message_type: message.type,
+      });
+      return false;
+    }
+    if (!this.appConnections.hasAuthenticatedConnection(appConnectionId)) {
+      this.logger.warn(
+        "rejected business message before authenticated tracking",
+        {
+          app_connection_id: appConnectionId,
+          message_type: message.type,
+        },
+      );
+      return false;
+    }
+    this.appConnections.recordMessage(appConnectionId, "in", trustedE2E);
+    return true;
+  }
+
   private handleAuthVerify(message: MessageEnvelope<AuthVerifyPayload>): void {
     const keyRecord = this.requireKeyRecord();
     const authNonceKey = `${message.payload.key_id}:${message.payload.nonce}`;
@@ -731,12 +1038,22 @@ export class AgentService {
 
     const valid =
       message.payload.key_id === keyRecord.key_id &&
-      verifyProof(keyRecord.key, message.payload.nonce, message.payload.proof);
+      verifyProof(
+        keyRecord.key,
+        message.payload.nonce,
+        message.payload.app_info,
+        message.payload.proof,
+      );
 
     if (valid) {
       this.authReplayCache.remember(authNonceKey);
       if (message.payload.connection_id) {
         this.authenticatedAppConnectionIds.add(message.payload.connection_id);
+        this.appConnections.acceptAuthenticatedConnection({
+          relayConnectionId: message.payload.connection_id,
+          keyId: keyRecord.key_id,
+          appInfo: message.payload.app_info,
+        });
       }
       this.send(
         createMessage(
@@ -887,6 +1204,57 @@ export class AgentService {
     );
   }
 
+  private async startAdminServer(): Promise<void> {
+    if (!this.config.adminEnabled || this.adminServer) {
+      return;
+    }
+    const server = new AgentAdminServer({
+      host: this.config.adminHost,
+      port: this.config.adminPort,
+      token: this.config.adminToken,
+      getStatus: () => ({
+        agent: this.agentInfo(),
+        runtime: {
+          admin_enabled: this.config.adminEnabled,
+          relay_configured: Boolean(this.config.relayUrl),
+          relay_connected: Boolean(this.relay),
+          e2e_required: this.config.businessSecurityMode === "e2e_required",
+        },
+        connections_summary: this.appConnections.summary(),
+      }),
+      getConnections: () => ({
+        agent: this.agentInfo(),
+        summary: this.appConnections.summary(),
+        connections: this.appConnections.list(),
+      }),
+    });
+    await server.start();
+    this.adminServer = server;
+    this.logger.info("agent admin server started", {
+      url: `http://${this.config.adminHost}:${this.config.adminPort}/`,
+    });
+  }
+
+  private agentInfo(): {
+    device_id: string;
+    agent_instance_id: string;
+    hostname: string;
+    platform: "darwin";
+    version: string;
+    started_at: number;
+    now: number;
+  } {
+    return {
+      device_id: this.config.deviceId,
+      agent_instance_id: this.agentInstanceId,
+      hostname: this.config.hostname,
+      platform: "darwin",
+      version: this.config.agentVersion,
+      started_at: this.agentStartedAt,
+      now: Date.now(),
+    };
+  }
+
   private send(message: MessageEnvelope): void {
     if (!this.transport) {
       this.logger.warn("cannot send without transport", {
@@ -927,8 +1295,19 @@ export class AgentService {
       });
       return;
     }
+    if (!this.appConnections.hasAuthenticatedConnection(appConnectionId)) {
+      this.logger.warn(
+        "dropped app-scoped message before authenticated tracking",
+        {
+          app_connection_id: appConnectionId,
+          message_type: message.type,
+        },
+      );
+      return;
+    }
     const peer = this.e2ePeers.get(appConnectionId);
     if (this.config.businessSecurityMode === "plaintext_allowed") {
+      this.appConnections.recordMessage(appConnectionId, "out", false);
       this.transport.send(
         {
           ...message,
@@ -946,6 +1325,7 @@ export class AgentService {
       return;
     }
     const encrypted = peer.session.encrypt(messageToInner(message));
+    this.appConnections.recordMessage(appConnectionId, "out", true);
     this.transport.send(
       createMessage("e2e.message", encrypted.payload, {
         device_id: this.config.deviceId,
@@ -998,4 +1378,44 @@ function formatRelayConnectionError(error: unknown): string {
   } catch {
     return String(error);
   }
+}
+
+function appConnectionIdFromMessage(
+  message: MessageEnvelope,
+): string | undefined {
+  const payload = message.payload as { app_connection_id?: unknown };
+  return typeof payload.app_connection_id === "string"
+    ? payload.app_connection_id
+    : undefined;
+}
+
+function isRelayExplicitRejection(event: RelayCloseEvent): boolean {
+  if ([1008, 4001, 4003, 4401, 4403].includes(event.code ?? 0)) {
+    return true;
+  }
+  return isExplicitRejectionText(event.reason ?? "");
+}
+
+function isRelayExplicitRejectionError(error: unknown): boolean {
+  return isExplicitRejectionText(formatRelayConnectionError(error));
+}
+
+function isExplicitRejectionText(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return [
+    "unauthorized",
+    "forbidden",
+    "policy violation",
+    "rejected",
+    "reject",
+    "invalid token",
+    "invalid device",
+    "authentication failed",
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

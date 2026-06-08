@@ -8,7 +8,7 @@
     "dev": "node --experimental-strip-types src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types tests/auth-key.test.ts && node --experimental-strip-types tests/authReplayCache.test.ts && node --experimental-strip-types tests/session-store.test.ts && node --experimental-strip-types tests/session-startup-patch.test.ts && node --experimental-strip-types tests/transport/sessionTransport.test.ts && node --experimental-strip-types tests/transport/upgradeCoordinator.test.ts && node --experimental-strip-types tests/transport/webRtcPeerAdapter.test.ts"
+    "test": "node --experimental-strip-types tests/auth-key.test.ts && node --experimental-strip-types tests/authReplayCache.test.ts && node --experimental-strip-types tests/appConnectionRegistry.test.ts && node --experimental-strip-types tests/session-store.test.ts && node --experimental-strip-types tests/session-startup-patch.test.ts && node --experimental-strip-types tests/transport/sessionTransport.test.ts && node --experimental-strip-types tests/transport/upgradeCoordinator.test.ts && node --experimental-strip-types tests/transport/webRtcPeerAdapter.test.ts"
   },
   "dependencies": {
     "@omniwork/e2e-noise": "workspace:*",

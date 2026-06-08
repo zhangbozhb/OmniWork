@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 
 import { type PairingConfig } from "../../features/auth/types";
 import { isValidSessionKey } from "../../features/auth/keyProof";
+import { createAppInstanceId } from "../../features/auth/pairingConfig";
 import { appConfig } from "../../app/appConfig";
 import { Button, Card } from "../../ui/components";
 import { KeyboardAwareScrollView } from "../../ui/KeyboardAwareScrollView";
@@ -88,6 +89,7 @@ export function PairingScreen({
         deviceId: deviceId.trim(),
         key: trimmedKey,
         keyId: keyId.trim() || undefined,
+        appInstanceId: initialPairing?.appInstanceId ?? createAppInstanceId(),
       });
     } finally {
       setSubmitting(false);

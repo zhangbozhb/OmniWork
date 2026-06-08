@@ -51,6 +51,7 @@ export function createAppSessionTransport(
     },
     sendControl: (envelope) => session.send(envelope),
     onSwitchPath: (path) => {
+      session.setConnectionPath(path);
       if (path === "p2p") {
         const peer = coordinator.getPeer();
         const upgradeId = coordinator.getUpgradeId();
@@ -71,6 +72,7 @@ export function createAppSessionTransport(
   transport.onEvent((event) => {
     switch (event.type) {
       case "path_change":
+        session.setConnectionPath(event.to);
         console.info("[omniwork-app] transport path changed", {
           from: event.from,
           to: event.to,
