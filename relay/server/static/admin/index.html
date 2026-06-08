@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OmniWork Relay Admin</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0b1117; color: #dbe7f3; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(circle at top left, rgba(39, 92, 246, 0.2), transparent 32rem), #0b1117; }
+    main { max-width: 1240px; margin: 0 auto; padding: 32px 24px 48px; }
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: 28px; letter-spacing: -0.04em; }
+    h2 { margin: 0 0 14px; font-size: 16px; color: #f8fbff; }
+    p { margin: 6px 0 0; color: #8ea2b7; }
+    button, input { border: 1px solid #263548; border-radius: 10px; background: #101a25; color: #dbe7f3; padding: 10px 12px; }
+    button { cursor: pointer; background: linear-gradient(180deg, #2459e8, #1a43b7); border: 0; font-weight: 700; }
+    button.secondary { background: #172332; border: 1px solid #2b3c52; }
+    button.danger { background: linear-gradient(180deg, #cf3d4d, #9b2634); }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .card, .panel { background: rgba(13, 22, 32, 0.86); border: 1px solid rgba(79, 103, 130, 0.28); border-radius: 18px; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+    .card { padding: 18px; }
+    .metric { font-size: 30px; font-weight: 800; margin-top: 8px; }
+    .panel { padding: 18px; margin-top: 18px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid rgba(79, 103, 130, 0.22); font-size: 13px; }
+    th { color: #8ea2b7; font-weight: 600; }
+    tr[data-device] { cursor: pointer; }
+    tr[data-device]:hover { background: rgba(67, 111, 246, 0.1); }
+    .muted { color: #8ea2b7; }
+    .badge { display: inline-flex; border: 1px solid #2a3d53; border-radius: 999px; padding: 4px 8px; color: #9fb3c8; }
+    .forms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; }
+    #toast { min-height: 20px; color: #9fb3c8; }
+    @media (max-width: 800px) { .grid, .forms { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } header { display: block; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>OmniWork Relay</h1><p>Live agents, app links, and access controls.</p></div>
+    <div><button class="secondary" id="refresh">Refresh</button> <button class="secondary" id="logout">Logout</button></div>
+  </header>
+  <section class="grid">
+    <div class="card"><div class="muted">Agents</div><div class="metric" id="agent-count">-</div></div>
+    <div class="card"><div class="muted">Apps</div><div class="metric" id="app-count">-</div></div>
+    <div class="card"><div class="muted">Disabled Agents</div><div class="metric" id="disabled-count">-</div></div>
+    <div class="card"><div class="muted">IP Bans</div><div class="metric" id="ban-count">-</div></div>
+  </section>
+  <section class="panel">
+    <h2>Agents</h2>
+    <table><thead><tr><th>Device</th><th>Agent Instance</th><th>IP</th><th>Apps</th><th>Security</th><th>Connected</th><th>Last Seen</th><th>State</th></tr></thead><tbody id="agents"></tbody></table>
+  </section>
+  <section class="panel">
+    <h2>Apps <span class="badge" id="selected-agent">select an agent</span></h2>
+    <table><thead><tr><th>Connection</th><th>App</th><th>Platform</th><th>Version</th><th>IP</th><th>Auth</th><th>Path</th><th>Last Seen</th></tr></thead><tbody id="apps"></tbody></table>
+  </section>
+  <section class="panel">
+    <h2>Controls</h2>
+    <p id="toast"></p>
+    <div class="forms">
+      <div>
+        <h2>Disable Agent</h2>
+        <div class="form-row"><input id="disable-agent-instance" placeholder="agent_instance_id" /><input id="disable-reason" placeholder="reason" /><button class="danger" id="disable-agent">Disable</button><button class="secondary" id="delete-agent-disable">Delete Rule</button></div>
+      </div>
+      <div>
+        <h2>IP Bans</h2>
+        <div class="form-row"><input id="ban-ip" placeholder="ips, comma separated" /><input id="ban-reason" placeholder="reason" /><button class="danger" id="ban-ip-btn">Ban</button><button class="secondary" id="unban-ip-btn">Unban</button></div>
+      </div>
+    </div>
+    <p class="muted">Admin access uses a 30-minute secure session. Read the current one-time token from the server token file when the session expires.</p>
+  </section>
+</main>
+<script>
+let selectedConnection = null;
+let selectedDevice = null;
+const qs = (id) => document.getElementById(id);
+async function api(path, options = {}) {
+  const headers = Object.assign({ "content-type": "application/json" }, options.headers || {});
+  const res = await fetch(path, Object.assign({}, options, { headers, credentials: "same-origin" }));
+  const body = await res.json();
+  if (res.status === 401) {
+    location.href = "/admin/web";
+    throw new Error("unauthorized");
+  }
+  if (!res.ok) throw new Error(body.error || "request_failed");
+  return body;
+}
+function td(value) { return "<td>" + (value ?? "<span class='muted'>unknown</span>") + "</td>"; }
+async function refresh() {
+  const [status, agents] = await Promise.all([api("/admin/api/status"), api("/admin/api/agents")]);
+  qs("agent-count").textContent = status.summary.agent_count;
+  qs("app-count").textContent = status.summary.app_count;
+  qs("disabled-count").textContent = status.summary.disabled_agent_count;
+  qs("ban-count").textContent = status.summary.ip_ban_count;
+  qs("agents").innerHTML = agents.agents.map((agent) =>
+    "<tr data-connection='" + encodeURIComponent(agent.connection_id) + "' data-device='" + encodeURIComponent(agent.device_id) + "'>" +
+    td(agent.device_id) + td(agent.agent_instance_id) + td(agent.remote_ip) + td(agent.app_count) + td(agent.business_security_mode) +
+    td(agent.connected_at) + td(agent.last_seen_at) + td(agent.disabled ? "disabled" : agent.state) + "</tr>"
+  ).join("");
+  for (const row of document.querySelectorAll("tr[data-connection]")) {
+    row.onclick = () => loadApps(decodeURIComponent(row.dataset.connection), decodeURIComponent(row.dataset.device));
+  }
+  if (selectedConnection) await loadApps(selectedConnection, selectedDevice);
+}
+async function loadApps(connectionId, deviceId) {
+  selectedConnection = connectionId;
+  selectedDevice = deviceId;
+  qs("selected-agent").textContent = deviceId;
+  const data = await api("/admin/api/agent-connections/" + encodeURIComponent(connectionId) + "/apps");
+  qs("apps").innerHTML = data.apps.map((app) => {
+    const info = app.app_info || {};
+    return "<tr>" + td(app.connection_id) + td(info.name || info.instance_id) + td(info.platform) + td(info.version) +
+      td(app.remote_ip) + td(app.auth_state) + td(app.transport_path) + td(app.last_seen_at) + "</tr>";
+  }).join("");
+}
+qs("refresh").onclick = () => refresh().catch(showError);
+qs("logout").onclick = async () => {
+  await api("/admin/api/logout", { method: "POST" }).catch(() => {});
+  location.href = "/admin/web";
+};
+qs("disable-agent").onclick = async () => {
+  await api("/admin/api/controls/agents/agent-op", {
+    method: "POST", body: JSON.stringify({ action: "disable", agent_instance_ids: parseCsv(qs("disable-agent-instance").value), reason: qs("disable-reason").value || undefined })
+  });
+  qs("toast").textContent = "Agent disabled.";
+  await refresh();
+};
+qs("delete-agent-disable").onclick = async () => {
+  await api("/admin/api/controls/agents/agent-op", {
+    method: "POST", body: JSON.stringify({ action: "delete", agent_instance_ids: parseCsv(qs("disable-agent-instance").value) })
+  });
+  qs("toast").textContent = "Agent disable rule deleted.";
+  await refresh();
+};
+qs("ban-ip-btn").onclick = async () => {
+  await api("/admin/api/controls/ip-bans", {
+    method: "POST", body: JSON.stringify({ action: "ban", ips: parseIps(qs("ban-ip").value), reason: qs("ban-reason").value || undefined })
+  });
+  qs("toast").textContent = "IP ban updated.";
+  await refresh();
+};
+qs("unban-ip-btn").onclick = async () => {
+  await api("/admin/api/controls/ip-bans", {
+    method: "POST", body: JSON.stringify({ action: "unban", ips: parseIps(qs("ban-ip").value) })
+  });
+  qs("toast").textContent = "IP ban removed.";
+  await refresh();
+};
+function parseCsv(value) { return value.split(",").map((item) => item.trim()).filter(Boolean); }
+function parseIps(value) { return parseCsv(value); }
+function showError(error) { qs("toast").textContent = error.message; }
+refresh().catch(showError);
+setInterval(() => refresh().catch(() => {}), 5000);
+</script>
+</body>
+</html>

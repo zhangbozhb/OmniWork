@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import type { IceServerConfig } from "@omniwork/protocol-ts";
 
 /**
@@ -45,6 +47,17 @@ export interface RelayServerConfig {
     refillPerSecond: number;
     blockMs: number;
   };
+  admin: {
+    tokenDir: string;
+    tokenRotateMs: number;
+    sessionTtlMs: number;
+    requireHttps: boolean;
+    trustProxy: boolean;
+    trustedProxyIps: Set<string>;
+    controlsDbPath: string;
+    agentDisableDefaultMs: number;
+    ipBanDefaultMs: number;
+  };
   /** 升级编排器配置。阶段 4 引入。 */
   upgrade: UpgradeOrchestratorConfig;
 }
@@ -70,6 +83,10 @@ export function loadRelayServerConfig(
     );
   }
 
+  const runtimeDir =
+    optionalNonEmpty(env.OMNIWORK_RELAY_RUNTIME_DIR) ??
+    join(process.cwd(), ".omniwork-relay");
+
   return {
     host,
     port: Number(env.OMNIWORK_RELAY_PORT ?? "8787"),
@@ -86,6 +103,34 @@ export function loadRelayServerConfig(
       ),
       blockMs: parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS, 60_000),
     },
+    admin: {
+      tokenDir:
+        optionalNonEmpty(env.OMNIWORK_RELAY_ADMIN_TOKEN_DIR) ?? runtimeDir,
+      tokenRotateMs: parseNumber(
+        env.OMNIWORK_RELAY_ADMIN_TOKEN_ROTATE_MS,
+        3_600_000,
+      ),
+      sessionTtlMs: parseNumber(
+        env.OMNIWORK_RELAY_ADMIN_SESSION_TTL_MS,
+        1_800_000,
+      ),
+      requireHttps: parseBoolean(env.OMNIWORK_RELAY_ADMIN_REQUIRE_HTTPS, true),
+      trustProxy: parseBoolean(env.OMNIWORK_RELAY_ADMIN_TRUST_PROXY, false),
+      trustedProxyIps: parseBlocklist(
+        env.OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS ?? "127.0.0.1,::1",
+      ),
+      controlsDbPath:
+        optionalNonEmpty(env.OMNIWORK_RELAY_ADMIN_CONTROLS_DB_PATH) ??
+        join(runtimeDir, "admin-controls.sqlite"),
+      agentDisableDefaultMs: parseNumber(
+        env.OMNIWORK_RELAY_AGENT_DISABLE_DEFAULT_MS,
+        86_400_000,
+      ),
+      ipBanDefaultMs: parseNumber(
+        env.OMNIWORK_RELAY_IP_BAN_DEFAULT_MS,
+        86_400_000,
+      ),
+    },
     upgrade: {
       enabled: parseBoolean(env.OMNIWORK_UPGRADE_ENABLED, true),
       rolloutPercent: parseRolloutPercent(env.OMNIWORK_UPGRADE_ROLLOUT, 100),
@@ -98,6 +143,11 @@ export function loadRelayServerConfig(
       ),
     },
   };
+}
+
+function optionalNonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {

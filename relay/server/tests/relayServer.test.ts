@@ -1,14 +1,45 @@
 import { strict as assert } from "node:assert";
+import { join } from "node:path";
 
 import {
   createMessage,
   E2E_SUPPORT_V1,
   PROTOCOL_SUPPORT_V1,
   type MessageEnvelope,
+  type AppInfoPayload,
   type TunnelUpgradeOfferPayload,
 } from "@omniwork/protocol-ts";
 import { loadRelayServerConfig } from "../src/config.ts";
 import { RelayServer } from "../src/relayServer.ts";
+import {
+  renderRelayAdminLoginPage,
+  renderRelayAdminPage,
+} from "../src/adminPage.ts";
+
+{
+  const config = loadRelayServerConfig({
+    OMNIWORK_RELAY_HOST: "127.0.0.1",
+  });
+
+  assert.equal(config.admin.tokenDir, join(process.cwd(), ".omniwork-relay"));
+  assert.equal(
+    config.admin.controlsDbPath,
+    join(process.cwd(), ".omniwork-relay", "admin-controls.sqlite"),
+  );
+}
+
+{
+  const config = loadRelayServerConfig({
+    OMNIWORK_RELAY_HOST: "127.0.0.1",
+    OMNIWORK_RELAY_RUNTIME_DIR: "/tmp/omniwork-relay-runtime",
+  });
+
+  assert.equal(config.admin.tokenDir, "/tmp/omniwork-relay-runtime");
+  assert.equal(
+    config.admin.controlsDbPath,
+    "/tmp/omniwork-relay-runtime/admin-controls.sqlite",
+  );
+}
 
 interface FakeSocket {
   sent: MessageEnvelope[];
@@ -18,6 +49,68 @@ interface FakeSocket {
   sendText(message: string): void;
   close(code?: number, reason?: string): void;
 }
+
+// Relay Admin 页面作为静态资源管理，必须能被 server 读取并包含关键 API。
+{
+  const html = renderRelayAdminPage();
+  assert.match(html, /<!doctype html>/i);
+  assert.match(html, /OmniWork Relay/);
+  assert.match(html, /\/admin\/api\/status/);
+  assert.match(html, /\/admin\/api\/agents/);
+  assert.match(html, /\/admin\/api\/agent-connections/);
+  assert.match(html, /\/admin\/api\/controls\/agents\/agent-op/);
+  assert.match(html, /\/admin\/api\/controls\/ip-bans/);
+  assert.doesNotMatch(html, /localStorage/);
+  assert.doesNotMatch(html, /Authorization: Bearer/);
+  const loginHtml = renderRelayAdminLoginPage();
+  assert.match(loginHtml, /Relay Admin Login/);
+  assert.match(loginHtml, /\/admin\/api\/login/);
+}
+
+type TestRelayConnection = {
+  id: string;
+  endpoint: "agent" | "mobile";
+  role: "unknown" | "agent" | "mobile";
+  state:
+    | "socket_connected"
+    | "registered_agent"
+    | "mobile_connected"
+    | "relay_pairing_verified"
+    | "e2e_handshaking"
+    | "e2e_ready"
+    | "closed";
+  socket: FakeSocket;
+  authenticated: boolean;
+  remoteIp: string;
+  connectedAt: number;
+  lastSeenAt: number;
+  authState: "none" | "pending" | "verified" | "failed";
+  transportPath: "relay" | "p2p" | "mixed" | "unknown";
+  deviceId?: string;
+  agentInstanceId?: string;
+  keyId?: string;
+  businessSecurityMode?: "e2e_required" | "plaintext_allowed";
+  e2e?: typeof E2E_SUPPORT_V1;
+  appInfo?: {
+    instanceId: AppInfoPayload["instance_id"];
+    runtimeId: AppInfoPayload["runtime_id"];
+    name?: string;
+    platform?: AppInfoPayload["platform"];
+    version?: string;
+  };
+  agentE2EPeers?: Map<
+    string,
+    { handshakeId: string; transcriptHash?: string; state: "ready" }
+  >;
+  e2eHandshakeId?: string;
+  e2eTranscriptHash?: string;
+};
+
+type TestAgentConnection = TestRelayConnection & {
+  role: "agent";
+  deviceId: string;
+  agentInstanceId: string;
+};
 
 // 入站协议边界必须拒绝已知类型的畸形 payload，避免后续业务逻辑依赖类型断言。
 {
@@ -51,6 +144,121 @@ interface FakeSocket {
   });
 }
 
+// Relay Admin API 的只读统计应展示当前 Agent 数和每个 Agent 下的 App 数。
+{
+  const server = createServer();
+  const agent = createAgentConnection("conn_agent_admin", "device_admin");
+  const mobile = createMobileConnection("conn_mobile_admin", "device_admin", {
+    instanceId: "app-1",
+    runtimeId: "runtime-1",
+    name: "OmniWork",
+    platform: "ios",
+    version: "0.1.0",
+  });
+  const internals = server as unknown as {
+    connections: Map<string, unknown>;
+    agentsByDevice: Map<string, unknown>;
+    mobilesByDevice: Map<string, Set<unknown>>;
+    admin: {
+      agentsSnapshot(): {
+        summary: { agent_count: number; app_count: number };
+        agents: Array<{
+          device_id: string;
+          connection_id: string;
+          agent_instance_id?: string;
+          app_count: number;
+        }>;
+      };
+      agentAppsSnapshot(connectionId: string): {
+        connection_id: string;
+        device_id?: string;
+        agent_instance_id?: string;
+        summary: { app_count: number };
+        apps: Array<{ app_info?: AppInfoPayload; auth_state: string }>;
+      };
+    };
+  };
+  internals.connections.set(agent.id, agent);
+  internals.connections.set(mobile.id, mobile);
+  internals.agentsByDevice.set(agent.deviceId, agent);
+  internals.mobilesByDevice.set(agent.deviceId, new Set([mobile]));
+
+  const agents = internals.admin.agentsSnapshot();
+  const apps = internals.admin.agentAppsSnapshot(agent.id);
+
+  assert.equal(agents.summary.agent_count, 1);
+  assert.equal(agents.summary.app_count, 1);
+  assert.equal(agents.agents[0]?.device_id, "device_admin");
+  assert.equal(agents.agents[0]?.connection_id, "conn_agent_admin");
+  assert.equal(agents.agents[0]?.app_count, 1);
+  assert.equal(apps.connection_id, "conn_agent_admin");
+  assert.equal(apps.device_id, "device_admin");
+  assert.equal(apps.summary.app_count, 1);
+  assert.equal(apps.apps[0]?.app_info?.platform, "ios");
+  assert.equal(apps.apps[0]?.auth_state, "verified");
+}
+
+// 管理规则应立即关闭已在线 Agent 以及其下 App 连接。
+{
+  const server = createServer();
+  const agent = createAgentConnection("conn_agent_disabled", "device_disabled");
+  const mobile = createMobileConnection(
+    "conn_mobile_disabled",
+    "device_disabled",
+  );
+  const internals = server as unknown as {
+    connections: Map<string, unknown>;
+    agentsByDevice: Map<string, unknown>;
+    mobilesByDevice: Map<string, Set<unknown>>;
+    admin: {
+      disableAgentInstance(agentInstanceId: string, rule: unknown): void;
+    };
+  };
+  internals.connections.set(agent.id, agent);
+  internals.connections.set(mobile.id, mobile);
+  internals.agentsByDevice.set(agent.deviceId, agent);
+  internals.mobilesByDevice.set(agent.deviceId, new Set([mobile]));
+
+  internals.admin.disableAgentInstance(agent.agentInstanceId, {
+    id: "rule-1",
+    createdAt: Date.now(),
+    reason: "maintenance",
+  });
+
+  assert.deepEqual(agent.socket.closed[0], {
+    code: 4403,
+    reason: "agent_disabled",
+  });
+  assert.deepEqual(mobile.socket.closed[0], {
+    code: 4403,
+    reason: "agent_disabled",
+  });
+}
+
+// IP 封禁应立即关闭匹配来源 IP 的现有连接。
+{
+  const server = createServer();
+  const agent = createAgentConnection("conn_agent_banned_ip", "device_ip");
+  agent.remoteIp = "203.0.113.10";
+  const internals = server as unknown as {
+    connections: Map<string, unknown>;
+    admin: {
+      banIp(ip: string, rule: unknown): void;
+    };
+  };
+  internals.connections.set(agent.id, agent);
+
+  internals.admin.banIp("203.0.113.10", {
+    id: "rule-2",
+    createdAt: Date.now(),
+  });
+
+  assert.deepEqual(agent.socket.closed[0], {
+    code: 4403,
+    reason: "ip_banned",
+  });
+}
+
 function createFakeSocket(): FakeSocket {
   return {
     sent: [],
@@ -63,6 +271,55 @@ function createFakeSocket(): FakeSocket {
     close(code?: number, reason?: string): void {
       this.closed.push({ code, reason });
     },
+  };
+}
+
+function createAgentConnection(
+  id: string,
+  deviceId: string,
+): TestAgentConnection {
+  return {
+    id,
+    endpoint: "agent",
+    role: "agent",
+    state: "registered_agent",
+    socket: createFakeSocket(),
+    deviceId,
+    agentInstanceId: `${id}_instance`,
+    keyId: "key_1",
+    businessSecurityMode: "e2e_required",
+    e2e: E2E_SUPPORT_V1,
+    authenticated: true,
+    remoteIp: "127.0.0.1",
+    connectedAt: 1000,
+    lastSeenAt: 2000,
+    authState: "verified",
+    transportPath: "relay",
+  };
+}
+
+function createMobileConnection(
+  id: string,
+  deviceId: string,
+  appInfo: TestRelayConnection["appInfo"] = {
+    instanceId: "app-default",
+    runtimeId: "runtime-default",
+  },
+): TestRelayConnection {
+  return {
+    id,
+    endpoint: "mobile",
+    role: "mobile",
+    state: "e2e_ready",
+    socket: createFakeSocket(),
+    deviceId,
+    authenticated: true,
+    remoteIp: "198.51.100.10",
+    connectedAt: 1100,
+    lastSeenAt: 2100,
+    authState: "verified",
+    transportPath: "relay",
+    appInfo,
   };
 }
 

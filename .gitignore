@@ -10,3 +10,4 @@ app/android/.kotlin
 xtermWebViewAssets.ts
 local.properties
 .env
+relay/server/.omniwork-relay

@@ -16,7 +16,6 @@ import {
   type AuthFailedPayload,
   type AuthOkPayload,
   type BusinessSecurityMode,
-  type E2ESupport,
   type AuthProofPayload,
   type E2EFailedPayload,
   type E2EHandshakeInitPayload,
@@ -26,80 +25,22 @@ import {
   type MessageEnvelope,
   type MobileConnectPayload,
   type ProtocolErrorPayload,
-  type TransportPreference,
 } from "@omniwork/protocol-ts";
 
 import type { RelayServerConfig } from "./config.ts";
+import { RelayAdminController } from "./relayAdminController.ts";
+import { RelayE2EController } from "./relayE2EController.ts";
+import { logRelayEvent, logUpgradeEvent } from "./relayLog.ts";
 import { TokenBucketLimiter } from "./tokenBucket.ts";
 import { RelayUpgradeOrchestrator } from "./upgrade/orchestrator.ts";
 import { acceptWebSocket } from "./websocket.ts";
-
-type RelayRole = "unknown" | "agent" | "mobile";
-type RelayEndpoint = "agent" | "mobile";
-type RelayConnectionState =
-  | "socket_connected"
-  | "registered_agent"
-  | "mobile_connected"
-  | "relay_pairing_verified"
-  | "e2e_handshaking"
-  | "e2e_ready"
-  | "closed";
-
-interface RelaySocket {
-  onMessage(handler: (message: string) => void): () => void;
-  onClose(handler: () => void): () => void;
-  sendText(message: string): void;
-  close(code?: number, reason?: string): void;
-}
-
-interface RelayConnection {
-  id: string;
-  endpoint: RelayEndpoint;
-  role: RelayRole;
-  state: RelayConnectionState;
-  socket: RelaySocket;
-  deviceId?: string;
-  keyId?: string;
-  appInfo?: RelayAppInfo;
-  businessSecurityMode?: BusinessSecurityMode;
-  e2e?: E2ESupport;
-  authenticated: boolean;
-  /** Remote address used as the secondary key for auth.proof rate limiting. */
-  remoteIp: string;
-  /**
-   * App 在 mobile.connect 中显式声明的传输偏好，由 orchestrator 在 propose
-   * 守门时读取；缺省视为 "auto"。
-   */
-  transportPreference?: TransportPreference;
-  e2eHandshakeId?: string;
-  e2eTranscriptHash?: string;
-  e2eSessionId?: string;
-  agentE2EPeers?: Map<string, AgentE2EPeerState>;
-}
-
-interface AgentE2EPeerState {
-  handshakeId: string;
-  transcriptHash?: string;
-  e2eSessionId?: string;
-  state: "handshaking" | "ready";
-}
-
-interface RelayAppInfo {
-  instanceId: AppInfoPayload["instance_id"];
-  runtimeId: AppInfoPayload["runtime_id"];
-  name?: string;
-  deviceName?: string;
-  platform?: AppInfoPayload["platform"];
-  version?: string;
-  capabilities?: string[];
-}
-
-interface PendingAuth {
-  deviceId: string;
-  nonce: string;
-  keyId: string;
-  appInfo: RelayAppInfo;
-}
+import type {
+  PendingAuth,
+  RelayAppInfo,
+  RelayConnection,
+  RelayEndpoint,
+  RelaySocket,
+} from "./relayTypes.ts";
 
 export class RelayServer {
   private readonly config: RelayServerConfig;
@@ -107,6 +48,8 @@ export class RelayServer {
   private readonly agentsByDevice = new Map<string, RelayConnection>();
   private readonly pendingAuth = new Map<string, PendingAuth>();
   private readonly mobilesByDevice = new Map<string, Set<RelayConnection>>();
+  private readonly admin: RelayAdminController;
+  private readonly e2e: RelayE2EController;
   private readonly authLimiter: TokenBucketLimiter;
   private readonly orchestrator: RelayUpgradeOrchestrator;
 
@@ -117,6 +60,23 @@ export class RelayServer {
       refillPerSecond: config.authRateLimit.refillPerSecond,
       blockMs: config.authRateLimit.blockMs,
     });
+    this.admin = new RelayAdminController({
+      config,
+      connections: this.connections,
+      agentsByDevice: this.agentsByDevice,
+      mobilesByDevice: this.mobilesByDevice,
+      unregister: (connection) => this.unregister(connection),
+    });
+    this.e2e = new RelayE2EController({
+      protocolVersion: config.protocolVersion,
+      connections: this.connections,
+      agentsByDevice: this.agentsByDevice,
+      send: (connection, message) => this.send(connection, message),
+      routeMessage: (connection, message) =>
+        this.routeMessage(connection, message),
+      notifyMobileAuthenticated: (deviceId, mobile) =>
+        this.orchestrator.notifyMobileAuthenticated(deviceId, mobile),
+    });
     this.orchestrator = new RelayUpgradeOrchestrator({
       config: config.upgrade,
       send: (conn, msg) => this.send(conn as RelayConnection, msg),
@@ -125,12 +85,18 @@ export class RelayServer {
   }
 
   async start(): Promise<void> {
+    this.admin.start();
     const server = createServer((request, response) =>
       this.handleHttp(request, response),
     );
     server.on("upgrade", (request, socket) => {
       const endpoint = parseRelayEndpoint(request);
       const remoteIp = resolveRemoteIp(request, socket as Socket);
+      const activeBan = this.admin.activeIpBan(remoteIp);
+      if (activeBan) {
+        rejectWebSocketUpgrade(socket as Socket, "ip_banned", 403);
+        return;
+      }
       if (endpoint !== "agent" && endpoint !== "mobile") {
         rejectWebSocketUpgrade(
           socket as Socket,
@@ -154,18 +120,35 @@ export class RelayServer {
       host: this.config.host,
       port: this.config.port,
     });
+    logRelayEvent({
+      event: "admin.token.ready",
+      token_file: this.admin.tokenPath(),
+      token_rotate_ms: this.config.admin.tokenRotateMs,
+      session_ttl_ms: this.config.admin.sessionTtlMs,
+      https_required: this.config.admin.requireHttps,
+      controls_db: this.config.admin.controlsDbPath,
+    });
   }
 
   private handleHttp(request: IncomingMessage, response: ServerResponse): void {
+    const url = new URL(request.url ?? "/", "http://relay.local");
+    if (this.admin.matches(url.pathname)) {
+      this.admin.handle(request, response, url).catch((error: unknown) => {
+        this.writeJson(response, 500, {
+          error: "internal_error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+      return;
+    }
+
     if (request.url === "/healthz" || request.url === "/readyz") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ ok: true }));
+      this.writeJson(response, 200, { ok: true });
       return;
     }
 
     if (request.url === "/metrics") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify(this.orchestrator.getMetrics()));
+      this.writeJson(response, 200, this.orchestrator.getMetrics());
       return;
     }
 
@@ -178,8 +161,7 @@ export class RelayServer {
       return;
     }
 
-    response.writeHead(404, { "content-type": "application/json" });
-    response.end(JSON.stringify({ error: "not_found" }));
+    this.writeJson(response, 404, { error: "not_found" });
   }
 
   private handleDebugUpgrade(
@@ -206,7 +188,7 @@ export class RelayServer {
       !agent ||
       mobile?.role !== "mobile" ||
       mobile.deviceId !== deviceId ||
-      !this.isBusinessChannelReadyForApp(appConnectionId, deviceId)
+      !this.e2e.isBusinessChannelReadyForApp(appConnectionId, deviceId)
     ) {
       response.writeHead(404, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "device_not_online" }));
@@ -230,6 +212,7 @@ export class RelayServer {
     endpoint: RelayEndpoint,
     remoteIp = "unknown",
   ): void {
+    const now = Date.now();
     const connection: RelayConnection = {
       id: `conn_${randomUUID()}`,
       endpoint,
@@ -238,6 +221,10 @@ export class RelayServer {
       socket,
       authenticated: false,
       remoteIp,
+      connectedAt: now,
+      lastSeenAt: now,
+      authState: "none",
+      transportPath: "relay",
     };
     this.connections.set(connection.id, connection);
 
@@ -266,6 +253,7 @@ export class RelayServer {
   }
 
   private handleRawMessage(connection: RelayConnection, raw: string): void {
+    connection.lastSeenAt = Date.now();
     let decoded: unknown;
     try {
       decoded = JSON.parse(raw);
@@ -315,31 +303,31 @@ export class RelayServer {
         );
         break;
       case "e2e.handshake.init":
-        this.handleE2EHandshakeInit(
+        this.e2e.handleHandshakeInit(
           connection,
           message as MessageEnvelope<E2EHandshakeInitPayload>,
         );
         break;
       case "e2e.handshake.reply":
-        this.handleE2EHandshakeReply(
+        this.e2e.handleHandshakeReply(
           connection,
           message as MessageEnvelope<E2EHandshakeReplyPayload>,
         );
         break;
       case "e2e.ready":
-        this.handleE2EReady(
+        this.e2e.handleReady(
           connection,
           message as MessageEnvelope<E2EReadyPayload>,
         );
         break;
       case "e2e.message":
-        this.handleE2EMessage(
+        this.e2e.handleMessage(
           connection,
           message as MessageEnvelope<E2EMessagePayload>,
         );
         break;
       case "e2e.failed":
-        this.handleE2EFailed(
+        this.e2e.handleFailed(
           connection,
           message as MessageEnvelope<E2EFailedPayload>,
         );
@@ -348,7 +336,7 @@ export class RelayServer {
       case "e2e.rekey.reply":
       case "e2e.rekey.ready":
       case "e2e.close":
-        this.routeE2EControl(connection, message);
+        this.e2e.routeControl(connection, message);
         break;
       case "tunnel.upgrade.propose":
       case "tunnel.upgrade.offer":
@@ -359,8 +347,8 @@ export class RelayServer {
         // P2P upgrade 信令是 Relay 控制面消息，不是业务明文 payload。E2E
         // required 模式下只要求 App-Agent E2E pair 已就绪，然后允许 Relay 透传。
         if (
-          this.businessSecurityModeFor(connection) === "e2e_required" &&
-          !this.isE2EPairReady(connection)
+          this.e2e.businessSecurityModeFor(connection) === "e2e_required" &&
+          !this.e2e.isPairReady(connection)
         ) {
           this.rejectInvalidState(connection, message.type);
           return;
@@ -376,6 +364,11 @@ export class RelayServer {
           message.type === "tunnel.upgrade.committed" ||
           message.type === "tunnel.upgrade.downgrade"
         ) {
+          if (message.type === "tunnel.upgrade.committed") {
+            connection.transportPath = "p2p";
+          } else {
+            connection.transportPath = "relay";
+          }
           this.orchestrator.handleControlMessage(message);
         }
         this.routeMessage(connection, message);
@@ -383,9 +376,9 @@ export class RelayServer {
       default:
         if (
           isPlaintextBusinessMessage(message.type) &&
-          this.shouldRejectPlaintextBusiness(connection)
+          this.e2e.shouldRejectPlaintextBusiness(connection)
         ) {
-          this.rejectPlaintextBusiness(connection, message.type);
+          this.e2e.rejectPlaintextBusiness(connection, message.type);
           return;
         }
         this.routeMessage(connection, message);
@@ -397,14 +390,22 @@ export class RelayServer {
     connection: RelayConnection,
     message: MessageEnvelope<AgentHelloPayload>,
   ): void {
+    if (
+      this.admin.activeDisabledAgentInstance(message.payload.agent_instance_id)
+    ) {
+      connection.socket.close(4403, "agent_disabled");
+      return;
+    }
     connection.role = "agent";
     connection.state = "registered_agent";
     connection.deviceId = message.payload.device_id;
+    connection.agentInstanceId = message.payload.agent_instance_id;
     connection.keyId = message.payload.key_id;
     connection.businessSecurityMode =
       message.payload.business_security_mode ?? "e2e_required";
     connection.e2e = message.payload.e2e;
     connection.authenticated = true;
+    connection.authState = "verified";
     this.agentsByDevice.set(message.payload.device_id, connection);
   }
 
@@ -417,6 +418,7 @@ export class RelayServer {
     connection.role = "mobile";
     connection.state = "mobile_connected";
     connection.deviceId = deviceId;
+    connection.authState = "pending";
     const appInfo = appInfoFromMobileConnect(message.payload);
     connection.appInfo = appInfo;
 
@@ -426,6 +428,7 @@ export class RelayServer {
     }
 
     if (!agent?.keyId) {
+      connection.authState = "failed";
       this.send(
         connection,
         createMessage<AuthFailedPayload>(
@@ -493,6 +496,7 @@ export class RelayServer {
           { device_id: connection.deviceId },
         ),
       );
+      connection.authState = "failed";
       connection.socket.close(1008, "auth rate limit");
       return;
     }
@@ -520,6 +524,7 @@ export class RelayServer {
           { device_id: connection.deviceId },
         ),
       );
+      connection.authState = "failed";
       return;
     }
 
@@ -537,6 +542,7 @@ export class RelayServer {
           { device_id: pending.deviceId },
         ),
       );
+      connection.authState = "failed";
       return;
     }
 
@@ -570,7 +576,7 @@ export class RelayServer {
       return;
     }
     if (
-      !this.isBusinessChannelReadyForApp(connection.id, connection.deviceId)
+      !this.e2e.isBusinessChannelReadyForApp(connection.id, connection.deviceId)
     ) {
       this.rejectInvalidState(connection, message.type);
       return;
@@ -614,6 +620,7 @@ export class RelayServer {
       okPayload.business_security_mode ??= agentMode;
       okPayload.e2e ??= connection.e2e;
       mobile.authenticated = true;
+      mobile.authState = "verified";
       mobile.state = "relay_pairing_verified";
       // 鉴权成功后释放限流计数，避免合法重连被旧失败拖累。
       this.authLimiter.reset(
@@ -630,6 +637,7 @@ export class RelayServer {
         }
       }
     } else if (message.type === "auth.failed") {
+      mobile.authState = "failed";
       // agent 端确认 key 不匹配 → 这才是真实的鉴权失败，计入限流；
       // 避免合法 proof 被一并消耗 token 触发 60s 误封禁。
       this.authLimiter.consume(
@@ -646,9 +654,9 @@ export class RelayServer {
   ): void {
     if (
       isPlaintextBusinessMessage(message.type) &&
-      this.shouldRejectPlaintextBusiness(connection)
+      this.e2e.shouldRejectPlaintextBusiness(connection)
     ) {
-      this.rejectPlaintextBusiness(connection, message.type);
+      this.e2e.rejectPlaintextBusiness(connection, message.type);
       return;
     }
 
@@ -681,10 +689,7 @@ export class RelayServer {
 
     if (connection.role === "agent" && connection.deviceId) {
       if (message.app_connection_id) {
-        const mobile = this.getMobileByAppConnectionId(
-          connection,
-          message.app_connection_id,
-        );
+        const mobile = this.connections.get(message.app_connection_id);
         if (mobile) {
           this.send(mobile, message);
         }
@@ -698,308 +703,6 @@ export class RelayServer {
         this.send(mobile, message);
       }
     }
-  }
-
-  private routeMobileToAgent(
-    connection: RelayConnection,
-    message: MessageEnvelope,
-  ): void {
-    if (!connection.deviceId) {
-      return;
-    }
-    const agent = this.agentsByDevice.get(connection.deviceId);
-    if (agent) {
-      this.send(agent, message);
-    }
-  }
-
-  private getMobileByAppConnectionId(
-    agent: RelayConnection,
-    appConnectionId: string,
-  ): RelayConnection | undefined {
-    const mobile = this.connections.get(appConnectionId);
-    if (
-      mobile?.role !== "mobile" ||
-      !agent.deviceId ||
-      mobile.deviceId !== agent.deviceId
-    ) {
-      return undefined;
-    }
-    return mobile;
-  }
-
-  private ensureAgentE2EPeers(
-    connection: RelayConnection,
-  ): Map<string, AgentE2EPeerState> {
-    if (!connection.agentE2EPeers) {
-      connection.agentE2EPeers = new Map<string, AgentE2EPeerState>();
-    }
-    return connection.agentE2EPeers;
-  }
-
-  private handleE2EHandshakeInit(
-    connection: RelayConnection,
-    message: MessageEnvelope<E2EHandshakeInitPayload>,
-  ): void {
-    if (connection.role !== "mobile") {
-      this.rejectInvalidState(connection, "e2e.handshake.init");
-      return;
-    }
-    if (
-      !connection.authenticated ||
-      connection.state !== "relay_pairing_verified"
-    ) {
-      this.rejectInvalidState(connection, "e2e.handshake.init");
-      return;
-    }
-    if (message.payload.app_connection_id !== connection.id) {
-      this.rejectInvalidState(connection, "e2e.handshake.init");
-      return;
-    }
-    connection.e2eHandshakeId = message.payload.handshake_id;
-    connection.e2eTranscriptHash = undefined;
-    connection.e2eSessionId = undefined;
-    connection.state = "e2e_handshaking";
-    this.routeMobileToAgent(connection, message);
-  }
-
-  private handleE2EHandshakeReply(
-    connection: RelayConnection,
-    message: MessageEnvelope<E2EHandshakeReplyPayload>,
-  ): void {
-    if (connection.role !== "agent") {
-      this.rejectInvalidState(connection, "e2e.handshake.reply");
-      return;
-    }
-    const mobile = this.getMobileByAppConnectionId(
-      connection,
-      message.payload.app_connection_id,
-    );
-    if (!mobile || mobile.e2eHandshakeId !== message.payload.handshake_id) {
-      this.rejectInvalidState(connection, "e2e.handshake.reply");
-      return;
-    }
-    this.ensureAgentE2EPeers(connection).set(
-      message.payload.app_connection_id,
-      {
-        handshakeId: message.payload.handshake_id,
-        state: "handshaking",
-      },
-    );
-    this.send(mobile, message);
-  }
-
-  private handleE2EReady(
-    connection: RelayConnection,
-    message: MessageEnvelope<E2EReadyPayload>,
-  ): void {
-    if (connection.role === "mobile") {
-      if (
-        connection.state !== "e2e_handshaking" ||
-        message.payload.app_connection_id !== connection.id ||
-        message.payload.handshake_id !== connection.e2eHandshakeId
-      ) {
-        this.rejectInvalidState(connection, "e2e.ready");
-        return;
-      }
-      connection.e2eHandshakeId = message.payload.handshake_id;
-      connection.e2eTranscriptHash = message.payload.transcript_hash;
-      connection.state = "e2e_ready";
-      this.routeMobileToAgent(connection, message);
-      return;
-    }
-
-    if (connection.role !== "agent") {
-      this.rejectInvalidState(connection, "e2e.ready");
-      return;
-    }
-    const mobile = this.getMobileByAppConnectionId(
-      connection,
-      message.payload.app_connection_id,
-    );
-    const peer = connection.agentE2EPeers?.get(
-      message.payload.app_connection_id,
-    );
-    if (!mobile || !peer || peer.handshakeId !== message.payload.handshake_id) {
-      this.rejectInvalidState(connection, "e2e.ready");
-      return;
-    }
-    peer.transcriptHash = message.payload.transcript_hash;
-    peer.state = "ready";
-    if (connection.deviceId) {
-      this.orchestrator.notifyMobileAuthenticated(connection.deviceId, mobile);
-    }
-    this.send(mobile, message);
-  }
-
-  private handleE2EMessage(
-    connection: RelayConnection,
-    message: MessageEnvelope<E2EMessagePayload>,
-  ): void {
-    if (connection.role === "mobile") {
-      if (
-        connection.state !== "e2e_ready" ||
-        message.payload.app_connection_id !== connection.id ||
-        !this.isE2EPairReadyForApp(connection.id, connection.deviceId)
-      ) {
-        this.rejectInvalidState(connection, "e2e.message");
-        return;
-      }
-      if (
-        connection.e2eSessionId &&
-        connection.e2eSessionId !== message.payload.e2e_session_id
-      ) {
-        this.rejectInvalidState(connection, "e2e.message");
-        return;
-      }
-      connection.e2eSessionId = message.payload.e2e_session_id;
-      this.routeMobileToAgent(connection, message);
-      return;
-    }
-
-    if (connection.role !== "agent") {
-      this.rejectInvalidState(connection, "e2e.message");
-      return;
-    }
-    const mobile = this.getMobileByAppConnectionId(
-      connection,
-      message.payload.app_connection_id,
-    );
-    const peer = connection.agentE2EPeers?.get(
-      message.payload.app_connection_id,
-    );
-    if (!mobile || !peer || peer.state !== "ready") {
-      this.rejectInvalidState(connection, "e2e.message");
-      return;
-    }
-    if (
-      peer.e2eSessionId &&
-      peer.e2eSessionId !== message.payload.e2e_session_id
-    ) {
-      this.rejectInvalidState(connection, "e2e.message");
-      return;
-    }
-    peer.e2eSessionId = message.payload.e2e_session_id;
-    this.send(mobile, message);
-  }
-
-  private handleE2EFailed(
-    connection: RelayConnection,
-    message: MessageEnvelope<E2EFailedPayload>,
-  ): void {
-    const appConnectionId = message.payload.app_connection_id;
-    if (connection.role === "mobile") {
-      connection.state = connection.authenticated
-        ? "relay_pairing_verified"
-        : connection.state;
-      connection.e2eHandshakeId = undefined;
-      connection.e2eTranscriptHash = undefined;
-      connection.e2eSessionId = undefined;
-      this.routeMobileToAgent(connection, message);
-      return;
-    }
-    if (connection.role === "agent" && appConnectionId) {
-      connection.agentE2EPeers?.delete(appConnectionId);
-      const mobile = this.getMobileByAppConnectionId(
-        connection,
-        appConnectionId,
-      );
-      if (mobile) {
-        this.send(mobile, message);
-      }
-    }
-  }
-
-  private routeE2EControl(
-    connection: RelayConnection,
-    message: MessageEnvelope,
-  ): void {
-    if (connection.state !== "e2e_ready") {
-      this.rejectInvalidState(connection, message.type);
-      return;
-    }
-    if (!this.isE2EPairReady(connection)) {
-      this.rejectInvalidState(connection, message.type);
-      return;
-    }
-    this.routeMessage(connection, message);
-  }
-
-  private isE2EPairReady(connection: RelayConnection): boolean {
-    const appConnectionId = (connection as { id?: string }).id;
-    if (!appConnectionId || !connection.deviceId) {
-      return false;
-    }
-    return this.isE2EPairReadyForApp(appConnectionId, connection.deviceId);
-  }
-
-  private isE2EPairReadyForApp(
-    appConnectionId: string,
-    deviceId: string | undefined,
-  ): boolean {
-    if (!deviceId) {
-      return false;
-    }
-    const mobile = this.connections.get(appConnectionId);
-    const agent = this.agentsByDevice.get(deviceId);
-    const peer = agent?.agentE2EPeers?.get(appConnectionId);
-    return (
-      mobile?.role === "mobile" &&
-      mobile.deviceId === deviceId &&
-      mobile.state === "e2e_ready" &&
-      peer?.state === "ready" &&
-      !!mobile.e2eHandshakeId &&
-      mobile.e2eHandshakeId === peer.handshakeId &&
-      !!mobile.e2eTranscriptHash &&
-      mobile.e2eTranscriptHash === peer.transcriptHash
-    );
-  }
-
-  private isBusinessChannelReadyForApp(
-    appConnectionId: string,
-    deviceId: string | undefined,
-  ): boolean {
-    const agent = deviceId ? this.agentsByDevice.get(deviceId) : undefined;
-    if (agent?.businessSecurityMode === "plaintext_allowed") {
-      const mobile = this.connections.get(appConnectionId);
-      return (
-        mobile?.role === "mobile" &&
-        mobile.deviceId === deviceId &&
-        mobile.authenticated
-      );
-    }
-    return this.isE2EPairReadyForApp(appConnectionId, deviceId);
-  }
-
-  private shouldRejectPlaintextBusiness(connection: RelayConnection): boolean {
-    return this.businessSecurityModeFor(connection) === "e2e_required";
-  }
-
-  private businessSecurityModeFor(
-    connection: RelayConnection,
-  ): BusinessSecurityMode {
-    if (connection.role === "agent") {
-      return connection.businessSecurityMode ?? "e2e_required";
-    }
-    if (connection.deviceId) {
-      return (
-        this.agentsByDevice.get(connection.deviceId)?.businessSecurityMode ??
-        "e2e_required"
-      );
-    }
-    return "e2e_required";
-  }
-
-  private rejectPlaintextBusiness(
-    connection: RelayConnection,
-    type: string,
-  ): void {
-    this.sendProtocolError(
-      connection,
-      "plaintext_business_rejected",
-      `Message type "${type}" must be sent inside e2e.message.`,
-      false,
-    );
   }
 
   private rejectInvalidState(connection: RelayConnection, type: string): void {
@@ -1032,7 +735,21 @@ export class RelayServer {
     );
   }
 
+  private writeJson(
+    response: ServerResponse,
+    statusCode: number,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): void {
+    response.writeHead(statusCode, {
+      "content-type": "application/json",
+      ...headers,
+    });
+    response.end(JSON.stringify(body));
+  }
+
   private send(connection: RelayConnection, message: MessageEnvelope): void {
+    connection.lastSeenAt = Date.now();
     connection.socket.sendText(JSON.stringify(message));
   }
 
@@ -1088,19 +805,6 @@ function appInfoToPayload(appInfo: RelayAppInfo): AppInfoPayload {
   };
 }
 
-function isMatchingE2EPeer(
-  connection: RelayConnection,
-  peer: RelayConnection | undefined,
-): boolean {
-  return (
-    peer?.state === "e2e_ready" &&
-    !!connection.e2eHandshakeId &&
-    connection.e2eHandshakeId === peer.e2eHandshakeId &&
-    !!connection.e2eTranscriptHash &&
-    connection.e2eTranscriptHash === peer.e2eTranscriptHash
-  );
-}
-
 function isPlaintextBusinessMessage(type: string): boolean {
   return (
     type.startsWith("session.") ||
@@ -1153,11 +857,19 @@ function normalizeRelayPathname(pathname: string): string {
   return pathname;
 }
 
-function rejectWebSocketUpgrade(socket: Socket, message: string): void {
-  const body = JSON.stringify({ error: "invalid_relay_path", message });
+function rejectWebSocketUpgrade(
+  socket: Socket,
+  message: string,
+  statusCode = 404,
+): void {
+  const statusText = statusCode === 403 ? "Forbidden" : "Not Found";
+  const body = JSON.stringify({
+    error: statusCode === 403 ? message : "invalid_relay_path",
+    message,
+  });
   socket.write(
     [
-      "HTTP/1.1 404 Not Found",
+      `HTTP/1.1 ${statusCode} ${statusText}`,
       "Content-Type: application/json",
       `Content-Length: ${Buffer.byteLength(body)}`,
       "Connection: close",
@@ -1166,59 +878,4 @@ function rejectWebSocketUpgrade(socket: Socket, message: string): void {
     ].join("\r\n"),
   );
   socket.destroy();
-}
-
-/**
- * 升级控制面统一结构化日志：所有字段以 JSON 输出，便于 stdout 采集。
- * 关键字段固定为 event/upgrade_id/device_id/reason，方便日志检索。
- */
-interface UpgradeLogFields {
-  event: string;
-  upgrade_id?: string;
-  device_id?: string;
-  reason?: string;
-  source_role?: string;
-}
-
-function logUpgradeEvent(fields: UpgradeLogFields): void {
-  const record: Record<string, unknown> = {};
-  if (fields.upgrade_id) record.upgrade_id = fields.upgrade_id;
-  if (fields.device_id) record.device_id = fields.device_id;
-  if (fields.reason) record.reason = fields.reason;
-  if (fields.source_role) record.source_role = fields.source_role;
-  logRelayEvent({ event: fields.event, ...record });
-}
-
-function logRelayEvent(fields: Record<string, unknown>): void {
-  const record: Record<string, unknown> = {
-    ts: formatLocalTimestamp(),
-    component: "omniwork-relay",
-    ...fields,
-  };
-  console.info(JSON.stringify(record));
-}
-
-function formatLocalTimestamp(date = new Date()): string {
-  const offsetMinutes = -date.getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const absoluteOffsetMinutes = Math.abs(offsetMinutes);
-  const offsetHours = Math.floor(absoluteOffsetMinutes / 60);
-  const offsetRemainderMinutes = absoluteOffsetMinutes % 60;
-
-  return [
-    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
-    "T",
-    `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(
-      date.getSeconds(),
-    )}.${pad3(date.getMilliseconds())}`,
-    `${sign}${pad2(offsetHours)}:${pad2(offsetRemainderMinutes)}`,
-  ].join("");
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-function pad3(value: number): string {
-  return String(value).padStart(3, "0");
 }

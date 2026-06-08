@@ -7,13 +7,14 @@ TypeScript/Node.js Mac Agent for managing Agent CLI TUI sessions.
 - Generates a fresh 32-character temporary key on every start.
 - Saves the key to `~/Library/Application Support/OmniWork/agent/session-key.json`.
 - Uses `0600` file permissions and `0700` parent directory permissions.
-- Connects to Relay when `OMNIWORK_RELAY_URL` is set.
-- Runs without Relay for local key-generation and environment checks.
+- Requires `OMNIWORK_RELAY_URL` and fails fast when it is missing.
+- Reconnects to Relay with exponential backoff unless Relay explicitly rejects the Agent.
 - Manages configured Agent CLI TUI sessions through `tmux` once tmux is installed.
 - Persists user-edited session titles through the `session.rename` protocol message.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.
 - Provides read-only workspace file listing/reading and read-only Git status/diff messages.
 - Server-driven terminal frames: each attached session runs a ~450ms pusher in `src/core/agentService.ts` that captures the current PTY snapshot, hashes it with SHA-1, and emits `terminal.frame` only when the hash changes. The App no longer polls the snapshot on a 3s idle interval or after each input.
+- Serves the local Agent Admin UI from `static/admin/index.html`; keep UI HTML/CSS/JS there instead of embedding it in `src/core/adminServer.ts`.
 
 ## Run
 

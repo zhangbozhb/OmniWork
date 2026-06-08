@@ -33,6 +33,16 @@ OMNIWORK_RELAY_REQUIRE_E2E=true
 OMNIWORK_RELAY_AUTH_RATE_CAPACITY=5
 OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC=1
 OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS=60000
+OMNIWORK_RELAY_RUNTIME_DIR=.omniwork-relay
+OMNIWORK_RELAY_ADMIN_TOKEN_DIR=
+OMNIWORK_RELAY_ADMIN_TOKEN_ROTATE_MS=3600000
+OMNIWORK_RELAY_ADMIN_SESSION_TTL_MS=1800000
+OMNIWORK_RELAY_ADMIN_REQUIRE_HTTPS=true
+OMNIWORK_RELAY_ADMIN_TRUST_PROXY=false
+OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS=127.0.0.1,::1
+OMNIWORK_RELAY_ADMIN_CONTROLS_DB_PATH=
+OMNIWORK_RELAY_AGENT_DISABLE_DEFAULT_MS=86400000
+OMNIWORK_RELAY_IP_BAN_DEFAULT_MS=86400000
 ```
 
 ### Plaintext WS and E2E
@@ -115,6 +125,65 @@ Operational endpoints:
   upgrades).
 - `POST /debug/upgrade?device_id=<id>` — manually triggers an upgrade for a
   paired device; included in metrics and logs.
+- `GET /admin/web` — Relay admin web page for viewing online Agents and Apps. Requires
+  HTTPS and a valid admin session.
+- `GET /admin/api/status` — Relay admin status summary.
+- `GET /admin/api/agents` — online Agent list with current App counts.
+- `GET /admin/api/agent-connections/:connection_id/apps` — Relay-visible App
+  connections under one online Agent connection.
+- `GET /admin/api/controls` — active disabled-Agent and IP-ban rules.
+- `POST /admin/api/login` — consumes the current one-time admin token and sets
+  a secure 30-minute session cookie.
+- `POST /admin/api/logout` — clears the current admin session. Requires a valid
+  admin session.
+- `GET /admin/api/me` — reports the current admin session state. Requires a
+  valid admin session.
+- `POST /admin/api/controls/agents/agent-op` — disable Agent runtime instances
+  or delete disable rules. Body:
+  `{ "action": "disable", "agent_instance_ids": ["..."], "reason": "..." }`
+  or `{ "action": "delete", "agent_instance_ids": ["..."] }`. Disable rules
+  are temporary and default to `OMNIWORK_RELAY_AGENT_DISABLE_DEFAULT_MS` (1 day).
+  Add `"permanent": true` or `"duration": "permanent"` to persist them in
+  SQLite.
+  Requires a valid admin session.
+- `POST /admin/api/controls/ip-bans` — ban or unban IPs. Body:
+  `{ "action": "ban", "ips": ["..."], "reason": "..." }` or
+  `{ "action": "unban", "ips": ["..."] }`. Default ban duration is
+  `OMNIWORK_RELAY_IP_BAN_DEFAULT_MS` (1 day). Add `"permanent": true` or
+  `"duration": "permanent"` to persist them in SQLite. Requires a valid admin
+  session.
+
+Relay Admin requires HTTPS by default. When the server is behind a trusted TLS
+terminating proxy, set `OMNIWORK_RELAY_ADMIN_TRUST_PROXY=true` and include the
+proxy IPs in `OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS`; only those proxy
+connections may assert `X-Forwarded-Proto: https`.
+
+On startup the server writes runtime artifacts under
+`OMNIWORK_RELAY_RUNTIME_DIR` (default `.omniwork-relay` in the current working
+directory). The 64-character one-time admin token is written to
+`admin-token.json` in that directory by default. Set
+`OMNIWORK_RELAY_ADMIN_TOKEN_DIR` to write the token file elsewhere. The token
+directory uses mode `0700` when the server creates it, and the token file uses
+mode `0600`. The token rotates every
+`OMNIWORK_RELAY_ADMIN_TOKEN_ROTATE_MS` (default 1 hour). A successful login
+immediately consumes the token, rotates a new one, and creates a secure
+`HttpOnly; Secure; SameSite=Strict` session cookie that expires after
+`OMNIWORK_RELAY_ADMIN_SESSION_TTL_MS` (default 30 minutes).
+
+Permanent Agent disable and IP-ban rules are stored in
+`OMNIWORK_RELAY_ADMIN_CONTROLS_DB_PATH` (default
+`<OMNIWORK_RELAY_RUNTIME_DIR>/admin-controls.sqlite`) and reloaded on startup.
+Temporary rules with
+`ttl_ms`, `expires_in_ms`, `expires_at`, or the default TTL stay in memory only.
+
+The admin page is served from `relay/server/static/admin/index.html`; keep UI
+HTML/CSS/JS there instead of embedding it in `src/relayServer.ts`.
+Admin HTTP routing, auth checks, snapshots, and control-rule mutations live in
+`src/relayAdminController.ts`; keep `src/relayServer.ts` focused on Relay
+connections and protocol routing.
+E2E handshake, ready-state validation, encrypted message routing, and plaintext
+business-channel policy live in `src/relayE2EController.ts`. Relay logging
+helpers live in `src/relayLog.ts`.
 
 Full architecture, downgrade triggers, and a troubleshooting runbook live in
 [docs/relay-architecture.md](../../docs/relay-architecture.md).
