@@ -5,6 +5,7 @@ import {
 
 type ExtraConfig = {
   defaultRelayUrl?: string;
+  appVersion?: string;
   /**
    * App 出厂默认的传输偏好；用户在 Devices 页可覆盖（持久化到 AsyncStorage）。
    * 详见 docs/relay-architecture.md "传输偏好可控"小节。
@@ -23,6 +24,8 @@ type AppGlobal = typeof globalThis & {
 const extra = (globalThis as AppGlobal).__OMNIWORK_APP_CONFIG__ ?? {};
 
 export const appConfig = {
+  appName: "OmniWork",
+  appVersion: extra.appVersion ?? process.env.OMNIWORK_APP_VERSION ?? "0.1.0",
   defaultRelayUrl: extra.defaultRelayUrl ?? "wss://relay.company.example/relay/ws/mobile",
   transportPreference: isTransportPreference(extra.transportPreference)
     ? extra.transportPreference

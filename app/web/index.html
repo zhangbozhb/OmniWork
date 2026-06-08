@@ -49,7 +49,10 @@
       window.__OMNIWORK_APP_CONFIG__ = Object.assign(
         {},
         window.__OMNIWORK_APP_CONFIG__ || {},
-        { defaultRelayUrl: "<%= omniworkDefaultRelayUrl %>" },
+        {
+          defaultRelayUrl: "<%= omniworkDefaultRelayUrl %>",
+          appVersion: "<%= omniworkAppVersion %>",
+        },
       );
     </script>
   </body>

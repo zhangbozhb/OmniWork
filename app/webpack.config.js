@@ -7,6 +7,7 @@ const workspaceRoot = path.resolve(__dirname, "..");
 const defaultRelayUrl =
   process.env.OMNIWORK_DEFAULT_RELAY_URL ??
   "wss://relay.company.example/relay/ws/mobile";
+const appVersion = require("./package.json").version;
 
 module.exports = {
   entry: path.resolve(__dirname, "index.web.tsx"),
@@ -76,10 +77,12 @@ module.exports = {
       template: path.resolve(__dirname, "web/index.html"),
       templateParameters: {
         omniworkDefaultRelayUrl: defaultRelayUrl,
+        omniworkAppVersion: appVersion,
       },
     }),
     new webpack.DefinePlugin({
       "process.env.OMNIWORK_DEFAULT_RELAY_URL": JSON.stringify(defaultRelayUrl),
+      "process.env.OMNIWORK_APP_VERSION": JSON.stringify(appVersion),
     }),
   ],
   devServer: {

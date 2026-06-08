@@ -15,6 +15,8 @@ import {
   type E2EHandshakeReplyPayload,
   type E2EMessagePayload,
   type E2EReadyPayload,
+  type AppInfoPayload,
+  type AppClientPlatform,
   type MessageEnvelope,
   type TransportPath,
   type TransportPreference,
@@ -27,6 +29,7 @@ import {
 } from "@omniwork/e2e-noise";
 import type { PairingConfig } from "../../features/auth/types";
 import { createKeyProof } from "../../features/auth/keyProof.ts";
+import { createAppInfo } from "../../app/appMetadata.ts";
 
 export interface MobileRelaySessionOptions {
   /**
@@ -34,6 +37,13 @@ export interface MobileRelaySessionOptions {
    * 详见 docs/relay-architecture.md "传输偏好可控"小节。
    */
   transportPreference?: TransportPreference;
+  appMetadata?: {
+    name?: string;
+    platform?: AppClientPlatform;
+    version?: string;
+    deviceName?: string;
+    capabilities?: string[];
+  };
 }
 
 export class MobileRelaySession {
@@ -402,12 +412,12 @@ export class MobileRelaySession {
     return this.connectionHeartbeatSeq;
   }
 
-  private appInfo() {
-    return {
-      instance_id: this.appInstanceId,
-      runtime_id: this.appRuntimeId,
-      name: "OmniWork",
-    };
+  private appInfo(): AppInfoPayload {
+    return createAppInfo(
+      this.appInstanceId,
+      this.appRuntimeId,
+      this.options.appMetadata,
+    );
   }
 }
 

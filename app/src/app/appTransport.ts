@@ -1,5 +1,9 @@
 import {
+  Platform,
+} from "react-native";
+import {
   createMessage,
+  type AppClientPlatform,
   type AppNetworkChangedPayload,
   type MessageEnvelope,
   type TransportPreference,
@@ -16,13 +20,21 @@ import { MobileRelayPath, MobileSessionTransport } from "../lib/transport";
 import { UpgradeCoordinator } from "../lib/transport/upgradeCoordinator";
 import { createMobileWebRtcPeerAdapter } from "../lib/transport/webRtcPeerAdapter";
 import type { AppSessionTransport, NetworkChangeDetails } from "./appTypes";
+import { appConfig } from "./appConfig";
 
 export function createAppSessionTransport(
   pairing: PairingConfig,
   transportPreference: TransportPreference,
   options: { onForceClose?: (reason: string) => void } = {},
 ): AppSessionTransport {
-  const session = new MobileRelaySession(pairing, { transportPreference });
+  const session = new MobileRelaySession(pairing, {
+    transportPreference,
+    appMetadata: {
+      name: appConfig.appName,
+      platform: currentAppPlatform(),
+      version: appConfig.appVersion,
+    },
+  });
   const relayPath = new MobileRelayPath(session);
   const strictP2p = transportPreference === "prefer_p2p";
   const onForceClose = options.onForceClose;
@@ -242,6 +254,17 @@ export function createAppSessionTransport(
     },
     isStrictP2p: () => transport.isStrictP2p(),
   };
+}
+
+function currentAppPlatform(): AppClientPlatform {
+  switch (Platform.OS) {
+    case "ios":
+    case "android":
+    case "web":
+      return Platform.OS;
+    default:
+      return "desktop";
+  }
 }
 
 export function subscribeNetworkChanges(
