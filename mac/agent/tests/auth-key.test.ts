@@ -94,12 +94,13 @@ assert.throws(
 );
 const configEnv = {
   OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
+  OMNIWORK_AGENT_IDENTITY_PATH: join(dir, "agent.json"),
+  OMNIWORK_AGENT_IDENTITY_KEYCHAIN: "0",
+  OMNIWORK_AGENT_IDENTITY_IP: "10.0.0.2",
 };
-assert.equal(
-  loadAgentConfig({ ...configEnv, OMNIWORK_DEVICE_ID: "" }).deviceId.includes(
-    ".local",
-  ),
-  false,
+assert.match(
+  loadAgentConfig({ ...configEnv, OMNIWORK_DEVICE_ID: "" }).deviceId,
+  /^dev_[0-9a-f]{16}$/,
 );
 assert.equal(
   loadAgentConfig({

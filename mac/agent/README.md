@@ -6,6 +6,7 @@ TypeScript/Node.js Mac Agent for managing Agent CLI TUI sessions.
 
 - Generates a fresh 32-character temporary key on every start.
 - Saves the key to `~/Library/Application Support/OmniWork/agent/session-key.json`.
+- Persists a local `dev_` device ID in macOS Keychain first and `~/.omniwork/agent.json` as the file fallback, with `sha256(deviceId + sha256(ip + hostname))` checksum validation.
 - Uses `0600` file permissions and `0700` parent directory permissions.
 - Requires `OMNIWORK_RELAY_URL` and fails fast when it is missing.
 - Reconnects to Relay with exponential backoff unless Relay explicitly rejects the Agent.
@@ -27,6 +28,8 @@ Useful environment variables:
 ```sh
 OMNIWORK_RELAY_URL=wss://relay.company.example/relay/ws/agent
 OMNIWORK_DEVICE_ID=my-mac
+OMNIWORK_AGENT_IDENTITY_PATH=/Users/me/.omniwork/agent.json
+OMNIWORK_AGENT_IDENTITY_KEYCHAIN=1
 OMNIWORK_CODEX_COMMAND=codex
 OMNIWORK_CLAUDE_COMMAND=claude
 OMNIWORK_GEMINI_COMMAND=gemini

@@ -8,6 +8,7 @@ import {
   type AgentProviderDefinition,
 } from "@omniwork/protocol-ts";
 import type { TerminalSize } from "@omniwork/protocol-ts";
+import { resolveAgentDeviceId } from "./deviceIdentity.ts";
 
 export interface AgentConfig {
   agentVersion: string;
@@ -46,7 +47,7 @@ export function loadAgentConfig(
 
   return {
     agentVersion: env.OMNIWORK_AGENT_VERSION ?? "0.1.0",
-    deviceId: resolveDeviceId(env.OMNIWORK_DEVICE_ID),
+    deviceId: resolveDeviceId(env),
     hostname: hostname(),
     relayUrl,
     adminEnabled: parseBoolean(env.OMNIWORK_AGENT_ADMIN_ENABLED, true),
@@ -213,11 +214,18 @@ function readNonEmptyString(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
-function resolveDeviceId(value?: string): string {
-  const configuredDeviceId = value?.trim();
+function resolveDeviceId(env: NodeJS.ProcessEnv): string {
+  const configuredDeviceId = env.OMNIWORK_DEVICE_ID?.trim();
   if (configuredDeviceId) {
     return configuredDeviceId;
   }
 
-  return hostname().replace(/[^a-zA-Z0-9_-]/g, "-");
+  return resolveAgentDeviceId({
+    identityPath: env.OMNIWORK_AGENT_IDENTITY_PATH,
+    ipAddress: env.OMNIWORK_AGENT_IDENTITY_IP,
+    keychainEnabled:
+      env.OMNIWORK_AGENT_IDENTITY_KEYCHAIN === undefined
+        ? undefined
+        : parseBoolean(env.OMNIWORK_AGENT_IDENTITY_KEYCHAIN, true),
+  });
 }
