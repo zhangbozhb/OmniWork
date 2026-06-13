@@ -10,6 +10,7 @@ export type AppView =
   | "pairing"
   | "devices"
   | "settings"
+  | "securitySettings"
   | "connectionPreference"
   | "sessions"
   | "terminal";

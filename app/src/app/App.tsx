@@ -11,6 +11,7 @@ import {
   AppState,
   type AppStateStatus,
   Dimensions,
+  Platform,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -76,6 +77,11 @@ import { PairingScreen } from "../screens/pairing/PairingScreen";
 import { DeviceListScreen } from "../screens/devices/DeviceListScreen";
 import { ConnectionPreferenceScreen } from "../screens/settings/ConnectionPreferenceScreen";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
+import { AppLockIntroScreen } from "../screens/security/AppLockIntroScreen";
+import { GestureSetupScreen } from "../screens/security/GestureSetupScreen";
+import { GestureUnlockScreen } from "../screens/security/GestureUnlockScreen";
+import { SecuritySettingsScreen } from "../screens/security/SecuritySettingsScreen";
+import { Button } from "../ui/components";
 import { SessionListScreen } from "../screens/sessions/SessionListScreen";
 import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import type { PairingConfig } from "../features/auth/types";
@@ -123,6 +129,23 @@ import {
   loadPairings,
   savePairings,
 } from "../platform/secure-storage/securePairingStore";
+import {
+  loadAppLockConfig,
+  saveAppLockConfig,
+} from "../platform/app-lock-storage/appLockStore";
+import {
+  DEFAULT_APP_LOCK_CONFIG,
+  DEFAULT_AUTO_LOCK_OPTION,
+  createGestureSecret,
+  normalizeAppLockConfig,
+  shouldLockForInactivity,
+  verifyGesture,
+} from "../features/app-lock/appLockRules";
+import type {
+  AppLockConfig,
+  AppLockMode,
+  AutoLockOption,
+} from "../features/app-lock/types";
 import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
 import { Icon, type IconName } from "../ui/icons";
 
@@ -194,8 +217,30 @@ function AppContent(): JSX.Element {
     useState<TerminalTextSize>(() =>
       getDefaultTerminalTextSize(Dimensions.get("window")),
     );
+  const appLockAvailable = Platform.OS !== "web";
+  const [appLockConfig, setAppLockConfig] = useState<AppLockConfig>(
+    DEFAULT_APP_LOCK_CONFIG,
+  );
+  const [appLockMode, setAppLockMode] = useState<AppLockMode>(
+    appLockAvailable ? "loading" : "disabled",
+  );
+  const [gestureSetupMode, setGestureSetupMode] = useState<
+    "firstRun" | "enable" | "change" | null
+  >(null);
+  const [pendingSecurityAction, setPendingSecurityAction] = useState<
+    "disable" | "change" | null
+  >(null);
+  const [autoLockPickerVisible, setAutoLockPickerVisible] = useState(false);
+  const [selectedAutoLockOption, setSelectedAutoLockOption] =
+    useState<AutoLockOption>(DEFAULT_AUTO_LOCK_OPTION);
+  const [appLockLoadRetry, setAppLockLoadRetry] = useState(0);
   const relayRef = useRef<AppSessionTransport | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const appLockConfigRef = useRef<AppLockConfig>(DEFAULT_APP_LOCK_CONFIG);
+  const appLockModeRef = useRef<AppLockMode>(
+    appLockAvailable ? "loading" : "disabled",
+  );
+  const lastInteractionPersistedAtRef = useRef(0);
   const pendingCreateRef = useRef(false);
   const pendingAutoOpenSessionsRef = useRef(false);
   const pairingRef = useRef<PairingConfig | null>(null);
@@ -228,6 +273,7 @@ function AppContent(): JSX.Element {
     }
     if (view === "sessions") return t("app.titles.workspaces");
     if (view === "connectionPreference") return t("app.titles.connectionMode");
+    if (view === "securitySettings") return t("appLock.settings.title");
     if (view === "settings") return t("app.titles.settings");
     return t("app.titles.devices");
   }, [editingPairing, selectedSession?.title, t, view]);
@@ -273,7 +319,15 @@ function AppContent(): JSX.Element {
   const selectedFrame = selectedSession
     ? (terminalFrames[selectedSession.session_id] ?? EMPTY_TERMINAL_FRAME)
     : EMPTY_TERMINAL_FRAME;
-  const showHeader = view === "pairing";
+  const showingAppLockScreen =
+    appLockAvailable &&
+    (Boolean(pendingSecurityAction) ||
+      Boolean(gestureSetupMode) ||
+      appLockMode === "loading" ||
+      appLockMode === "unavailable" ||
+      appLockMode === "firstRunPrompt" ||
+      appLockMode === "locked");
+  const showHeader = view === "pairing" && !showingAppLockScreen;
 
   useEffect(() => {
     selectedSessionRef.current = selectedSession;
@@ -286,6 +340,62 @@ function AppContent(): JSX.Element {
   useEffect(() => {
     pairingsRef.current = pairings;
   }, [pairings]);
+
+  useEffect(() => {
+    appLockConfigRef.current = appLockConfig;
+  }, [appLockConfig]);
+
+  useEffect(() => {
+    appLockModeRef.current = appLockMode;
+  }, [appLockMode]);
+
+  useEffect(() => {
+    if (!appLockAvailable) {
+      setAppLockMode("disabled");
+      return;
+    }
+    let active = true;
+    loadAppLockConfig()
+      .then((storedConfig) => {
+        if (!active) return;
+        const nextConfig = normalizeAppLockConfig(storedConfig);
+        appLockConfigRef.current = nextConfig;
+        setAppLockConfig(nextConfig);
+        setSelectedAutoLockOption(nextConfig.autoLockOption);
+        if (!nextConfig.initialized) {
+          setAppLockMode("firstRunPrompt");
+        } else if (nextConfig.enabled) {
+          setAppLockMode("locked");
+        } else {
+          setAppLockMode("disabled");
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAppLockMode("unavailable");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [appLockAvailable, appLockLoadRetry]);
+
+  useEffect(() => {
+    if (
+      !appLockAvailable ||
+      appLockMode !== "unlocked" ||
+      appLockConfig.autoLockOption === "never"
+    ) {
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      const currentConfig = appLockConfigRef.current;
+      if (shouldLockForInactivity(currentConfig)) {
+        setAppLockMode("locked");
+      }
+    }, 15_000);
+    return () => clearInterval(timer);
+  }, [appLockAvailable, appLockConfig.autoLockOption, appLockMode]);
 
   useEffect(() => {
     let active = true;
@@ -419,6 +529,122 @@ function AppContent(): JSX.Element {
       // 字号偏好持久化失败不影响终端使用。
     });
   }, []);
+
+  const persistAppLockConfig = useCallback((nextConfig: AppLockConfig) => {
+    const normalized = normalizeAppLockConfig(nextConfig);
+    appLockConfigRef.current = normalized;
+    setAppLockConfig(normalized);
+    setSelectedAutoLockOption(normalized.autoLockOption);
+    saveAppLockConfig(normalized).catch(() => {
+      // 本地安全配置持久化失败不影响当前内存态。
+    });
+  }, []);
+
+  const updateLastInteraction = useCallback(() => {
+    if (!appLockAvailable || appLockModeRef.current !== "unlocked") {
+      return;
+    }
+    const now = Date.now();
+    if (shouldLockForInactivity(appLockConfigRef.current, now)) {
+      setAppLockMode("locked");
+      return;
+    }
+    if (now - lastInteractionPersistedAtRef.current < 5_000) {
+      return;
+    }
+    lastInteractionPersistedAtRef.current = now;
+    const nextConfig = {
+      ...appLockConfigRef.current,
+      lastInteractionAt: now,
+    };
+    appLockConfigRef.current = nextConfig;
+    setAppLockConfig(nextConfig);
+    saveAppLockConfig(nextConfig).catch(() => {
+      // 非关键路径：失败只影响下次启动后的超时判断。
+    });
+  }, [appLockAvailable]);
+
+  const handleSkipFirstAppLockSetup = useCallback(() => {
+    const nextConfig = {
+      ...DEFAULT_APP_LOCK_CONFIG,
+      initialized: true,
+      enabled: false,
+    };
+    persistAppLockConfig(nextConfig);
+    setGestureSetupMode(null);
+    setAppLockMode("disabled");
+  }, [persistAppLockConfig]);
+
+  const handleCompleteGestureSetup = useCallback(
+    (gesture: number[]) => {
+      const secret = createGestureSecret(gesture);
+      const now = Date.now();
+      const nextConfig: AppLockConfig = {
+        ...appLockConfigRef.current,
+        initialized: true,
+        enabled: true,
+        gestureHash: secret.hash,
+        gestureSalt: secret.salt,
+        lastInteractionAt: now,
+        lastUnlockedAt: now,
+      };
+      persistAppLockConfig(nextConfig);
+      setGestureSetupMode(null);
+      setPendingSecurityAction(null);
+      setAppLockMode("unlocked");
+      setView((current) =>
+        current === "securitySettings" ? current : pairingsRef.current.length > 0 ? "devices" : "pairing",
+      );
+    },
+    [persistAppLockConfig],
+  );
+
+  const handleUnlockGesture = useCallback(
+    (gesture: number[]): boolean => {
+      const currentConfig = appLockConfigRef.current;
+      if (!verifyGesture(gesture, currentConfig)) {
+        return false;
+      }
+      const now = Date.now();
+      if (pendingSecurityAction === "disable") {
+        const nextConfig: AppLockConfig = {
+          ...currentConfig,
+          initialized: true,
+          enabled: false,
+          gestureHash: undefined,
+          gestureSalt: undefined,
+          lastInteractionAt: now,
+          lastUnlockedAt: now,
+        };
+        persistAppLockConfig(nextConfig);
+        setPendingSecurityAction(null);
+        setAppLockMode("disabled");
+        return true;
+      }
+      if (pendingSecurityAction === "change") {
+        setPendingSecurityAction(null);
+        setGestureSetupMode("change");
+        return true;
+      }
+      const nextConfig = {
+        ...currentConfig,
+        lastInteractionAt: now,
+        lastUnlockedAt: now,
+      };
+      persistAppLockConfig(nextConfig);
+      setAppLockMode("unlocked");
+      return true;
+    },
+    [pendingSecurityAction, persistAppLockConfig],
+  );
+
+  const handleConfirmAutoLockOption = useCallback(() => {
+    persistAppLockConfig({
+      ...appLockConfigRef.current,
+      autoLockOption: selectedAutoLockOption,
+    });
+    setAutoLockPickerVisible(false);
+  }, [persistAppLockConfig, selectedAutoLockOption]);
 
   // 用户切换偏好时持久化；首次加载未完成前不写回，避免覆盖磁盘值。
   // 切换会立即触发 useEffect 重建 transport（因为 transportPreference 是依赖项），
@@ -566,6 +792,15 @@ function AppContent(): JSX.Element {
       const relay = relayRef.current;
       const previous = appStateRef.current;
       appStateRef.current = next;
+      if (
+        appLockAvailable &&
+        next === "active" &&
+        previous !== "active" &&
+        appLockModeRef.current === "unlocked" &&
+        shouldLockForInactivity(appLockConfigRef.current)
+      ) {
+        setAppLockMode("locked");
+      }
       if (!relay) {
         return;
       }
@@ -1477,6 +1712,70 @@ function AppContent(): JSX.Element {
         killing: killingSessionIds.includes(selectedSession.session_id),
       })
     : null;
+  const appLockScreen = appLockAvailable
+    ? pendingSecurityAction
+      ? (
+        <GestureUnlockScreen
+          canCancel
+          onCancel={() => setPendingSecurityAction(null)}
+          onUnlock={handleUnlockGesture}
+        />
+      )
+      : gestureSetupMode
+        ? (
+          <GestureSetupScreen
+            mode={gestureSetupMode}
+            onBack={
+              gestureSetupMode === "firstRun"
+                ? undefined
+                : () => setGestureSetupMode(null)
+            }
+            onComplete={handleCompleteGestureSetup}
+            onSkip={
+              gestureSetupMode === "firstRun"
+                ? handleSkipFirstAppLockSetup
+                : undefined
+            }
+          />
+        )
+        : appLockMode === "loading"
+          ? (
+            <View style={styles.loadingScreen}>
+              <Text style={styles.loadingText}>{t("common.loading")}</Text>
+            </View>
+          )
+          : appLockMode === "unavailable"
+            ? (
+              <View style={styles.appLockErrorScreen}>
+                <Text style={styles.appLockErrorTitle}>
+                  {t("appLock.unavailable.title")}
+                </Text>
+                <Text style={styles.appLockErrorText}>
+                  {t("appLock.unavailable.description")}
+                </Text>
+                <Button
+                  tone="primary"
+                  variant="solid"
+                  onPress={() => {
+                    setAppLockMode("loading");
+                    setAppLockLoadRetry((current) => current + 1);
+                  }}
+                >
+                  {t("common.refresh")}
+                </Button>
+              </View>
+            )
+            : appLockMode === "firstRunPrompt"
+              ? (
+                <AppLockIntroScreen
+                  onSetup={() => setGestureSetupMode("firstRun")}
+                  onSkip={handleSkipFirstAppLockSetup}
+                />
+              )
+              : appLockMode === "locked"
+                ? <GestureUnlockScreen onUnlock={handleUnlockGesture} />
+                : null
+    : null;
 
   return (
     <SafeAreaProvider>
@@ -1496,8 +1795,10 @@ function AppContent(): JSX.Element {
           </View>
         ) : null}
 
-        <View style={styles.content}>
-          {view === "pairing" ? (
+        <View style={styles.content} onTouchStart={updateLastInteraction}>
+          {appLockScreen ? (
+            appLockScreen
+          ) : view === "pairing" ? (
             <PairingScreen
               errorMessage={pairingError}
               initialPairing={editingPairing}
@@ -1527,6 +1828,26 @@ function AppContent(): JSX.Element {
               onChangeLanguage={handleChangeLanguage}
               onChangeTerminalTextSize={handleChangeTerminalTextSize}
               onOpenConnectionPreference={() => setView("connectionPreference")}
+              onOpenSecuritySettings={
+                appLockAvailable ? () => setView("securitySettings") : undefined
+              }
+            />
+          ) : view === "securitySettings" ? (
+            <SecuritySettingsScreen
+              config={appLockConfig}
+              pickerVisible={autoLockPickerVisible}
+              selectedAutoLockOption={selectedAutoLockOption}
+              onBack={() => setView("settings")}
+              onEnable={() => setGestureSetupMode("enable")}
+              onChangeGesture={() => setPendingSecurityAction("change")}
+              onDisable={() => setPendingSecurityAction("disable")}
+              onOpenAutoLockPicker={() => {
+                setSelectedAutoLockOption(appLockConfig.autoLockOption);
+                setAutoLockPickerVisible(true);
+              }}
+              onCloseAutoLockPicker={() => setAutoLockPickerVisible(false)}
+              onSelectAutoLockOption={setSelectedAutoLockOption}
+              onConfirmAutoLockOption={handleConfirmAutoLockOption}
             />
           ) : view === "connectionPreference" ? (
             <ConnectionPreferenceScreen
@@ -1586,7 +1907,7 @@ function AppContent(): JSX.Element {
             />
           ) : null}
         </View>
-        {showPrimaryTabs ? (
+        {!appLockScreen && showPrimaryTabs ? (
           <PrimaryTabBar activeView={view} onChange={setView} />
         ) : null}
       </SafeAreaView>
@@ -1601,6 +1922,35 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  loadingScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    color: "#94a3ad",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  appLockErrorScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    paddingHorizontal: 32,
+  },
+  appLockErrorTitle: {
+    color: "#f5f7f8",
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  appLockErrorText: {
+    color: "#94a3ad",
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
   },
   header: {
     paddingHorizontal: 18,

@@ -133,6 +133,63 @@
       "mode": "连接模式",
       "hint": "控制何时使用 Direct 或 Relay 链路。",
       "accessibility": "打开连接模式设置"
+    },
+    "security": {
+      "title": "安全",
+      "appLock": "APP 端安全设置",
+      "hint": "使用本地手势密码保护 APP。",
+      "accessibility": "打开 APP 端安全设置"
+    }
+  },
+  "appLock": {
+    "eyebrow": "APP 安全",
+    "intro": {
+      "title": "开启手势密码保护",
+      "description": "设置 3 * 3 手势密码后，APP 冷启动时需要解锁；超过自动锁定时间后恢复使用也需要解锁。",
+      "setup": "设置手势密码",
+      "skip": "跳过，不开启"
+    },
+    "setup": {
+      "title": "设置手势密码",
+      "changeTitle": "修改手势密码",
+      "hint": "请连接至少 4 个点。",
+      "confirmHint": "请再次绘制手势密码。",
+      "minPoints": "至少需要连接 {{count}} 个点。",
+      "mismatch": "两次手势不一致，请重新设置。",
+      "success": "手势密码已保存。",
+      "displayHint": "手势界面只显示点和连线，不显示数字。",
+      "skip": "跳过，不开启"
+    },
+    "unlock": {
+      "title": "输入手势密码",
+      "subtitle": "解锁后才能继续使用 OmniWork。",
+      "hint": "请绘制手势密码。",
+      "error": "手势密码错误，请重试。",
+      "success": "解锁成功。"
+    },
+    "unavailable": {
+      "title": "安全配置暂不可用",
+      "description": "无法读取本地手势锁配置。为避免绕过安全保护，请重试后继续使用。"
+    },
+    "settings": {
+      "title": "安全设置",
+      "switchTitle": "APP 端安全设置",
+      "switchHint": "开启后，APP 冷启动和超时恢复时需要输入手势密码。",
+      "enabled": "已开启",
+      "disabled": "已关闭",
+      "enable": "开启并设置手势密码",
+      "disable": "关闭安全设置",
+      "autoLockTitle": "自动锁定时间",
+      "autoLock": "自动锁定",
+      "gestureTitle": "手势密码",
+      "changeGesture": "修改手势密码"
+    },
+    "autoLock": {
+      "options_5": "5 分钟",
+      "options_10": "10 分钟",
+      "options_30": "30 分钟",
+      "options_60": "60 分钟",
+      "options_never": "永久"
     }
   },
   "connectionPreference": {

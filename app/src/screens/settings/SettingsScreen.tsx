@@ -20,6 +20,7 @@ export interface SettingsScreenProps {
   onChangeTerminalTextSize(textSize: TerminalTextSize): void;
   onChangeLanguage(language: AppLanguage): void;
   onOpenConnectionPreference(): void;
+  onOpenSecuritySettings?: () => void;
 }
 
 export function SettingsScreen({
@@ -28,6 +29,7 @@ export function SettingsScreen({
   onChangeTerminalTextSize,
   onChangeLanguage,
   onOpenConnectionPreference,
+  onOpenSecuritySettings,
 }: SettingsScreenProps): JSX.Element {
   const { t } = useTranslation();
   const selectedTextSize = TERMINAL_TEXT_SIZE_OPTIONS.find(
@@ -161,6 +163,36 @@ export function SettingsScreen({
           <Text style={styles.navigationChevron}>{">"}</Text>
         </Pressable>
       </View>
+
+      {onOpenSecuritySettings ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            {t("settings.security.title")}
+          </Text>
+          <Pressable
+            accessibilityLabel={t("settings.security.accessibility")}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.navigationRow,
+              pressed && styles.pressed,
+            ]}
+            onPress={onOpenSecuritySettings}
+          >
+            <View style={styles.navigationIcon}>
+              <Icon name="settings" color={colors.success} size={18} />
+            </View>
+            <View style={styles.navigationText}>
+              <Text style={styles.navigationTitle}>
+                {t("settings.security.appLock")}
+              </Text>
+              <Text style={styles.navigationHint}>
+                {t("settings.security.hint")}
+              </Text>
+            </View>
+            <Text style={styles.navigationChevron}>{">"}</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }

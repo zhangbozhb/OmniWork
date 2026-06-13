@@ -222,6 +222,24 @@ Android：
 - 显式声明 `INTERNET`、`CAMERA` 权限。
 - `usesCleartextTraffic="true"`，用于支持 `ws://` Relay；业务消息必须由 App-Agent E2E 加密保护。
 
+## APP 端手势锁
+
+iOS / Android Native App 支持本地 `3 * 3` 手势密码保护，Web SPA 不启用该能力，也不展示对应设置入口。
+
+行为约束：
+
+- 首次启动会展示安全引导，用户可以设置手势密码，也可以跳过；跳过后不再主动弹出，只能从 App 设置页手动开启。
+- 设置或修改手势密码均需连续输入两次，且最短连接 `4` 个点；手势界面只显示点和连线，不显示数字。
+- 开启后冷启动必须输入手势密码；后台恢复或前台空闲是否锁定由自动锁定时间决定。
+- 自动锁定时间固定为滚轮选项：`5`、`10`、`30`、`60` 分钟或“永久”，默认 `30` 分钟；选择“永久”时仍保留冷启动解锁。
+- 连续输错不触发冷却、封禁或次数限制。
+
+存储与安全边界：
+
+- 手势密码不存明文，Native 端通过 Keychain / Keystore 级别安全存储保存加盐摘要和配置。
+- 该能力仅保护本机 App 使用入口，不替代 Pairing、Relay 鉴权或 App-Agent E2E 加密链路。
+- 锁屏态不展示设备、会话、终端输出等业务内容。
+
 ## P2P 升级（WebRTC）
 
 App 通过 `react-native-webrtc`（见 [app/package.json](../app/package.json) 与 `app/src/lib/transport/webRtcPeerAdapter.native.ts`）参与 P2P 升级；详细路径切换与降级行为以 [relay-architecture.md](./relay-architecture.md) 为准。

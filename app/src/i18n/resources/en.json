@@ -133,6 +133,63 @@
       "mode": "Connection mode",
       "hint": "Control when Direct or Relay paths are used.",
       "accessibility": "Open connection mode settings"
+    },
+    "security": {
+      "title": "Security",
+      "appLock": "App security",
+      "hint": "Protect the app with a local gesture passcode.",
+      "accessibility": "Open app security settings"
+    }
+  },
+  "appLock": {
+    "eyebrow": "App Security",
+    "intro": {
+      "title": "Enable gesture passcode",
+      "description": "Set a 3 * 3 gesture passcode. The app asks for it on cold start and after the auto-lock timeout.",
+      "setup": "Set Gesture Passcode",
+      "skip": "Skip, do not enable"
+    },
+    "setup": {
+      "title": "Set Gesture Passcode",
+      "changeTitle": "Change Gesture Passcode",
+      "hint": "Connect at least 4 dots.",
+      "confirmHint": "Draw the gesture again.",
+      "minPoints": "Connect at least {{count}} dots.",
+      "mismatch": "Gestures do not match. Set it again.",
+      "success": "Gesture passcode saved.",
+      "displayHint": "Only dots and lines are shown. Numbers are never displayed.",
+      "skip": "Skip, do not enable"
+    },
+    "unlock": {
+      "title": "Enter Gesture Passcode",
+      "subtitle": "Unlock to continue using OmniWork.",
+      "hint": "Draw your gesture passcode.",
+      "error": "Incorrect gesture passcode. Try again.",
+      "success": "Unlocked."
+    },
+    "unavailable": {
+      "title": "Security settings unavailable",
+      "description": "The local gesture lock settings cannot be read. Retry before continuing to avoid bypassing app security."
+    },
+    "settings": {
+      "title": "Security Settings",
+      "switchTitle": "App security",
+      "switchHint": "When enabled, the app requires the gesture passcode on cold start and timeout resume.",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "enable": "Enable and set gesture passcode",
+      "disable": "Disable security",
+      "autoLockTitle": "Auto-lock time",
+      "autoLock": "Auto-lock",
+      "gestureTitle": "Gesture passcode",
+      "changeGesture": "Change Gesture Passcode"
+    },
+    "autoLock": {
+      "options_5": "5 minutes",
+      "options_10": "10 minutes",
+      "options_30": "30 minutes",
+      "options_60": "60 minutes",
+      "options_never": "Never"
     }
   },
   "connectionPreference": {
