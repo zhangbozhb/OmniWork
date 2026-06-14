@@ -126,6 +126,7 @@ export class RelayServer {
       token_rotate_ms: this.config.admin.tokenRotateMs,
       session_ttl_ms: this.config.admin.sessionTtlMs,
       https_required: this.config.admin.requireHttps,
+      web_enabled: this.config.admin.webEnabled,
       controls_db: this.config.admin.controlsDbPath,
     });
   }

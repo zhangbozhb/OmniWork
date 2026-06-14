@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/main.ts",
   "scripts": {
-    "dev": "node --experimental-strip-types src/main.ts",
+    "dev": "OMNIWORK_RELAY_ADMIN_WEB_ENABLED=true node --experimental-strip-types src/main.ts",
     "start": "node --experimental-strip-types src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",

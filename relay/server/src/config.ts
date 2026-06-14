@@ -48,6 +48,7 @@ export interface RelayServerConfig {
     blockMs: number;
   };
   admin: {
+    webEnabled: boolean;
     tokenDir: string;
     tokenRotateMs: number;
     sessionTtlMs: number;
@@ -104,6 +105,7 @@ export function loadRelayServerConfig(
       blockMs: parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS, 60_000),
     },
     admin: {
+      webEnabled: parseBoolean(env.OMNIWORK_RELAY_ADMIN_WEB_ENABLED, false),
       tokenDir:
         optionalNonEmpty(env.OMNIWORK_RELAY_ADMIN_TOKEN_DIR) ?? runtimeDir,
       tokenRotateMs: parseNumber(

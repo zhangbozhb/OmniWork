@@ -3,6 +3,7 @@ mac/agent/node_modules
 node_modules
 pnpm-lock.yaml
 app/dist
+dist
 .codex
 .trae
 app/android/app/.cxx

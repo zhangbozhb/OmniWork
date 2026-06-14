@@ -55,7 +55,7 @@ export class RelayAdminController {
 
   matches(pathname: string): boolean {
     return (
-      ADMIN_WEB_PATHS.has(pathname) ||
+      (this.config.admin.webEnabled && ADMIN_WEB_PATHS.has(pathname)) ||
       pathname.startsWith(`${ADMIN_API_PREFIX}/`)
     );
   }
@@ -65,7 +65,11 @@ export class RelayAdminController {
     response: ServerResponse,
     url: URL,
   ): Promise<void> {
-    if (request.method === "GET" && ADMIN_WEB_PATHS.has(url.pathname)) {
+    if (
+      this.config.admin.webEnabled &&
+      request.method === "GET" &&
+      ADMIN_WEB_PATHS.has(url.pathname)
+    ) {
       this.handleWeb(request, response);
       return;
     }
@@ -344,6 +348,7 @@ export class RelayAdminController {
         ip_ban_default_ms: this.config.admin.ipBanDefaultMs,
         session_auth_required: true,
         https_required: this.config.admin.requireHttps,
+        web_enabled: this.config.admin.webEnabled,
         token_file: this.auth.tokenPath(),
         controls_db: this.config.admin.controlsDbPath,
       },

@@ -38,6 +38,7 @@ OMNIWORK_RELAY_ADMIN_TOKEN_DIR=
 OMNIWORK_RELAY_ADMIN_TOKEN_ROTATE_MS=3600000
 OMNIWORK_RELAY_ADMIN_SESSION_TTL_MS=1800000
 OMNIWORK_RELAY_ADMIN_REQUIRE_HTTPS=true
+OMNIWORK_RELAY_ADMIN_WEB_ENABLED=false
 OMNIWORK_RELAY_ADMIN_TRUST_PROXY=false
 OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS=127.0.0.1,::1
 OMNIWORK_RELAY_ADMIN_CONTROLS_DB_PATH=
@@ -125,8 +126,8 @@ Operational endpoints:
   upgrades).
 - `POST /debug/upgrade?device_id=<id>` — manually triggers an upgrade for a
   paired device; included in metrics and logs.
-- `GET /admin/web` — Relay admin web page for viewing online Agents and Apps. Requires
-  HTTPS and a valid admin session.
+- `GET /admin/web` — development-only Relay admin web page for viewing online
+  Agents and Apps. Requires HTTPS and a valid admin session.
 - `GET /admin/api/status` — Relay admin status summary.
 - `GET /admin/api/agents` — online Agent list with current App counts.
 - `GET /admin/api/agent-connections/:connection_id/apps` — Relay-visible App
@@ -158,6 +159,12 @@ terminating proxy, set `OMNIWORK_RELAY_ADMIN_TRUST_PROXY=true` and include the
 proxy IPs in `OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS`; only those proxy
 connections may assert `X-Forwarded-Proto: https`.
 
+Relay Admin API is always provided by the relay under `/admin/api/...`. The
+Node-served admin web page under `/admin/web` is a development convenience and
+is disabled by default with `OMNIWORK_RELAY_ADMIN_WEB_ENABLED=false`. Use
+`pnpm dev:relay` or set `OMNIWORK_RELAY_ADMIN_WEB_ENABLED=true` explicitly when
+you want the relay process to serve `web/admin/*.html`.
+
 On startup the server writes runtime artifacts under
 `OMNIWORK_RELAY_RUNTIME_DIR` (default `.omniwork-relay` in the current working
 directory). The 64-character one-time admin token is written to
@@ -176,8 +183,12 @@ Permanent Agent disable and IP-ban rules are stored in
 Temporary rules with
 `ttl_ms`, `expires_in_ms`, `expires_at`, or the default TTL stay in memory only.
 
-The admin page is served from `relay/server/static/admin/index.html`; keep UI
-HTML/CSS/JS there instead of embedding it in `src/relayServer.ts`.
+The admin web source lives in `web/admin`. Production deployments should serve
+that source through the web build output and Nginx at `/admin/`, while relay
+development mode may read the same source and inject `/admin/web` as the local
+base path. Production keeps `/admin/login.html` as the static login route; relay
+dev uses `/admin/web` for both the page and login fallback. Keep UI HTML/CSS/JS
+out of `src/relayServer.ts`.
 Admin HTTP routing, auth checks, snapshots, and control-rule mutations live in
 `src/relayAdminController.ts`; keep `src/relayServer.ts` focused on Relay
 connections and protocol routing.

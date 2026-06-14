@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -26,6 +27,16 @@ import {
     config.admin.controlsDbPath,
     join(process.cwd(), ".omniwork-relay", "admin-controls.sqlite"),
   );
+  assert.equal(config.admin.webEnabled, false);
+}
+
+{
+  const config = loadRelayServerConfig({
+    OMNIWORK_RELAY_HOST: "127.0.0.1",
+    OMNIWORK_RELAY_ADMIN_WEB_ENABLED: "true",
+  });
+
+  assert.equal(config.admin.webEnabled, true);
 }
 
 {
@@ -50,11 +61,18 @@ interface FakeSocket {
   close(code?: number, reason?: string): void;
 }
 
-// Relay Admin 页面作为静态资源管理，必须能被 server 读取并包含关键 API。
+// Admin Web 只有一份源码：生产默认 /admin/，relay dev 渲染时注入 /admin/web。
 {
+  const sourceHtml = readFileSync(join(process.cwd(), "web/admin/index.html"), "utf8");
+  assert.match(sourceHtml, /data-admin-base="\/admin\/"/);
+  assert.match(sourceHtml, /data-admin-login="\/admin\/login\.html"/);
+  assert.doesNotMatch(sourceHtml, /\/admin\/web/);
+
   const html = renderRelayAdminPage();
   assert.match(html, /<!doctype html>/i);
   assert.match(html, /OmniWork Relay/);
+  assert.match(html, /data-admin-base="\/admin\/web"/);
+  assert.match(html, /data-admin-login="\/admin\/web"/);
   assert.match(html, /\/admin\/api\/status/);
   assert.match(html, /\/admin\/api\/agents/);
   assert.match(html, /\/admin\/api\/agent-connections/);
@@ -64,7 +82,21 @@ interface FakeSocket {
   assert.doesNotMatch(html, /Authorization: Bearer/);
   const loginHtml = renderRelayAdminLoginPage();
   assert.match(loginHtml, /Relay Admin Login/);
+  assert.match(loginHtml, /data-admin-base="\/admin\/web"/);
   assert.match(loginHtml, /\/admin\/api\/login/);
+}
+
+// 生产默认不暴露 Node 内置 admin web，但 admin API 始终由 Relay 提供。
+{
+  const server = createServer();
+  const internals = server as unknown as {
+    admin: {
+      matches(pathname: string): boolean;
+    };
+  };
+
+  assert.equal(internals.admin.matches("/admin/web"), false);
+  assert.equal(internals.admin.matches("/admin/api/status"), true);
 }
 
 type TestRelayConnection = {

@@ -4,9 +4,7 @@ const HtmlWebpackPlugin = require("html-webpack-plugin");
 
 const workspaceRoot = path.resolve(__dirname, "..");
 
-const defaultRelayUrl =
-  process.env.OMNIWORK_DEFAULT_RELAY_URL ??
-  "wss://relay.company.example/relay/ws/mobile";
+const webPublicPath = process.env.OMNIWORK_WEB_PUBLIC_PATH ?? "/";
 const appVersion = require("./package.json").version;
 
 module.exports = {
@@ -14,7 +12,7 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, "dist/web"),
     filename: "static/js/[name].[contenthash:8].js",
-    publicPath: "/",
+    publicPath: webPublicPath,
     clean: true,
   },
   devtool: "source-map",
@@ -76,14 +74,24 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, "web/index.html"),
       templateParameters: {
-        omniworkDefaultRelayUrl: defaultRelayUrl,
-        omniworkAppVersion: appVersion,
+        omniworkWebPublicPath: webPublicPath,
       },
     }),
-    new webpack.DefinePlugin({
-      "process.env.OMNIWORK_DEFAULT_RELAY_URL": JSON.stringify(defaultRelayUrl),
-      "process.env.OMNIWORK_APP_VERSION": JSON.stringify(appVersion),
-    }),
+    {
+      apply(compiler) {
+        compiler.hooks.thisCompilation.tap(
+          "OmniWorkRuntimeConfig",
+          (compilation) => {
+            compilation.emitAsset(
+              "omniwork-config.js",
+              new webpack.sources.RawSource(
+                runtimeConfigSource({ appVersion }),
+              ),
+            );
+          },
+        );
+      },
+    },
   ],
   devServer: {
     historyApiFallback: true,
@@ -94,3 +102,15 @@ module.exports = {
     },
   },
 };
+
+function runtimeConfigSource(config) {
+  const json = JSON.stringify(config, null, 2);
+  return [
+    "window.__OMNIWORK_APP_CONFIG__ = Object.assign(",
+    "  {},",
+    "  window.__OMNIWORK_APP_CONFIG__ || {},",
+    `  ${json},`,
+    ");",
+    "",
+  ].join("\n");
+}

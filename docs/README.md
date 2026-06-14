@@ -8,6 +8,7 @@
 2. [engineering-requirements.md](./engineering-requirements.md)：工程、安全、协议、传输与验证要求。
 3. [relay-architecture.md](./relay-architecture.md)：Relay、P2P、E2E、metrics 与调试 runbook 的架构事实。
 4. [app-installation.md](./app-installation.md)：Android / iOS / Web 构建、签名、安装与环境变量。
+5. [deployment-web-server.md](./deployment-web-server.md)：生产 Web 路径、Nginx 反代、admin web 启用策略。
 
 ## 实现事实
 
@@ -21,6 +22,7 @@
 
 - [auth-key-design.md](./auth-key-design.md)：临时 key 生成、文件权限、Relay proof 流程与失败处理。
 - [app-installation.md](./app-installation.md)：APK / IPA / Web SPA 构建、签名、安装前检查。
+- [deployment-web-server.md](./deployment-web-server.md)：Nginx 静态站点、Relay 反代、Admin Web 生产/开发策略。
 
 ## 方案背景
 

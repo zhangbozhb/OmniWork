@@ -45,15 +45,6 @@
   <body>
     <noscript>OmniWork requires JavaScript to run.</noscript>
     <div id="root"></div>
-    <script>
-      window.__OMNIWORK_APP_CONFIG__ = Object.assign(
-        {},
-        window.__OMNIWORK_APP_CONFIG__ || {},
-        {
-          defaultRelayUrl: "<%= omniworkDefaultRelayUrl %>",
-          appVersion: "<%= omniworkAppVersion %>",
-        },
-      );
-    </script>
+    <script src="<%= omniworkWebPublicPath %>omniwork-config.js"></script>
   </body>
 </html>

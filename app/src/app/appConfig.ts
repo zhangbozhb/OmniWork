@@ -19,14 +19,23 @@ type ExtraConfig = {
 
 type AppGlobal = typeof globalThis & {
   __OMNIWORK_APP_CONFIG__?: ExtraConfig;
+  process?: {
+    env?: Record<string, string | undefined>;
+  };
 };
 
-const extra = (globalThis as AppGlobal).__OMNIWORK_APP_CONFIG__ ?? {};
+const appGlobal = globalThis as AppGlobal;
+const extra = appGlobal.__OMNIWORK_APP_CONFIG__ ?? {};
+const env = appGlobal.process?.env ?? {};
 
 export const appConfig = {
   appName: "OmniWork",
-  appVersion: extra.appVersion ?? process.env.OMNIWORK_APP_VERSION ?? "0.1.0",
-  defaultRelayUrl: extra.defaultRelayUrl ?? "wss://relay.company.example/relay/ws/mobile",
+  appVersion: extra.appVersion ?? env.OMNIWORK_APP_VERSION ?? "0.1.0",
+  defaultRelayUrl:
+    extra.defaultRelayUrl ??
+    env.OMNIWORK_DEFAULT_RELAY_URL ??
+    inferSameOriginRelayUrl() ??
+    "",
   transportPreference: isTransportPreference(extra.transportPreference)
     ? extra.transportPreference
     : ("auto" as TransportPreference),
@@ -35,3 +44,13 @@ export const appConfig = {
     rows: extra.terminal?.rows ?? 32,
   },
 };
+
+function inferSameOriginRelayUrl(): string | undefined {
+  const location = globalThis.location;
+  if (!location?.host || !["http:", "https:"].includes(location.protocol)) {
+    return undefined;
+  }
+
+  const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+  return `${wsProtocol}//${location.host}/relay/ws/mobile`;
+}

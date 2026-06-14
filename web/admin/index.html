@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-admin-base="/admin/" data-admin-login="/admin/login.html">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -75,12 +75,14 @@
 let selectedConnection = null;
 let selectedDevice = null;
 const qs = (id) => document.getElementById(id);
+function adminBase() { return document.documentElement.dataset.adminBase || "/admin/"; }
+function adminLogin() { return document.documentElement.dataset.adminLogin || "/admin/login.html"; }
 async function api(path, options = {}) {
   const headers = Object.assign({ "content-type": "application/json" }, options.headers || {});
   const res = await fetch(path, Object.assign({}, options, { headers, credentials: "same-origin" }));
   const body = await res.json();
   if (res.status === 401) {
-    location.href = "/admin/web";
+    location.href = adminLogin();
     throw new Error("unauthorized");
   }
   if (!res.ok) throw new Error(body.error || "request_failed");
@@ -117,7 +119,7 @@ async function loadApps(connectionId, deviceId) {
 qs("refresh").onclick = () => refresh().catch(showError);
 qs("logout").onclick = async () => {
   await api("/admin/api/logout", { method: "POST" }).catch(() => {});
-  location.href = "/admin/web";
+  location.href = adminBase();
 };
 qs("disable-agent").onclick = async () => {
   await api("/admin/api/controls/agents/agent-op", {
