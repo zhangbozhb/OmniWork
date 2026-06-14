@@ -6,6 +6,7 @@ import type {
   AgentObservedAppConnection,
   ConnectionSummary,
 } from "./appConnectionRegistry.ts";
+import type { RelayConnectionStatus } from "./relayReconnectPolicy.ts";
 
 export interface AgentAdminServerOptions {
   host: string;
@@ -33,6 +34,14 @@ export interface AgentAdminStatus {
     admin_enabled: boolean;
     relay_configured: boolean;
     relay_connected: boolean;
+    relay_status: RelayConnectionStatus;
+    relay_reconnect_attempts: number;
+    relay_next_retry_at: number | null;
+    relay_last_error: string | null;
+    relay_last_close: {
+      code?: number;
+      reason?: string;
+    } | null;
     e2e_required: boolean;
   };
   connections_summary: ConnectionSummary;

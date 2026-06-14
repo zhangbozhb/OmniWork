@@ -334,7 +334,7 @@
       const runtime = statusSnapshot.runtime;
       document.getElementById("agent-line").textContent = agent.device_id + " · " + agent.hostname + " · " + agent.agent_instance_id;
       document.getElementById("status-pills").innerHTML = [
-        statusPill(runtime.relay_connected ? "Relay Connected" : "Relay Disconnected", runtime.relay_connected ? "ok" : "bad"),
+        statusPill("Relay " + relayStatusLabel(runtime), relayStatusTone(runtime)),
         statusPill(runtime.admin_enabled ? "Admin Local" : "Admin Off", runtime.admin_enabled ? "ok" : "bad"),
         statusPill(runtime.e2e_required ? "E2E Required" : "Plaintext Allowed", runtime.e2e_required ? "ok" : "warn"),
       ].join("");
@@ -349,7 +349,11 @@
       document.getElementById("runtime-list").innerHTML = [
         ["Version", agent.version],
         ["Platform", agent.platform],
-        ["Relay", runtime.relay_configured ? (runtime.relay_connected ? "connected" : "configured") : "not configured"],
+        ["Relay", runtime.relay_configured ? relayStatusLabel(runtime) : "not configured"],
+        ["Retry Attempts", runtime.relay_reconnect_attempts || 0],
+        ["Next Retry", formatDate(runtime.relay_next_retry_at)],
+        ["Relay Last Error", runtime.relay_last_error || "-"],
+        ["Relay Last Close", formatClose(runtime.relay_last_close)],
         ["Started", formatDate(agent.started_at)],
       ].map(([label, value]) => '<div class="runtime-row"><span>' + escapeHtml(label) + '</span><span>' + escapeHtml(value) + '</span></div>').join("");
       document.getElementById("hero-meta").innerHTML = [
@@ -450,6 +454,19 @@
     function tinyDot(tone) { return '<span class="dot ' + (tone === "stale" || tone === "plaintext" ? "warn" : tone ? "ok" : "") + '"></span>'; }
     function badge(tone, label) { return '<span class="badge ' + escapeAttr(tone || "unknown") + '">' + escapeHtml(label) + '</span>'; }
     function bool(value) { return value ? "Yes" : "No"; }
+    function relayStatusLabel(runtime) {
+      return runtime.relay_status || (runtime.relay_connected ? "connected" : "disconnected");
+    }
+    function relayStatusTone(runtime) {
+      const status = relayStatusLabel(runtime);
+      if (status === "connected") return "ok";
+      if (status === "connecting" || status === "reconnecting") return "warn";
+      return "bad";
+    }
+    function formatClose(value) {
+      if (!value) return "-";
+      return [value.code || "-", value.reason || ""].join(" ");
+    }
     function appName(item) { return item.app_name || item.app_device_name || item.app_instance_id || "Unknown App"; }
     function initials(item) { return escapeHtml(appName(item).split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "OW"); }
     function formatTime(value) { return value ? new Date(value).toLocaleTimeString() : "-"; }

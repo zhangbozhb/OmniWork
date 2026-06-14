@@ -66,6 +66,7 @@ const baseConfig: AgentConfig = {
   connectionHeartbeatMs: 10000,
   connectionStaleMs: 30000,
   connectionDisconnectMs: 90000,
+  relayReconnectForever: true,
   relayReconnectMaxAttempts: 8,
   relayReconnectInitialDelayMs: 1000,
   relayReconnectMaxDelayMs: 30000,
@@ -92,6 +93,26 @@ assert.throws(
   () => loadAgentConfig({ OMNIWORK_DEVICE_ID: "" }),
   /OMNIWORK_RELAY_URL is required/,
 );
+
+{
+  const config = loadAgentConfig({
+    OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
+    OMNIWORK_DEVICE_ID: "mac-1",
+  });
+  assert.equal(config.relayReconnectForever, true);
+  assert.equal(config.relayReconnectMaxAttempts, 8);
+}
+
+{
+  const config = loadAgentConfig({
+    OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
+    OMNIWORK_DEVICE_ID: "mac-1",
+    OMNIWORK_AGENT_RELAY_RECONNECT_FOREVER: "false",
+    OMNIWORK_AGENT_RELAY_RECONNECT_MAX_ATTEMPTS: "0",
+  });
+  assert.equal(config.relayReconnectForever, false);
+  assert.equal(config.relayReconnectMaxAttempts, 0);
+}
 const configEnv = {
   OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
   OMNIWORK_AGENT_IDENTITY_PATH: join(dir, "agent.json"),

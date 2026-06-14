@@ -25,7 +25,7 @@ export class AgentRelayClient {
     this.client.send(message);
   }
 
-  close(): void {
-    this.client.close();
+  close(code?: number, reason?: string): void {
+    this.client.close(code, reason);
   }
 }

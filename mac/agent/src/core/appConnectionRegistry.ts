@@ -188,6 +188,21 @@ export class AppConnectionRegistry {
     connection.last_seq = payload.seq;
   }
 
+  markRelayUnavailable(now = Date.now()): void {
+    for (const connection of this.byConnectionId.values()) {
+      connection.state = "disconnected";
+      connection.timing.last_seen_at = now;
+      connection.timing.stale_after = now;
+      connection.timing.disconnect_after = now;
+      connection.transport.relay_state = "unavailable";
+      connection.transport.current_path = "unknown";
+      connection.network.connection_method = "unknown";
+      if (connection.transport.p2p_state) {
+        connection.transport.p2p_state = "closed";
+      }
+    }
+  }
+
   recordMessage(
     relayConnectionId: string | undefined,
     direction: "in" | "out",

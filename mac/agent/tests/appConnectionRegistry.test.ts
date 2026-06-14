@@ -81,3 +81,32 @@ test("AppConnectionRegistry upgrades authenticated connections to e2e", () => {
   assert.equal(connection.security.e2e_ready, true);
   assert.equal(connection.counters.messages_in, 1);
 });
+
+test("AppConnectionRegistry marks relay-backed connections unavailable", () => {
+  const registry = new AppConnectionRegistry({
+    heartbeatIntervalMs: 10000,
+    staleTimeoutMs: 30000,
+    disconnectTimeoutMs: 90000,
+  });
+
+  registry.acceptAuthenticatedConnection({
+    relayConnectionId: "relay-app-1",
+    keyId: "key-1",
+    appInfo: {
+      instance_id: "app-instance-1",
+      runtime_id: "runtime-1",
+    },
+    now: 1000,
+  });
+  registry.markE2EReady("relay-app-1", 2000);
+  registry.setPath("relay-app-1", "p2p");
+
+  registry.markRelayUnavailable(3000);
+
+  const [connection] = registry.list();
+  assert.equal(connection.state, "disconnected");
+  assert.equal(connection.transport.relay_state, "unavailable");
+  assert.equal(connection.transport.current_path, "unknown");
+  assert.equal(connection.network.connection_method, "unknown");
+  assert.equal(connection.timing.disconnect_after, 3000);
+});

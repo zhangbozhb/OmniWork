@@ -75,6 +75,15 @@ import { TerminalFramePusher } from "./terminalFramePusher.ts";
 import { AppConnectionRegistry } from "./appConnectionRegistry.ts";
 import { AgentAdminServer } from "./adminServer.ts";
 import type { RelayCloseEvent } from "@omniwork/relay-client";
+import {
+  classifyRelayClose,
+  formatRelayConnectionError,
+  isTerminalRelayConnectionError,
+  nextRelayReconnectDelayMs,
+  relayReconnectAttemptLimitLabel,
+  shouldLimitRelayReconnectAttempt,
+  type RelayConnectionStatus,
+} from "./relayReconnectPolicy.ts";
 
 interface AppE2EPeer {
   appConnectionId: string;
@@ -111,6 +120,11 @@ export class AgentService {
   private readonly appConnections: AppConnectionRegistry;
   private relayReconnectAttempts = 0;
   private relayReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private relayReconnectDelayResolve: (() => void) | null = null;
+  private relayStatus: RelayConnectionStatus = "idle";
+  private relayLastError: string | null = null;
+  private relayLastClose: RelayCloseEvent | null = null;
+  private relayNextRetryAt: number | null = null;
   private stopping = false;
   private readonly logTransport =
     (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
@@ -211,7 +225,7 @@ export class AgentService {
       await this.sessionManager.applyStartupPatches();
       await this.startAdminServer();
 
-      await this.connectRelayWithRetry(this.config.relayUrl);
+      this.startRelayConnector();
     } catch (error) {
       this.stop();
       throw error;
@@ -224,12 +238,35 @@ export class AgentService {
       clearTimeout(this.relayReconnectTimer);
       this.relayReconnectTimer = null;
     }
+    this.relayReconnectDelayResolve?.();
+    this.relayReconnectDelayResolve = null;
     this.transport?.close("agent stopping");
     this.transport = null;
     this.relay?.close();
     this.relay = null;
+    if (this.relayStatus !== "terminal_error") {
+      this.updateRelayStatus("stopped");
+    }
     this.adminServer?.close();
     this.adminServer = null;
+  }
+
+  private startRelayConnector(): void {
+    this.updateRelayStatus("connecting");
+    void this.connectRelayWithRetry(this.config.relayUrl).catch(
+      (error: unknown) => {
+        if (this.stopping) {
+          return;
+        }
+        this.relayLastError = formatRelayConnectionError(error);
+        this.updateRelayStatus("terminal_error");
+        this.logger.error("relay connector stopped", {
+          error: this.relayLastError,
+        });
+        this.stop();
+        process.exitCode = 1;
+      },
+    );
   }
 
   private async connectRelay(url: string): Promise<void> {
@@ -289,8 +326,10 @@ export class AgentService {
       });
     });
     try {
+      this.updateRelayStatus("connecting");
       await relay.connect();
     } catch (error) {
+      relay.close(1000, "connect failed");
       this.cleanupRelayResources(relay, transport);
       throw new Error(
         [
@@ -343,13 +382,17 @@ export class AgentService {
       key_id: keyRecord.key_id,
     });
     this.relayReconnectAttempts = 0;
+    this.relayLastError = null;
+    this.relayLastClose = null;
+    this.relayNextRetryAt = null;
+    this.updateRelayStatus("connected");
   }
 
   private async connectRelayWithRetry(url: string): Promise<void> {
     let lastError: unknown = null;
     while (!this.stopping) {
       const nextAttempt = this.relayReconnectAttempts + 1;
-      if (nextAttempt > this.config.relayReconnectMaxAttempts) {
+      if (this.hasRelayReconnectAttemptLimit(nextAttempt)) {
         throw new Error(
           [
             `Unable to connect to OMNIWORK_RELAY_URL after ${this.relayReconnectAttempts} attempts: ${url}`,
@@ -364,20 +407,23 @@ export class AgentService {
         return;
       } catch (error) {
         lastError = error;
-        if (isRelayExplicitRejectionError(error)) {
+        this.relayLastError = formatRelayConnectionError(error);
+        if (isTerminalRelayConnectionError(error)) {
           throw error;
         }
-        if (nextAttempt >= this.config.relayReconnectMaxAttempts) {
+        if (this.hasRelayReconnectAttemptLimit(nextAttempt + 1)) {
           continue;
         }
         const delayMs = this.reconnectDelayMs(nextAttempt);
+        this.relayNextRetryAt = Date.now() + delayMs;
+        this.updateRelayStatus("reconnecting");
         this.logger.warn("relay connect attempt failed; retrying", {
           attempt: nextAttempt,
-          max_attempts: this.config.relayReconnectMaxAttempts,
+          max_attempts: this.relayReconnectAttemptLimitLabel(),
           delay_ms: delayMs,
           error: formatRelayConnectionError(error),
         });
-        await sleep(delayMs);
+        await this.waitRelayReconnectDelay(delayMs);
       }
     }
   }
@@ -392,12 +438,18 @@ export class AgentService {
       reason: event.reason ?? "",
     });
 
+    this.relayLastClose = {
+      code: event.code,
+      reason: event.reason,
+    };
     this.cleanupRelayResources(this.relay, this.transport);
-    if (isRelayExplicitRejection(event)) {
+    this.clearRelayAppConnectionState();
+    if (classifyRelayClose(event) === "terminal") {
       this.logger.error("relay explicitly rejected agent connection", {
         code: event.code,
         reason: event.reason ?? "",
       });
+      this.updateRelayStatus("terminal_error");
       this.stop();
       process.exitCode = 1;
       return;
@@ -412,10 +464,10 @@ export class AgentService {
     }
 
     const nextAttempt = this.relayReconnectAttempts + 1;
-    if (nextAttempt > this.config.relayReconnectMaxAttempts) {
+    if (this.hasRelayReconnectAttemptLimit(nextAttempt)) {
       this.logger.error("relay reconnect attempts exhausted", {
         attempts: this.relayReconnectAttempts,
-        max_attempts: this.config.relayReconnectMaxAttempts,
+        max_attempts: this.relayReconnectAttemptLimitLabel(),
       });
       this.stop();
       process.exitCode = 1;
@@ -423,21 +475,48 @@ export class AgentService {
     }
 
     const delayMs = this.reconnectDelayMs(nextAttempt);
+    this.relayNextRetryAt = Date.now() + delayMs;
+    this.updateRelayStatus("reconnecting");
     this.logger.warn("scheduling relay reconnect", {
       attempt: nextAttempt,
-      max_attempts: this.config.relayReconnectMaxAttempts,
+      max_attempts: this.relayReconnectAttemptLimitLabel(),
       delay_ms: delayMs,
     });
     this.relayReconnectTimer = setTimeout(() => {
       this.relayReconnectTimer = null;
       this.reconnectRelay().catch((error: unknown) => {
+        this.relayLastError = formatRelayConnectionError(error);
+        if (isTerminalRelayConnectionError(error)) {
+          this.logger.error("relay reconnect rejected permanently", {
+            attempt: nextAttempt,
+            error: this.relayLastError,
+          });
+          this.updateRelayStatus("terminal_error");
+          this.stop();
+          process.exitCode = 1;
+          return;
+        }
         this.logger.warn("relay reconnect failed", {
           attempt: nextAttempt,
-          error: String(error),
+          error: this.relayLastError,
         });
         this.scheduleRelayReconnect();
       });
     }, delayMs);
+  }
+
+  private async waitRelayReconnectDelay(delayMs: number): Promise<void> {
+    if (this.relayReconnectTimer) {
+      clearTimeout(this.relayReconnectTimer);
+    }
+    await new Promise<void>((resolve) => {
+      this.relayReconnectDelayResolve = resolve;
+      this.relayReconnectTimer = setTimeout(() => {
+        this.relayReconnectTimer = null;
+        this.relayReconnectDelayResolve = null;
+        resolve();
+      }, delayMs);
+    });
   }
 
   private async reconnectRelay(): Promise<void> {
@@ -445,13 +524,35 @@ export class AgentService {
       return;
     }
     this.relayReconnectAttempts += 1;
+    this.relayNextRetryAt = null;
     await this.connectRelay(this.config.relayUrl);
   }
 
   private reconnectDelayMs(attempt: number): number {
-    const exponent = Math.max(0, attempt - 1);
-    const rawDelay = this.config.relayReconnectInitialDelayMs * 2 ** exponent;
-    return Math.min(rawDelay, this.config.relayReconnectMaxDelayMs);
+    return nextRelayReconnectDelayMs({
+      attempt,
+      initialDelayMs: this.config.relayReconnectInitialDelayMs,
+      maxDelayMs: this.config.relayReconnectMaxDelayMs,
+    });
+  }
+
+  private hasRelayReconnectAttemptLimit(nextAttempt: number): boolean {
+    return shouldLimitRelayReconnectAttempt({
+      reconnectForever: this.config.relayReconnectForever,
+      maxAttempts: this.config.relayReconnectMaxAttempts,
+      nextAttempt,
+    });
+  }
+
+  private relayReconnectAttemptLimitLabel(): number | "unlimited" {
+    return relayReconnectAttemptLimitLabel({
+      reconnectForever: this.config.relayReconnectForever,
+      maxAttempts: this.config.relayReconnectMaxAttempts,
+    });
+  }
+
+  private updateRelayStatus(status: RelayConnectionStatus): void {
+    this.relayStatus = status;
   }
 
   private cleanupRelayResources(
@@ -465,6 +566,13 @@ export class AgentService {
       this.relay = null;
     }
     transport?.close("relay disconnected");
+  }
+
+  private clearRelayAppConnectionState(): void {
+    this.authenticatedAppConnectionIds.clear();
+    this.e2ePeers.clear();
+    this.upgradeCoordinators.clear();
+    this.appConnections.markRelayUnavailable();
   }
 
   private async handleRelayMessage(
@@ -1217,7 +1325,12 @@ export class AgentService {
         runtime: {
           admin_enabled: this.config.adminEnabled,
           relay_configured: Boolean(this.config.relayUrl),
-          relay_connected: Boolean(this.relay),
+          relay_connected: this.relayStatus === "connected",
+          relay_status: this.relayStatus,
+          relay_reconnect_attempts: this.relayReconnectAttempts,
+          relay_next_retry_at: this.relayNextRetryAt,
+          relay_last_error: this.relayLastError,
+          relay_last_close: this.relayLastClose,
           e2e_required: this.config.businessSecurityMode === "e2e_required",
         },
         connections_summary: this.appConnections.summary(),
@@ -1364,22 +1477,6 @@ export class AgentService {
   }
 }
 
-function formatRelayConnectionError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
-
 function appConnectionIdFromMessage(
   message: MessageEnvelope,
 ): string | undefined {
@@ -1387,35 +1484,4 @@ function appConnectionIdFromMessage(
   return typeof payload.app_connection_id === "string"
     ? payload.app_connection_id
     : undefined;
-}
-
-function isRelayExplicitRejection(event: RelayCloseEvent): boolean {
-  if ([1008, 4001, 4003, 4401, 4403].includes(event.code ?? 0)) {
-    return true;
-  }
-  return isExplicitRejectionText(event.reason ?? "");
-}
-
-function isRelayExplicitRejectionError(error: unknown): boolean {
-  return isExplicitRejectionText(formatRelayConnectionError(error));
-}
-
-function isExplicitRejectionText(value: string): boolean {
-  const normalized = value.toLowerCase();
-  return [
-    "unauthorized",
-    "forbidden",
-    "policy violation",
-    "rejected",
-    "reject",
-    "invalid token",
-    "invalid device",
-    "authentication failed",
-  ].some((keyword) => normalized.includes(keyword));
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }

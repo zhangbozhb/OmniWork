@@ -22,6 +22,7 @@ export interface AgentConfig {
   connectionHeartbeatMs: number;
   connectionStaleMs: number;
   connectionDisconnectMs: number;
+  relayReconnectForever: boolean;
   relayReconnectMaxAttempts: number;
   relayReconnectInitialDelayMs: number;
   relayReconnectMaxDelayMs: number;
@@ -66,7 +67,11 @@ export function loadAgentConfig(
       env.OMNIWORK_AGENT_CONNECTION_DISCONNECT_MS,
       90000,
     ),
-    relayReconnectMaxAttempts: parsePositiveInteger(
+    relayReconnectForever: parseBoolean(
+      env.OMNIWORK_AGENT_RELAY_RECONNECT_FOREVER,
+      true,
+    ),
+    relayReconnectMaxAttempts: parseNonNegativeInteger(
       env.OMNIWORK_AGENT_RELAY_RECONNECT_MAX_ATTEMPTS,
       8,
     ),
@@ -129,6 +134,17 @@ function parsePositiveInteger(
   }
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function readDefaultProviderCommandOverrides(

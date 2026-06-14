@@ -292,13 +292,72 @@ Mac Agent 与 App 各自读取独立的 Relay URL，分别指向 Relay 的 `/rel
 | `OMNIWORK_DEFAULT_RELAY_URL` | Native App 出厂默认值 | `/relay/ws/mobile` | 可选；未注入时依赖用户输入或配对 URL |
 | `OMNIWORK_WEB_RELAY_URL` | Web App 运行时配置 | `/relay/ws/mobile` | 生产部署时写入 `omniwork-config.js` |
 
-Mac Agent 连接 Relay 失败时会按指数退避重试；如果 Relay 明确拒绝连接（例如鉴权失败、禁用设备、策略拒绝），Agent 会直接启动失败/退出，不再重试：
+Mac Agent 连接 Relay 失败时会按指数退避 + jitter 重试。默认作为常驻进程无限重连，避免 Relay 重启、网络抖动或临时不可达导致 Agent 退出；本地 admin 服务会先启动，Relay 连接会以 `connecting/reconnecting/connected/terminal_error` 状态独立推进。Relay 连接断开后，Agent 会立即把已观察到的 App 连接标记为 `disconnected/unavailable`，避免本地 admin 继续展示旧连接为在线。如果 Relay 明确拒绝连接（例如鉴权失败、禁用设备、IP ban、策略拒绝），Agent 会直接退出，不再重试：
 
 | 变量名 | 使用方 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `OMNIWORK_AGENT_RELAY_RECONNECT_MAX_ATTEMPTS` | Mac Agent | `8` | 连续重连最大次数，超过后 Agent 失败退出 |
+| `OMNIWORK_AGENT_RELAY_RECONNECT_FOREVER` | Mac Agent | `true` | 普通断线/临时连接失败时是否无限重连；不影响 Relay 主动拒绝 |
+| `OMNIWORK_AGENT_RELAY_RECONNECT_MAX_ATTEMPTS` | Mac Agent | `8` | `RECONNECT_FOREVER=false` 时的连续重连最大次数；`0` 表示无限 |
 | `OMNIWORK_AGENT_RELAY_RECONNECT_INITIAL_DELAY_MS` | Mac Agent | `1000` | 首次重试延迟，后续按指数退避 |
 | `OMNIWORK_AGENT_RELAY_RECONNECT_MAX_DELAY_MS` | Mac Agent | `30000` | 单次重试最大延迟 |
+
+重连状态流程：
+
+```mermaid
+flowchart TD
+    A[Agent start] --> B[Start local admin]
+    B --> C[Connect Relay]
+    C --> D{Connect success}
+    D -->|Yes| E[connected]
+    D -->|No transient error| F[reconnecting delay]
+    D -->|Terminal rejection| G[terminal_error and exit]
+    F --> H{Stop requested}
+    H -->|Yes| I[Cancel delay and stop]
+    H -->|No| C
+    E --> J{Relay close}
+    J -->|Retryable close| K[Mark App links disconnected/unavailable]
+    K --> F
+    J -->|1008/4403/auth/ip ban| G
+
+    style B fill:#bbdefb,color:#0d47a1
+    style E fill:#c8e6c9,color:#1a5e20
+    style F fill:#fff3e0,color:#e65100
+    style G fill:#ffcdd2,color:#b71c1c
+    style K fill:#f3e5f5,color:#7b1fa2
+```
+
+重连技术时序：
+
+```mermaid
+sequenceDiagram
+    participant Agent as Mac Agent
+    participant Admin as Local Admin
+    participant Relay as Relay Server
+    participant Registry as AppConnectionRegistry
+
+    Agent->>Admin: startAdminServer()
+    Agent->>Relay: connect + agent.hello
+    alt Relay available
+        Relay-->>Agent: open
+        Agent->>Agent: relay_status = connected
+    else transient failure
+        Relay-->>Agent: network error / 1006
+        Agent->>Agent: relay_status = reconnecting
+        Agent->>Agent: wait exponential backoff + jitter
+        Agent->>Relay: retry connect
+    else terminal rejection
+        Relay-->>Agent: close 1008/4403 or auth/ip policy
+        Agent->>Agent: relay_status = terminal_error
+        Agent->>Agent: stop without retry
+    end
+
+    Relay-->>Agent: retryable close after connected
+    Agent->>Registry: markRelayUnavailable()
+    Agent->>Agent: clear auth/e2e/upgrade caches
+    Agent->>Agent: schedule reconnect
+    Admin->>Agent: GET /api/status
+    Agent-->>Admin: relay_status + last_error + next_retry_at
+```
 
 Agent Web 后台的连接统计以 Agent 关键链路为准：新版 App 必须在 `mobile.connect` 和 `auth.proof` 中携带 `app_info.instance_id` / `app_info.runtime_id`，且 `auth.proof` 会把这两个字段绑定进签名输入；Relay 只负责转发，Agent 在 `auth.verify` 校验成功后创建连接记录。业务入站/出站、E2E ready、成功解密消息和传输路径切换会继续刷新连接状态。`app.connection.heartbeat` / `app.connection.goodbye` 仅补充心跳和主动断开状态，不作为连接创建入口。
 
