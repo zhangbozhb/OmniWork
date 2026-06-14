@@ -36,6 +36,7 @@
     "back": "返回",
     "cancel": "取消",
     "clear": "清空",
+    "close": "关闭",
     "create": "创建",
     "default": "默认",
     "delete": "删除",
@@ -66,6 +67,13 @@
     "emptyText": "添加一个 Mac Agent 连接即可开始使用 OmniWork。",
     "addLink": "添加连接",
     "moreActions": "更多操作",
+    "share": {
+      "action": "分享二维码",
+      "title": "分享 {{deviceId}}",
+      "description": "在另一台 OmniWork App 上扫描此二维码，即可导入同一个 Mac Agent 连接。",
+      "warning": "任何获得此二维码的人都可以导入配对密钥。请只分享给可信设备。",
+      "systemShare": "分享链接"
+    },
     "status": {
       "idle": "空闲",
       "online": "在线",

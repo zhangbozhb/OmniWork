@@ -36,6 +36,7 @@
     "back": "Back",
     "cancel": "Cancel",
     "clear": "Clear",
+    "close": "Close",
     "create": "Create",
     "default": "Default",
     "delete": "Delete",
@@ -66,6 +67,13 @@
     "emptyText": "Add a Mac Agent link to start using OmniWork.",
     "addLink": "Add Link",
     "moreActions": "More actions",
+    "share": {
+      "action": "Share QR",
+      "title": "Share {{deviceId}}",
+      "description": "Scan this QR code on another OmniWork app to import the same Mac Agent link.",
+      "warning": "Anyone with this QR code can import the pairing key. Share it only with devices you trust.",
+      "systemShare": "Share link"
+    },
     "status": {
       "idle": "Idle",
       "online": "Online",

@@ -1,17 +1,21 @@
 import type { JSX, RefObject } from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
+import QRCode from "react-native-qrcode-svg";
 
 import type { TransportPath } from "@omniwork/protocol-ts";
+import { createPairingShareLink } from "../../features/auth/pairingShare";
 import type { PairingConfig } from "../../features/auth/types";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";
@@ -72,6 +76,20 @@ export function DeviceListScreen({
   );
 
   const [expandedDevice, setExpandedDevice] = useState<string | null>(null);
+  const [sharePairing, setSharePairing] = useState<PairingConfig | null>(null);
+  const shareLink = sharePairing
+    ? createPairingShareLink(sharePairing)
+    : undefined;
+  const handleSystemShare = useCallback(() => {
+    if (!sharePairing || !shareLink) {
+      return;
+    }
+    Share.share({
+      message: shareLink,
+      title: t("devices.share.title", { deviceId: sharePairing.deviceId }),
+      url: shareLink,
+    }).catch(() => undefined);
+  }, [shareLink, sharePairing, t]);
 
   return (
     <ScrollView
@@ -207,6 +225,16 @@ export function DeviceListScreen({
               {expanded ? (
                 <View style={styles.expandedActions}>
                   <Button
+                    icon="qr"
+                    style={styles.actionButton}
+                    onPress={() => {
+                      setExpandedDevice(null);
+                      setSharePairing(pairing);
+                    }}
+                  >
+                    {t("devices.share.action")}
+                  </Button>
+                  <Button
                     icon="edit"
                     style={styles.actionButton}
                     onPress={() => {
@@ -244,6 +272,60 @@ export function DeviceListScreen({
       >
         {t("devices.addLink")}
       </Button>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={Boolean(sharePairing && shareLink)}
+        onRequestClose={() => setSharePairing(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.shareSheet}>
+            <Text style={styles.shareTitle}>
+              {t("devices.share.title", {
+                deviceId: sharePairing?.deviceId ?? "",
+              })}
+            </Text>
+            <Text style={styles.shareDescription}>
+              {t("devices.share.description")}
+            </Text>
+            {shareLink ? (
+              <View style={styles.qrFrame}>
+                <QRCode
+                  value={shareLink}
+                  size={220}
+                  backgroundColor="#ffffff"
+                  color="#111827"
+                />
+              </View>
+            ) : null}
+            <Text selectable numberOfLines={3} style={styles.shareLink}>
+              {shareLink}
+            </Text>
+            <Text style={styles.shareWarning}>
+              {t("devices.share.warning")}
+            </Text>
+            <View style={styles.shareActions}>
+              <Button
+                style={styles.shareActionButton}
+                variant="ghost"
+                onPress={() => setSharePairing(null)}
+              >
+                {t("common.close")}
+              </Button>
+              <Button
+                icon="qr"
+                style={styles.shareActionButton}
+                tone="primary"
+                variant="solid"
+                onPress={handleSystemShare}
+              >
+                {t("devices.share.systemShare")}
+              </Button>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -329,6 +411,7 @@ const styles = StyleSheet.create({
   },
   expandedActions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
     paddingTop: spacing.sm,
     borderTopColor: colors.borderSubtle,
@@ -337,7 +420,8 @@ const styles = StyleSheet.create({
   actionButton: {
     minHeight: 36,
     borderRadius: radii.sm,
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: "30%",
   },
   disabled: {
     opacity: 0.55,
@@ -364,6 +448,55 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
+  },
+  modalBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+    backgroundColor: "rgba(0, 0, 0, 0.68)",
+  },
+  shareSheet: {
+    width: "100%",
+    maxWidth: 360,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceRaised,
+    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  shareTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  shareDescription: {
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  qrFrame: {
+    alignSelf: "center",
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: "#ffffff",
+  },
+  shareLink: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  shareWarning: {
+    color: colors.warning,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  shareActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  shareActionButton: {
+    flex: 1,
   },
 });
 
