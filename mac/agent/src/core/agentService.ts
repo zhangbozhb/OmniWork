@@ -260,11 +260,10 @@ export class AgentService {
         }
         this.relayLastError = formatRelayConnectionError(error);
         this.updateRelayStatus("terminal_error");
-        this.logger.error("relay connector stopped", {
+        this.logger.error("relay connector stopped unexpectedly", {
           error: this.relayLastError,
         });
-        this.stop();
-        process.exitCode = 1;
+        this.scheduleRelayReconnect({ terminal: true });
       },
     );
   }
@@ -389,43 +388,57 @@ export class AgentService {
   }
 
   private async connectRelayWithRetry(url: string): Promise<void> {
-    let lastError: unknown = null;
     while (!this.stopping) {
       const nextAttempt = this.relayReconnectAttempts + 1;
-      if (this.hasRelayReconnectAttemptLimit(nextAttempt)) {
-        throw new Error(
-          [
-            `Unable to connect to OMNIWORK_RELAY_URL after ${this.relayReconnectAttempts} attempts: ${url}`,
-            `Original error: ${formatRelayConnectionError(lastError)}`,
-          ].join("\n"),
-        );
-      }
-
       try {
         this.relayReconnectAttempts = nextAttempt;
         await this.connectRelay(url);
         return;
       } catch (error) {
-        lastError = error;
         this.relayLastError = formatRelayConnectionError(error);
         if (isTerminalRelayConnectionError(error)) {
-          throw error;
-        }
-        if (this.hasRelayReconnectAttemptLimit(nextAttempt + 1)) {
+          const delayMs = this.config.relayReconnectMaxDelayMs;
+          this.relayNextRetryAt = Date.now() + delayMs;
+          this.updateRelayStatus("terminal_error");
+          this.logger.error("relay connect rejected; retrying slowly", {
+            attempt: nextAttempt,
+            delay_ms: delayMs,
+            error: this.relayLastError,
+          });
+          await this.waitRelayReconnectDelay(delayMs);
           continue;
         }
+        const attemptsExhausted = this.hasRelayReconnectAttemptLimit(
+          nextAttempt + 1,
+        );
         const delayMs = this.reconnectDelayMs(nextAttempt);
         this.relayNextRetryAt = Date.now() + delayMs;
         this.updateRelayStatus("reconnecting");
-        this.logger.warn("relay connect attempt failed; retrying", {
-          attempt: nextAttempt,
-          max_attempts: this.relayReconnectAttemptLimitLabel(),
-          delay_ms: delayMs,
-          error: formatRelayConnectionError(error),
-        });
+        this.logger.warn(
+          attemptsExhausted
+            ? "relay connect attempts exhausted; continuing background retries"
+            : "relay connect attempt failed; retrying",
+          {
+            attempt: nextAttempt,
+            max_attempts: this.relayReconnectAttemptLimitLabel(),
+            delay_ms: delayMs,
+            error: formatRelayConnectionError(error),
+          },
+        );
         await this.waitRelayReconnectDelay(delayMs);
       }
     }
+  }
+
+  private logScheduledRelayReconnect(
+    message: string,
+    input: { attempt: number; delayMs: number },
+  ): void {
+    this.logger.warn(message, {
+      attempt: input.attempt,
+      max_attempts: this.relayReconnectAttemptLimitLabel(),
+      delay_ms: input.delayMs,
+    });
   }
 
   private handleRelayClose(event: RelayCloseEvent): void {
@@ -450,50 +463,48 @@ export class AgentService {
         reason: event.reason ?? "",
       });
       this.updateRelayStatus("terminal_error");
-      this.stop();
-      process.exitCode = 1;
+      this.scheduleRelayReconnect({ terminal: true });
       return;
     }
 
     this.scheduleRelayReconnect();
   }
 
-  private scheduleRelayReconnect(): void {
+  private scheduleRelayReconnect(options: { terminal?: boolean } = {}): void {
     if (this.stopping || this.relayReconnectTimer) {
       return;
     }
 
     const nextAttempt = this.relayReconnectAttempts + 1;
-    if (this.hasRelayReconnectAttemptLimit(nextAttempt)) {
-      this.logger.error("relay reconnect attempts exhausted", {
-        attempts: this.relayReconnectAttempts,
-        max_attempts: this.relayReconnectAttemptLimitLabel(),
-      });
-      this.stop();
-      process.exitCode = 1;
-      return;
-    }
-
-    const delayMs = this.reconnectDelayMs(nextAttempt);
+    const attemptsExhausted = this.hasRelayReconnectAttemptLimit(nextAttempt);
+    const delayMs = options.terminal
+      ? this.config.relayReconnectMaxDelayMs
+      : this.reconnectDelayMs(nextAttempt);
     this.relayNextRetryAt = Date.now() + delayMs;
-    this.updateRelayStatus("reconnecting");
-    this.logger.warn("scheduling relay reconnect", {
-      attempt: nextAttempt,
-      max_attempts: this.relayReconnectAttemptLimitLabel(),
-      delay_ms: delayMs,
-    });
+    if (options.terminal) {
+      this.updateRelayStatus("terminal_error");
+    } else {
+      this.updateRelayStatus("reconnecting");
+    }
+    this.logScheduledRelayReconnect(
+      options.terminal
+        ? "scheduling slow relay reconnect after terminal rejection"
+        : attemptsExhausted
+          ? "relay reconnect attempts exhausted; continuing background retries"
+          : "scheduling relay reconnect",
+      { attempt: nextAttempt, delayMs },
+    );
     this.relayReconnectTimer = setTimeout(() => {
       this.relayReconnectTimer = null;
       this.reconnectRelay().catch((error: unknown) => {
         this.relayLastError = formatRelayConnectionError(error);
         if (isTerminalRelayConnectionError(error)) {
-          this.logger.error("relay reconnect rejected permanently", {
+          this.logger.error("relay reconnect rejected; retrying slowly", {
             attempt: nextAttempt,
             error: this.relayLastError,
           });
           this.updateRelayStatus("terminal_error");
-          this.stop();
-          process.exitCode = 1;
+          this.scheduleRelayReconnect({ terminal: true });
           return;
         }
         this.logger.warn("relay reconnect failed", {

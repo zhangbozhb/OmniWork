@@ -292,7 +292,7 @@ Mac Agent 与 App 各自读取独立的 Relay URL，分别指向 Relay 的 `/rel
 | `OMNIWORK_DEFAULT_RELAY_URL` | Native App 出厂默认值 | `/relay/ws/mobile` | 可选；未注入时依赖用户输入或配对 URL |
 | `OMNIWORK_WEB_RELAY_URL` | Web App 运行时配置 | `/relay/ws/mobile` | 生产部署时写入 `omniwork-config.js` |
 
-Mac Agent 连接 Relay 失败时会按指数退避 + jitter 重试。默认作为常驻进程无限重连，避免 Relay 重启、网络抖动或临时不可达导致 Agent 退出；本地 admin 服务会先启动，Relay 连接会以 `connecting/reconnecting/connected/terminal_error` 状态独立推进。Relay 连接断开后，Agent 会立即把已观察到的 App 连接标记为 `disconnected/unavailable`，避免本地 admin 继续展示旧连接为在线。如果 Relay 明确拒绝连接（例如鉴权失败、禁用设备、IP ban、策略拒绝），Agent 会直接退出，不再重试：
+Mac Agent 连接 Relay 失败时会按指数退避 + jitter 重试。默认作为常驻进程无限重连，避免 Relay 重启、网络抖动或临时不可达导致 Agent 退出；本地 admin 服务会先启动，Relay 连接会以 `connecting/reconnecting/connected/terminal_error` 状态独立推进。Relay 连接断开后，Agent 会立即把已观察到的 App 连接标记为 `disconnected/unavailable`，避免本地 admin 继续展示旧连接为在线。如果 Relay 明确拒绝连接（例如鉴权失败、禁用设备、IP ban、策略拒绝），Agent 会进入 `terminal_error`，保留本地 admin 可诊断能力，并以较慢频率继续探测 Relay，避免一次拒绝导致进程退出：
 
 | 变量名 | 使用方 | 默认值 | 说明 |
 | --- | --- | --- | --- |
@@ -310,7 +310,7 @@ flowchart TD
     C --> D{Connect success}
     D -->|Yes| E[connected]
     D -->|No transient error| F[reconnecting delay]
-    D -->|Terminal rejection| G[terminal_error and exit]
+    D -->|Terminal rejection| G[terminal_error and slow retry]
     F --> H{Stop requested}
     H -->|Yes| I[Cancel delay and stop]
     H -->|No| C
@@ -348,7 +348,7 @@ sequenceDiagram
     else terminal rejection
         Relay-->>Agent: close 1008/4403 or auth/ip policy
         Agent->>Agent: relay_status = terminal_error
-        Agent->>Agent: stop without retry
+        Agent->>Agent: keep admin alive and retry slowly
     end
 
     Relay-->>Agent: retryable close after connected
