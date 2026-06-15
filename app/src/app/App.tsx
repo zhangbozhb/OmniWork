@@ -62,6 +62,7 @@ import {
   formatErrorMessage,
   formatRelayCloseMessage,
   formatStrictForceCloseMessage,
+  getPairingDisplayName,
   getHeaderSubtitle,
   isPrimaryTabView,
   isSamePairing,
@@ -981,9 +982,10 @@ function AppContent(): JSX.Element {
   async function handleDeleteDevice(
     targetPairing: PairingConfig,
   ): Promise<void> {
+    const deviceName = getPairingDisplayName(targetPairing);
     const confirmed = await confirm({
       title: "Delete device",
-      message: `Delete ${targetPairing.deviceId} from linked devices?`,
+      message: `Delete ${deviceName} from linked devices?`,
       confirmText: "Delete",
     });
     if (!confirmed) {
@@ -1037,7 +1039,9 @@ function AppContent(): JSX.Element {
     setClosingSessionIds([]);
     setKillingSessionIds([]);
 
-    const errorText = `Authentication failed for "${targetPairing.deviceId}": ${reason}. Edit the device to enter a new key, or delete it.`;
+    const errorText = `Authentication failed for "${getPairingDisplayName(
+      targetPairing,
+    )}": ${reason}. Edit the device to enter a new key, or delete it.`;
     setConnectionStatus("failed");
     setConnectionMessage(errorText);
     setPairingError(errorText);

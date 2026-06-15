@@ -359,6 +359,7 @@ export interface PairingLinkPayload {
   v: typeof PROTOCOL_VERSION;
   relay_url: string;
   device_id: string;
+  display_name?: string;
   key: string;
   key_id?: string;
 }
@@ -755,6 +756,7 @@ export function createPairingLink(payload: PairingLinkPayload): string {
   params.set("v", String(payload.v));
   params.set("relay_url", payload.relay_url);
   params.set("device_id", payload.device_id);
+  setOptionalParam(params, "display_name", payload.display_name);
   params.set("key", payload.key);
   setOptionalParam(params, "key_id", payload.key_id);
 
@@ -785,6 +787,7 @@ export function parsePairingLink(input: string): PairingLinkPayload | null {
     v: PROTOCOL_VERSION,
     relay_url: relayUrl,
     device_id: deviceId,
+    display_name: searchParam(params, "display_name"),
     key,
     key_id: searchParam(params, "key_id"),
   };

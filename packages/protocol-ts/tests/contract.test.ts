@@ -347,6 +347,7 @@ describe("pairing link round-trip", () => {
     v: PROTOCOL_VERSION,
     relay_url: "wss://relay.example/relay/ws/mobile",
     device_id: "mac-host-01",
+    display_name: "Mac Host 01",
     key: "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
     key_id: "sha256:8f2b7d62d9b0",
   } as const;
@@ -358,10 +359,12 @@ describe("pairing link round-trip", () => {
     assert.deepEqual(parsed, samplePayload);
   });
 
-  it("decodes payload without optional key_id", () => {
-    const { key_id: _omit, ...minimal } = samplePayload;
+  it("decodes payload without optional display_name and key_id", () => {
+    const { display_name: _displayName, key_id: _keyId, ...minimal } =
+      samplePayload;
     const link = createPairingLink(minimal);
     const parsed = parsePairingLink(link);
+    assert.equal(parsed?.display_name, undefined);
     assert.equal(parsed?.key_id, undefined);
     assert.equal(parsed?.relay_url, minimal.relay_url);
     assert.equal(parsed?.device_id, minimal.device_id);
@@ -373,11 +376,13 @@ describe("pairing link round-trip", () => {
       ...samplePayload,
       relay_url: "wss://relay.example/path with space?x=1&y=2",
       device_id: "host name#tag",
+      display_name: "Alice's MacBook #1",
     };
     const link = createPairingLink(tricky);
     const parsed = parsePairingLink(link);
     assert.equal(parsed?.relay_url, tricky.relay_url);
     assert.equal(parsed?.device_id, tricky.device_id);
+    assert.equal(parsed?.display_name, tricky.display_name);
   });
 
   it("accepts the alternate omniwork:pair and omniwork:/pair prefixes", () => {

@@ -15,6 +15,7 @@ function toPairingLinkPayload(pairing: PairingConfig): PairingLinkPayload {
     v: PROTOCOL_VERSION,
     relay_url: pairing.relayUrl,
     device_id: pairing.deviceId,
+    display_name: pairing.displayName,
     key: pairing.key,
     key_id: pairing.keyId,
   };

@@ -41,6 +41,7 @@ export function createPairingQrDetails(
     v: PROTOCOL_VERSION,
     relay_url: relayUrl,
     device_id: config.deviceId,
+    display_name: config.displayName,
     key: keyRecord.key,
     key_id: keyRecord.key_id,
   };
@@ -79,6 +80,7 @@ export function printPairingDetailsWithoutRelay(
   console.info(`  key: ${keyRecord.key}`);
   console.info(`  key_id: ${keyRecord.key_id}`);
   console.info(`  device_id: ${config.deviceId}`);
+  console.info(`  display_name: ${config.displayName}`);
   console.info("  host: -");
   console.info("  port: -");
   console.info("  relay_url: -");
@@ -93,6 +95,7 @@ function printPairingSummary(details: PairingQrDetails): void {
   console.info(`  key: ${payload.key}`);
   console.info(`  key_id: ${payload.key_id ?? "-"}`);
   console.info(`  device_id: ${payload.device_id}`);
+  console.info(`  display_name: ${payload.display_name ?? "-"}`);
   console.info(`  host: ${endpoint?.host ?? "-"}`);
   console.info(`  port: ${endpoint?.port ?? "-"}`);
   console.info(`  relay_url: ${payload.relay_url}`);

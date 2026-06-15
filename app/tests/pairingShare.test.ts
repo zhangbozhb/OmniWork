@@ -9,6 +9,7 @@ test("createPairingShareLink serializes saved pairing as protocol link", () => {
   const link = createPairingShareLink({
     relayUrl: "wss://relay.example/relay/ws/mobile",
     deviceId: "mac-1",
+    displayName: "Alice MacBook",
     key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     keyId: "key-1",
     appInstanceId: "app-1",
@@ -18,6 +19,7 @@ test("createPairingShareLink serializes saved pairing as protocol link", () => {
 
   assert.equal(payload?.relay_url, "wss://relay.example/relay/ws/mobile");
   assert.equal(payload?.device_id, "mac-1");
+  assert.equal(payload?.display_name, "Alice MacBook");
   assert.equal(payload?.key, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   assert.equal(payload?.key_id, "key-1");
 });

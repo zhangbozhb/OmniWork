@@ -41,6 +41,10 @@ export function isSamePairing(
   return left.relayUrl === right.relayUrl && left.deviceId === right.deviceId;
 }
 
+export function getPairingDisplayName(pairing: PairingConfig): string {
+  return pairing.displayName?.trim() || pairing.deviceId;
+}
+
 export function getHeaderSubtitle(
   view: AppView,
   deviceCount: number,
@@ -57,7 +61,7 @@ export function getHeaderSubtitle(
     return t("app.subtitle.connectionSettings");
   }
 
-  return activePairing?.deviceId ?? "";
+  return activePairing ? getPairingDisplayName(activePairing) : "";
 }
 
 export function isPrimaryTabView(view: AppView): view is PrimaryTabView {

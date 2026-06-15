@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import QRCode from "react-native-qrcode-svg";
 
 import type { TransportPath } from "@omniwork/protocol-ts";
+import { getPairingDisplayName } from "../../app/appModel";
 import { createPairingShareLink } from "../../features/auth/pairingShare";
 import type { PairingConfig } from "../../features/auth/types";
 import { Badge, Button, Card } from "../../ui/components";
@@ -80,16 +81,19 @@ export function DeviceListScreen({
   const shareLink = sharePairing
     ? createPairingShareLink(sharePairing)
     : undefined;
+  const sharePairingName = sharePairing
+    ? getPairingDisplayName(sharePairing)
+    : "";
   const handleSystemShare = useCallback(() => {
     if (!sharePairing || !shareLink) {
       return;
     }
     Share.share({
       message: shareLink,
-      title: t("devices.share.title", { deviceId: sharePairing.deviceId }),
+      title: t("devices.share.title", { deviceName: sharePairingName }),
       url: shareLink,
     }).catch(() => undefined);
-  }, [shareLink, sharePairing, t]);
+  }, [shareLink, sharePairing, sharePairingName, t]);
 
   return (
     <ScrollView
@@ -160,6 +164,11 @@ export function DeviceListScreen({
       ) : (
         pairings.map((pairing) => {
           const pairingKey = `${pairing.relayUrl}:${pairing.deviceId}`;
+          const pairingName = getPairingDisplayName(pairing);
+          const deviceDetail =
+            pairingName === pairing.deviceId
+              ? formatRelayUrl(pairing.relayUrl)
+              : `${pairing.deviceId} · ${formatRelayUrl(pairing.relayUrl)}`;
           const active = Boolean(
             activePairing &&
               pairing.deviceId === activePairing.deviceId &&
@@ -183,7 +192,7 @@ export function DeviceListScreen({
             >
               <View style={styles.deviceRow1}>
                 <Text numberOfLines={1} style={styles.deviceName}>
-                  {pairing.deviceId}
+                  {pairingName}
                 </Text>
                 <Badge
                   backgroundColor={status.backgroundColor}
@@ -194,7 +203,7 @@ export function DeviceListScreen({
               </View>
 
               <Text numberOfLines={1} style={styles.deviceUrl}>
-                {formatRelayUrl(pairing.relayUrl)}
+                {deviceDetail}
               </Text>
 
               <View style={styles.deviceRow3}>
@@ -283,7 +292,7 @@ export function DeviceListScreen({
           <View style={styles.shareSheet}>
             <Text style={styles.shareTitle}>
               {t("devices.share.title", {
-                deviceId: sharePairing?.deviceId ?? "",
+                deviceName: sharePairingName,
               })}
             </Text>
             <Text style={styles.shareDescription}>

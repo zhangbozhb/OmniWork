@@ -11,7 +11,11 @@ import {
   generateSessionKey,
   verifyProof,
 } from "../src/auth-key/authKey.ts";
-import { loadAgentConfig, type AgentConfig } from "../src/config/config.ts";
+import {
+  defaultAgentDisplayName,
+  loadAgentConfig,
+  type AgentConfig,
+} from "../src/config/config.ts";
 import { createPairingQrDetails } from "../src/pairing/pairingQr.ts";
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
@@ -59,6 +63,7 @@ const baseConfig: AgentConfig = {
   agentVersion: "test",
   deviceId: "test-mac",
   hostname: "test.local",
+  displayName: "test",
   relayUrl: "wss://relay.example/relay/ws/agent",
   adminEnabled: true,
   adminHost: "127.0.0.1",
@@ -84,10 +89,16 @@ assert.equal(
   "wss://relay.example/relay/ws/mobile",
 );
 assert.equal(
-  parsePairingLink(createPairingQrDetails(baseConfig, record)?.link ?? "")
-    ?.relay_url,
-  "wss://relay.example/relay/ws/mobile",
+  createPairingQrDetails(baseConfig, record)?.payload.display_name,
+  "test",
 );
+assert.equal(
+  parsePairingLink(createPairingQrDetails(baseConfig, record)?.link ?? "")
+    ?.display_name,
+  "test",
+);
+assert.equal(defaultAgentDisplayName("work-mac.local"), "work-mac");
+assert.equal(defaultAgentDisplayName("work-mac.LOCAL"), "work-mac");
 
 assert.throws(
   () => loadAgentConfig({ OMNIWORK_DEVICE_ID: "" }),
@@ -101,6 +112,16 @@ assert.throws(
   });
   assert.equal(config.relayReconnectForever, true);
   assert.equal(config.relayReconnectMaxAttempts, 8);
+  assert.ok(config.displayName.length > 0);
+}
+
+{
+  const config = loadAgentConfig({
+    OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
+    OMNIWORK_DEVICE_ID: "mac-1",
+    OMNIWORK_AGENT_DISPLAY_NAME: "Alice MacBook",
+  });
+  assert.equal(config.displayName, "Alice MacBook");
 }
 
 {

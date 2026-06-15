@@ -28,6 +28,7 @@ Useful environment variables:
 ```sh
 OMNIWORK_RELAY_URL=wss://relay.company.example/relay/ws/agent
 OMNIWORK_DEVICE_ID=my-mac
+OMNIWORK_AGENT_DISPLAY_NAME="Alice MacBook"
 OMNIWORK_AGENT_IDENTITY_PATH=/Users/me/.omniwork/agent.json
 OMNIWORK_AGENT_IDENTITY_KEYCHAIN=1
 OMNIWORK_CODEX_COMMAND=codex

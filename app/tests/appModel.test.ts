@@ -5,6 +5,7 @@ import type { CodexSession } from "@omniwork/protocol-ts";
 import {
   formatRelayCloseMessage,
   formatStrictForceCloseMessage,
+  getHeaderSubtitle,
   isSamePairing,
   upsertPairing,
   upsertSession,
@@ -42,6 +43,21 @@ test("upsertPairing replaces by relay URL and device ID", () => {
 
   assert.equal(isSamePairing(first, refreshed), true);
   assert.deepEqual(upsertPairing([first], refreshed), [refreshed]);
+});
+
+test("getHeaderSubtitle prefers pairing display name", () => {
+  const pairing = {
+    relayUrl: "wss://relay.example/relay/ws/mobile",
+    deviceId: "mac-1",
+    displayName: "Alice MacBook",
+    key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    appInstanceId: "app-1",
+  };
+
+  assert.equal(
+    getHeaderSubtitle("sessions", 1, pairing, (key) => key),
+    "Alice MacBook",
+  );
 });
 
 test("connection close helpers keep user-facing detail", () => {

@@ -41,6 +41,9 @@ export function PairingScreen({
     initialPairing?.relayUrl ?? appConfig.defaultRelayUrl,
   );
   const [deviceId, setDeviceId] = useState(initialPairing?.deviceId ?? "");
+  const [displayName, setDisplayName] = useState(
+    initialPairing?.displayName ?? "",
+  );
   const [key, setKey] = useState(initialPairing?.key ?? "");
   const [keyId, setKeyId] = useState(initialPairing?.keyId ?? "");
   const [scannerVisible, setScannerVisible] = useState(false);
@@ -52,6 +55,7 @@ export function PairingScreen({
   useEffect(() => {
     setRelayUrl(initialPairing?.relayUrl ?? appConfig.defaultRelayUrl);
     setDeviceId(initialPairing?.deviceId ?? "");
+    setDisplayName(initialPairing?.displayName ?? "");
     setKey(initialPairing?.key ?? "");
     setKeyId(initialPairing?.keyId ?? "");
     setLocalError(undefined);
@@ -87,6 +91,7 @@ export function PairingScreen({
       await onPair({
         relayUrl: relayUrl.trim(),
         deviceId: deviceId.trim(),
+        displayName: displayName.trim() || undefined,
         key: trimmedKey,
         keyId: keyId.trim() || undefined,
         appInstanceId: initialPairing?.appInstanceId ?? createAppInstanceId(),
@@ -107,6 +112,7 @@ export function PairingScreen({
 
     setRelayUrl(pairing.relayUrl);
     setDeviceId(pairing.deviceId);
+    setDisplayName(pairing.displayName ?? "");
     setKey(pairing.key);
     setKeyId(pairing.keyId ?? "");
     setScannerVisible(false);
@@ -177,6 +183,17 @@ export function PairingScreen({
         value={deviceId}
         onChangeText={setDeviceId}
         placeholder="your-mac.local"
+        placeholderTextColor="#66727c"
+        style={styles.input}
+      />
+
+      <Text style={styles.label}>{t("pairing.fields.displayName")}</Text>
+      <TextInput
+        autoCapitalize="words"
+        autoCorrect={false}
+        value={displayName}
+        onChangeText={setDisplayName}
+        placeholder={t("pairing.fields.displayNamePlaceholder")}
         placeholderTextColor="#66727c"
         style={styles.input}
       />

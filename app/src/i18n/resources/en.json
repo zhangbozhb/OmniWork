@@ -69,7 +69,7 @@
     "moreActions": "More actions",
     "share": {
       "action": "Share QR",
-      "title": "Share {{deviceId}}",
+      "title": "Share {{deviceName}}",
       "description": "Scan this QR code on another OmniWork app to import the same Mac Agent link.",
       "warning": "Anyone with this QR code can import the pairing key. Share it only with devices you trust.",
       "systemShare": "Share link"
@@ -113,6 +113,8 @@
     "fields": {
       "relayUrl": "Relay URL",
       "deviceId": "Mac Device ID",
+      "displayName": "Display Name",
+      "displayNamePlaceholder": "Optional, e.g. John's MacBook",
       "temporaryKey": "Temporary Key",
       "keyPlaceholder": "32-character key"
     }

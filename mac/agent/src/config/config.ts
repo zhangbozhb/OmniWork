@@ -14,6 +14,7 @@ export interface AgentConfig {
   agentVersion: string;
   deviceId: string;
   hostname: string;
+  displayName: string;
   relayUrl: string;
   adminEnabled: boolean;
   adminHost: string;
@@ -45,11 +46,13 @@ export function loadAgentConfig(
     env.OMNIWORK_RELAY_URL,
     "OMNIWORK_RELAY_URL",
   );
+  const host = hostname();
 
   return {
     agentVersion: env.OMNIWORK_AGENT_VERSION ?? "0.1.0",
     deviceId: resolveDeviceId(env),
-    hostname: hostname(),
+    hostname: host,
+    displayName: resolveAgentDisplayName(env, host),
     relayUrl,
     adminEnabled: parseBoolean(env.OMNIWORK_AGENT_ADMIN_ENABLED, true),
     adminHost: env.OMNIWORK_AGENT_ADMIN_HOST ?? "127.0.0.1",
@@ -98,6 +101,11 @@ export function loadAgentConfig(
       ? "e2e_required"
       : "plaintext_allowed",
   };
+}
+
+export function defaultAgentDisplayName(host: string): string {
+  const trimmed = host.trim();
+  return trimmed.replace(/\.local$/i, "") || trimmed;
 }
 
 function requireNonEmptyString(
@@ -244,4 +252,9 @@ function resolveDeviceId(env: NodeJS.ProcessEnv): string {
         ? undefined
         : parseBoolean(env.OMNIWORK_AGENT_IDENTITY_KEYCHAIN, true),
   });
+}
+
+function resolveAgentDisplayName(env: NodeJS.ProcessEnv, host: string): string {
+  const configuredDisplayName = env.OMNIWORK_AGENT_DISPLAY_NAME?.trim();
+  return configuredDisplayName || defaultAgentDisplayName(host);
 }

@@ -19,6 +19,7 @@ export function parsePairingConfig(input: string): PairingConfig | null {
   return {
     relayUrl: payload.relay_url,
     deviceId: payload.device_id,
+    displayName: payload.display_name?.trim() || undefined,
     key: payload.key,
     keyId: payload.key_id,
     appInstanceId: createAppInstanceId(),

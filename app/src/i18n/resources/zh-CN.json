@@ -69,7 +69,7 @@
     "moreActions": "更多操作",
     "share": {
       "action": "分享二维码",
-      "title": "分享 {{deviceId}}",
+      "title": "分享 {{deviceName}}",
       "description": "在另一台 OmniWork App 上扫描此二维码，即可导入同一个 Mac Agent 连接。",
       "warning": "任何获得此二维码的人都可以导入配对密钥。请只分享给可信设备。",
       "systemShare": "分享链接"
@@ -113,6 +113,8 @@
     "fields": {
       "relayUrl": "Relay URL",
       "deviceId": "Mac 设备 ID",
+      "displayName": "显示名称",
+      "displayNamePlaceholder": "可选，例如 张三的 MacBook",
       "temporaryKey": "临时密钥",
       "keyPlaceholder": "32 位字符密钥"
     }

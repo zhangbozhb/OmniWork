@@ -40,6 +40,7 @@ function normalizePairingConfig(
   return {
     relayUrl: pairing.relayUrl ?? "",
     deviceId: pairing.deviceId ?? "",
+    displayName: pairing.displayName?.trim() || undefined,
     key: pairing.key ?? "",
     keyId: pairing.keyId,
     appInstanceId: pairing.appInstanceId ?? createAppInstanceId(),
