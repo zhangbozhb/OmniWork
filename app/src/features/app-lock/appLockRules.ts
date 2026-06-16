@@ -1,7 +1,7 @@
 import { createHmacSha256Base64Url } from "../auth/hmacSha256";
 import type { AppLockConfig, AutoLockOption, StoredAppLockConfig } from "./types";
 
-export const MIN_GESTURE_POINTS = 4;
+export const GESTURE_POINT_COUNT = 6;
 export const DEFAULT_AUTO_LOCK_OPTION: AutoLockOption = 30;
 export const AUTO_LOCK_OPTIONS: ReadonlyArray<AutoLockOption> = [
   5,
@@ -56,7 +56,10 @@ export function shouldLockForInactivity(
 }
 
 export function isValidGesture(gesture: number[]): boolean {
-  return new Set(gesture).size === gesture.length && gesture.length >= MIN_GESTURE_POINTS;
+  return (
+    new Set(gesture).size === gesture.length &&
+    gesture.length === GESTURE_POINT_COUNT
+  );
 }
 
 export function serializeGesture(gesture: number[]): string {

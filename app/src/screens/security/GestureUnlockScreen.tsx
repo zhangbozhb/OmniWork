@@ -1,11 +1,15 @@
 import type { JSX } from "react";
 import { useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
+import {
+  GESTURE_POINT_COUNT,
+} from "../../features/app-lock/appLockRules";
 import { Button } from "../../ui/components";
-import { colors, spacing, typography } from "../../ui/theme";
+import { colors, spacing } from "../../ui/theme";
 import { GesturePad } from "./GesturePad";
+import { PasscodeDots } from "./PasscodeDots";
 
 export interface GestureUnlockScreenProps {
   canCancel?: boolean;
@@ -19,6 +23,7 @@ export function GestureUnlockScreen({
   onUnlock,
 }: GestureUnlockScreenProps): JSX.Element {
   const { t } = useTranslation();
+  const [inputCount, setInputCount] = useState(0);
   const [message, setMessage] = useState(t("appLock.unlock.hint"));
   const [status, setStatus] = useState<"idle" | "error" | "success">("idle");
 
@@ -33,63 +38,66 @@ export function GestureUnlockScreen({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
-      <View style={styles.headerText}>
-        <Text style={styles.eyebrow}>{t("appLock.eyebrow")}</Text>
-        <Text style={styles.title}>{t("appLock.unlock.title")}</Text>
-        <Text style={styles.subtitle}>{t("appLock.unlock.subtitle")}</Text>
+    <View style={styles.screen}>
+      <View style={styles.content}>
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>{t("appLock.unlock.title")}</Text>
+          <PasscodeDots
+            count={inputCount}
+            totalCount={GESTURE_POINT_COUNT}
+          />
+          <Text style={styles.message}>{message}</Text>
+        </View>
+        <GesturePad
+          appearance="floating"
+          maxPoints={GESTURE_POINT_COUNT}
+          showKeyLabels
+          status={status}
+          onComplete={handleGesture}
+          onProgress={setInputCount}
+        />
+        {canCancel && onCancel ? (
+          <Button style={styles.cancelButton} variant="ghost" onPress={onCancel}>
+            {t("common.cancel")}
+          </Button>
+        ) : null}
       </View>
-      <View style={styles.card}>
-        <Text style={styles.message}>{message}</Text>
-        <GesturePad status={status} onComplete={handleGesture} />
-      </View>
-      {canCancel && onCancel ? (
-        <Button variant="ghost" onPress={onCancel}>
-          {t("common.cancel")}
-        </Button>
-      ) : null}
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    flexGrow: 1,
+    flex: 1,
     padding: spacing.xxl,
-    gap: spacing.lg,
-    justifyContent: "center",
-    backgroundColor: colors.background,
+    backgroundColor: "#05090c",
   },
-  headerText: {
-    gap: spacing.xs,
+  content: {
+    flex: 1,
+    justifyContent: "flex-start",
+    paddingTop: 72,
+    gap: 54,
+  },
+  titleBlock: {
     alignItems: "center",
-  },
-  eyebrow: {
-    color: colors.textDim,
-    ...typography.eyebrow,
+    gap: spacing.md,
   },
   title: {
     color: colors.textPrimary,
-    ...typography.title,
+    fontSize: 27,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+    lineHeight: 34,
     textAlign: "center",
-  },
-  subtitle: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: "center",
-  },
-  card: {
-    padding: spacing.lg,
-    borderColor: colors.borderSubtle,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
   },
   message: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: "800",
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: "600",
+    lineHeight: 21,
     textAlign: "center",
+  },
+  cancelButton: {
+    alignSelf: "center",
   },
 });

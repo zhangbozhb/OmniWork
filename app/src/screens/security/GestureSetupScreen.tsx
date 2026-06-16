@@ -1,12 +1,16 @@
 import type { JSX } from "react";
 import { useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
-import { MIN_GESTURE_POINTS, isValidGesture } from "../../features/app-lock/appLockRules";
+import {
+  GESTURE_POINT_COUNT,
+  isValidGesture,
+} from "../../features/app-lock/appLockRules";
 import { Button } from "../../ui/components";
-import { colors, radii, spacing, typography } from "../../ui/theme";
+import { colors, radii, spacing } from "../../ui/theme";
 import { GesturePad } from "./GesturePad";
+import { PasscodeDots } from "./PasscodeDots";
 
 export interface GestureSetupScreenProps {
   mode: "firstRun" | "enable" | "change";
@@ -23,6 +27,7 @@ export function GestureSetupScreen({
 }: GestureSetupScreenProps): JSX.Element {
   const { t } = useTranslation();
   const [firstGesture, setFirstGesture] = useState<number[] | null>(null);
+  const [inputCount, setInputCount] = useState(0);
   const [message, setMessage] = useState(t("appLock.setup.hint"));
   const [status, setStatus] = useState<"idle" | "error" | "success">("idle");
 
@@ -35,7 +40,7 @@ export function GestureSetupScreen({
     if (!isValidGesture(gesture)) {
       setStatus("error");
       setMessage(
-        t("appLock.setup.minPoints", { count: MIN_GESTURE_POINTS }),
+        t("appLock.setup.exactPoints", { count: GESTURE_POINT_COUNT }),
       );
       return;
     }
@@ -57,7 +62,7 @@ export function GestureSetupScreen({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
+    <View style={styles.screen}>
       <View style={styles.header}>
         {onBack ? (
           <Button
@@ -70,78 +75,82 @@ export function GestureSetupScreen({
             {t("common.back")}
           </Button>
         ) : null}
-        <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>{t("appLock.eyebrow")}</Text>
+      </View>
+
+      <View style={styles.content}>
+        <View style={styles.titleBlock}>
           <Text style={styles.title}>{title}</Text>
+          <PasscodeDots count={inputCount} totalCount={GESTURE_POINT_COUNT} />
+          <Text style={styles.message}>{message}</Text>
         </View>
+        <GesturePad
+          appearance="floating"
+          maxPoints={GESTURE_POINT_COUNT}
+          showKeyLabels
+          status={status}
+          onComplete={handleGesture}
+          onProgress={setInputCount}
+        />
+        {mode === "firstRun" && onSkip ? (
+          <Button style={styles.skipButton} variant="ghost" onPress={onSkip}>
+            {t("appLock.setup.skip")}
+          </Button>
+        ) : null}
       </View>
-
-      <View style={styles.card}>
-        <Text style={styles.message}>{message}</Text>
-        <GesturePad status={status} onComplete={handleGesture} />
-        <Text style={styles.help}>{t("appLock.setup.displayHint")}</Text>
-      </View>
-
-      {mode === "firstRun" && onSkip ? (
-        <Button variant="ghost" onPress={onSkip}>
-          {t("appLock.setup.skip")}
-        </Button>
-      ) : null}
-    </ScrollView>
+    </View>
   );
 }
 
 function sameGesture(left: number[], right: number[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    flexGrow: 1,
+    flex: 1,
     padding: spacing.xxl,
-    gap: spacing.lg,
-    justifyContent: "center",
+    backgroundColor: "#05090c",
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
+    minHeight: 44,
+    justifyContent: "center",
   },
   backButton: {
-    minHeight: 36,
-    width: 36,
+    minHeight: 42,
+    width: 42,
     paddingHorizontal: 0,
     borderRadius: radii.pill,
-  },
-  headerText: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  eyebrow: {
-    color: colors.textDim,
-    ...typography.eyebrow,
+    backgroundColor: "rgba(245, 247, 248, 0.08)",
   },
   title: {
     color: colors.textPrimary,
-    ...typography.title,
+    fontSize: 27,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+    lineHeight: 34,
+    textAlign: "center",
   },
-  card: {
-    padding: spacing.lg,
-    borderColor: colors.borderSubtle,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
+  content: {
+    flex: 1,
+    justifyContent: "flex-start",
+    paddingTop: 28,
+    gap: 54,
+  },
+  titleBlock: {
+    alignItems: "center",
+    gap: spacing.md,
   },
   message: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: "800",
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: "600",
+    lineHeight: 21,
     textAlign: "center",
   },
-  help: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 16,
-    textAlign: "center",
+  skipButton: {
+    alignSelf: "center",
   },
 });

@@ -16,7 +16,7 @@
  * 行为：
  * - 缺失必填变量时打印清晰错误并以 1 退出（避免静默产出无签名 IPA）；
  * - 显式拒绝 CODE_SIGNING_ALLOWED=NO，强制走真实签名链路；
- * - 透传给 react-native build-ios 的 --extra-params。
+ * - 通过 OmniWork App target 的 Xcode build settings 展开环境变量，避免签名参数污染 Pods target。
  */
 import { spawnSync } from "node:child_process";
 import process from "node:process";
@@ -53,31 +53,28 @@ const bundleId = env.OMNIWORK_IOS_BUNDLE_ID ?? "com.omniwork.mobile";
 const codeSignStyle = env.OMNIWORK_IOS_CODE_SIGN_STYLE ?? "Manual";
 const codeSignIdentity = env.OMNIWORK_IOS_CODE_SIGN_IDENTITY ?? "Apple Distribution";
 
-const extraParams = [
-  `MARKETING_VERSION="${appVersion}"`,
-  `CURRENT_PROJECT_VERSION="${buildNumber}"`,
-  `PRODUCT_BUNDLE_IDENTIFIER="${bundleId}"`,
-  `DEVELOPMENT_TEAM="${required.OMNIWORK_IOS_DEVELOPMENT_TEAM}"`,
-  `PROVISIONING_PROFILE_SPECIFIER="${required.OMNIWORK_IOS_PROVISIONING_PROFILE}"`,
-  `CODE_SIGN_STYLE="${codeSignStyle}"`,
-  `CODE_SIGN_IDENTITY="${codeSignIdentity}"`,
-  // 显式确保签名开启，避免被本地 xcconfig 关闭。
-  "CODE_SIGNING_ALLOWED=YES",
-  "CODE_SIGNING_REQUIRED=YES",
-].join(" ");
+const childEnv = {
+  ...process.env,
+  OMNIWORK_APP_VERSION: appVersion,
+  OMNIWORK_IOS_BUILD_NUMBER: buildNumber,
+  OMNIWORK_IOS_BUNDLE_ID: bundleId,
+  OMNIWORK_IOS_DEVELOPMENT_TEAM: required.OMNIWORK_IOS_DEVELOPMENT_TEAM,
+  OMNIWORK_IOS_PROVISIONING_PROFILE: required.OMNIWORK_IOS_PROVISIONING_PROFILE,
+  OMNIWORK_IOS_CODE_SIGN_STYLE: codeSignStyle,
+  OMNIWORK_IOS_CODE_SIGN_IDENTITY: codeSignIdentity,
+};
 
 const args = [
   "react-native",
   "build-ios",
   "--mode",
   "Release",
-  "--extra-params",
-  extraParams,
 ];
 
 const result = spawnSync("pnpm", ["exec", ...args], {
   stdio: "inherit",
   cwd: process.cwd(),
+  env: childEnv,
 });
 
 if (result.status !== 0) {

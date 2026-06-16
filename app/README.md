@@ -99,7 +99,9 @@ injected) and exits with a clear error if either is missing.
 `OMNIWORK_IOS_CODE_SIGN_STYLE` (default `Manual`),
 `OMNIWORK_IOS_CODE_SIGN_IDENTITY` (default `Apple Distribution`),
 `OMNIWORK_IOS_BUNDLE_ID`, `OMNIWORK_APP_VERSION`, and
-`OMNIWORK_IOS_BUILD_NUMBER` are forwarded to xcodebuild as build settings.
+`OMNIWORK_IOS_BUILD_NUMBER` are exported for the OmniWork app target's Xcode
+build settings. They are not passed as global `xcodebuild` overrides, so Pods
+targets do not receive the app provisioning profile.
 
 iOS unsigned smoke build (local / CI compile check, do not distribute):
 
