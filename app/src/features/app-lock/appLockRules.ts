@@ -1,7 +1,12 @@
 import { createHmacSha256Base64Url } from "../auth/hmacSha256";
-import type { AppLockConfig, AutoLockOption, StoredAppLockConfig } from "./types";
+import type {
+  AppLockConfig,
+  AutoLockOption,
+  StoredAppLockConfig,
+} from "./types";
 
-export const GESTURE_POINT_COUNT = 6;
+export const GESTURE_MIN_POINT_COUNT = 4;
+export const GESTURE_MAX_POINT_COUNT = 9;
 export const DEFAULT_AUTO_LOCK_OPTION: AutoLockOption = 30;
 export const AUTO_LOCK_OPTIONS: ReadonlyArray<AutoLockOption> = [
   5,
@@ -28,9 +33,13 @@ export function normalizeAppLockConfig(
     : DEFAULT_AUTO_LOCK_OPTION;
   return {
     initialized: Boolean(config.initialized),
-    enabled: Boolean(config.enabled && config.gestureHash && config.gestureSalt),
-    gestureHash: typeof config.gestureHash === "string" ? config.gestureHash : undefined,
-    gestureSalt: typeof config.gestureSalt === "string" ? config.gestureSalt : undefined,
+    enabled: Boolean(
+      config.enabled && config.gestureHash && config.gestureSalt,
+    ),
+    gestureHash:
+      typeof config.gestureHash === "string" ? config.gestureHash : undefined,
+    gestureSalt:
+      typeof config.gestureSalt === "string" ? config.gestureSalt : undefined,
     autoLockOption,
     lastInteractionAt: normalizeTimestamp(config.lastInteractionAt),
     lastUnlockedAt: normalizeTimestamp(config.lastUnlockedAt),
@@ -38,7 +47,13 @@ export function normalizeAppLockConfig(
 }
 
 export function isAutoLockOption(value: unknown): value is AutoLockOption {
-  return value === 5 || value === 10 || value === 30 || value === 60 || value === "never";
+  return (
+    value === 5 ||
+    value === 10 ||
+    value === 30 ||
+    value === 60 ||
+    value === "never"
+  );
 }
 
 export function shouldLockForInactivity(
@@ -58,7 +73,8 @@ export function shouldLockForInactivity(
 export function isValidGesture(gesture: number[]): boolean {
   return (
     new Set(gesture).size === gesture.length &&
-    gesture.length === GESTURE_POINT_COUNT
+    gesture.length >= GESTURE_MIN_POINT_COUNT &&
+    gesture.length <= GESTURE_MAX_POINT_COUNT
   );
 }
 
@@ -92,7 +108,9 @@ export function verifyGesture(
 }
 
 function normalizeTimestamp(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function createSalt(): string {
@@ -107,5 +125,7 @@ function createSalt(): string {
       bytes[index] = Math.floor(Math.random() * 256);
     }
   }
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }

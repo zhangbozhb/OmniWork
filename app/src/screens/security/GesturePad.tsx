@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import {
   PanResponder,
   StyleSheet,
-  Text,
   View,
   type GestureResponderEvent,
   type LayoutChangeEvent,
@@ -24,7 +23,6 @@ export interface GesturePadProps {
   disabled?: boolean;
   appearance?: "panel" | "floating";
   maxPoints?: number;
-  showKeyLabels?: boolean;
   status?: "idle" | "error" | "success";
   onComplete(gesture: number[]): void;
   onProgress?(count: number): void;
@@ -37,23 +35,11 @@ const PAD_MAX_SIZE = 520;
 const DOT_MIN_SIZE = 66;
 const DOT_MAX_SIZE = 86;
 const GRID_EDGE_RATIO = 0.2;
-const KEY_LABELS = [
-  { number: "1", letters: "" },
-  { number: "2", letters: "A B C" },
-  { number: "3", letters: "D E F" },
-  { number: "4", letters: "G H I" },
-  { number: "5", letters: "J K L" },
-  { number: "6", letters: "M N O" },
-  { number: "7", letters: "P Q R S" },
-  { number: "8", letters: "T U V" },
-  { number: "9", letters: "W X Y Z" },
-];
 
 export function GesturePad({
   disabled,
   appearance = "panel",
   maxPoints = GRID_SIZE * GRID_SIZE,
-  showKeyLabels = false,
   status = "idle",
   onComplete,
   onProgress,
@@ -222,7 +208,6 @@ export function GesturePad({
             style={[
               styles.dot,
               appearance === "floating" && styles.dotFloating,
-              showKeyLabels && styles.dotKeypad,
               {
                 left: point.x - dotSize / 2,
                 top: point.y - dotSize / 2,
@@ -233,22 +218,7 @@ export function GesturePad({
               active && styles.dotActive,
               active && status === "error" && styles.dotError,
             ]}
-          >
-            {showKeyLabels ? (
-              <>
-                <Text style={styles.dotNumber}>
-                  {KEY_LABELS[point.index].number}
-                </Text>
-                {KEY_LABELS[point.index].letters ? (
-                  <Text style={styles.dotLetters}>
-                    {KEY_LABELS[point.index].letters}
-                  </Text>
-                ) : null}
-              </>
-            ) : (
-              <Text style={styles.dotText}> </Text>
-            )}
-          </View>
+          />
         );
       })}
     </View>
@@ -309,10 +279,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(245, 247, 248, 0.72)",
     backgroundColor: "rgba(245, 247, 248, 0.08)",
   },
-  dotKeypad: {
-    borderWidth: 0,
-    backgroundColor: "rgba(96, 112, 124, 0.42)",
-  },
   dotActive: {
     borderColor: colors.success,
     backgroundColor: colors.successSoft,
@@ -320,24 +286,5 @@ const styles = StyleSheet.create({
   dotError: {
     borderColor: colors.danger,
     backgroundColor: colors.dangerSurface,
-  },
-  dotText: {
-    color: "transparent",
-  },
-  dotNumber: {
-    color: colors.textPrimary,
-    fontSize: 33,
-    fontWeight: "300",
-    includeFontPadding: false,
-    lineHeight: 37,
-  },
-  dotLetters: {
-    color: colors.textPrimary,
-    fontSize: 10,
-    fontWeight: "800",
-    includeFontPadding: false,
-    letterSpacing: 0.8,
-    lineHeight: 12,
-    marginTop: -2,
   },
 });

@@ -131,9 +131,11 @@ import {
   savePairings,
 } from "../platform/secure-storage/securePairingStore";
 import {
+  clearAppLockConfig,
   loadAppLockConfig,
   saveAppLockConfig,
 } from "../platform/app-lock-storage/appLockStore";
+import { authenticateDeviceOwner } from "../platform/owner-auth/ownerAuth";
 import {
   DEFAULT_APP_LOCK_CONFIG,
   DEFAULT_AUTO_LOCK_OPTION,
@@ -256,6 +258,7 @@ function AppContent(): JSX.Element {
     typeof setTimeout
   > | null>(null);
   const directBusinessReadyRef = useRef(false);
+  const resettingAppLockRef = useRef(false);
   // 标记当前失败状态是否已经在交互流程中提示过用户，避免重复弹出
   // "Connection lost" 对话框（例如重试再次失败时立刻又弹一次）。
   const failureDialogActiveRef = useRef(false);
@@ -594,7 +597,11 @@ function AppContent(): JSX.Element {
       setPendingSecurityAction(null);
       setAppLockMode("unlocked");
       setView((current) =>
-        current === "securitySettings" ? current : pairingsRef.current.length > 0 ? "devices" : "pairing",
+        current === "securitySettings"
+          ? current
+          : pairingsRef.current.length > 0
+            ? "devices"
+            : "pairing",
       );
     },
     [persistAppLockConfig],
@@ -638,6 +645,87 @@ function AppContent(): JSX.Element {
     },
     [pendingSecurityAction, persistAppLockConfig],
   );
+
+  const resetAppAfterForgotGesture = useCallback(async () => {
+    await Promise.all([clearAppLockConfig(), clearPairing()]);
+    relayRef.current?.close("app_lock_reset");
+    relayRef.current = null;
+    pairingsRef.current = [];
+    pairingRef.current = null;
+    pendingAutoOpenSessionsRef.current = false;
+    pendingCreateRef.current = false;
+    directBusinessReadyRef.current = false;
+    lastInteractionPersistedAtRef.current = 0;
+    appLockConfigRef.current = DEFAULT_APP_LOCK_CONFIG;
+
+    setPairings([]);
+    setPairing(null);
+    setEditingPairing(undefined);
+    clearLocalAgentData();
+    setCreatingSession(false);
+    setClosingSessionIds([]);
+    setKillingSessionIds([]);
+    setConnectionStatus("idle");
+    setConnectionPath("relay");
+    setConnectionMessage(t("appLock.reset.pairingMessage"));
+    setPairingError(undefined);
+    setPendingSecurityAction(null);
+    setGestureSetupMode(null);
+    setAppLockConfig(DEFAULT_APP_LOCK_CONFIG);
+    setSelectedAutoLockOption(DEFAULT_AUTO_LOCK_OPTION);
+    setAppLockMode("firstRunPrompt");
+    setView("pairing");
+  }, [t]);
+
+  const handleForgotGesture = useCallback(() => {
+    if (resettingAppLockRef.current) {
+      return;
+    }
+    confirm({
+      title: t("appLock.reset.title"),
+      message: t("appLock.reset.description"),
+      confirmText: t("appLock.reset.confirm"),
+      cancelText: t("common.cancel"),
+      tone: "danger",
+    })
+      .then(async (confirmed) => {
+        if (!confirmed || resettingAppLockRef.current) {
+          return;
+        }
+        resettingAppLockRef.current = true;
+        const authResult = await authenticateDeviceOwner({
+          title: t("appLock.reset.authTitle"),
+          subtitle: t("appLock.reset.authSubtitle"),
+          description: t("appLock.reset.authDescription"),
+          cancel: t("common.cancel"),
+        });
+        if (authResult === "unavailable") {
+          Alert.alert(
+            t("appLock.reset.unavailableTitle"),
+            t("appLock.reset.unavailableDescription"),
+          );
+          return;
+        }
+        if (authResult !== "authenticated") {
+          Alert.alert(
+            t("appLock.reset.cancelledTitle"),
+            t("appLock.reset.cancelledDescription"),
+          );
+          return;
+        }
+        await resetAppAfterForgotGesture();
+        Alert.alert(
+          t("appLock.reset.successTitle"),
+          t("appLock.reset.successDescription"),
+        );
+      })
+      .catch((error: unknown) => {
+        Alert.alert(t("appLock.reset.failedTitle"), formatErrorMessage(error));
+      })
+      .finally(() => {
+        resettingAppLockRef.current = false;
+      });
+  }, [confirm, resetAppAfterForgotGesture, t]);
 
   const handleConfirmAutoLockOption = useCallback(() => {
     persistAppLockConfig({
@@ -1716,70 +1804,63 @@ function AppContent(): JSX.Element {
         killing: killingSessionIds.includes(selectedSession.session_id),
       })
     : null;
-  const appLockScreen = appLockAvailable
-    ? pendingSecurityAction
-      ? (
-        <GestureUnlockScreen
-          canCancel
-          onCancel={() => setPendingSecurityAction(null)}
-          onUnlock={handleUnlockGesture}
-        />
-      )
-      : gestureSetupMode
-        ? (
-          <GestureSetupScreen
-            mode={gestureSetupMode}
-            onBack={
-              gestureSetupMode === "firstRun"
-                ? undefined
-                : () => setGestureSetupMode(null)
-            }
-            onComplete={handleCompleteGestureSetup}
-            onSkip={
-              gestureSetupMode === "firstRun"
-                ? handleSkipFirstAppLockSetup
-                : undefined
-            }
-          />
-        )
-        : appLockMode === "loading"
-          ? (
-            <View style={styles.loadingScreen}>
-              <Text style={styles.loadingText}>{t("common.loading")}</Text>
-            </View>
-          )
-          : appLockMode === "unavailable"
-            ? (
-              <View style={styles.appLockErrorScreen}>
-                <Text style={styles.appLockErrorTitle}>
-                  {t("appLock.unavailable.title")}
-                </Text>
-                <Text style={styles.appLockErrorText}>
-                  {t("appLock.unavailable.description")}
-                </Text>
-                <Button
-                  tone="primary"
-                  variant="solid"
-                  onPress={() => {
-                    setAppLockMode("loading");
-                    setAppLockLoadRetry((current) => current + 1);
-                  }}
-                >
-                  {t("common.refresh")}
-                </Button>
-              </View>
-            )
-            : appLockMode === "firstRunPrompt"
-              ? (
-                <AppLockIntroScreen
-                  onSetup={() => setGestureSetupMode("firstRun")}
-                  onSkip={handleSkipFirstAppLockSetup}
-                />
-              )
-              : appLockMode === "locked"
-                ? <GestureUnlockScreen onUnlock={handleUnlockGesture} />
-                : null
-    : null;
+  const appLockScreen = appLockAvailable ? (
+    pendingSecurityAction ? (
+      <GestureUnlockScreen
+        canCancel
+        onCancel={() => setPendingSecurityAction(null)}
+        onUnlock={handleUnlockGesture}
+      />
+    ) : gestureSetupMode ? (
+      <GestureSetupScreen
+        mode={gestureSetupMode}
+        onBack={
+          gestureSetupMode === "firstRun"
+            ? undefined
+            : () => setGestureSetupMode(null)
+        }
+        onComplete={handleCompleteGestureSetup}
+        onSkip={
+          gestureSetupMode === "firstRun"
+            ? handleSkipFirstAppLockSetup
+            : undefined
+        }
+      />
+    ) : appLockMode === "loading" ? (
+      <View style={styles.loadingScreen}>
+        <Text style={styles.loadingText}>{t("common.loading")}</Text>
+      </View>
+    ) : appLockMode === "unavailable" ? (
+      <View style={styles.appLockErrorScreen}>
+        <Text style={styles.appLockErrorTitle}>
+          {t("appLock.unavailable.title")}
+        </Text>
+        <Text style={styles.appLockErrorText}>
+          {t("appLock.unavailable.description")}
+        </Text>
+        <Button
+          tone="primary"
+          variant="solid"
+          onPress={() => {
+            setAppLockMode("loading");
+            setAppLockLoadRetry((current) => current + 1);
+          }}
+        >
+          {t("common.refresh")}
+        </Button>
+      </View>
+    ) : appLockMode === "firstRunPrompt" ? (
+      <AppLockIntroScreen
+        onSetup={() => setGestureSetupMode("firstRun")}
+        onSkip={handleSkipFirstAppLockSetup}
+      />
+    ) : appLockMode === "locked" ? (
+      <GestureUnlockScreen
+        onForgotGesture={handleForgotGesture}
+        onUnlock={handleUnlockGesture}
+      />
+    ) : null
+  ) : null;
 
   return (
     <SafeAreaProvider>

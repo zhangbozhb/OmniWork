@@ -21,3 +21,7 @@ export async function loadAppLockConfig(): Promise<StoredAppLockConfig | null> {
   }
   return JSON.parse(result.password) as StoredAppLockConfig;
 }
+
+export async function clearAppLockConfig(): Promise<void> {
+  await Keychain.resetGenericPassword({ service: SERVICE });
+}

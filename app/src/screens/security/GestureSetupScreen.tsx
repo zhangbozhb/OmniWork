@@ -4,13 +4,13 @@ import { StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import {
-  GESTURE_POINT_COUNT,
+  GESTURE_MAX_POINT_COUNT,
+  GESTURE_MIN_POINT_COUNT,
   isValidGesture,
 } from "../../features/app-lock/appLockRules";
 import { Button } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 import { GesturePad } from "./GesturePad";
-import { PasscodeDots } from "./PasscodeDots";
 
 export interface GestureSetupScreenProps {
   mode: "firstRun" | "enable" | "change";
@@ -27,7 +27,6 @@ export function GestureSetupScreen({
 }: GestureSetupScreenProps): JSX.Element {
   const { t } = useTranslation();
   const [firstGesture, setFirstGesture] = useState<number[] | null>(null);
-  const [inputCount, setInputCount] = useState(0);
   const [message, setMessage] = useState(t("appLock.setup.hint"));
   const [status, setStatus] = useState<"idle" | "error" | "success">("idle");
 
@@ -40,7 +39,7 @@ export function GestureSetupScreen({
     if (!isValidGesture(gesture)) {
       setStatus("error");
       setMessage(
-        t("appLock.setup.exactPoints", { count: GESTURE_POINT_COUNT }),
+        t("appLock.setup.minPoints", { count: GESTURE_MIN_POINT_COUNT }),
       );
       return;
     }
@@ -80,16 +79,13 @@ export function GestureSetupScreen({
       <View style={styles.content}>
         <View style={styles.titleBlock}>
           <Text style={styles.title}>{title}</Text>
-          <PasscodeDots count={inputCount} totalCount={GESTURE_POINT_COUNT} />
           <Text style={styles.message}>{message}</Text>
         </View>
         <GesturePad
           appearance="floating"
-          maxPoints={GESTURE_POINT_COUNT}
-          showKeyLabels
+          maxPoints={GESTURE_MAX_POINT_COUNT}
           status={status}
           onComplete={handleGesture}
-          onProgress={setInputCount}
         />
         {mode === "firstRun" && onSkip ? (
           <Button style={styles.skipButton} variant="ghost" onPress={onSkip}>

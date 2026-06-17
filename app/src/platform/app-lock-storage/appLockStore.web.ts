@@ -9,3 +9,7 @@ export async function saveAppLockConfig(
 export async function loadAppLockConfig(): Promise<StoredAppLockConfig | null> {
   return null;
 }
+
+export async function clearAppLockConfig(): Promise<void> {
+  // Web 不启用 APP 端手势锁。
+}
