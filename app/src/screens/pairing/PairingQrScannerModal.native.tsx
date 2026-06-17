@@ -161,6 +161,12 @@ export function PairingQrScannerModal({
     }, 50);
   }, [decrypting, onScanned, password, pendingEncryptedLink]);
 
+  useEffect(() => {
+    if (pendingEncryptedLink && password.length === 4 && !decrypting) {
+      handleDecrypt();
+    }
+  }, [decrypting, handleDecrypt, password, pendingEncryptedLink]);
+
   return (
     <Modal
       animationType="slide"
@@ -245,7 +251,7 @@ export function PairingQrScannerModal({
                     Scan Again
                   </Button>
                   <Button
-                    disabled={decrypting}
+                    disabled={decrypting || password.length !== 4}
                     style={styles.passwordActionButton}
                     tone="primary"
                     onPress={handleDecrypt}
