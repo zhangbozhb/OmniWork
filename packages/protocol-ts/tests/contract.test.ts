@@ -25,8 +25,10 @@ import {
   authOkPayloadSchema,
   authVerifyPayloadSchema,
   codexSessionSchema,
+  createEncryptedPairingShare,
   createMessage,
   createPairingLink,
+  decryptPairingLink,
   e2eHandshakeInitPayloadSchema,
   e2eMessagePayloadSchema,
   e2eReadyPayloadSchema,
@@ -38,6 +40,8 @@ import {
   messageEnvelopeSchema,
   parsePairingLink,
   parseMessageEnvelope,
+  parseEncryptedPairingLink,
+  PairingLinkDecryptError,
   protocolErrorPayloadSchema,
   appConnectionHeartbeatPayloadSchema,
   sessionAttachPayloadSchema,
@@ -444,6 +448,52 @@ describe("pairing link round-trip", () => {
     );
     const parsed = parsePairingLink(link);
     assert.deepEqual(parsed, samplePayload);
+  });
+
+  it("encrypts pairing QR links and decrypts with the 4-digit password", () => {
+    const nowMs = Date.UTC(2026, 0, 1, 0, 0, 0);
+    const share = createEncryptedPairingShare(samplePayload, {
+      source: "agent",
+      nowMs,
+      ttlMs: 60_000,
+    });
+
+    assert.match(share.password, /^\d{4}$/u);
+    assert.equal(share.expiresAt.toISOString(), "2026-01-01T00:01:00.000Z");
+    assert.equal(parseEncryptedPairingLink(share.link)?.source, "agent");
+    assert.deepEqual(
+      decryptPairingLink(share.link, share.password, nowMs),
+      samplePayload,
+    );
+  });
+
+  it("rejects encrypted pairing QR links after local expiry", () => {
+    const nowMs = Date.UTC(2026, 0, 1, 0, 0, 0);
+    const share = createEncryptedPairingShare(samplePayload, {
+      source: "ios",
+      nowMs,
+      ttlMs: 1_000,
+    });
+
+    assert.throws(
+      () => decryptPairingLink(share.link, share.password, nowMs + 2_000),
+      (error: unknown) =>
+        error instanceof PairingLinkDecryptError && error.code === "expired",
+    );
+  });
+
+  it("rejects encrypted pairing QR links with the wrong password", () => {
+    const share = createEncryptedPairingShare(samplePayload, {
+      source: "android",
+    });
+    const wrongPassword = share.password === "0000" ? "0001" : "0000";
+
+    assert.throws(
+      () => decryptPairingLink(share.link, wrongPassword),
+      (error: unknown) =>
+        error instanceof PairingLinkDecryptError &&
+        error.code === "invalid_password",
+    );
   });
 });
 

@@ -3,7 +3,7 @@ import { networkInterfaces } from "node:os";
 
 import {
   PROTOCOL_VERSION,
-  createPairingLink,
+  createEncryptedPairingShare,
   type PairingLinkPayload,
 } from "@omniwork/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
@@ -19,6 +19,8 @@ interface QrCodeTerminal {
 
 export interface PairingQrDetails {
   link: string;
+  password: string;
+  expiresAt: Date;
   payload: PairingLinkPayload;
   /**
    * 仅用于本地终端日志展示，便于运维确认 relay_url 中的本机 IP 替换是否生效。
@@ -46,8 +48,12 @@ export function createPairingQrDetails(
     key_id: keyRecord.key_id,
   };
 
+  const share = createEncryptedPairingShare(payload, { source: "agent" });
+
   return {
-    link: createPairingLink(payload),
+    link: share.link,
+    password: share.password,
+    expiresAt: share.expiresAt,
     payload,
     endpoint,
   };
@@ -99,6 +105,8 @@ function printPairingSummary(details: PairingQrDetails): void {
   console.info(`  host: ${endpoint?.host ?? "-"}`);
   console.info(`  port: ${endpoint?.port ?? "-"}`);
   console.info(`  relay_url: ${payload.relay_url}`);
+  console.info(`  qr_password: ${details.password}`);
+  console.info(`  qr_expires_at: ${details.expiresAt.toISOString()}`);
 }
 
 function loadQrCodeTerminal(): QrCodeTerminal | null {

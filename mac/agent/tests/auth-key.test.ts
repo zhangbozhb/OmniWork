@@ -19,7 +19,8 @@ import {
 import { createPairingQrDetails } from "../src/pairing/pairingQr.ts";
 import {
   DEFAULT_AGENT_PROVIDER_DEFINITIONS,
-  parsePairingLink,
+  decryptPairingLink,
+  parseEncryptedPairingLink,
 } from "@omniwork/protocol-ts";
 
 const key = generateSessionKey();
@@ -92,11 +93,16 @@ assert.equal(
   createPairingQrDetails(baseConfig, record)?.payload.display_name,
   "test",
 );
-assert.equal(
-  parsePairingLink(createPairingQrDetails(baseConfig, record)?.link ?? "")
-    ?.display_name,
-  "test",
-);
+{
+  const details = createPairingQrDetails(baseConfig, record);
+  assert.ok(details);
+  assert.match(details.password, /^\d{4}$/u);
+  assert.equal(parseEncryptedPairingLink(details.link)?.source, "agent");
+  assert.equal(
+    decryptPairingLink(details.link, details.password).display_name,
+    "test",
+  );
+}
 assert.equal(defaultAgentDisplayName("work-mac.local"), "work-mac");
 assert.equal(defaultAgentDisplayName("work-mac.LOCAL"), "work-mac");
 

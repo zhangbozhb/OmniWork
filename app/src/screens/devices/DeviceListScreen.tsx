@@ -16,7 +16,10 @@ import QRCode from "react-native-qrcode-svg";
 
 import type { TransportPath } from "@omniwork/protocol-ts";
 import { getPairingDisplayName } from "../../app/appModel";
-import { createPairingShareLink } from "../../features/auth/pairingShare";
+import {
+  createPairingSharePackage,
+  type PairingSharePackage,
+} from "../../features/auth/pairingShare";
 import type { PairingConfig } from "../../features/auth/types";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";
@@ -78,22 +81,24 @@ export function DeviceListScreen({
 
   const [expandedDevice, setExpandedDevice] = useState<string | null>(null);
   const [sharePairing, setSharePairing] = useState<PairingConfig | null>(null);
-  const shareLink = sharePairing
-    ? createPairingShareLink(sharePairing)
-    : undefined;
+  const [sharePackage, setSharePackage] = useState<PairingSharePackage | null>(
+    null,
+  );
+  const [sharePasswordVisible, setSharePasswordVisible] = useState(false);
+  const shareLink = sharePackage?.link;
   const sharePairingName = sharePairing
     ? getPairingDisplayName(sharePairing)
     : "";
   const handleSystemShare = useCallback(() => {
-    if (!sharePairing || !shareLink) {
+    if (!sharePairing || !sharePackage || !shareLink) {
       return;
     }
     Share.share({
-      message: shareLink,
+      message: `${shareLink}\nPassword: ${sharePackage.password}`,
       title: t("devices.share.title", { deviceName: sharePairingName }),
       url: shareLink,
     }).catch(() => undefined);
-  }, [shareLink, sharePairing, sharePairingName, t]);
+  }, [shareLink, sharePackage, sharePairing, sharePairingName, t]);
 
   return (
     <ScrollView
@@ -239,6 +244,10 @@ export function DeviceListScreen({
                     onPress={() => {
                       setExpandedDevice(null);
                       setSharePairing(pairing);
+                      setSharePasswordVisible(false);
+                      setSharePackage(
+                        createPairingSharePackage(pairing, getAppQrSource()),
+                      );
                     }}
                   >
                     {t("devices.share.action")}
@@ -286,7 +295,11 @@ export function DeviceListScreen({
         animationType="fade"
         transparent
         visible={Boolean(sharePairing && shareLink)}
-        onRequestClose={() => setSharePairing(null)}
+        onRequestClose={() => {
+          setSharePairing(null);
+          setSharePackage(null);
+          setSharePasswordVisible(false);
+        }}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.shareSheet}>
@@ -311,6 +324,40 @@ export function DeviceListScreen({
             <Text selectable numberOfLines={3} style={styles.shareLink}>
               {shareLink}
             </Text>
+            {sharePackage ? (
+              <>
+                <View style={styles.sharePasswordRow}>
+                  <Text
+                    selectable={sharePasswordVisible}
+                    style={styles.sharePassword}
+                  >
+                    Password:{" "}
+                    {sharePasswordVisible ? sharePackage.password : "****"}
+                  </Text>
+                  <Button
+                    accessibilityLabel={
+                      sharePasswordVisible
+                        ? "Hide QR password"
+                        : "Show QR password"
+                    }
+                    icon={sharePasswordVisible ? "eyeOff" : "eye"}
+                    iconOnly
+                    style={styles.sharePasswordToggle}
+                    variant="ghost"
+                    onPress={() =>
+                      setSharePasswordVisible((current) => !current)
+                    }
+                  >
+                    {sharePasswordVisible
+                      ? "Hide QR password"
+                      : "Show QR password"}
+                  </Button>
+                </View>
+                <Text style={styles.shareExpiry}>
+                  Expires: {sharePackage.expiresAt.toLocaleString()}
+                </Text>
+              </>
+            ) : null}
             <Text style={styles.shareWarning}>
               {t("devices.share.warning")}
             </Text>
@@ -318,7 +365,11 @@ export function DeviceListScreen({
               <Button
                 style={styles.shareActionButton}
                 variant="ghost"
-                onPress={() => setSharePairing(null)}
+                onPress={() => {
+                  setSharePairing(null);
+                  setSharePackage(null);
+                  setSharePasswordVisible(false);
+                }}
               >
                 {t("common.close")}
               </Button>
@@ -500,6 +551,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  sharePasswordRow: {
+    minHeight: 42,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
+    paddingLeft: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  sharePassword: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 2,
+    flex: 1,
+  },
+  sharePasswordToggle: {
+    minHeight: 40,
+    width: 44,
+    borderColor: "transparent",
+  },
+  shareExpiry: {
+    color: colors.textMuted,
+    fontSize: 12,
+    textAlign: "center",
+  },
   shareActions: {
     flexDirection: "row",
     gap: spacing.sm,
@@ -516,6 +595,10 @@ function formatRelayUrl(relayUrl: string): string {
   } catch {
     return relayUrl;
   }
+}
+
+function getAppQrSource(): "ios" | "android" {
+  return Platform.OS === "android" ? "android" : "ios";
 }
 
 function getSavedDeviceStatusPresentation(

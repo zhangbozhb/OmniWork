@@ -84,6 +84,16 @@ MVP 支持：
 - Mac Agent 在本机终端输出一次 key。
 - 可提供 Menu Bar 或本地页面展示二维码。
 
+当前二维码协议不兼容旧明文 pairing link。App 端分享二维码和 Mac Agent 终端二维码统一使用加密二维码：
+
+- 二维码只包含加密后的 pairing payload、来源、生成时间、过期时间和加密参数。
+- 来源字段取值为 `ios`、`android` 或 `agent`。
+- 生成端同时生成 4 位随机数字密码；密码不写入二维码，需要用户另行输入或告知扫码方。
+- 扫码端先识别 `kind=pairing_qr_encrypted`，再要求用户输入 4 位密码解密。
+- 解密成功后使用扫码设备本地时间校验 `exp`，过期二维码拒绝导入。
+- 加密实现为 `SHA-256(password + salt)` 派生密钥 + `ChaCha20-Poly1305` 认证加密，协议实现见 [pairingCrypto.ts](../packages/protocol-ts/src/pairingCrypto.ts)。二维码是短时临时凭证，4 位密码不使用慢 KDF，避免在移动端 JS 线程阻塞扫码体验。
+- 纯离线场景无法防止用户修改本地时间或在有效期内转发二维码，当前实现仅提供离线加密、防篡改和本地过期校验。
+
 App 侧要求：
 
 - key 不进入普通明文持久存储。

@@ -930,3 +930,4 @@ export * from "./schemas.ts";
 export * from "./e2eMessages.ts";
 export * from "./transport.ts";
 export * from "./webrtc.ts";
+export * from "./pairingCrypto.ts";

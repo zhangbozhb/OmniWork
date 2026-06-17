@@ -1,13 +1,25 @@
 import {
-  createPairingLink,
+  createEncryptedPairingShare,
   PROTOCOL_VERSION,
   type PairingLinkPayload,
+  type PairingQrSource,
 } from "@omniwork/protocol-ts";
 
 import type { PairingConfig } from "./types";
 
-export function createPairingShareLink(pairing: PairingConfig): string {
-  return createPairingLink(toPairingLinkPayload(pairing));
+export interface PairingSharePackage {
+  link: string;
+  password: string;
+  expiresAt: Date;
+}
+
+export function createPairingSharePackage(
+  pairing: PairingConfig,
+  source: PairingQrSource,
+): PairingSharePackage {
+  return createEncryptedPairingShare(toPairingLinkPayload(pairing), {
+    source,
+  });
 }
 
 function toPairingLinkPayload(pairing: PairingConfig): PairingLinkPayload {
