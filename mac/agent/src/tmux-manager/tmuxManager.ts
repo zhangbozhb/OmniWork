@@ -44,7 +44,7 @@ export class TmuxManager {
     command: string;
     size: TerminalSize;
   }): Promise<{ serverPid: number; sessionUid: string }> {
-    await runTmux([
+    const args = [
       "new-session",
       "-d",
       "-s",
@@ -55,8 +55,13 @@ export class TmuxManager {
       String(options.size.rows),
       "-c",
       options.cwd,
-      options.command,
-    ]);
+    ];
+    const command = options.command.trim();
+    if (command) {
+      args.push(command);
+    }
+
+    await runTmux(args);
     // tmux 创建后立即取强 ID，以便 store 用 (serverPid, sessionUid) 绑定。
     return await this.getSessionIdentity(options.tmuxSessionName);
   }

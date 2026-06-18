@@ -41,10 +41,7 @@ assert.equal(
   verifyProof(key, nonce, { ...appInfo, instance_id: "app_test_2" }, proof),
   false,
 );
-assert.equal(
-  verifyProof(key, nonce, appInfo, `${proof}x`),
-  false,
-);
+assert.equal(verifyProof(key, nonce, appInfo, `${proof}x`), false);
 
 const dir = await mkdtemp(join(tmpdir(), "omniwork-agent-"));
 const path = join(dir, "nested", "session-key.json");
@@ -158,16 +155,21 @@ assert.equal(
   "custom-device",
 );
 assert.deepEqual(
-  loadAgentConfig({
-    ...configEnv,
-    OMNIWORK_AGENT_PROVIDERS: JSON.stringify([
-      {
-        kind: "opencode",
-        displayName: "OpenCode",
-        command: "opencode",
-      },
-    ]),
-  }).agentProviders,
+  loadAgentConfig(
+    {
+      ...configEnv,
+      OMNIWORK_AGENT_PROVIDERS: JSON.stringify([
+        {
+          kind: "opencode",
+          displayName: "OpenCode",
+          command: "opencode",
+        },
+      ]),
+    },
+    {
+      commandExists: (command) => command === "opencode",
+    },
+  ).agentProviders,
   [
     {
       kind: "opencode",
@@ -175,6 +177,41 @@ assert.deepEqual(
       capability: "opencode.cli",
       summary: "OpenCode CLI TUI session",
       defaultCommand: "opencode",
+      creatable: true,
+    },
+    {
+      kind: "terminal",
+      displayName: "Terminal",
+      capability: "terminal.shell",
+      summary: "Plain terminal session",
+      defaultCommand: "",
+      creatable: true,
+    },
+  ],
+);
+assert.deepEqual(
+  loadAgentConfig(
+    {
+      ...configEnv,
+      OMNIWORK_AGENT_PROVIDERS: JSON.stringify([
+        {
+          kind: "missing",
+          displayName: "Missing",
+          command: "missing-agent-command",
+        },
+      ]),
+    },
+    {
+      commandExists: () => false,
+    },
+  ).agentProviders,
+  [
+    {
+      kind: "terminal",
+      displayName: "Terminal",
+      capability: "terminal.shell",
+      summary: "Plain terminal session",
+      defaultCommand: "",
       creatable: true,
     },
   ],

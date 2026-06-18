@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
@@ -36,8 +37,13 @@ export interface AgentConfig {
   businessSecurityMode: BusinessSecurityMode;
 }
 
+export interface AgentConfigLoadOptions {
+  commandExists?: (command: string) => boolean;
+}
+
 export function loadAgentConfig(
   env: NodeJS.ProcessEnv = process.env,
+  options: AgentConfigLoadOptions = {},
 ): AgentConfig {
   const appSupportDir =
     env.OMNIWORK_APP_SUPPORT_DIR ??
@@ -89,6 +95,7 @@ export function loadAgentConfig(
     agentProviders: resolveAgentProviders(
       env,
       readDefaultProviderCommandOverrides(env),
+      options.commandExists ?? commandExists,
     ),
     defaultCwd: env.OMNIWORK_DEFAULT_CWD ?? process.cwd(),
     appSupportDir,
@@ -168,16 +175,20 @@ function readDefaultProviderCommandOverrides(
 function resolveAgentProviders(
   env: NodeJS.ProcessEnv,
   commandOverrides: Record<string, string>,
+  isCommandAvailable: (command: string) => boolean,
 ): AgentProviderDefinition[] {
   const configuredProviders = parseAgentProviders(env.OMNIWORK_AGENT_PROVIDERS);
-  if (configuredProviders.length > 0) {
-    return configuredProviders;
-  }
+  const providers =
+    configuredProviders.length > 0
+      ? configuredProviders
+      : DEFAULT_AGENT_PROVIDER_DEFINITIONS.map((provider) => ({
+          ...provider,
+          defaultCommand: commandOverrides[provider.kind] ?? provider.defaultCommand,
+        }));
 
-  return DEFAULT_AGENT_PROVIDER_DEFINITIONS.map((provider) => ({
-    ...provider,
-    defaultCommand: commandOverrides[provider.kind] ?? provider.defaultCommand,
-  }));
+  return withDefaultTerminalProvider(providers).filter((provider) =>
+    isProviderAvailable(provider, isCommandAvailable),
+  );
 }
 
 function parseAgentProviders(value?: string): AgentProviderDefinition[] {
@@ -212,7 +223,7 @@ function normalizeAgentProvider(
   const command =
     readNonEmptyString(record.command) ??
     readNonEmptyString(record.defaultCommand);
-  if (!kind || !command) {
+  if (!kind || (kind !== "terminal" && !command)) {
     return null;
   }
 
@@ -225,9 +236,72 @@ function normalizeAgentProvider(
       `${kind.replace(/\s+/g, "-")}.cli`,
     summary:
       readNonEmptyString(record.summary) ?? `${displayName} CLI TUI session`,
-    defaultCommand: command,
+    defaultCommand: kind === "terminal" ? "" : (command ?? ""),
     creatable: record.creatable !== false,
   };
+}
+
+function withDefaultTerminalProvider(
+  providers: readonly AgentProviderDefinition[],
+): AgentProviderDefinition[] {
+  const terminalProvider = DEFAULT_AGENT_PROVIDER_DEFINITIONS.find(
+    (provider) => provider.kind === "terminal",
+  );
+  if (!terminalProvider) {
+    return [...providers];
+  }
+
+  return [
+    ...providers.filter((provider) => provider.kind !== "terminal"),
+    terminalProvider,
+  ];
+}
+
+function isProviderAvailable(
+  provider: AgentProviderDefinition,
+  isCommandAvailable: (command: string) => boolean,
+): boolean {
+  if (!provider.creatable || provider.kind === "terminal") {
+    return provider.creatable;
+  }
+
+  const executable = firstShellWord(provider.defaultCommand);
+  return executable ? isCommandAvailable(executable) : false;
+}
+
+function commandExists(command: string): boolean {
+  try {
+    execFileSync("/bin/sh", ["-c", `command -v -- ${shellQuote(command)}`], {
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function firstShellWord(command: string): string | undefined {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const match = /^("(?:[^"\\]|\\.)*"|'[^']*'|[^\s]+)/.exec(trimmed);
+  const word = match?.[1];
+  if (!word) {
+    return undefined;
+  }
+  if (
+    (word.startsWith('"') && word.endsWith('"')) ||
+    (word.startsWith("'") && word.endsWith("'"))
+  ) {
+    return word.slice(1, -1);
+  }
+  return word;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function readNonEmptyString(value: unknown): string | undefined {

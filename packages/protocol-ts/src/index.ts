@@ -123,6 +123,7 @@ export type KnownAgentCapability =
   | "workspace.list"
   | "files.read"
   | "git.read"
+  | "terminal.shell"
   | "codex.cli"
   | "codex.app_server"
   | "claude.cli"
@@ -435,6 +436,14 @@ export const DEFAULT_AGENT_PROVIDER_DEFINITIONS: readonly AgentProviderDefinitio
       capability: "gemini.cli",
       summary: "Gemini CLI TUI session",
       defaultCommand: "gemini",
+      creatable: true,
+    },
+    {
+      kind: "terminal",
+      displayName: "Terminal",
+      capability: "terminal.shell",
+      summary: "Plain terminal session",
+      defaultCommand: "",
       creatable: true,
     },
   ] as const;

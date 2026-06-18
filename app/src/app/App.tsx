@@ -160,6 +160,13 @@ const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
  */
 const TRANSPORT_PREFERENCE_STORAGE_KEY = "omniwork.transportPreference";
 const TERMINAL_TEXT_SIZE_STORAGE_KEY = "omniwork.terminal.textSize";
+const FALLBACK_AGENT_PROVIDERS = DEFAULT_AGENT_PROVIDER_DEFINITIONS.filter(
+  (provider) => provider.kind === "terminal",
+);
+
+function fallbackAgentProviders(): AgentProviderDefinition[] {
+  return [...FALLBACK_AGENT_PROVIDERS];
+}
 
 export default function App(): JSX.Element {
   return (
@@ -183,7 +190,7 @@ function AppContent(): JSX.Element {
   const [sessions, setSessions] = useState<CodexSession[]>([]);
   const [agentProviders, setAgentProviders] = useState<
     AgentProviderDefinition[]
-  >([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+  >(fallbackAgentProviders);
   const [workspaces, setWorkspaces] = useState<WorkspaceDefinition[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] =
     useState<WorkspaceDefinition | null>(null);
@@ -1088,7 +1095,7 @@ function AppContent(): JSX.Element {
   async function removeDevice(targetPairing: PairingConfig): Promise<void> {
     const nextPairings = await removeSavedPairing(targetPairing);
     setSessions([]);
-    setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+    setAgentProviders(fallbackAgentProviders());
     setWorkspaces([]);
     setSelectedSession(null);
     setSelectedWorkspace(null);
@@ -1119,7 +1126,7 @@ function AppContent(): JSX.Element {
     reason: string,
   ): Promise<void> {
     setSessions([]);
-    setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+    setAgentProviders(fallbackAgentProviders());
     setWorkspaces([]);
     setSelectedSession(null);
     setSelectedWorkspace(null);
@@ -1163,7 +1170,7 @@ function AppContent(): JSX.Element {
     if (!pairing || !isSamePairing(pairing, nextPairing)) {
       setPairing(nextPairing);
       setSessions([]);
-      setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+      setAgentProviders(fallbackAgentProviders());
       setWorkspaces([]);
       setSelectedSession(null);
       setSelectedWorkspace(null);
@@ -1534,7 +1541,7 @@ function AppContent(): JSX.Element {
 
   function clearLocalAgentData(): void {
     setSessions([]);
-    setAgentProviders([...DEFAULT_AGENT_PROVIDER_DEFINITIONS]);
+    setAgentProviders(fallbackAgentProviders());
     setWorkspaces([]);
     setSelectedSession(null);
     setSelectedWorkspace(null);
@@ -1619,7 +1626,7 @@ function AppContent(): JSX.Element {
         setAgentProviders(
           payload.providers?.length
             ? payload.providers
-            : [...DEFAULT_AGENT_PROVIDER_DEFINITIONS],
+            : fallbackAgentProviders(),
         );
         if (payload.workspaces?.length) {
           setWorkspaces(payload.workspaces);

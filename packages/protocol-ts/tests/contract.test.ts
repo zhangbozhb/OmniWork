@@ -20,6 +20,7 @@ import {
   SESSION_REQUIRED_FIELDS,
   SUPPORTED_SESSION_STATUSES,
   TRANSPORT_PREFERENCES,
+  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
   agentHelloPayloadSchema,
   authFailedPayloadSchema,
   authOkPayloadSchema,
@@ -99,6 +100,19 @@ describe("messageEnvelopeSchema", () => {
       e2e: E2E_SUPPORT_V1,
     });
     assert.equal(parseMessageEnvelope(envelope), null);
+  });
+});
+
+describe("default agent providers", () => {
+  it("includes a plain terminal provider without a startup command", () => {
+    const terminalProvider = DEFAULT_AGENT_PROVIDER_DEFINITIONS.find(
+      (provider) => provider.kind === "terminal",
+    );
+    assert.ok(terminalProvider);
+    assert.equal(terminalProvider.displayName, "Terminal");
+    assert.equal(terminalProvider.capability, "terminal.shell");
+    assert.equal(terminalProvider.defaultCommand, "");
+    assert.equal(terminalProvider.creatable, true);
   });
 });
 
