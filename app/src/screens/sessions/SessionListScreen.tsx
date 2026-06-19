@@ -1,8 +1,11 @@
-import { type JSX, useEffect, useMemo, useState } from "react";
+import { type JSX, useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
+  type LayoutChangeEvent,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -62,11 +65,13 @@ export interface SessionListScreenProps {
   defaultCwd: string;
   fileRelativePath: string;
   fileEntries: WorkspaceFileEntry[];
+  selectedFilePath?: string;
   selectedFile?: FilesReadPayload;
+  filesLoading?: boolean;
   gitStatus?: WorkspaceGitStatus;
   gitDiff?: GitDiffPayload;
   gitDiffCache?: Record<string, GitDiffPayload>;
-  workspaceLoading?: boolean;
+  gitLoading?: boolean;
   onBack(): void;
   onRefreshSessions(): void;
   onCreateSession(input: {
@@ -76,8 +81,18 @@ export interface SessionListScreenProps {
   }): void;
   onOpenWorkspaceFiles(workspace: WorkspaceDefinition): void;
   onOpenWorkspaceGit(workspace: WorkspaceDefinition): void;
+  onRefreshWorkspaceFiles(
+    workspace: WorkspaceDefinition,
+    relativePath: string,
+  ): void;
+  onRefreshWorkspaceGit(workspace: WorkspaceDefinition): void;
+  onPrefetchWorkspaceTab(
+    workspace: WorkspaceDefinition,
+    tab: "git" | "files",
+  ): void;
   onOpenDirectory(relativePath: string): void;
   onReadFile(relativePath: string): void;
+  onCloseFilePreview(): void;
   onOpenGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onOpenGitReview(
     workspace: WorkspaceDefinition,
@@ -117,18 +132,24 @@ export function SessionListScreen({
   defaultCwd,
   fileRelativePath,
   fileEntries,
+  selectedFilePath,
   selectedFile,
+  filesLoading,
   gitStatus,
   gitDiff,
   gitDiffCache,
-  workspaceLoading,
+  gitLoading,
   onBack,
   onRefreshSessions,
   onCreateSession,
   onOpenWorkspaceFiles,
   onOpenWorkspaceGit,
+  onRefreshWorkspaceFiles,
+  onRefreshWorkspaceGit,
+  onPrefetchWorkspaceTab,
   onOpenDirectory,
   onReadFile,
+  onCloseFilePreview,
   onOpenGitDiff,
   onOpenGitReview,
   onPrefetchGitDiff,
@@ -183,6 +204,8 @@ export function SessionListScreen({
     useState<WorkspaceDefinition | null>(null);
   const [activeWorkspaceTab, setActiveWorkspaceTab] =
     useState<WorkspaceTab>("sessions");
+  const workspacePagerRef = useRef<ScrollView | null>(null);
+  const [workspacePagerWidth, setWorkspacePagerWidth] = useState(0);
 
   const runtimeGroups = useMemo<RuntimeGroup[]>(
     () => [
@@ -302,12 +325,32 @@ export function SessionListScreen({
   function openWorkspace(workspace: WorkspaceDefinition): void {
     setSelectedWorkspace(workspace);
     setActiveWorkspaceTab("sessions");
+    prefetchAdjacentWorkspaceTabs(workspace, "sessions");
   }
 
-  function openWorkspaceTab(
+  function prefetchAdjacentWorkspaceTabs(
     workspace: WorkspaceDefinition,
     tab: WorkspaceTab,
   ): void {
+    const tabs = getWorkspaceTabs(workspace);
+    const currentIndex = tabs.indexOf(tab);
+    for (const adjacentTab of [
+      tabs[currentIndex - 1],
+      tabs[currentIndex + 1],
+    ]) {
+      if (adjacentTab === "git" || adjacentTab === "files") {
+        onPrefetchWorkspaceTab(workspace, adjacentTab);
+      }
+    }
+  }
+
+  function switchWorkspaceTab(
+    workspace: WorkspaceDefinition,
+    tab: WorkspaceTab,
+  ): void {
+    if (!getWorkspaceTabs(workspace).includes(tab)) {
+      return;
+    }
     setSelectedWorkspace(workspace);
     setActiveWorkspaceTab(tab);
     if (tab === "files") {
@@ -316,6 +359,14 @@ export function SessionListScreen({
     if (tab === "git" && workspace.isGitRepository) {
       onOpenWorkspaceGit(workspace);
     }
+    prefetchAdjacentWorkspaceTabs(workspace, tab);
+  }
+
+  function openWorkspaceTab(
+    workspace: WorkspaceDefinition,
+    tab: WorkspaceTab,
+  ): void {
+    switchWorkspaceTab(workspace, tab);
   }
 
   function renderSessionRow(session: CodexSession): JSX.Element {
@@ -387,6 +438,43 @@ export function SessionListScreen({
   const activeProviderGroups = activeWorkspace
     ? groupSessionsByProvider(activeWorkspaceSessions, runtimeGroups, providers)
     : [];
+  const workspaceTabs = activeWorkspace ? getWorkspaceTabs(activeWorkspace) : [];
+  const activeWorkspaceTabIndex = Math.max(
+    0,
+    workspaceTabs.indexOf(activeWorkspaceTab),
+  );
+  useEffect(() => {
+    if (!activeWorkspace || workspacePagerWidth <= 0) {
+      return;
+    }
+    workspacePagerRef.current?.scrollTo({
+      x: activeWorkspaceTabIndex * workspacePagerWidth,
+      animated: false,
+    });
+  }, [activeWorkspace, activeWorkspaceTabIndex, workspacePagerWidth]);
+
+  function handleWorkspacePagerLayout(event: LayoutChangeEvent): void {
+    const nextWidth = event.nativeEvent.layout.width;
+    if (nextWidth > 0 && nextWidth !== workspacePagerWidth) {
+      setWorkspacePagerWidth(nextWidth);
+    }
+  }
+
+  function handleWorkspacePagerScrollEnd(
+    event: NativeSyntheticEvent<NativeScrollEvent>,
+  ): void {
+    if (!activeWorkspace || workspacePagerWidth <= 0) {
+      return;
+    }
+    const nextIndex = Math.round(
+      event.nativeEvent.contentOffset.x / workspacePagerWidth,
+    );
+    const nextTab = workspaceTabs[nextIndex];
+    if (nextTab && nextTab !== activeWorkspaceTab) {
+      switchWorkspaceTab(activeWorkspace, nextTab);
+    }
+  }
+
   return (
     <View style={styles.screen}>
       <View style={styles.actions}>
@@ -442,106 +530,135 @@ export function SessionListScreen({
         ) : null}
       </View>
 
-      <ScrollView contentContainerStyle={styles.list}>
-        {activeWorkspace ? (
-          <View style={styles.workspaceDetail}>
-            {activeWorkspaceTab === "sessions" ? (
-              <View style={styles.runtimeSection}>
-                {activeProviderGroups.length === 0 ? (
-                  <View style={styles.sessionsEmptyState}>
-                    <Text style={styles.empty}>
-                      {t("workspaces.noSessions")}
-                    </Text>
-                    <Button
-                      disabled={
-                        creating ||
-                        !isCreatableRuntimeKind(
-                          preferredCreateRuntimeKind,
-                          enabledProviders,
-                        )
-                      }
-                      icon="add"
-                      style={styles.emptyCreateButton}
-                      tone="primary"
-                      onPress={() =>
-                        openCreateModal(
-                          preferredCreateRuntimeKind,
-                          activeWorkspace,
-                        )
-                      }
-                    >
-                      {t("workspaces.newSession")}
-                    </Button>
-                  </View>
-                ) : (
-                  <View style={styles.sessionsList}>
-                    {activeProviderGroups.map((group) => (
-                      <View key={group.kind} style={styles.sessionGroup}>
-                        <View style={styles.sessionGroupHeader}>
-                          <Text style={styles.sessionGroupLabel}>
-                            {group.label} · {group.sessions.length}
-                          </Text>
-                          <Button
-                            accessibilityLabel={t(
-                              "workspaces.newProviderSession",
-                              { provider: group.label },
-                            )}
-                            disabled={creating || !group.creatable}
-                            icon="add"
-                            iconOnly
-                            style={styles.sessionGroupAdd}
-                            onPress={() =>
-                              openCreateModal(
-                                group.kind as CreatableRuntimeKind,
-                                activeWorkspace,
-                              )
-                            }
-                          >
-                            {t("workspaces.add")}
-                          </Button>
-                        </View>
-                        {group.sessions.map((session) =>
-                          renderSessionRow(session),
-                        )}
+      {activeWorkspace ? (
+        <ScrollView
+          ref={workspacePagerRef}
+          directionalLockEnabled
+          horizontal
+          pagingEnabled
+          scrollEventThrottle={16}
+          scrollEnabled={workspacePagerWidth > 0}
+          showsHorizontalScrollIndicator={false}
+          style={styles.workspacePager}
+          onLayout={handleWorkspacePagerLayout}
+          onMomentumScrollEnd={handleWorkspacePagerScrollEnd}
+          onScrollEndDrag={handleWorkspacePagerScrollEnd}
+        >
+          <ScrollView
+            directionalLockEnabled
+            contentContainerStyle={styles.workspaceTabScrollContent}
+            style={[styles.workspaceTabPane, { width: workspacePagerWidth }]}
+          >
+            <View style={styles.runtimeSection}>
+              {activeProviderGroups.length === 0 ? (
+                <View style={styles.sessionsEmptyState}>
+                  <Text style={styles.empty}>
+                    {t("workspaces.noSessions")}
+                  </Text>
+                  <Button
+                    disabled={
+                      creating ||
+                      !isCreatableRuntimeKind(
+                        preferredCreateRuntimeKind,
+                        enabledProviders,
+                      )
+                    }
+                    icon="add"
+                    style={styles.emptyCreateButton}
+                    tone="primary"
+                    onPress={() =>
+                      openCreateModal(
+                        preferredCreateRuntimeKind,
+                        activeWorkspace,
+                      )
+                    }
+                  >
+                    {t("workspaces.newSession")}
+                  </Button>
+                </View>
+              ) : (
+                <View style={styles.sessionsList}>
+                  {activeProviderGroups.map((group) => (
+                    <View key={group.kind} style={styles.sessionGroup}>
+                      <View style={styles.sessionGroupHeader}>
+                        <Text style={styles.sessionGroupLabel}>
+                          {group.label} · {group.sessions.length}
+                        </Text>
+                        <Button
+                          accessibilityLabel={t(
+                            "workspaces.newProviderSession",
+                            { provider: group.label },
+                          )}
+                          disabled={creating || !group.creatable}
+                          icon="add"
+                          iconOnly
+                          style={styles.sessionGroupAdd}
+                          onPress={() =>
+                            openCreateModal(
+                              group.kind as CreatableRuntimeKind,
+                              activeWorkspace,
+                            )
+                          }
+                        >
+                          {t("workspaces.add")}
+                        </Button>
                       </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            ) : null}
+                      {group.sessions.map((session) =>
+                        renderSessionRow(session),
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </ScrollView>
 
-            {activeWorkspaceTab === "git" && activeWorkspace.isGitRepository ? (
+          {activeWorkspace.isGitRepository ? (
+            <View
+              style={[
+                styles.workspaceTabPane,
+                { width: workspacePagerWidth },
+              ]}
+            >
               <GitStatusScreen
                 embedded
                 workspace={activeWorkspace}
                 status={gitStatus}
                 diff={gitDiff}
                 diffCache={gitDiffCache}
-                loading={workspaceLoading}
-                onRefresh={() => onOpenWorkspaceGit(activeWorkspace)}
+                loading={gitLoading}
+                onRefresh={() => onRefreshWorkspaceGit(activeWorkspace)}
                 onOpenDiff={onOpenGitDiff}
                 onOpenReview={(relativePath, scope) =>
                   onOpenGitReview(activeWorkspace, relativePath, scope)
                 }
                 onPrefetchDiff={onPrefetchGitDiff}
               />
-            ) : null}
+            </View>
+          ) : null}
 
-            {activeWorkspaceTab === "files" ? (
-              <FileBrowserScreen
-                embedded
-                workspace={activeWorkspace}
-                relativePath={fileRelativePath}
-                entries={fileEntries}
-                file={selectedFile}
-                loading={workspaceLoading}
-                onRefresh={() => onOpenDirectory(fileRelativePath)}
-                onOpenDirectory={onOpenDirectory}
-                onReadFile={onReadFile}
-              />
-            ) : null}
+          <View
+            style={[styles.workspaceTabPane, { width: workspacePagerWidth }]}
+          >
+            <FileBrowserScreen
+              embedded
+              workspace={activeWorkspace}
+              relativePath={fileRelativePath}
+              entries={fileEntries}
+              selectedFilePath={selectedFilePath}
+              file={selectedFile}
+              loading={filesLoading}
+              onRefresh={() =>
+                onRefreshWorkspaceFiles(activeWorkspace, fileRelativePath)
+              }
+              onOpenDirectory={onOpenDirectory}
+              onReadFile={onReadFile}
+              onCloseFilePreview={onCloseFilePreview}
+            />
           </View>
-        ) : (
+        </ScrollView>
+      ) : (
+        <ScrollView directionalLockEnabled contentContainerStyle={styles.list}>
           <>
             {realWorkspaceGroups.length === 0 ? (
               <Text style={styles.empty}>
@@ -607,8 +724,8 @@ export function SessionListScreen({
               </View>
             ) : null}
           </>
-        )}
-      </ScrollView>
+        </ScrollView>
+      )}
 
       {activeWorkspace ? (
         <View style={styles.workspaceTabBar}>
@@ -619,7 +736,7 @@ export function SessionListScreen({
               activeWorkspaceTab === "sessions" &&
                 styles.workspaceTabButtonActive,
             ]}
-            onPress={() => setActiveWorkspaceTab("sessions")}
+            onPress={() => openWorkspaceTab(activeWorkspace, "sessions")}
           >
             {t("workspaces.tabs.sessions")}
           </Button>
@@ -1331,6 +1448,16 @@ const styles = StyleSheet.create({
   workspaceDetail: {
     gap: spacing.lg,
   },
+  workspacePager: {
+    width: "100%",
+  },
+  workspaceTabPane: {
+    gap: spacing.lg,
+  },
+  workspaceTabScrollContent: {
+    gap: spacing.lg,
+    paddingBottom: 84,
+  },
   workspaceHeroTitle: {
     color: colors.textPrimary,
     flex: 1,
@@ -1913,6 +2040,12 @@ function isPathInside(path: string, parent: string): boolean {
     normalizedPath === normalizedParent ||
     normalizedPath.startsWith(`${normalizedParent}/`)
   );
+}
+
+function getWorkspaceTabs(workspace: WorkspaceDefinition): WorkspaceTab[] {
+  return workspace.isGitRepository
+    ? ["sessions", "git", "files"]
+    : ["sessions", "files"];
 }
 
 function getWorkspaceDisplayName(workspace: WorkspaceDefinition): string {

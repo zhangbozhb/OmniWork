@@ -1,23 +1,34 @@
-import { type JSX, useEffect, useRef, useState } from "react";
 import {
+  type JSX,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Animated,
   Clipboard,
   Dimensions,
   type GestureResponderEvent,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type {
   FilesReadPayload,
   WorkspaceDefinition,
   WorkspaceFileEntry,
 } from "@omniwork/protocol-ts";
-import { Badge, Button, Card } from "../../ui/components";
+import { Button } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 import { Icon } from "../../ui/icons";
 
@@ -34,11 +45,20 @@ type CopyNotice = {
 
 const COPY_NOTICE_HEIGHT = 80;
 const COPY_NOTICE_GAP = 60;
+const FILE_PREVIEW_DEFAULT_HEIGHT_RATIO = 0.6;
+const FILE_PREVIEW_FULL_TOP_GAP = 12;
+const FILE_PREVIEW_MIN_HEIGHT = 280;
+const FILE_PREVIEW_EXPAND_DRAG_PX = 48;
+const FILE_PREVIEW_EXPAND_TOP_RATIO = 0.18;
+const FILE_PREVIEW_CLOSE_DRAG_PX = 48;
+
+type FilePreviewMode = "preview" | "full";
 
 export interface FileBrowserScreenProps {
   workspace: WorkspaceDefinition;
   relativePath: string;
   entries: WorkspaceFileEntry[];
+  selectedFilePath?: string;
   file?: FilesReadPayload;
   loading?: boolean;
   embedded?: boolean;
@@ -46,12 +66,14 @@ export interface FileBrowserScreenProps {
   onRefresh(): void;
   onOpenDirectory(relativePath: string): void;
   onReadFile(relativePath: string): void;
+  onCloseFilePreview(): void;
 }
 
 export function FileBrowserScreen({
   workspace,
   relativePath,
   entries,
+  selectedFilePath,
   file,
   loading,
   embedded = false,
@@ -59,19 +81,121 @@ export function FileBrowserScreen({
   onRefresh,
   onOpenDirectory,
   onReadFile,
+  onCloseFilePreview,
 }: FileBrowserScreenProps): JSX.Element {
   const { t } = useTranslation();
+  const { height: windowHeight } = useWindowDimensions();
+  const safeAreaInsets = useSafeAreaInsets();
   const screenRef = useRef<View>(null);
   const [copyTarget, setCopyTarget] = useState<CopyTarget | undefined>();
   const [copyNotice, setCopyNotice] = useState<CopyNotice | undefined>();
+  const [previewMode, setPreviewMode] = useState<FilePreviewMode>("preview");
   const [screenHeight, setScreenHeight] = useState(
     Dimensions.get("window").height,
   );
   const [screenPageY, setScreenPageY] = useState(0);
+  const previewDragTranslateY = useRef(new Animated.Value(0)).current;
+  const previewGestureStartTranslateY = useRef(0);
   const copyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
   const currentParts = relativePath.split("/").filter(Boolean);
+  const activeFilePath = file?.relativePath ?? selectedFilePath;
+  const previewVisible = Boolean(activeFilePath);
+  const previewFullHeight = Math.max(
+    FILE_PREVIEW_MIN_HEIGHT,
+    windowHeight - safeAreaInsets.top - FILE_PREVIEW_FULL_TOP_GAP,
+  );
+  const previewCollapsedHeight = Math.min(
+    previewFullHeight,
+    Math.max(
+      FILE_PREVIEW_MIN_HEIGHT,
+      windowHeight * FILE_PREVIEW_DEFAULT_HEIGHT_RATIO,
+    ),
+  );
+  const previewCollapsedOffset = Math.max(
+    0,
+    previewFullHeight - previewCollapsedHeight,
+  );
+  const previewPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        onPanResponderGrant: () => {
+          previewDragTranslateY.stopAnimation((value) => {
+            previewGestureStartTranslateY.current = value;
+          });
+        },
+        onPanResponderMove: (_event, gesture) => {
+          const nextTranslateY = clamp(
+            previewGestureStartTranslateY.current + gesture.dy,
+            0,
+            previewFullHeight,
+          );
+          previewDragTranslateY.setValue(nextTranslateY);
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          if (gesture.dy > FILE_PREVIEW_CLOSE_DRAG_PX) {
+            animatePreviewClose(
+              previewDragTranslateY,
+              previewFullHeight,
+              onCloseFilePreview,
+            );
+            return;
+          }
+          if (
+            previewMode === "preview" &&
+            (gesture.dy < -FILE_PREVIEW_EXPAND_DRAG_PX ||
+              gesture.moveY <
+                safeAreaInsets.top +
+                  windowHeight * FILE_PREVIEW_EXPAND_TOP_RATIO)
+          ) {
+            animatePreviewSnap(
+              previewDragTranslateY,
+              0,
+              () => {
+                setPreviewMode("full");
+              },
+            );
+            return;
+          }
+          resetPreviewDrag(
+            previewDragTranslateY,
+            previewMode === "full" ? 0 : previewCollapsedOffset,
+          );
+        },
+        onPanResponderTerminate: () =>
+          resetPreviewDrag(
+            previewDragTranslateY,
+            previewMode === "full" ? 0 : previewCollapsedOffset,
+          ),
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [
+      onCloseFilePreview,
+      previewCollapsedOffset,
+      previewDragTranslateY,
+      previewFullHeight,
+      previewMode,
+      safeAreaInsets.top,
+      windowHeight,
+    ],
+  );
+  function expandFilePreview(): void {
+    animatePreviewSnap(previewDragTranslateY, 0, () => {
+      setPreviewMode("full");
+    });
+  }
+
+  useLayoutEffect(() => {
+    if (activeFilePath) {
+      setPreviewMode("preview");
+      previewDragTranslateY.setValue(previewCollapsedOffset);
+    }
+  }, [activeFilePath, previewCollapsedOffset, previewDragTranslateY]);
 
   useEffect(
     () => () => {
@@ -186,7 +310,7 @@ export function FileBrowserScreen({
               key={entry.relativePath}
               label={entry.name}
               meta={formatEntryMeta(entry, t)}
-              selected={file?.relativePath === entry.relativePath}
+              selected={activeFilePath === entry.relativePath}
               onLongPress={() =>
                 openCopySheet(
                   toCopyTarget(workspace, entry.relativePath, entry.name),
@@ -206,29 +330,20 @@ export function FileBrowserScreen({
             {loading ? t("common.loading") : t("files.empty")}
           </Text>
         ) : null}
-
-        {file ? (
-          <Card style={styles.previewCard}>
-            <View style={styles.previewHeader}>
-              <Text numberOfLines={1} style={styles.previewTitle}>
-                {file.relativePath}
-              </Text>
-              <Badge>{file.encoding}</Badge>
-            </View>
-            {file.encoding === "utf8" ? (
-              <Text selectable style={styles.fileContent}>
-                {file.content}
-              </Text>
-            ) : (
-              <Text style={styles.hint}>
-                {file.encoding === "too_large"
-                  ? t("files.tooLarge", { size: formatBytes(file.size) })
-                  : t("files.binaryDisabled")}
-              </Text>
-            )}
-          </Card>
-        ) : null}
       </ScrollView>
+      <FilePreviewSheet
+        file={file}
+        bottomInset={safeAreaInsets.bottom}
+        dragTranslateY={previewDragTranslateY}
+        height={previewFullHeight}
+        loading={Boolean(previewVisible && !file && loading)}
+        mode={previewMode}
+        path={activeFilePath}
+        panHandlers={previewPanResponder.panHandlers}
+        visible={previewVisible}
+        onClose={onCloseFilePreview}
+        onExpand={expandFilePreview}
+      />
       {copyNotice ? (
         <CopyNoticeToast
           notice={copyNotice}
@@ -242,6 +357,116 @@ export function FileBrowserScreen({
         onCopy={(text, notice, pageY) => copyText(text, notice, pageY)}
       />
     </View>
+  );
+}
+
+function FilePreviewSheet({
+  bottomInset,
+  dragTranslateY,
+  file,
+  height,
+  loading,
+  mode,
+  path,
+  panHandlers,
+  visible,
+  onClose,
+  onExpand,
+}: {
+  bottomInset: number;
+  dragTranslateY: Animated.Value;
+  file?: FilesReadPayload;
+  height: number;
+  loading: boolean;
+  mode: FilePreviewMode;
+  path?: string;
+  panHandlers: ReturnType<typeof PanResponder.create>["panHandlers"];
+  visible: boolean;
+  onClose(): void;
+  onExpand(): void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const title = path ? basename(path) : t("files.preview.title");
+  return (
+    <Modal
+      animationType="none"
+      transparent
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <View style={styles.previewModalRoot}>
+        <Pressable
+          style={styles.previewBackdrop}
+          onPress={mode === "preview" ? onClose : noop}
+        />
+        <Animated.View
+          style={[
+            styles.previewSheet,
+            mode === "full" && styles.previewSheetFull,
+            {
+              height,
+              paddingBottom: spacing.lg + bottomInset,
+              transform: [{ translateY: dragTranslateY }],
+            },
+          ]}
+        >
+          <View style={styles.previewHeader}>
+            <View style={styles.previewDragRegion} {...panHandlers}>
+              <View style={styles.previewGrabberArea}>
+                <View style={styles.previewGrabber} />
+              </View>
+              <View style={styles.previewTitleArea}>
+                <Text numberOfLines={1} style={styles.previewTitle}>
+                  {title}
+                </Text>
+                <Text numberOfLines={1} style={styles.previewPath}>
+                  {path ?? "."}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.previewActions}>
+              {mode === "preview" ? (
+                <Pressable
+                  accessibilityLabel={t("files.preview.expand")}
+                  style={styles.previewIconButton}
+                  onPress={onExpand}
+                >
+                  <Icon
+                    name="maximize"
+                    color={colors.textSecondary}
+                    size={16}
+                  />
+                </Pressable>
+              ) : null}
+              <Pressable
+                accessibilityLabel={t("files.preview.close")}
+                style={styles.previewIconButton}
+                onPress={onClose}
+              >
+                <Icon name="close" color={colors.textSecondary} size={17} />
+              </Pressable>
+            </View>
+          </View>
+          <ScrollView style={styles.previewBody}>
+            {loading ? (
+              <Text style={styles.hint}>{t("common.loading")}</Text>
+            ) : file?.encoding === "utf8" ? (
+              <Text selectable style={styles.fileContent}>
+                {file.content}
+              </Text>
+            ) : file ? (
+              <Text style={styles.hint}>
+                {file.encoding === "too_large"
+                  ? t("files.tooLarge", { size: formatBytes(file.size) })
+                  : t("files.binaryDisabled")}
+              </Text>
+            ) : (
+              <Text style={styles.hint}>{t("files.preview.empty")}</Text>
+            )}
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
   );
 }
 
@@ -423,6 +648,52 @@ function CopyPathOption({
 
 function noop(): void {}
 
+function resetPreviewDrag(value: Animated.Value, toValue: number): void {
+  Animated.spring(value, {
+    toValue,
+    damping: 20,
+    stiffness: 180,
+    mass: 0.9,
+    useNativeDriver: true,
+  }).start();
+}
+
+function animatePreviewSnap(
+  value: Animated.Value,
+  toValue: number,
+  onComplete: () => void,
+): void {
+  Animated.timing(value, {
+    toValue,
+    duration: 160,
+    useNativeDriver: true,
+  }).start(({ finished }) => {
+    if (finished) {
+      onComplete();
+    }
+  });
+}
+
+function animatePreviewClose(
+  value: Animated.Value,
+  toValue: number,
+  onClose: () => void,
+): void {
+  Animated.timing(value, {
+    toValue,
+    duration: 160,
+    useNativeDriver: true,
+  }).start(({ finished }) => {
+    if (finished) {
+      onClose();
+    }
+  });
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function getCopyNoticeToastPosition(
   pageY: number | undefined,
   screenHeight: number,
@@ -471,6 +742,10 @@ function joinWorkspacePath(workspacePath: string, relativePath: string): string 
   const root = workspacePath.replace(/\/+$/g, "");
   const child = relativePath.replace(/^\/+/g, "");
   return child ? `${root}/${child}` : root;
+}
+
+function basename(path: string): string {
+  return path.split("/").filter(Boolean).at(-1) ?? path;
 }
 
 function formatBytes(value: number): string {
@@ -684,20 +959,89 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "900",
   },
-  previewCard: {
-    padding: spacing.lg,
-    gap: spacing.md,
+  previewModalRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  previewBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.28)",
+  },
+  previewSheet: {
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    backgroundColor: colors.surfaceRaised,
+  },
+  previewSheetFull: {
+    borderTopLeftRadius: radii.md,
+    borderTopRightRadius: radii.md,
+  },
+  previewDragRegion: {
+    width: "100%",
+    alignItems: "center",
+    paddingHorizontal: 72,
+    paddingBottom: spacing.xs,
+  },
+  previewGrabberArea: {
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  previewGrabber: {
+    width: 44,
+    height: 4,
+    borderRadius: radii.pill,
+    backgroundColor: colors.border,
   },
   previewHeader: {
+    position: "relative",
+    alignItems: "center",
+  },
+  previewActions: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  previewTitleArea: {
+    width: "100%",
+    alignItems: "center",
   },
   previewTitle: {
     color: colors.textPrimary,
-    flex: 1,
     fontSize: 15,
     fontWeight: "800",
+    maxWidth: "100%",
+    textAlign: "center",
+  },
+  previewPath: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+    maxWidth: "100%",
+    textAlign: "center",
+  },
+  previewIconButton: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+  },
+  previewBody: {
+    flex: 1,
+    marginTop: spacing.md,
   },
   fileContent: {
     color: colors.textSecondary,

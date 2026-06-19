@@ -307,6 +307,13 @@
     "empty": "No files.",
     "tooLarge": "File is too large to preview ({{size}}).",
     "binaryDisabled": "Binary file preview is disabled.",
+    "preview": {
+      "title": "File preview",
+      "expand": "Expand file preview",
+      "collapse": "Collapse file preview",
+      "close": "Close file preview",
+      "empty": "Select a file to preview."
+    },
     "copy": {
       "title": "Copy path",
       "fileName": "File name",

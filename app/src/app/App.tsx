@@ -155,6 +155,28 @@ import { Icon, type IconName } from "../ui/icons";
 
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
 
+type WorkspaceFilesCache = {
+  currentPath: string;
+  selectedFilePath?: string;
+  directoriesByPath: Record<string, WorkspaceFileEntry[]>;
+  filesByPath: Record<string, FilesReadPayload>;
+  loadingDirectoryKeys: Record<string, boolean>;
+  loadingFileKeys: Record<string, boolean>;
+};
+
+type WorkspaceGitCache = {
+  status?: WorkspaceGitStatus;
+  statusLoading?: boolean;
+  activeDiffKey?: string;
+  diffCache: Record<string, GitDiffPayload>;
+  diffLoadingKeys: Record<string, boolean>;
+};
+
+type WorkspaceDataCache = {
+  files: WorkspaceFilesCache;
+  git: WorkspaceGitCache;
+};
+
 /**
  * AsyncStorage 中保存的用户传输偏好键；缺省时回退到 appConfig.transportPreference。
  * 取值范围由 packages/protocol-ts isTransportPreference 守卫校验。
@@ -167,6 +189,30 @@ const FALLBACK_AGENT_PROVIDERS = DEFAULT_AGENT_PROVIDER_DEFINITIONS.filter(
 
 function fallbackAgentProviders(): AgentProviderDefinition[] {
   return [...FALLBACK_AGENT_PROVIDERS];
+}
+
+function createWorkspaceFilesCache(): WorkspaceFilesCache {
+  return {
+    currentPath: "",
+    directoriesByPath: {},
+    filesByPath: {},
+    loadingDirectoryKeys: {},
+    loadingFileKeys: {},
+  };
+}
+
+function createWorkspaceGitCache(): WorkspaceGitCache {
+  return {
+    diffCache: {},
+    diffLoadingKeys: {},
+  };
+}
+
+function createWorkspaceDataCache(): WorkspaceDataCache {
+  return {
+    files: createWorkspaceFilesCache(),
+    git: createWorkspaceGitCache(),
+  };
 }
 
 export default function App(): JSX.Element {
@@ -195,20 +241,11 @@ function AppContent(): JSX.Element {
   const [workspaces, setWorkspaces] = useState<WorkspaceDefinition[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] =
     useState<WorkspaceDefinition | null>(null);
-  const [fileEntries, setFileEntries] = useState<WorkspaceFileEntry[]>([]);
-  const [fileRelativePath, setFileRelativePath] = useState("");
-  const [selectedFile, setSelectedFile] = useState<FilesReadPayload>();
-  const [gitStatus, setGitStatus] = useState<WorkspaceGitStatus>();
-  const [gitDiff, setGitDiff] = useState<GitDiffPayload>();
-  const [gitDiffCache, setGitDiffCache] = useState<
-    Record<string, GitDiffPayload>
-  >({});
-  const [gitDiffLoadingKeys, setGitDiffLoadingKeys] = useState<
-    Record<string, boolean>
+  const [workspaceCache, setWorkspaceCache] = useState<
+    Record<string, WorkspaceDataCache>
   >({});
   const [gitReviewPath, setGitReviewPath] = useState<string | undefined>();
   const [gitReviewScope, setGitReviewScope] = useState<GitDiffScope>("all");
-  const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [defaultSessionCwd, setDefaultSessionCwd] = useState("");
   const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
     {},
@@ -270,7 +307,6 @@ function AppContent(): JSX.Element {
   const terminalLastFrameAtRef = useRef<Record<string, number>>({});
   const terminalLastSnapshotRequestAtRef = useRef<Record<string, number>>({});
   const pendingTerminalFramesRef = useRef<Record<string, string>>({});
-  const activeGitDiffKeyRef = useRef<string | undefined>(undefined);
   const terminalFrameFlushTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
@@ -280,6 +316,35 @@ function AppContent(): JSX.Element {
   // "Connection lost" 对话框（例如重试再次失败时立刻又弹一次）。
   const failureDialogActiveRef = useRef(false);
   const confirm = useConfirm();
+
+  const selectedWorkspaceCache = selectedWorkspace
+    ? workspaceCache[selectedWorkspace.path]
+    : undefined;
+  const activeFilesCache = selectedWorkspaceCache?.files;
+  const fileRelativePath = activeFilesCache?.currentPath ?? "";
+  const fileEntries =
+    activeFilesCache?.directoriesByPath[fileRelativePath] ?? [];
+  const selectedFilePath = activeFilesCache?.selectedFilePath;
+  const selectedFile = activeFilesCache?.selectedFilePath
+    ? activeFilesCache.filesByPath[activeFilesCache.selectedFilePath]
+    : undefined;
+  const filesLoading = Boolean(
+    activeFilesCache?.loadingDirectoryKeys[fileRelativePath] ||
+      (activeFilesCache?.selectedFilePath &&
+        activeFilesCache.loadingFileKeys[activeFilesCache.selectedFilePath]),
+  );
+  const activeGitCache = selectedWorkspaceCache?.git;
+  const gitStatus = activeGitCache?.status;
+  const gitDiffCache = activeGitCache?.diffCache ?? {};
+  const gitDiff = activeGitCache?.activeDiffKey
+    ? gitDiffCache[activeGitCache.activeDiffKey]
+    : undefined;
+  const gitStatusLoading = Boolean(activeGitCache?.statusLoading);
+  const gitDiffLoading = Boolean(
+    activeGitCache?.activeDiffKey &&
+      activeGitCache.diffLoadingKeys[activeGitCache.activeDiffKey],
+  );
+  const gitLoading = gitStatusLoading || gitDiffLoading;
 
   const canUseWorkspace = pairings.length > 0;
   const showPrimaryTabs = canUseWorkspace && isPrimaryTabView(view);
@@ -1248,24 +1313,82 @@ function AppContent(): JSX.Element {
     );
   }
 
-  function handleOpenWorkspaceFiles(workspace: WorkspaceDefinition): void {
+  function updateWorkspaceDataCache(
+    workspacePath: string,
+    updater: (cache: WorkspaceDataCache) => WorkspaceDataCache,
+  ): void {
+    setWorkspaceCache((current) => {
+      const existing = current[workspacePath] ?? createWorkspaceDataCache();
+      return {
+        ...current,
+        [workspacePath]: updater(existing),
+      };
+    });
+  }
+
+  function requestWorkspaceDirectory(
+    workspace: WorkspaceDefinition,
+    relativePath: string,
+    options: { force?: boolean; activate?: boolean } = {},
+  ): void {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
-    setSelectedWorkspace(workspace);
-    setFileRelativePath("");
-    setSelectedFile(undefined);
-    setFileEntries([]);
-    setWorkspaceLoading(true);
+    const activate = options.activate ?? true;
+    const workspacePath = workspace.path;
+    const filesCache =
+      workspaceCache[workspacePath]?.files ?? createWorkspaceFilesCache();
+    const hasCachedEntries = Boolean(filesCache.directoriesByPath[relativePath]);
+    if (!options.force && hasCachedEntries) {
+      if (activate) {
+        updateWorkspaceDataCache(workspacePath, (cache) => ({
+          ...cache,
+          files: {
+            ...cache.files,
+            currentPath: relativePath,
+            selectedFilePath: undefined,
+          },
+        }));
+      }
+      return;
+    }
+    if (filesCache.loadingDirectoryKeys[relativePath]) {
+      if (activate) {
+        updateWorkspaceDataCache(workspacePath, (cache) => ({
+          ...cache,
+          files: {
+            ...cache.files,
+            currentPath: relativePath,
+            selectedFilePath: undefined,
+          },
+        }));
+      }
+      return;
+    }
+    updateWorkspaceDataCache(workspacePath, (cache) => ({
+      ...cache,
+      files: {
+        ...cache.files,
+        currentPath: activate ? relativePath : cache.files.currentPath,
+        selectedFilePath: activate ? undefined : cache.files.selectedFilePath,
+        loadingDirectoryKeys: {
+          ...cache.files.loadingDirectoryKeys,
+          [relativePath]: true,
+        },
+      },
+    }));
     sendToRelay(
       listFilesRequest(pairing.deviceId, {
-        workspacePath: workspace.path,
-        relativePath: "",
+        workspacePath,
+        relativePath,
       }),
     );
   }
 
-  function handleOpenWorkspaceGit(workspace: WorkspaceDefinition): void {
+  function requestWorkspaceGitStatus(
+    workspace: WorkspaceDefinition,
+    options: { force?: boolean } = {},
+  ): void {
     if (
       !pairing ||
       connectionStatus !== "authenticated" ||
@@ -1273,35 +1396,71 @@ function AppContent(): JSX.Element {
     ) {
       return;
     }
+    const workspacePath = workspace.path;
+    const gitCache =
+      workspaceCache[workspacePath]?.git ?? createWorkspaceGitCache();
+    if (!options.force && gitCache.status) {
+      return;
+    }
+    if (gitCache.statusLoading) {
+      return;
+    }
+    updateWorkspaceDataCache(workspacePath, (cache) => ({
+      ...cache,
+      git: {
+        ...cache.git,
+        statusLoading: true,
+      },
+    }));
+    sendToRelay(gitStatusRequest(pairing.deviceId, { workspacePath }));
+  }
+
+  function handleOpenWorkspaceFiles(workspace: WorkspaceDefinition): void {
     setSelectedWorkspace(workspace);
-    setGitStatus(undefined);
-    setGitDiff(undefined);
-    setGitDiffCache({});
-    setGitDiffLoadingKeys({});
-    activeGitDiffKeyRef.current = undefined;
-    setWorkspaceLoading(true);
-    sendToRelay(
-      gitStatusRequest(pairing.deviceId, { workspacePath: workspace.path }),
-    );
+    const currentPath = workspaceCache[workspace.path]?.files.currentPath ?? "";
+    requestWorkspaceDirectory(workspace, currentPath, { activate: true });
+  }
+
+  function handleRefreshWorkspaceFiles(
+    workspace: WorkspaceDefinition,
+    relativePath: string,
+  ): void {
+    setSelectedWorkspace(workspace);
+    requestWorkspaceDirectory(workspace, relativePath, {
+      activate: true,
+      force: true,
+    });
+  }
+
+  function handleOpenWorkspaceGit(workspace: WorkspaceDefinition): void {
+    setSelectedWorkspace(workspace);
+    requestWorkspaceGitStatus(workspace);
+  }
+
+  function handleRefreshWorkspaceGit(workspace: WorkspaceDefinition): void {
+    setSelectedWorkspace(workspace);
+    requestWorkspaceGitStatus(workspace, { force: true });
+  }
+
+  function handlePrefetchWorkspaceTab(
+    workspace: WorkspaceDefinition,
+    tab: "git" | "files",
+  ): void {
+    if (tab === "files") {
+      requestWorkspaceDirectory(workspace, "", { activate: false });
+    }
+    if (tab === "git") {
+      requestWorkspaceGitStatus(workspace);
+    }
   }
 
   function handleOpenDirectory(relativePath: string): void {
-    if (
-      !pairing ||
-      !selectedWorkspace ||
-      connectionStatus !== "authenticated"
-    ) {
+    if (!selectedWorkspace) {
       return;
     }
-    setFileRelativePath(relativePath);
-    setSelectedFile(undefined);
-    setWorkspaceLoading(true);
-    sendToRelay(
-      listFilesRequest(pairing.deviceId, {
-        workspacePath: selectedWorkspace.path,
-        relativePath,
-      }),
-    );
+    requestWorkspaceDirectory(selectedWorkspace, relativePath, {
+      activate: true,
+    });
   }
 
   function handleReadFile(relativePath: string): void {
@@ -1312,37 +1471,104 @@ function AppContent(): JSX.Element {
     ) {
       return;
     }
-    setWorkspaceLoading(true);
+    const workspacePath = selectedWorkspace.path;
+    const filesCache =
+      workspaceCache[workspacePath]?.files ?? createWorkspaceFilesCache();
+    if (filesCache.filesByPath[relativePath]) {
+      updateWorkspaceDataCache(workspacePath, (cache) => ({
+        ...cache,
+        files: {
+          ...cache.files,
+          selectedFilePath: relativePath,
+        },
+      }));
+      return;
+    }
+    updateWorkspaceDataCache(workspacePath, (cache) => ({
+      ...cache,
+      files: {
+        ...cache.files,
+        selectedFilePath: relativePath,
+        loadingFileKeys: {
+          ...cache.files.loadingFileKeys,
+          [relativePath]: true,
+        },
+      },
+    }));
     sendToRelay(
       readFileRequest(pairing.deviceId, {
-        workspacePath: selectedWorkspace.path,
+        workspacePath,
         relativePath,
       }),
     );
+  }
+
+  function handleCloseFilePreview(): void {
+    if (!selectedWorkspace) {
+      return;
+    }
+    updateWorkspaceDataCache(selectedWorkspace.path, (cache) => ({
+      ...cache,
+      files: {
+        ...cache.files,
+        selectedFilePath: undefined,
+      },
+    }));
   }
 
   function requestGitDiff(
     workspace: WorkspaceDefinition,
     relativePath?: string,
     scope: GitDiffScope = "unstaged",
+    options: { activate?: boolean } = {},
   ): void {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
+    const activate = options.activate ?? true;
+    const workspacePath = workspace.path;
     const cacheKey = toGitDiffCacheKey(relativePath, scope);
-    activeGitDiffKeyRef.current = cacheKey;
-    const cachedDiff = gitDiffCache[cacheKey];
+    const gitCache =
+      workspaceCache[workspacePath]?.git ?? createWorkspaceGitCache();
+    const cachedDiff = gitCache.diffCache[cacheKey];
     if (cachedDiff) {
-      setGitDiff(cachedDiff);
-      setWorkspaceLoading(false);
-      setGitDiffLoadingKeys((current) => omitKey(current, cacheKey));
+      if (activate) {
+        updateWorkspaceDataCache(workspacePath, (cache) => ({
+          ...cache,
+          git: {
+            ...cache.git,
+            activeDiffKey: cacheKey,
+          },
+        }));
+      }
       return;
     }
-    setWorkspaceLoading(true);
-    setGitDiffLoadingKeys((current) => ({ ...current, [cacheKey]: true }));
+    if (gitCache.diffLoadingKeys[cacheKey]) {
+      if (activate) {
+        updateWorkspaceDataCache(workspacePath, (cache) => ({
+          ...cache,
+          git: {
+            ...cache.git,
+            activeDiffKey: cacheKey,
+          },
+        }));
+      }
+      return;
+    }
+    updateWorkspaceDataCache(workspacePath, (cache) => ({
+      ...cache,
+      git: {
+        ...cache.git,
+        activeDiffKey: activate ? cacheKey : cache.git.activeDiffKey,
+        diffLoadingKeys: {
+          ...cache.git.diffLoadingKeys,
+          [cacheKey]: true,
+        },
+      },
+    }));
     sendToRelay(
       gitDiffRequest(pairing.deviceId, {
-        workspacePath: workspace.path,
+        workspacePath,
         relativePath,
         scope,
       }),
@@ -1356,7 +1582,7 @@ function AppContent(): JSX.Element {
     if (!selectedWorkspace) {
       return;
     }
-    requestGitDiff(selectedWorkspace, relativePath, scope);
+    requestGitDiff(selectedWorkspace, relativePath, scope, { activate: true });
   }
 
   function handleOpenGitReview(
@@ -1368,7 +1594,7 @@ function AppContent(): JSX.Element {
     setGitReviewPath(relativePath);
     setGitReviewScope(scope);
     setView("gitReview");
-    requestGitDiff(workspace, relativePath, scope);
+    requestGitDiff(workspace, relativePath, scope, { activate: true });
   }
 
   function handlePrefetchGitDiff(
@@ -1376,24 +1602,12 @@ function AppContent(): JSX.Element {
     scope: GitDiffScope = "unstaged",
   ): void {
     if (
-      !pairing ||
       !selectedWorkspace ||
       connectionStatus !== "authenticated"
     ) {
       return;
     }
-    const cacheKey = toGitDiffCacheKey(relativePath, scope);
-    if (gitDiffCache[cacheKey] || gitDiffLoadingKeys[cacheKey]) {
-      return;
-    }
-    setGitDiffLoadingKeys((current) => ({ ...current, [cacheKey]: true }));
-    sendToRelay(
-      gitDiffRequest(pairing.deviceId, {
-        workspacePath: selectedWorkspace.path,
-        relativePath,
-        scope,
-      }),
-    );
+    requestGitDiff(selectedWorkspace, relativePath, scope, { activate: false });
   }
 
   async function handleCloseSession(session: CodexSession): Promise<void> {
@@ -1612,16 +1826,9 @@ function AppContent(): JSX.Element {
     setWorkspaces([]);
     setSelectedSession(null);
     setSelectedWorkspace(null);
-    setFileEntries([]);
-    setFileRelativePath("");
-    setSelectedFile(undefined);
-    setGitStatus(undefined);
-    setGitDiff(undefined);
-    setGitDiffCache({});
-    setGitDiffLoadingKeys({});
+    setWorkspaceCache({});
     setGitReviewPath(undefined);
     setGitReviewScope("all");
-    setWorkspaceLoading(false);
     setDefaultSessionCwd("");
     setTerminalFrames({});
     pendingTerminalFramesRef.current = {};
@@ -1791,20 +1998,50 @@ function AppContent(): JSX.Element {
       }
       case "files.list": {
         const payload = message.payload as FilesListPayload;
-        setFileRelativePath(payload.relativePath);
-        setFileEntries(payload.entries);
-        setWorkspaceLoading(false);
+        updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
+          ...cache,
+          files: {
+            ...cache.files,
+            directoriesByPath: {
+              ...cache.files.directoriesByPath,
+              [payload.relativePath]: payload.entries,
+            },
+            loadingDirectoryKeys: omitKey(
+              cache.files.loadingDirectoryKeys,
+              payload.relativePath,
+            ),
+          },
+        }));
         break;
       }
       case "files.read": {
-        setSelectedFile(message.payload as FilesReadPayload);
-        setWorkspaceLoading(false);
+        const payload = message.payload as FilesReadPayload;
+        updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
+          ...cache,
+          files: {
+            ...cache.files,
+            filesByPath: {
+              ...cache.files.filesByPath,
+              [payload.relativePath]: payload,
+            },
+            loadingFileKeys: omitKey(
+              cache.files.loadingFileKeys,
+              payload.relativePath,
+            ),
+          },
+        }));
         break;
       }
       case "git.status": {
         const payload = message.payload as GitStatusPayload;
-        setGitStatus(payload.status);
-        setWorkspaceLoading(false);
+        updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
+          ...cache,
+          git: {
+            ...cache.git,
+            status: payload.status,
+            statusLoading: false,
+          },
+        }));
         break;
       }
       case "git.diff": {
@@ -1813,14 +2050,16 @@ function AppContent(): JSX.Element {
           payload.relativePath,
           payload.scope ?? "unstaged",
         );
-        if (activeGitDiffKeyRef.current === cacheKey) {
-          setGitDiff(payload);
-          setWorkspaceLoading(false);
-        }
-        setGitDiffLoadingKeys((current) => omitKey(current, cacheKey));
-        setGitDiffCache((current) => ({
-          ...current,
-          [cacheKey]: payload,
+        updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
+          ...cache,
+          git: {
+            ...cache.git,
+            diffCache: {
+              ...cache.git.diffCache,
+              [cacheKey]: payload,
+            },
+            diffLoadingKeys: omitKey(cache.git.diffLoadingKeys, cacheKey),
+          },
         }));
         break;
       }
@@ -1856,7 +2095,6 @@ function AppContent(): JSX.Element {
         const payload = message.payload as TerminalErrorPayload;
         setCreatingSession(false);
         pendingCreateRef.current = false;
-        setWorkspaceLoading(false);
         const detail = payload.message || t("app.errors.terminalError");
         setConnectionMessage(detail);
         if (payload.code === "TMUX_TARGET_MISSING") {
@@ -2043,18 +2281,24 @@ function AppContent(): JSX.Element {
                 defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
                 fileRelativePath={fileRelativePath}
                 fileEntries={fileEntries}
+                selectedFilePath={selectedFilePath}
                 selectedFile={selectedFile}
+                filesLoading={filesLoading}
                 gitStatus={gitStatus}
                 gitDiff={gitDiff}
                 gitDiffCache={gitDiffCache}
-                workspaceLoading={workspaceLoading}
+                gitLoading={gitLoading}
                 onBack={() => setView("devices")}
                 onRefreshSessions={handleRefreshSessions}
                 onCreateSession={handleCreateSession}
                 onOpenWorkspaceFiles={handleOpenWorkspaceFiles}
                 onOpenWorkspaceGit={handleOpenWorkspaceGit}
+                onRefreshWorkspaceFiles={handleRefreshWorkspaceFiles}
+                onRefreshWorkspaceGit={handleRefreshWorkspaceGit}
+                onPrefetchWorkspaceTab={handlePrefetchWorkspaceTab}
                 onOpenDirectory={handleOpenDirectory}
                 onReadFile={handleReadFile}
+                onCloseFilePreview={handleCloseFilePreview}
                 onOpenGitDiff={handleOpenGitDiff}
                 onOpenGitReview={handleOpenGitReview}
                 onPrefetchGitDiff={handlePrefetchGitDiff}
@@ -2070,12 +2314,12 @@ function AppContent(): JSX.Element {
                     status={gitStatus}
                     diff={gitDiff}
                     diffCache={gitDiffCache}
-                    loading={workspaceLoading}
+                    loading={gitDiffLoading}
                     initialMode="review"
                     initialPath={gitReviewPath}
                     initialScope={gitReviewScope}
                     onBack={() => setView("sessions")}
-                    onRefresh={() => handleOpenWorkspaceGit(selectedWorkspace)}
+                    onRefresh={() => handleRefreshWorkspaceGit(selectedWorkspace)}
                     onOpenDiff={handleOpenGitDiff}
                     onPrefetchDiff={handlePrefetchGitDiff}
                   />
