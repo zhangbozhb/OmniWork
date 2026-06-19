@@ -66,7 +66,7 @@ export class SessionRequestHandler {
     try {
       session = await this.options.sessionManager.create(
         message.payload ?? {},
-        (nextSession) => this.sendSessionStatus(nextSession),
+        (nextSession) => this.sendSessionStatus(nextSession, context),
       );
     } catch (error) {
       this.options.sendToApp(
@@ -83,7 +83,7 @@ export class SessionRequestHandler {
       return;
     }
 
-    this.sendSessionStatus(session);
+    this.sendSessionStatus(session, context);
     if (session.status !== "running" && session.status !== "detached") {
       return;
     }
@@ -144,7 +144,7 @@ export class SessionRequestHandler {
       message.payload.title,
     );
     if (session) {
-      this.sendSessionStatus(session);
+      this.sendSessionStatus(session, context);
     }
     await this.handleList(message, context);
   }
@@ -189,9 +189,12 @@ export class SessionRequestHandler {
     this.options.terminalFramePusher.start(session.session_id);
   }
 
-  private sendSessionStatus(session: CodexSession): void {
+  private sendSessionStatus(
+    session: CodexSession,
+    context?: AgentDispatchContext,
+  ): void {
     this.options.sendToApp(
-      undefined,
+      context,
       createMessage(
         "session.status",
         { session },
