@@ -41,6 +41,8 @@ const TERMINAL_SCROLLBACK = 240;
 const TERMINAL_VIEW_PADDING = 8;
 const TERMINAL_BOTTOM_SAFETY_PX = 4;
 const SCROLL_LOCK_MS = 220;
+const TEXT_SELECTION_LONG_PRESS_MS = 420;
+const TOUCH_SCROLL_THRESHOLD_PX = 8;
 
 export function NativeTerminalView({
   frame,
@@ -433,16 +435,55 @@ function createTerminalHtml(): string {
 
       var terminalElement = document.getElementById("terminal");
       var lastTouchY = null;
+      var touchStartY = null;
+      var textSelectionTimer = null;
+      var textSelectionGesture = false;
+
+      function clearTextSelectionTimer() {
+        if (textSelectionTimer) {
+          clearTimeout(textSelectionTimer);
+          textSelectionTimer = null;
+        }
+      }
+
+      function hasActiveTextSelection() {
+        var selection = window.getSelection ? window.getSelection() : null;
+        return (
+          !!selection &&
+          !selection.isCollapsed &&
+          String(selection).length > 0
+        );
+      }
       terminalElement.addEventListener("wheel", function (event) {
         event.preventDefault();
         scrollByPixels(event.deltaY);
       }, { passive: false });
       terminalElement.addEventListener("touchstart", function (event) {
         lastTouchY = event.touches[0] ? event.touches[0].clientY : null;
+        touchStartY = lastTouchY;
+        textSelectionGesture = hasActiveTextSelection();
+        clearTextSelectionTimer();
+        if (event.touches.length === 1) {
+          textSelectionTimer = setTimeout(function () {
+            textSelectionGesture = true;
+            textSelectionTimer = null;
+          }, ${TEXT_SELECTION_LONG_PRESS_MS});
+        }
       }, { passive: true });
       terminalElement.addEventListener("touchmove", function (event) {
         var nextY = event.touches[0] ? event.touches[0].clientY : null;
         if (lastTouchY === null || nextY === null) {
+          lastTouchY = nextY;
+          return;
+        }
+        if (
+          touchStartY !== null &&
+          Math.abs(nextY - touchStartY) > ${TOUCH_SCROLL_THRESHOLD_PX} &&
+          !textSelectionGesture
+        ) {
+          clearTextSelectionTimer();
+        }
+        if (textSelectionGesture || hasActiveTextSelection()) {
           lastTouchY = nextY;
           return;
         }
@@ -452,9 +493,15 @@ function createTerminalHtml(): string {
       }, { passive: false });
       terminalElement.addEventListener("touchend", function () {
         lastTouchY = null;
+        touchStartY = null;
+        textSelectionGesture = hasActiveTextSelection();
+        clearTextSelectionTimer();
       });
       terminalElement.addEventListener("touchcancel", function () {
         lastTouchY = null;
+        touchStartY = null;
+        textSelectionGesture = false;
+        clearTextSelectionTimer();
       });
 
       terminal.onData(function (data) {

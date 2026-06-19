@@ -45,6 +45,8 @@ const DEFAULT_FONT_SIZE = 14;
 const TERMINAL_SCROLLBACK = 240;
 const RESIZE_DEBOUNCE_MS = 120;
 const SCROLL_LOCK_MS = 220;
+const TEXT_SELECTION_LONG_PRESS_MS = 420;
+const TOUCH_SCROLL_THRESHOLD_PX = 8;
 
 export function NativeTerminalView({
   frame,
@@ -228,12 +230,49 @@ export function NativeTerminalView({
     };
 
     let lastTouchY: number | null = null;
+    let touchStartY: number | null = null;
+    let textSelectionTimer: ReturnType<typeof setTimeout> | null = null;
+    let textSelectionGesture = false;
+    const clearTextSelectionTimer = () => {
+      if (textSelectionTimer) {
+        clearTimeout(textSelectionTimer);
+        textSelectionTimer = null;
+      }
+    };
+    const hasActiveTextSelection = () => {
+      const selection = window.getSelection();
+      return (
+        !!selection &&
+        !selection.isCollapsed &&
+        selection.toString().length > 0
+      );
+    };
     const handleTouchStart = (event: TouchEvent) => {
       lastTouchY = event.touches[0]?.clientY ?? null;
+      touchStartY = lastTouchY;
+      textSelectionGesture = hasActiveTextSelection();
+      clearTextSelectionTimer();
+      if (event.touches.length === 1) {
+        textSelectionTimer = setTimeout(() => {
+          textSelectionGesture = true;
+          textSelectionTimer = null;
+        }, TEXT_SELECTION_LONG_PRESS_MS);
+      }
     };
     const handleTouchMove = (event: TouchEvent) => {
       const nextY = event.touches[0]?.clientY ?? null;
       if (lastTouchY === null || nextY === null) {
+        lastTouchY = nextY;
+        return;
+      }
+      if (
+        touchStartY !== null &&
+        Math.abs(nextY - touchStartY) > TOUCH_SCROLL_THRESHOLD_PX &&
+        !textSelectionGesture
+      ) {
+        clearTextSelectionTimer();
+      }
+      if (textSelectionGesture || hasActiveTextSelection()) {
         lastTouchY = nextY;
         return;
       }
@@ -243,12 +282,21 @@ export function NativeTerminalView({
     };
     const handleTouchEnd = () => {
       lastTouchY = null;
+      touchStartY = null;
+      textSelectionGesture = hasActiveTextSelection();
+      clearTextSelectionTimer();
+    };
+    const handleTouchCancel = () => {
+      lastTouchY = null;
+      touchStartY = null;
+      textSelectionGesture = false;
+      clearTextSelectionTimer();
     };
     host.addEventListener("wheel", handleWheel, { passive: false });
     host.addEventListener("touchstart", handleTouchStart, { passive: true });
     host.addEventListener("touchmove", handleTouchMove, { passive: false });
     host.addEventListener("touchend", handleTouchEnd);
-    host.addEventListener("touchcancel", handleTouchEnd);
+    host.addEventListener("touchcancel", handleTouchCancel);
 
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const observer = new ResizeObserver(() => {
@@ -267,7 +315,8 @@ export function NativeTerminalView({
       host.removeEventListener("touchstart", handleTouchStart);
       host.removeEventListener("touchmove", handleTouchMove);
       host.removeEventListener("touchend", handleTouchEnd);
-      host.removeEventListener("touchcancel", handleTouchEnd);
+      host.removeEventListener("touchcancel", handleTouchCancel);
+      clearTextSelectionTimer();
       if (scrollUnlockTimerRef.current) {
         clearTimeout(scrollUnlockTimerRef.current);
         scrollUnlockTimerRef.current = null;
