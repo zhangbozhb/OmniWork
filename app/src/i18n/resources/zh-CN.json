@@ -342,6 +342,13 @@
     "workspaceDiff": "工作区 diff",
     "noDiff": "没有 diff。",
     "untrackedNoDiff": "未跟踪文件已列出，但在暂存或纳入跟踪前不会生成 diff。",
+    "loadingFileContent": "正在读取文件内容...",
+    "fileContent": {
+      "empty": "文件为空。",
+      "binary": "二进制文件无法预览。",
+      "unsupported": "此文件类型不支持在 Git 预览中读取。",
+      "tooLarge": "文件过大，无法预览（{{size}}）。"
+    },
     "copy": {
       "pathCopied": "已复制路径：{{path}}",
       "lineCopied": "已复制第 {{line}} 行"

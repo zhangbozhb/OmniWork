@@ -342,6 +342,13 @@
     "workspaceDiff": "Workspace diff",
     "noDiff": "No diff.",
     "untrackedNoDiff": "Untracked files are listed here, but no diff is available until they are staged or tracked.",
+    "loadingFileContent": "Loading file content...",
+    "fileContent": {
+      "empty": "File is empty.",
+      "binary": "Binary files cannot be previewed.",
+      "unsupported": "This file type cannot be read in the Git preview.",
+      "tooLarge": "File is too large to preview ({{size}})."
+    },
     "copy": {
       "pathCopied": "Copied path: {{path}}",
       "lineCopied": "Copied line {{line}}"

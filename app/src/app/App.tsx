@@ -171,6 +171,8 @@ type WorkspaceGitCache = {
   activeDiffKey?: string;
   diffCache: Record<string, GitDiffPayload>;
   diffLoadingKeys: Record<string, boolean>;
+  fileContentCache: Record<string, FilesReadPayload>;
+  fileContentLoadingKeys: Record<string, boolean>;
 };
 
 type WorkspaceDataCache = {
@@ -206,6 +208,8 @@ function createWorkspaceGitCache(): WorkspaceGitCache {
   return {
     diffCache: {},
     diffLoadingKeys: {},
+    fileContentCache: {},
+    fileContentLoadingKeys: {},
   };
 }
 
@@ -337,6 +341,9 @@ function AppContent(): JSX.Element {
   const activeGitCache = selectedWorkspaceCache?.git;
   const gitStatus = activeGitCache?.status;
   const gitDiffCache = activeGitCache?.diffCache ?? {};
+  const gitFileContentCache = activeGitCache?.fileContentCache ?? {};
+  const gitFileContentLoadingKeys =
+    activeGitCache?.fileContentLoadingKeys ?? {};
   const gitDiff = activeGitCache?.activeDiffKey
     ? gitDiffCache[activeGitCache.activeDiffKey]
     : undefined;
@@ -1614,6 +1621,41 @@ function AppContent(): JSX.Element {
     requestGitDiff(selectedWorkspace, relativePath, scope, { activate: false });
   }
 
+  function handleReadGitFileContent(relativePath: string): void {
+    if (
+      !pairing ||
+      !selectedWorkspace ||
+      connectionStatus !== "authenticated"
+    ) {
+      return;
+    }
+    const workspacePath = selectedWorkspace.path;
+    const gitCache =
+      workspaceCache[workspacePath]?.git ?? createWorkspaceGitCache();
+    if (
+      gitCache.fileContentCache[relativePath] ||
+      gitCache.fileContentLoadingKeys[relativePath]
+    ) {
+      return;
+    }
+    updateWorkspaceDataCache(workspacePath, (cache) => ({
+      ...cache,
+      git: {
+        ...cache.git,
+        fileContentLoadingKeys: {
+          ...cache.git.fileContentLoadingKeys,
+          [relativePath]: true,
+        },
+      },
+    }));
+    sendToRelay(
+      readFileRequest(pairing.deviceId, {
+        workspacePath,
+        relativePath,
+      }),
+    );
+  }
+
   async function handleCloseSession(session: CodexSession): Promise<void> {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
@@ -2044,6 +2086,17 @@ function AppContent(): JSX.Element {
               payload.relativePath,
             ),
           },
+          git: {
+            ...cache.git,
+            fileContentCache: {
+              ...cache.git.fileContentCache,
+              [payload.relativePath]: payload,
+            },
+            fileContentLoadingKeys: omitKey(
+              cache.git.fileContentLoadingKeys,
+              payload.relativePath,
+            ),
+          },
         }));
         break;
       }
@@ -2055,6 +2108,10 @@ function AppContent(): JSX.Element {
             ...cache.git,
             status: payload.status,
             statusLoading: false,
+            diffCache: {},
+            diffLoadingKeys: {},
+            fileContentCache: {},
+            fileContentLoadingKeys: {},
           },
         }));
         break;
@@ -2305,6 +2362,8 @@ function AppContent(): JSX.Element {
                 gitStatus={gitStatus}
                 gitDiff={gitDiff}
                 gitDiffCache={gitDiffCache}
+                gitFileContentCache={gitFileContentCache}
+                gitFileContentLoadingKeys={gitFileContentLoadingKeys}
                 gitLoading={gitLoading}
                 onBack={() => setView("devices")}
                 onRefreshSessions={handleRefreshSessions}
@@ -2320,6 +2379,7 @@ function AppContent(): JSX.Element {
                 onOpenGitDiff={handleOpenGitDiff}
                 onOpenGitReview={handleOpenGitReview}
                 onPrefetchGitDiff={handlePrefetchGitDiff}
+                onReadGitFileContent={handleReadGitFileContent}
                 onOpenSession={handleOpenSession}
                 onCloseSession={handleCloseSession}
                 onRenameSession={handleRenameSession}
@@ -2332,6 +2392,8 @@ function AppContent(): JSX.Element {
                     status={gitStatus}
                     diff={gitDiff}
                     diffCache={gitDiffCache}
+                    fileContentCache={gitFileContentCache}
+                    fileContentLoadingKeys={gitFileContentLoadingKeys}
                     loading={gitDiffLoading}
                     initialMode="review"
                     initialPath={gitReviewPath}
@@ -2340,6 +2402,7 @@ function AppContent(): JSX.Element {
                     onRefresh={() => handleRefreshWorkspaceGit(selectedWorkspace)}
                     onOpenDiff={handleOpenGitDiff}
                     onPrefetchDiff={handlePrefetchGitDiff}
+                    onReadFileContent={handleReadGitFileContent}
                   />
                 </View>
               ) : null}

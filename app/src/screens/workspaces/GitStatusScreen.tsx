@@ -14,6 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import type {
+  FilesReadPayload,
   GitDiffPayload,
   GitDiffScope,
   WorkspaceDefinition,
@@ -41,6 +42,39 @@ const STATUS_COLOR: Record<FileStatus, string> = {
 };
 
 const SCOPE_ORDER: GitDiffScope[] = ["all", "unstaged", "staged", "untracked"];
+const READABLE_UNTRACKED_FILE_EXTENSIONS = new Set([
+  "c",
+  "cc",
+  "cjs",
+  "cpp",
+  "cxx",
+  "h",
+  "hh",
+  "hpp",
+  "htm",
+  "html",
+  "hxx",
+  "java",
+  "js",
+  "json",
+  "jsonl",
+  "jsx",
+  "markdown",
+  "md",
+  "mjs",
+  "py",
+  "pyw",
+  "rb",
+  "rs",
+  "ruby",
+  "swift",
+  "ts",
+  "tsx",
+  "txt",
+  "xml",
+  "yaml",
+  "yml",
+]);
 const REVIEW_SWIPE_ACTIVATE_PX = 36;
 const REVIEW_SWIPE_COMMIT_PX = 72;
 const REVIEW_SWIPE_MAX_DRAG_PX = 180;
@@ -54,6 +88,8 @@ export interface GitStatusScreenProps {
   status?: WorkspaceGitStatus;
   diff?: GitDiffPayload;
   diffCache?: Record<string, GitDiffPayload>;
+  fileContentCache?: Record<string, FilesReadPayload>;
+  fileContentLoadingKeys?: Record<string, boolean>;
   loading?: boolean;
   embedded?: boolean;
   initialMode?: GitViewMode;
@@ -64,6 +100,7 @@ export interface GitStatusScreenProps {
   onOpenDiff(relativePath?: string, scope?: GitDiffScope): void;
   onOpenReview?(relativePath?: string, scope?: GitDiffScope): void;
   onPrefetchDiff?(relativePath?: string, scope?: GitDiffScope): void;
+  onReadFileContent?(relativePath: string): void;
 }
 
 export function GitStatusScreen({
@@ -71,6 +108,8 @@ export function GitStatusScreen({
   status,
   diff,
   diffCache = {},
+  fileContentCache = {},
+  fileContentLoadingKeys = {},
   loading,
   embedded = false,
   initialMode = "overview",
@@ -81,6 +120,7 @@ export function GitStatusScreen({
   onOpenDiff,
   onOpenReview,
   onPrefetchDiff = onOpenDiff,
+  onReadFileContent = noop,
 }: GitStatusScreenProps): JSX.Element {
   const { t } = useTranslation();
   const screenRef = useRef<View>(null);
@@ -105,6 +145,7 @@ export function GitStatusScreen({
   const selectedIndex = reviewFiles.findIndex((file) => file.path === selectedPath);
   const selectedFile = selectedIndex >= 0 ? reviewFiles[selectedIndex] : reviewFiles[0];
   const summary = getChangeSummary(files);
+  const selectedDiff = getCachedDiff(diffCache, diff, selectedFile, scope);
 
   useEffect(() => {
     setMode(initialMode);
@@ -123,8 +164,12 @@ export function GitStatusScreen({
     if (selectedPath !== selectedFile.path) {
       setSelectedPath(selectedFile.path);
       onOpenDiff(selectedFile.path, scope);
+      return;
     }
-  }, [mode, onOpenDiff, scope, selectedFile, selectedPath]);
+    if (!loading && !selectedDiff) {
+      onOpenDiff(selectedFile.path, scope);
+    }
+  }, [loading, mode, onOpenDiff, scope, selectedDiff, selectedFile, selectedPath]);
 
   useEffect(
     () => () => {
@@ -242,6 +287,8 @@ export function GitStatusScreen({
         <GitReviewView
           diff={diff}
           diffCache={diffCache}
+          fileContentCache={fileContentCache}
+          fileContentLoadingKeys={fileContentLoadingKeys}
           file={selectedFile}
           files={reviewFiles}
           loading={loading}
@@ -250,6 +297,7 @@ export function GitStatusScreen({
           onCopyText={copyText}
           onMoveSelection={moveSelection}
           onPrefetchDiff={onPrefetchDiff}
+          onReadFileContent={onReadFileContent}
           onSelectFile={selectFile}
           onSelectScope={selectScope}
         />
@@ -341,6 +389,8 @@ export function GitStatusScreen({
 function GitReviewView({
   diff,
   diffCache,
+  fileContentCache,
+  fileContentLoadingKeys,
   file,
   files,
   loading,
@@ -349,11 +399,14 @@ function GitReviewView({
   onCopyText,
   onMoveSelection,
   onPrefetchDiff,
+  onReadFileContent,
   onSelectFile,
   onSelectScope,
 }: {
   diff?: GitDiffPayload;
   diffCache: Record<string, GitDiffPayload>;
+  fileContentCache: Record<string, FilesReadPayload>;
+  fileContentLoadingKeys: Record<string, boolean>;
   file?: ChangedFile;
   files: ChangedFile[];
   loading?: boolean;
@@ -362,6 +415,7 @@ function GitReviewView({
   onCopyText(text: string, notice: string, pageY?: number): void;
   onMoveSelection(offset: number): void;
   onPrefetchDiff(relativePath?: string, scope?: GitDiffScope): void;
+  onReadFileContent(relativePath: string): void;
   onSelectFile(file: ChangedFile): void;
   onSelectScope(scope: GitDiffScope): void;
 }): JSX.Element {
@@ -376,6 +430,10 @@ function GitReviewView({
   const currentDiff = getCachedDiff(diffCache, diff, file, scope);
   const previousDiff = getCachedDiff(diffCache, undefined, previousFile, scope);
   const nextDiff = getCachedDiff(diffCache, undefined, nextFile, scope);
+  const currentFileContent = file ? fileContentCache[file.path] : undefined;
+  const currentFileContentLoading = Boolean(
+    file && fileContentLoadingKeys[file.path],
+  );
   const currentDiffMatchesSelection = Boolean(
     file &&
       currentDiff?.relativePath === file.path &&
@@ -415,6 +473,25 @@ function GitReviewView({
       }
     }
   }, [diffCache, nextFile, onPrefetchDiff, previousFile, scope]);
+
+  useEffect(() => {
+    if (
+      file &&
+      shouldUseUntrackedFileContentFallback(file, currentDiff, scope) &&
+      canReadUntrackedFileContent(file) &&
+      !currentFileContent &&
+      !currentFileContentLoading
+    ) {
+      onReadFileContent(file.path);
+    }
+  }, [
+    currentDiff,
+    currentFileContent,
+    currentFileContentLoading,
+    file,
+    onReadFileContent,
+    scope,
+  ]);
 
   function resetSwipeCard(): void {
     Animated.spring(swipeTranslateX, {
@@ -566,6 +643,8 @@ function GitReviewView({
               cardWidth={cardWidth}
               diff={previousDiff}
               file={previousFile}
+              fileContent={undefined}
+              fileContentLoading={false}
               loading={Boolean(previousFile && !previousDiff)}
               scope={scope}
               onCopyText={onCopyText}
@@ -575,6 +654,8 @@ function GitReviewView({
               cardWidth={cardWidth}
               diff={currentDiff}
               file={file}
+              fileContent={currentFileContent}
+              fileContentLoading={currentFileContentLoading}
               loading={loading || !currentDiffMatchesSelection}
               scope={scope}
               onCopyText={onCopyText}
@@ -584,6 +665,8 @@ function GitReviewView({
               cardWidth={cardWidth}
               diff={nextDiff}
               file={nextFile}
+              fileContent={undefined}
+              fileContentLoading={false}
               loading={Boolean(nextFile && !nextDiff)}
               scope={scope}
               onCopyText={onCopyText}
@@ -604,6 +687,8 @@ function ReviewDiffCard({
   cardWidth,
   diff,
   file,
+  fileContent,
+  fileContentLoading,
   loading,
   scope,
   onCopyText,
@@ -612,6 +697,8 @@ function ReviewDiffCard({
   cardWidth: number;
   diff?: GitDiffPayload;
   file?: ChangedFile;
+  fileContent?: FilesReadPayload;
+  fileContentLoading?: boolean;
   loading?: boolean;
   scope: GitDiffScope;
   onCopyText(text: string, notice: string, pageY?: number): void;
@@ -622,6 +709,16 @@ function ReviewDiffCard({
   );
   const diffLines = parseDiffLines(diff?.diff ?? "");
   const hasDiff = diffMatchesSelection && diffLines.length > 0;
+  const useUntrackedFileContentFallback = shouldUseUntrackedFileContentFallback(
+    file,
+    diff,
+    scope,
+  );
+  const canReadFileContent = canReadUntrackedFileContent(file);
+  const waitingForFileContent =
+    useUntrackedFileContentFallback &&
+    canReadFileContent &&
+    (fileContentLoading || !fileContent);
 
   return (
     <View
@@ -674,6 +771,12 @@ function ReviewDiffCard({
                     />
                   ))}
                 </ScrollView>
+              ) : useUntrackedFileContentFallback && canReadFileContent && fileContent ? (
+                <ReviewFileContent file={fileContent} />
+              ) : waitingForFileContent ? (
+                <ReviewEmptyMessage message={t("git.loadingFileContent")} />
+              ) : useUntrackedFileContentFallback ? (
+                <ReviewEmptyMessage message={t("git.fileContent.unsupported")} />
               ) : (
                 <ReviewEmptyMessage
                   message={file.status === "untracked" ? t("git.untrackedNoDiff") : t("git.noDiff")}
@@ -832,6 +935,30 @@ function ReviewEmptyMessage({ message }: { message: string }): JSX.Element {
     <View style={styles.reviewEmptyState}>
       <Text style={styles.reviewEmptyText}>{message}</Text>
     </View>
+  );
+}
+
+function ReviewFileContent({ file }: { file: FilesReadPayload }): JSX.Element {
+  const { t } = useTranslation();
+  if (file.encoding === "binary") {
+    return <ReviewEmptyMessage message={t("git.fileContent.binary")} />;
+  }
+  if (file.encoding === "too_large") {
+    return (
+      <ReviewEmptyMessage
+        message={t("git.fileContent.tooLarge", { size: formatBytes(file.size) })}
+      />
+    );
+  }
+  if (!file.content) {
+    return <ReviewEmptyMessage message={t("git.fileContent.empty")} />;
+  }
+  return (
+    <ScrollView style={styles.diffScroller} contentContainerStyle={styles.fileContentList}>
+      <Text selectable style={styles.fileContentText}>
+        {file.content}
+      </Text>
+    </ScrollView>
   );
 }
 
@@ -1009,6 +1136,34 @@ function toGitDiffCacheKey(relativePath: string | undefined, scope: GitDiffScope
   return `${scope}:${relativePath ?? ""}`;
 }
 
+function shouldUseUntrackedFileContentFallback(
+  file: ChangedFile | undefined,
+  diff: GitDiffPayload | undefined,
+  scope: GitDiffScope,
+): boolean {
+  return Boolean(
+    file &&
+      scope === "untracked" &&
+      file.status === "untracked" &&
+      diff?.relativePath === file.path &&
+      (diff.scope ?? "unstaged") === scope &&
+      parseDiffLines(diff.diff).length === 0,
+  );
+}
+
+function canReadUntrackedFileContent(file: ChangedFile | undefined): boolean {
+  if (!file) {
+    return false;
+  }
+  const name = basename(file.path);
+  const extensionIndex = name.lastIndexOf(".");
+  if (extensionIndex < 0 || extensionIndex === name.length - 1) {
+    return false;
+  }
+  const extension = name.slice(extensionIndex + 1).toLowerCase();
+  return READABLE_UNTRACKED_FILE_EXTENSIONS.has(extension);
+}
+
 function shouldActivateReviewSwipe(dx: number, dy: number): boolean {
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
@@ -1029,6 +1184,16 @@ function shouldCommitReviewSwipe(dx: number, dy: number): boolean {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 interface DiffLine {
@@ -1408,6 +1573,15 @@ const styles = StyleSheet.create({
   },
   diffScroller: {
     flex: 1,
+  },
+  fileContentList: {
+    padding: spacing.md,
+  },
+  fileContentText: {
+    color: colors.textSecondary,
+    fontFamily: "Menlo",
+    fontSize: 11,
+    lineHeight: 16,
   },
   diffRow: {
     flexDirection: "row",
