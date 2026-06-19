@@ -56,9 +56,13 @@ export interface GitStatusScreenProps {
   diffCache?: Record<string, GitDiffPayload>;
   loading?: boolean;
   embedded?: boolean;
+  initialMode?: GitViewMode;
+  initialPath?: string;
+  initialScope?: GitDiffScope;
   onBack?(): void;
   onRefresh(): void;
   onOpenDiff(relativePath?: string, scope?: GitDiffScope): void;
+  onOpenReview?(relativePath?: string, scope?: GitDiffScope): void;
   onPrefetchDiff?(relativePath?: string, scope?: GitDiffScope): void;
 }
 
@@ -69,16 +73,22 @@ export function GitStatusScreen({
   diffCache = {},
   loading,
   embedded = false,
+  initialMode = "overview",
+  initialPath,
+  initialScope = "all",
   onBack,
   onRefresh,
   onOpenDiff,
+  onOpenReview,
   onPrefetchDiff = onOpenDiff,
 }: GitStatusScreenProps): JSX.Element {
   const { t } = useTranslation();
   const screenRef = useRef<View>(null);
-  const [mode, setMode] = useState<GitViewMode>("overview");
-  const [scope, setScope] = useState<GitDiffScope>("all");
-  const [selectedPath, setSelectedPath] = useState<string | undefined>();
+  const [mode, setMode] = useState<GitViewMode>(initialMode);
+  const [scope, setScope] = useState<GitDiffScope>(initialScope);
+  const [selectedPath, setSelectedPath] = useState<string | undefined>(
+    initialPath,
+  );
   const [copyNotice, setCopyNotice] = useState<CopyNotice | undefined>();
   const [screenHeight, setScreenHeight] = useState(
     Dimensions.get("window").height,
@@ -95,6 +105,12 @@ export function GitStatusScreen({
   const selectedIndex = reviewFiles.findIndex((file) => file.path === selectedPath);
   const selectedFile = selectedIndex >= 0 ? reviewFiles[selectedIndex] : reviewFiles[0];
   const summary = getChangeSummary(files);
+
+  useEffect(() => {
+    setMode(initialMode);
+    setScope(initialScope);
+    setSelectedPath(initialPath);
+  }, [initialMode, initialPath, initialScope]);
 
   useEffect(() => {
     if (mode !== "review") {
@@ -141,6 +157,10 @@ export function GitStatusScreen({
   function openReview(nextScope: GitDiffScope, path?: string): void {
     const nextFiles = files.filter((file) => isFileInScope(file, nextScope));
     const nextPath = path ?? nextFiles[0]?.path;
+    if (onOpenReview) {
+      onOpenReview(nextPath, nextScope);
+      return;
+    }
     setScope(nextScope);
     setSelectedPath(nextPath);
     setMode("review");
@@ -221,16 +241,15 @@ export function GitStatusScreen({
       ) : mode === "review" ? (
         <GitReviewView
           diff={diff}
-            diffCache={diffCache}
+          diffCache={diffCache}
           file={selectedFile}
           files={reviewFiles}
           loading={loading}
           scope={scope}
           selectedIndex={Math.max(0, selectedIndex)}
-          onBackToOverview={() => setMode("overview")}
           onCopyText={copyText}
           onMoveSelection={moveSelection}
-            onPrefetchDiff={onPrefetchDiff}
+          onPrefetchDiff={onPrefetchDiff}
           onSelectFile={selectFile}
           onSelectScope={selectScope}
         />
@@ -327,7 +346,6 @@ function GitReviewView({
   loading,
   scope,
   selectedIndex,
-  onBackToOverview,
   onCopyText,
   onMoveSelection,
   onPrefetchDiff,
@@ -341,7 +359,6 @@ function GitReviewView({
   loading?: boolean;
   scope: GitDiffScope;
   selectedIndex: number;
-  onBackToOverview(): void;
   onCopyText(text: string, notice: string, pageY?: number): void;
   onMoveSelection(offset: number): void;
   onPrefetchDiff(relativePath?: string, scope?: GitDiffScope): void;
@@ -468,13 +485,6 @@ function GitReviewView({
   return (
     <View style={styles.reviewScreen}>
       <View style={styles.reviewHeader}>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.reviewBackButton}
-          onPress={onBackToOverview}
-        >
-          <Text style={styles.reviewBackText}>‹ {t("git.overview")}</Text>
-        </Pressable>
         <View style={styles.reviewTitleArea}>
           <Text numberOfLines={1} style={styles.reviewTitle}>
             {file ? basename(file.path) : t("git.review.title")}
@@ -585,25 +595,6 @@ function GitReviewView({
           </Card>
         )}
       </View>
-
-      <View style={styles.reviewActions}>
-        <Pressable
-          accessibilityRole="button"
-          disabled={selectedIndex <= 0}
-          style={[styles.reviewNavButton, selectedIndex <= 0 && styles.disabled]}
-          onPress={() => onMoveSelection(-1)}
-        >
-          <Text style={styles.reviewNavText}>{t("git.review.previous")}</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          disabled={selectedIndex >= files.length - 1}
-          style={[styles.reviewNavButton, styles.reviewNavButtonPrimary, selectedIndex >= files.length - 1 && styles.disabled]}
-          onPress={() => onMoveSelection(1)}
-        >
-          <Text style={styles.reviewNavTextPrimary}>{t("git.review.next")}</Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -646,17 +637,11 @@ function ReviewDiffCard({
                   {getReviewScopeBadgeLabel(file, scope, t)}
                 </Text>
               </View>
-              <View style={styles.reviewFileTitleArea}>
-                <Text selectable={active} numberOfLines={1} style={styles.reviewFileTitle}>
-                  {file.path}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.copyActionRow}>
               <Pressable
                 accessibilityRole="button"
-                style={styles.copyActionButton}
-                onPress={(event) =>
+                disabled={!active}
+                style={styles.reviewFileTitleArea}
+                onLongPress={(event) =>
                   onCopyText(
                     file.path,
                     t("git.copy.pathCopied", { path: file.path }),
@@ -664,24 +649,11 @@ function ReviewDiffCard({
                   )
                 }
               >
-                <Text style={styles.copyActionText}>{t("git.copy.path")}</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={!hasDiff}
-                style={[styles.copyActionButton, !hasDiff && styles.disabled]}
-                onPress={(event) =>
-                  onCopyText(
-                    diff?.diff ?? "",
-                    t("git.copy.diffCopied", { path: file.path }),
-                    event.nativeEvent.pageY,
-                  )
-                }
-              >
-                <Text style={styles.copyActionText}>{t("git.copy.diff")}</Text>
+                <Text numberOfLines={1} style={styles.reviewFileTitle}>
+                  {file.path}
+                </Text>
               </Pressable>
             </View>
-            <Text style={styles.copyHint}>{t("git.copy.lineHint")}</Text>
             <View style={styles.reviewSwipeArea}>
               {loading || !diffMatchesSelection ? (
                 <ReviewEmptyMessage message={t("git.loadingDiff")} />
@@ -1212,36 +1184,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     backgroundColor: "rgba(17, 24, 29, 0.96)",
   },
-  copyHint: {
-    color: colors.textDim,
-    fontSize: 11,
-    lineHeight: 16,
-    paddingHorizontal: spacing.md,
-  },
-  copyActionRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    borderBottomColor: colors.borderSubtle,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
-  },
-  copyActionButton: {
-    minHeight: 30,
-    borderColor: colors.borderSubtle,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surfaceRaised,
-  },
-  copyActionText: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontWeight: "900",
-  },
   fileStack: {
     gap: spacing.lg,
   },
@@ -1338,21 +1280,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     minHeight: 36,
-  },
-  reviewBackButton: {
-    minHeight: 32,
-    paddingHorizontal: spacing.md,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface,
-  },
-  reviewBackText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: "900",
   },
   reviewTitleArea: {
     flex: 1,
@@ -1526,34 +1453,6 @@ const styles = StyleSheet.create({
   },
   diffTextMeta: {
     color: colors.textMuted,
-  },
-  reviewActions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  reviewNavButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: radii.sm,
-    borderColor: colors.borderSubtle,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface,
-  },
-  reviewNavButtonPrimary: {
-    borderColor: colors.success,
-    backgroundColor: colors.success,
-  },
-  reviewNavText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  reviewNavTextPrimary: {
-    color: colors.successText,
-    fontSize: 14,
-    fontWeight: "900",
   },
   fileStatsBadge: {
     minWidth: 58,

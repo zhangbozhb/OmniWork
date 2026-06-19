@@ -85,6 +85,7 @@ import { SecuritySettingsScreen } from "../screens/security/SecuritySettingsScre
 import { Button } from "../ui/components";
 import { SessionListScreen } from "../screens/sessions/SessionListScreen";
 import { TerminalScreen } from "../screens/terminal/TerminalScreen";
+import { GitStatusScreen } from "../screens/workspaces/GitStatusScreen";
 import type { PairingConfig } from "../features/auth/types";
 import { parsePairingConfig } from "../features/auth/pairingConfig";
 import {
@@ -205,6 +206,8 @@ function AppContent(): JSX.Element {
   const [gitDiffLoadingKeys, setGitDiffLoadingKeys] = useState<
     Record<string, boolean>
   >({});
+  const [gitReviewPath, setGitReviewPath] = useState<string | undefined>();
+  const [gitReviewScope, setGitReviewScope] = useState<GitDiffScope>("all");
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [defaultSessionCwd, setDefaultSessionCwd] = useState("");
   const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
@@ -1318,15 +1321,12 @@ function AppContent(): JSX.Element {
     );
   }
 
-  function handleOpenGitDiff(
+  function requestGitDiff(
+    workspace: WorkspaceDefinition,
     relativePath?: string,
     scope: GitDiffScope = "unstaged",
   ): void {
-    if (
-      !pairing ||
-      !selectedWorkspace ||
-      connectionStatus !== "authenticated"
-    ) {
+    if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
     const cacheKey = toGitDiffCacheKey(relativePath, scope);
@@ -1342,11 +1342,33 @@ function AppContent(): JSX.Element {
     setGitDiffLoadingKeys((current) => ({ ...current, [cacheKey]: true }));
     sendToRelay(
       gitDiffRequest(pairing.deviceId, {
-        workspacePath: selectedWorkspace.path,
+        workspacePath: workspace.path,
         relativePath,
         scope,
       }),
     );
+  }
+
+  function handleOpenGitDiff(
+    relativePath?: string,
+    scope: GitDiffScope = "unstaged",
+  ): void {
+    if (!selectedWorkspace) {
+      return;
+    }
+    requestGitDiff(selectedWorkspace, relativePath, scope);
+  }
+
+  function handleOpenGitReview(
+    workspace: WorkspaceDefinition,
+    relativePath?: string,
+    scope: GitDiffScope = "all",
+  ): void {
+    setSelectedWorkspace(workspace);
+    setGitReviewPath(relativePath);
+    setGitReviewScope(scope);
+    setView("gitReview");
+    requestGitDiff(workspace, relativePath, scope);
   }
 
   function handlePrefetchGitDiff(
@@ -1595,6 +1617,10 @@ function AppContent(): JSX.Element {
     setSelectedFile(undefined);
     setGitStatus(undefined);
     setGitDiff(undefined);
+    setGitDiffCache({});
+    setGitDiffLoadingKeys({});
+    setGitReviewPath(undefined);
+    setGitReviewScope("all");
     setWorkspaceLoading(false);
     setDefaultSessionCwd("");
     setTerminalFrames({});
@@ -2004,37 +2030,58 @@ function AppContent(): JSX.Element {
               onChangeTransportPreference={handleChangeTransportPreference}
               onBack={() => setView("settings")}
             />
-          ) : view === "sessions" ? (
-            <SessionListScreen
-              sessions={sessions}
-              providers={agentProviders}
-              workspaces={workspaces}
-              providerPreferenceScope={pairing?.deviceId ?? "default"}
-              creating={creatingSession}
-              closingSessionIds={closingSessionIds}
-              killingSessionIds={killingSessionIds}
-              defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
-              fileRelativePath={fileRelativePath}
-              fileEntries={fileEntries}
-              selectedFile={selectedFile}
-              gitStatus={gitStatus}
-              gitDiff={gitDiff}
-              gitDiffCache={gitDiffCache}
-              workspaceLoading={workspaceLoading}
-              onBack={() => setView("devices")}
-              onRefreshSessions={handleRefreshSessions}
-              onCreateSession={handleCreateSession}
-              onOpenWorkspaceFiles={handleOpenWorkspaceFiles}
-              onOpenWorkspaceGit={handleOpenWorkspaceGit}
-              onOpenDirectory={handleOpenDirectory}
-              onReadFile={handleReadFile}
-              onOpenGitDiff={handleOpenGitDiff}
-              onPrefetchGitDiff={handlePrefetchGitDiff}
-              onOpenSession={handleOpenSession}
-              onCloseSession={handleCloseSession}
-              onRenameSession={handleRenameSession}
-              onKillTmuxSession={handleKillTmuxSession}
-            />
+          ) : view === "sessions" || view === "gitReview" ? (
+            <>
+              <SessionListScreen
+                sessions={sessions}
+                providers={agentProviders}
+                workspaces={workspaces}
+                providerPreferenceScope={pairing?.deviceId ?? "default"}
+                creating={creatingSession}
+                closingSessionIds={closingSessionIds}
+                killingSessionIds={killingSessionIds}
+                defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
+                fileRelativePath={fileRelativePath}
+                fileEntries={fileEntries}
+                selectedFile={selectedFile}
+                gitStatus={gitStatus}
+                gitDiff={gitDiff}
+                gitDiffCache={gitDiffCache}
+                workspaceLoading={workspaceLoading}
+                onBack={() => setView("devices")}
+                onRefreshSessions={handleRefreshSessions}
+                onCreateSession={handleCreateSession}
+                onOpenWorkspaceFiles={handleOpenWorkspaceFiles}
+                onOpenWorkspaceGit={handleOpenWorkspaceGit}
+                onOpenDirectory={handleOpenDirectory}
+                onReadFile={handleReadFile}
+                onOpenGitDiff={handleOpenGitDiff}
+                onOpenGitReview={handleOpenGitReview}
+                onPrefetchGitDiff={handlePrefetchGitDiff}
+                onOpenSession={handleOpenSession}
+                onCloseSession={handleCloseSession}
+                onRenameSession={handleRenameSession}
+                onKillTmuxSession={handleKillTmuxSession}
+              />
+              {view === "gitReview" && selectedWorkspace ? (
+                <View style={styles.fullScreenPage}>
+                  <GitStatusScreen
+                    workspace={selectedWorkspace}
+                    status={gitStatus}
+                    diff={gitDiff}
+                    diffCache={gitDiffCache}
+                    loading={workspaceLoading}
+                    initialMode="review"
+                    initialPath={gitReviewPath}
+                    initialScope={gitReviewScope}
+                    onBack={() => setView("sessions")}
+                    onRefresh={() => handleOpenWorkspaceGit(selectedWorkspace)}
+                    onOpenDiff={handleOpenGitDiff}
+                    onPrefetchDiff={handlePrefetchGitDiff}
+                  />
+                </View>
+              ) : null}
+            </>
           ) : selectedSession ? (
             <TerminalScreen
               session={selectedSession}
@@ -2073,6 +2120,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  fullScreenPage: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#101417",
   },
   loadingScreen: {
     flex: 1,

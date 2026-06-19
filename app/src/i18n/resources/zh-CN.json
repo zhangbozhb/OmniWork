@@ -329,7 +329,6 @@
     "behind": "落后 {{count}}",
     "viewWorkspaceDiff": "查看工作区 diff",
     "reviewChanges": "审阅变更",
-    "overview": "概览",
     "noChangedFiles": "没有变更文件。",
     "loadingStatus": "正在加载 Git 状态...",
     "loadingDiff": "正在加载 diff...",
@@ -337,12 +336,8 @@
     "noDiff": "没有 diff。",
     "untrackedNoDiff": "未跟踪文件已列出，但在暂存或纳入跟踪前不会生成 diff。",
     "copy": {
-      "path": "复制路径",
-      "diff": "复制当前 diff",
       "pathCopied": "已复制路径：{{path}}",
-      "diffCopied": "已复制 {{path}} 的 diff",
-      "lineCopied": "已复制第 {{line}} 行",
-      "lineHint": "长按 diff 行可复制该行；文件路径可直接选中；左右滑动详情区域可切换文件。"
+      "lineCopied": "已复制第 {{line}} 行"
     },
     "summary": {
       "files": "文件",
@@ -358,9 +353,7 @@
     "review": {
       "title": "审阅变更",
       "progress": "{{current}} / {{total}}",
-      "noFiles": "此范围内没有文件。",
-      "previous": "上一个",
-      "next": "下一个"
+      "noFiles": "此范围内没有文件。"
     },
     "status": {
       "modified": "已修改",

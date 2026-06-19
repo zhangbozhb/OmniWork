@@ -79,6 +79,11 @@ export interface SessionListScreenProps {
   onOpenDirectory(relativePath: string): void;
   onReadFile(relativePath: string): void;
   onOpenGitDiff(relativePath?: string, scope?: GitDiffScope): void;
+  onOpenGitReview(
+    workspace: WorkspaceDefinition,
+    relativePath?: string,
+    scope?: GitDiffScope,
+  ): void;
   onPrefetchGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
@@ -125,6 +130,7 @@ export function SessionListScreen({
   onOpenDirectory,
   onReadFile,
   onOpenGitDiff,
+  onOpenGitReview,
   onPrefetchGitDiff,
   onOpenSession,
   onCloseSession,
@@ -514,6 +520,9 @@ export function SessionListScreen({
                 loading={workspaceLoading}
                 onRefresh={() => onOpenWorkspaceGit(activeWorkspace)}
                 onOpenDiff={onOpenGitDiff}
+                onOpenReview={(relativePath, scope) =>
+                  onOpenGitReview(activeWorkspace, relativePath, scope)
+                }
                 onPrefetchDiff={onPrefetchGitDiff}
               />
             ) : null}

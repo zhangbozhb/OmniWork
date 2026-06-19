@@ -329,7 +329,6 @@
     "behind": "behind {{count}}",
     "viewWorkspaceDiff": "View workspace diff",
     "reviewChanges": "Review changes",
-    "overview": "Overview",
     "noChangedFiles": "No changed files.",
     "loadingStatus": "Loading Git status...",
     "loadingDiff": "Loading diff...",
@@ -337,12 +336,8 @@
     "noDiff": "No diff.",
     "untrackedNoDiff": "Untracked files are listed here, but no diff is available until they are staged or tracked.",
     "copy": {
-      "path": "Copy path",
-      "diff": "Copy current diff",
       "pathCopied": "Copied path: {{path}}",
-      "diffCopied": "Copied diff for {{path}}",
-      "lineCopied": "Copied line {{line}}",
-      "lineHint": "Long press a diff line to copy it; the file path is selectable; swipe the detail area to switch files."
+      "lineCopied": "Copied line {{line}}"
     },
     "summary": {
       "files": "files",
@@ -358,9 +353,7 @@
     "review": {
       "title": "Review changes",
       "progress": "{{current}} / {{total}}",
-      "noFiles": "No files in this scope.",
-      "previous": "Previous",
-      "next": "Next"
+      "noFiles": "No files in this scope."
     },
     "status": {
       "modified": "modified",

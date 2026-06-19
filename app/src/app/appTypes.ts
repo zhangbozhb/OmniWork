@@ -13,6 +13,7 @@ export type AppView =
   | "securitySettings"
   | "connectionPreference"
   | "sessions"
+  | "gitReview"
   | "terminal";
 
 export type PrimaryTabView = "devices" | "settings";
