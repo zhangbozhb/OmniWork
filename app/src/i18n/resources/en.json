@@ -306,7 +306,14 @@
     "directory": "directory",
     "empty": "No files.",
     "tooLarge": "File is too large to preview ({{size}}).",
-    "binaryDisabled": "Binary file preview is disabled."
+    "binaryDisabled": "Binary file preview is disabled.",
+    "copy": {
+      "title": "Copy path",
+      "fileName": "File name",
+      "relativePath": "Relative path",
+      "absolutePath": "Absolute path",
+      "copied": "Copied: {{value}}"
+    }
   },
   "git": {
     "title": "{{workspace}} Git",
@@ -329,6 +336,14 @@
     "workspaceDiff": "Workspace diff",
     "noDiff": "No diff.",
     "untrackedNoDiff": "Untracked files are listed here, but no diff is available until they are staged or tracked.",
+    "copy": {
+      "path": "Copy path",
+      "diff": "Copy current diff",
+      "pathCopied": "Copied path: {{path}}",
+      "diffCopied": "Copied diff for {{path}}",
+      "lineCopied": "Copied line {{line}}",
+      "lineHint": "Long press a diff line to copy it; the file path is selectable; swipe the detail area to switch files."
+    },
     "summary": {
       "files": "files",
       "additions": "added",

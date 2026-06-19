@@ -34,7 +34,7 @@
     "verify:security": "pnpm --filter @omniwork/e2e-noise test"
   },
   "devDependencies": {
-    "typescript": "^5.8.0",
-    "@react-native-community/cli": "latest"
+    "@react-native-community/cli": "latest",
+    "typescript": "^5.9.3"
   }
 }

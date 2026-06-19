@@ -12,3 +12,8 @@ xtermWebViewAssets.ts
 local.properties
 .env
 relay/server/.omniwork-relay
+app/ios/OmniWork.xcworkspace/xcuserdata
+app/ios/Pods
+app/android/.gradle
+app/ios/build
+app/android/build

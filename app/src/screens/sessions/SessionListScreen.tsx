@@ -65,6 +65,7 @@ export interface SessionListScreenProps {
   selectedFile?: FilesReadPayload;
   gitStatus?: WorkspaceGitStatus;
   gitDiff?: GitDiffPayload;
+  gitDiffCache?: Record<string, GitDiffPayload>;
   workspaceLoading?: boolean;
   onBack(): void;
   onRefreshSessions(): void;
@@ -78,6 +79,7 @@ export interface SessionListScreenProps {
   onOpenDirectory(relativePath: string): void;
   onReadFile(relativePath: string): void;
   onOpenGitDiff(relativePath?: string, scope?: GitDiffScope): void;
+  onPrefetchGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onOpenSession(session: CodexSession): void;
   onCloseSession(session: CodexSession): void;
   onRenameSession(session: CodexSession, title: string): void;
@@ -113,6 +115,7 @@ export function SessionListScreen({
   selectedFile,
   gitStatus,
   gitDiff,
+  gitDiffCache,
   workspaceLoading,
   onBack,
   onRefreshSessions,
@@ -122,6 +125,7 @@ export function SessionListScreen({
   onOpenDirectory,
   onReadFile,
   onOpenGitDiff,
+  onPrefetchGitDiff,
   onOpenSession,
   onCloseSession,
   onRenameSession,
@@ -506,9 +510,11 @@ export function SessionListScreen({
                 workspace={activeWorkspace}
                 status={gitStatus}
                 diff={gitDiff}
+                diffCache={gitDiffCache}
                 loading={workspaceLoading}
                 onRefresh={() => onOpenWorkspaceGit(activeWorkspace)}
                 onOpenDiff={onOpenGitDiff}
+                onPrefetchDiff={onPrefetchGitDiff}
               />
             ) : null}
 

@@ -1,5 +1,15 @@
-import type { JSX } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { type JSX, useEffect, useRef, useState } from "react";
+import {
+  Clipboard,
+  Dimensions,
+  type GestureResponderEvent,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -10,6 +20,20 @@ import type {
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 import { Icon } from "../../ui/icons";
+
+type CopyTarget = {
+  name: string;
+  relativePath: string;
+  absolutePath: string;
+};
+
+type CopyNotice = {
+  message: string;
+  pageY?: number;
+};
+
+const COPY_NOTICE_HEIGHT = 80;
+const COPY_NOTICE_GAP = 60;
 
 export interface FileBrowserScreenProps {
   workspace: WorkspaceDefinition;
@@ -37,9 +61,57 @@ export function FileBrowserScreen({
   onReadFile,
 }: FileBrowserScreenProps): JSX.Element {
   const { t } = useTranslation();
+  const screenRef = useRef<View>(null);
+  const [copyTarget, setCopyTarget] = useState<CopyTarget | undefined>();
+  const [copyNotice, setCopyNotice] = useState<CopyNotice | undefined>();
+  const [screenHeight, setScreenHeight] = useState(
+    Dimensions.get("window").height,
+  );
+  const [screenPageY, setScreenPageY] = useState(0);
+  const copyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const currentParts = relativePath.split("/").filter(Boolean);
+
+  useEffect(
+    () => () => {
+      if (copyNoticeTimerRef.current) {
+        clearTimeout(copyNoticeTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function openCopySheet(target: CopyTarget): void {
+    setCopyTarget(target);
+  }
+
+  function copyText(text: string, notice: string, pageY?: number): void {
+    Clipboard.setString(text);
+    setCopyTarget(undefined);
+    setCopyNotice({ message: notice, pageY });
+    if (copyNoticeTimerRef.current) {
+      clearTimeout(copyNoticeTimerRef.current);
+    }
+    copyNoticeTimerRef.current = setTimeout(() => {
+      setCopyNotice(undefined);
+      copyNoticeTimerRef.current = undefined;
+    }, 1800);
+  }
+
+  function handleScreenLayout(): void {
+    screenRef.current?.measure((_x, _y, _width, height, _pageX, pageY) => {
+      setScreenHeight(height);
+      setScreenPageY(pageY);
+    });
+  }
+
   return (
-    <View style={[styles.screen, embedded && styles.embeddedScreen]}>
+    <View
+      ref={screenRef}
+      style={[styles.screen, embedded && styles.embeddedScreen]}
+      onLayout={handleScreenLayout}
+    >
       {!embedded ? (
       <View style={styles.toolbar}>
         <Button
@@ -79,6 +151,9 @@ export function FileBrowserScreen({
             icon="folder"
             label={getWorkspaceDisplayName(workspace)}
             meta={t("files.workspaceRoot")}
+            onLongPress={() =>
+              openCopySheet(toCopyTarget(workspace, "", getWorkspaceDisplayName(workspace)))
+            }
             onPress={() => onOpenDirectory("")}
           />
 
@@ -96,6 +171,9 @@ export function FileBrowserScreen({
                     ? t("files.currentDirectory")
                     : t("files.directory")
                 }
+                onLongPress={() =>
+                  openCopySheet(toCopyTarget(workspace, path, part))
+                }
                 onPress={() => onOpenDirectory(path)}
               />
             );
@@ -109,6 +187,11 @@ export function FileBrowserScreen({
               label={entry.name}
               meta={formatEntryMeta(entry, t)}
               selected={file?.relativePath === entry.relativePath}
+              onLongPress={() =>
+                openCopySheet(
+                  toCopyTarget(workspace, entry.relativePath, entry.name),
+                )
+              }
               onPress={() =>
                 entry.type === "directory"
                   ? onOpenDirectory(entry.relativePath)
@@ -146,6 +229,42 @@ export function FileBrowserScreen({
           </Card>
         ) : null}
       </ScrollView>
+      {copyNotice ? (
+        <CopyNoticeToast
+          notice={copyNotice}
+          screenHeight={screenHeight}
+          screenPageY={screenPageY}
+        />
+      ) : null}
+      <CopyPathModal
+        target={copyTarget}
+        onClose={() => setCopyTarget(undefined)}
+        onCopy={(text, notice, pageY) => copyText(text, notice, pageY)}
+      />
+    </View>
+  );
+}
+
+function CopyNoticeToast({
+  notice,
+  screenHeight,
+  screenPageY,
+}: {
+  notice: CopyNotice;
+  screenHeight: number;
+  screenPageY: number;
+}): JSX.Element {
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.copyNoticeToast,
+        getCopyNoticeToastPosition(notice.pageY, screenHeight, screenPageY),
+      ]}
+    >
+      <Text accessibilityLiveRegion="polite" style={styles.copyNoticeText}>
+        {notice.message}
+      </Text>
     </View>
   );
 }
@@ -158,6 +277,7 @@ function TreeRow({
   meta,
   muted = false,
   selected = false,
+  onLongPress,
   onPress,
 }: {
   depth: number;
@@ -167,6 +287,7 @@ function TreeRow({
   meta: string;
   muted?: boolean;
   selected?: boolean;
+  onLongPress?(event: GestureResponderEvent): void;
   onPress(): void;
 }): JSX.Element {
   const isFolder = icon === "folder";
@@ -177,6 +298,7 @@ function TreeRow({
         selected && styles.treeRowSelected,
         { paddingLeft: spacing.sm + depth * 18 },
       ]}
+      onLongPress={onLongPress}
       onPress={onPress}
     >
       <View style={styles.treeGuide} />
@@ -207,12 +329,148 @@ function TreeRow({
   );
 }
 
+function CopyPathModal({
+  target,
+  onClose,
+  onCopy,
+}: {
+  target?: CopyTarget;
+  onClose(): void;
+  onCopy(text: string, notice: string, pageY?: number): void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <Modal
+      animationType="fade"
+      transparent
+      visible={Boolean(target)}
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.copySheet} onPress={noop}>
+          <Text style={styles.copySheetTitle}>{t("files.copy.title")}</Text>
+          <Text numberOfLines={2} style={styles.copySheetPath}>
+            {target?.relativePath || "."}
+          </Text>
+          <CopyPathOption
+            label={t("files.copy.fileName")}
+            value={target?.name ?? ""}
+            onPress={(event) =>
+              target
+                ? onCopy(
+                    target.name,
+                    t("files.copy.copied", { value: target.name }),
+                    event.nativeEvent.pageY,
+                  )
+                : undefined
+            }
+          />
+          <CopyPathOption
+            label={t("files.copy.relativePath")}
+            value={target?.relativePath || "."}
+            onPress={(event) =>
+              target
+                ? onCopy(
+                    target.relativePath || ".",
+                    t("files.copy.copied", {
+                      value: target.relativePath || ".",
+                    }),
+                    event.nativeEvent.pageY,
+                  )
+                : undefined
+            }
+          />
+          <CopyPathOption
+            label={t("files.copy.absolutePath")}
+            value={target?.absolutePath ?? ""}
+            onPress={(event) =>
+              target
+                ? onCopy(
+                    target.absolutePath,
+                    t("files.copy.copied", { value: target.absolutePath }),
+                    event.nativeEvent.pageY,
+                  )
+                : undefined
+            }
+          />
+          <Pressable style={styles.copyCancelButton} onPress={onClose}>
+            <Text style={styles.copyCancelText}>{t("common.cancel")}</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function CopyPathOption({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  onPress(event: GestureResponderEvent): void;
+}): JSX.Element {
+  return (
+    <Pressable style={styles.copyOption} onPress={onPress}>
+      <Text style={styles.copyOptionLabel}>{label}</Text>
+      <Text numberOfLines={1} style={styles.copyOptionValue}>
+        {value}
+      </Text>
+    </Pressable>
+  );
+}
+
 function noop(): void {}
+
+function getCopyNoticeToastPosition(
+  pageY: number | undefined,
+  screenHeight: number,
+  screenPageY: number,
+): { top: number } | { bottom: number } {
+  if (typeof pageY !== "number") {
+    return { bottom: spacing.xl };
+  }
+
+  const localY = pageY - screenPageY;
+  const topCandidate = localY - COPY_NOTICE_GAP - COPY_NOTICE_HEIGHT;
+  if (topCandidate >= spacing.sm) {
+    return { top: topCandidate };
+  }
+
+  return {
+    top: Math.max(
+      spacing.sm,
+      Math.min(
+        screenHeight - COPY_NOTICE_HEIGHT - spacing.sm,
+        localY + COPY_NOTICE_GAP,
+      ),
+    ),
+  };
+}
 
 function getWorkspaceDisplayName(workspace: WorkspaceDefinition): string {
   const normalized = workspace.path.replace(/\/+$/g, "");
   const fallback = normalized.split("/").filter(Boolean).at(-1) ?? "Workspace";
   return workspace.name?.trim() || fallback;
+}
+
+function toCopyTarget(
+  workspace: WorkspaceDefinition,
+  relativePath: string,
+  name: string,
+): CopyTarget {
+  return {
+    name,
+    relativePath,
+    absolutePath: joinWorkspacePath(workspace.path, relativePath),
+  };
+}
+
+function joinWorkspacePath(workspacePath: string, relativePath: string): string {
+  const root = workspacePath.replace(/\/+$/g, "");
+  const child = relativePath.replace(/^\/+/g, "");
+  return child ? `${root}/${child}` : root;
 }
 
 function formatBytes(value: number): string {
@@ -349,6 +607,82 @@ const styles = StyleSheet.create({
   empty: {
     color: colors.textMuted,
     padding: spacing.lg,
+  },
+  copyNoticeToast: {
+    position: "absolute",
+    left: spacing.xl,
+    right: spacing.xl,
+    minHeight: COPY_NOTICE_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  copyNoticeText: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    borderColor: "rgba(48, 196, 141, 0.42)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    color: colors.success,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 17,
+    backgroundColor: "rgba(17, 24, 29, 0.96)",
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.48)",
+  },
+  copySheet: {
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceRaised,
+  },
+  copySheetTitle: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  copySheetPath: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: spacing.xs,
+  },
+  copyOption: {
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  copyOptionLabel: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  copyOptionValue: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  copyCancelButton: {
+    minHeight: 40,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  copyCancelText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: "900",
   },
   previewCard: {
     padding: spacing.lg,

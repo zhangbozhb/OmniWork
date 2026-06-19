@@ -306,7 +306,14 @@
     "directory": "目录",
     "empty": "暂无文件。",
     "tooLarge": "文件过大，无法预览（{{size}}）。",
-    "binaryDisabled": "二进制文件预览已禁用。"
+    "binaryDisabled": "二进制文件预览已禁用。",
+    "copy": {
+      "title": "复制路径",
+      "fileName": "文件名",
+      "relativePath": "相对路径",
+      "absolutePath": "绝对路径",
+      "copied": "已复制：{{value}}"
+    }
   },
   "git": {
     "title": "{{workspace}} Git",
@@ -329,6 +336,14 @@
     "workspaceDiff": "工作区 diff",
     "noDiff": "没有 diff。",
     "untrackedNoDiff": "未跟踪文件已列出，但在暂存或纳入跟踪前不会生成 diff。",
+    "copy": {
+      "path": "复制路径",
+      "diff": "复制当前 diff",
+      "pathCopied": "已复制路径：{{path}}",
+      "diffCopied": "已复制 {{path}} 的 diff",
+      "lineCopied": "已复制第 {{line}} 行",
+      "lineHint": "长按 diff 行可复制该行；文件路径可直接选中；左右滑动详情区域可切换文件。"
+    },
     "summary": {
       "files": "文件",
       "additions": "新增",

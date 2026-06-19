@@ -199,6 +199,12 @@ function AppContent(): JSX.Element {
   const [selectedFile, setSelectedFile] = useState<FilesReadPayload>();
   const [gitStatus, setGitStatus] = useState<WorkspaceGitStatus>();
   const [gitDiff, setGitDiff] = useState<GitDiffPayload>();
+  const [gitDiffCache, setGitDiffCache] = useState<
+    Record<string, GitDiffPayload>
+  >({});
+  const [gitDiffLoadingKeys, setGitDiffLoadingKeys] = useState<
+    Record<string, boolean>
+  >({});
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [defaultSessionCwd, setDefaultSessionCwd] = useState("");
   const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
@@ -261,6 +267,7 @@ function AppContent(): JSX.Element {
   const terminalLastFrameAtRef = useRef<Record<string, number>>({});
   const terminalLastSnapshotRequestAtRef = useRef<Record<string, number>>({});
   const pendingTerminalFramesRef = useRef<Record<string, string>>({});
+  const activeGitDiffKeyRef = useRef<string | undefined>(undefined);
   const terminalFrameFlushTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
@@ -1266,6 +1273,9 @@ function AppContent(): JSX.Element {
     setSelectedWorkspace(workspace);
     setGitStatus(undefined);
     setGitDiff(undefined);
+    setGitDiffCache({});
+    setGitDiffLoadingKeys({});
+    activeGitDiffKeyRef.current = undefined;
     setWorkspaceLoading(true);
     sendToRelay(
       gitStatusRequest(pairing.deviceId, { workspacePath: workspace.path }),
@@ -1319,7 +1329,42 @@ function AppContent(): JSX.Element {
     ) {
       return;
     }
+    const cacheKey = toGitDiffCacheKey(relativePath, scope);
+    activeGitDiffKeyRef.current = cacheKey;
+    const cachedDiff = gitDiffCache[cacheKey];
+    if (cachedDiff) {
+      setGitDiff(cachedDiff);
+      setWorkspaceLoading(false);
+      setGitDiffLoadingKeys((current) => omitKey(current, cacheKey));
+      return;
+    }
     setWorkspaceLoading(true);
+    setGitDiffLoadingKeys((current) => ({ ...current, [cacheKey]: true }));
+    sendToRelay(
+      gitDiffRequest(pairing.deviceId, {
+        workspacePath: selectedWorkspace.path,
+        relativePath,
+        scope,
+      }),
+    );
+  }
+
+  function handlePrefetchGitDiff(
+    relativePath?: string,
+    scope: GitDiffScope = "unstaged",
+  ): void {
+    if (
+      !pairing ||
+      !selectedWorkspace ||
+      connectionStatus !== "authenticated"
+    ) {
+      return;
+    }
+    const cacheKey = toGitDiffCacheKey(relativePath, scope);
+    if (gitDiffCache[cacheKey] || gitDiffLoadingKeys[cacheKey]) {
+      return;
+    }
+    setGitDiffLoadingKeys((current) => ({ ...current, [cacheKey]: true }));
     sendToRelay(
       gitDiffRequest(pairing.deviceId, {
         workspacePath: selectedWorkspace.path,
@@ -1737,8 +1782,20 @@ function AppContent(): JSX.Element {
         break;
       }
       case "git.diff": {
-        setGitDiff(message.payload as GitDiffPayload);
-        setWorkspaceLoading(false);
+        const payload = message.payload as GitDiffPayload;
+        const cacheKey = toGitDiffCacheKey(
+          payload.relativePath,
+          payload.scope ?? "unstaged",
+        );
+        if (activeGitDiffKeyRef.current === cacheKey) {
+          setGitDiff(payload);
+          setWorkspaceLoading(false);
+        }
+        setGitDiffLoadingKeys((current) => omitKey(current, cacheKey));
+        setGitDiffCache((current) => ({
+          ...current,
+          [cacheKey]: payload,
+        }));
         break;
       }
       case "terminal.snapshot": {
@@ -1962,6 +2019,7 @@ function AppContent(): JSX.Element {
               selectedFile={selectedFile}
               gitStatus={gitStatus}
               gitDiff={gitDiff}
+              gitDiffCache={gitDiffCache}
               workspaceLoading={workspaceLoading}
               onBack={() => setView("devices")}
               onRefreshSessions={handleRefreshSessions}
@@ -1971,6 +2029,7 @@ function AppContent(): JSX.Element {
               onOpenDirectory={handleOpenDirectory}
               onReadFile={handleReadFile}
               onOpenGitDiff={handleOpenGitDiff}
+              onPrefetchGitDiff={handlePrefetchGitDiff}
               onOpenSession={handleOpenSession}
               onCloseSession={handleCloseSession}
               onRenameSession={handleRenameSession}
@@ -2140,4 +2199,16 @@ function PrimaryTabBar({
       })}
     </View>
   );
+}
+
+function toGitDiffCacheKey(
+  relativePath: string | undefined,
+  scope: GitDiffScope,
+): string {
+  return `${scope}:${relativePath ?? ""}`;
+}
+
+function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const { [key]: _removed, ...rest } = record;
+  return rest;
 }

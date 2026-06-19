@@ -1,5 +1,16 @@
-import { type JSX, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { type JSX, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Animated,
+  Clipboard,
+  Dimensions,
+  type GestureResponderEvent,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -16,6 +27,10 @@ type GitViewMode = "overview" | "review";
 type ChangedFile = WorkspaceGitStatus["files"][number];
 type DiffLineType = "add" | "delete" | "hunk" | "meta" | "context";
 type FileStatsScope = GitDiffScope;
+type CopyNotice = {
+  message: string;
+  pageY?: number;
+};
 
 const STATUS_COLOR: Record<FileStatus, string> = {
   modified: colors.warning,
@@ -26,32 +41,52 @@ const STATUS_COLOR: Record<FileStatus, string> = {
 };
 
 const SCOPE_ORDER: GitDiffScope[] = ["all", "unstaged", "staged", "untracked"];
+const REVIEW_SWIPE_ACTIVATE_PX = 36;
+const REVIEW_SWIPE_COMMIT_PX = 72;
+const REVIEW_SWIPE_MAX_DRAG_PX = 180;
+const REVIEW_SWIPE_EXIT_PX = 420;
+const REVIEW_SWIPE_VERTICAL_RATIO = 1.6;
+const COPY_NOTICE_HEIGHT = 80;
+const COPY_NOTICE_GAP = 60;
 
 export interface GitStatusScreenProps {
   workspace: WorkspaceDefinition;
   status?: WorkspaceGitStatus;
   diff?: GitDiffPayload;
+  diffCache?: Record<string, GitDiffPayload>;
   loading?: boolean;
   embedded?: boolean;
   onBack?(): void;
   onRefresh(): void;
   onOpenDiff(relativePath?: string, scope?: GitDiffScope): void;
+  onPrefetchDiff?(relativePath?: string, scope?: GitDiffScope): void;
 }
 
 export function GitStatusScreen({
   workspace,
   status,
   diff,
+  diffCache = {},
   loading,
   embedded = false,
   onBack,
   onRefresh,
   onOpenDiff,
+  onPrefetchDiff = onOpenDiff,
 }: GitStatusScreenProps): JSX.Element {
   const { t } = useTranslation();
+  const screenRef = useRef<View>(null);
   const [mode, setMode] = useState<GitViewMode>("overview");
   const [scope, setScope] = useState<GitDiffScope>("all");
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
+  const [copyNotice, setCopyNotice] = useState<CopyNotice | undefined>();
+  const [screenHeight, setScreenHeight] = useState(
+    Dimensions.get("window").height,
+  );
+  const [screenPageY, setScreenPageY] = useState(0);
+  const copyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const files = status?.files ?? [];
   const reviewFiles = useMemo(
     () => files.filter((file) => isFileInScope(file, scope)),
@@ -74,6 +109,34 @@ export function GitStatusScreen({
       onOpenDiff(selectedFile.path, scope);
     }
   }, [mode, onOpenDiff, scope, selectedFile, selectedPath]);
+
+  useEffect(
+    () => () => {
+      if (copyNoticeTimerRef.current) {
+        clearTimeout(copyNoticeTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function copyText(text: string, notice: string, pageY?: number): void {
+    Clipboard.setString(text);
+    setCopyNotice({ message: notice, pageY });
+    if (copyNoticeTimerRef.current) {
+      clearTimeout(copyNoticeTimerRef.current);
+    }
+    copyNoticeTimerRef.current = setTimeout(() => {
+      setCopyNotice(undefined);
+      copyNoticeTimerRef.current = undefined;
+    }, 1800);
+  }
+
+  function handleScreenLayout(): void {
+    screenRef.current?.measure((_x, _y, _width, height, _pageX, pageY) => {
+      setScreenHeight(height);
+      setScreenPageY(pageY);
+    });
+  }
 
   function openReview(nextScope: GitDiffScope, path?: string): void {
     const nextFiles = files.filter((file) => isFileInScope(file, nextScope));
@@ -114,7 +177,11 @@ export function GitStatusScreen({
   }
 
   return (
-    <View style={[styles.screen, embedded && styles.embeddedScreen]}>
+    <View
+      ref={screenRef}
+      style={[styles.screen, embedded && styles.embeddedScreen]}
+      onLayout={handleScreenLayout}
+    >
       {!embedded ? (
         <View style={styles.toolbar}>
           <Button
@@ -154,13 +221,16 @@ export function GitStatusScreen({
       ) : mode === "review" ? (
         <GitReviewView
           diff={diff}
+            diffCache={diffCache}
           file={selectedFile}
           files={reviewFiles}
           loading={loading}
           scope={scope}
           selectedIndex={Math.max(0, selectedIndex)}
           onBackToOverview={() => setMode("overview")}
+          onCopyText={copyText}
           onMoveSelection={moveSelection}
+            onPrefetchDiff={onPrefetchDiff}
           onSelectFile={selectFile}
           onSelectScope={selectScope}
         />
@@ -213,18 +283,21 @@ export function GitStatusScreen({
                 files={files.filter((file) => file.staged)}
                 scope="staged"
                 title={t("git.scope.staged")}
+                onCopyText={copyText}
                 onOpen={(file) => openReview("staged", file.path)}
               />
               <FileSection
                 files={files.filter((file) => file.unstaged && file.status !== "untracked")}
                 scope="unstaged"
                 title={t("git.scope.unstaged")}
+                onCopyText={copyText}
                 onOpen={(file) => openReview("unstaged", file.path)}
               />
               <FileSection
                 files={files.filter((file) => file.status === "untracked")}
                 scope="untracked"
                 title={t("git.scope.untracked")}
+                onCopyText={copyText}
                 onOpen={(file) => openReview("untracked", file.path)}
               />
             </View>
@@ -235,39 +308,162 @@ export function GitStatusScreen({
           ) : null}
         </ScrollView>
       )}
+      {copyNotice ? (
+        <CopyNoticeToast
+          notice={copyNotice}
+          screenHeight={screenHeight}
+          screenPageY={screenPageY}
+        />
+      ) : null}
     </View>
   );
 }
 
 function GitReviewView({
   diff,
+  diffCache,
   file,
   files,
   loading,
   scope,
   selectedIndex,
   onBackToOverview,
+  onCopyText,
   onMoveSelection,
+  onPrefetchDiff,
   onSelectFile,
   onSelectScope,
 }: {
   diff?: GitDiffPayload;
+  diffCache: Record<string, GitDiffPayload>;
   file?: ChangedFile;
   files: ChangedFile[];
   loading?: boolean;
   scope: GitDiffScope;
   selectedIndex: number;
   onBackToOverview(): void;
+  onCopyText(text: string, notice: string, pageY?: number): void;
   onMoveSelection(offset: number): void;
+  onPrefetchDiff(relativePath?: string, scope?: GitDiffScope): void;
   onSelectFile(file: ChangedFile): void;
   onSelectScope(scope: GitDiffScope): void;
 }): JSX.Element {
   const { t } = useTranslation();
-  const diffLines = parseDiffLines(diff?.diff ?? "");
-  const diffMatchesSelection = Boolean(
-    file && diff?.relativePath === file.path && (diff.scope ?? "unstaged") === scope,
+  const [cardWidth, setCardWidth] = useState(0);
+  const previousFile =
+    selectedIndex > 0 ? files[selectedIndex - 1] : undefined;
+  const nextFile =
+    selectedIndex >= 0 && selectedIndex < files.length - 1
+      ? files[selectedIndex + 1]
+      : undefined;
+  const currentDiff = getCachedDiff(diffCache, diff, file, scope);
+  const previousDiff = getCachedDiff(diffCache, undefined, previousFile, scope);
+  const nextDiff = getCachedDiff(diffCache, undefined, nextFile, scope);
+  const currentDiffMatchesSelection = Boolean(
+    file &&
+      currentDiff?.relativePath === file.path &&
+      (currentDiff.scope ?? "unstaged") === scope,
   );
-  const hasDiff = diffMatchesSelection && diffLines.length > 0;
+  const swipeTranslateX = useRef(new Animated.Value(0)).current;
+  const canMovePrevious = files.length > 1 && selectedIndex > 0;
+  const canMoveNext =
+    files.length > 1 && selectedIndex >= 0 && selectedIndex < files.length - 1;
+  const carouselStyle = {
+    transform: [
+      {
+        translateX: swipeTranslateX.interpolate({
+          inputRange: [-REVIEW_SWIPE_MAX_DRAG_PX, 0, REVIEW_SWIPE_MAX_DRAG_PX],
+          outputRange: [
+            -cardWidth - REVIEW_SWIPE_MAX_DRAG_PX,
+            -cardWidth,
+            -cardWidth + REVIEW_SWIPE_MAX_DRAG_PX,
+          ],
+          extrapolate: "clamp" as const,
+        }),
+      },
+    ],
+  };
+
+  useEffect(() => {
+    swipeTranslateX.setValue(0);
+  }, [file?.path, scope, swipeTranslateX]);
+
+  useEffect(() => {
+    for (const adjacentFile of [previousFile, nextFile]) {
+      if (
+        adjacentFile &&
+        !getCachedDiff(diffCache, undefined, adjacentFile, scope)
+      ) {
+        onPrefetchDiff(adjacentFile.path, scope);
+      }
+    }
+  }, [diffCache, nextFile, onPrefetchDiff, previousFile, scope]);
+
+  function resetSwipeCard(): void {
+    Animated.spring(swipeTranslateX, {
+      toValue: 0,
+      damping: 18,
+      stiffness: 180,
+      mass: 0.8,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function commitSwipeCard(offset: -1 | 1): void {
+    Animated.timing(swipeTranslateX, {
+      toValue:
+        offset > 0
+          ? -(cardWidth || REVIEW_SWIPE_EXIT_PX)
+          : cardWidth || REVIEW_SWIPE_EXIT_PX,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      swipeTranslateX.setValue(0);
+      if (finished) {
+        onMoveSelection(offset);
+      }
+    });
+  }
+
+  const swipeResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          files.length > 1 && shouldActivateReviewSwipe(gesture.dx, gesture.dy),
+        onPanResponderGrant: () => {
+          swipeTranslateX.stopAnimation();
+        },
+        onPanResponderMove: (_event, gesture) => {
+          const minDx = canMoveNext ? -REVIEW_SWIPE_MAX_DRAG_PX : 0;
+          const maxDx = canMovePrevious ? REVIEW_SWIPE_MAX_DRAG_PX : 0;
+          swipeTranslateX.setValue(
+            clamp(gesture.dx, minDx, maxDx),
+          );
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          if (!shouldCommitReviewSwipe(gesture.dx, gesture.dy)) {
+            resetSwipeCard();
+            return;
+          }
+          if (gesture.dx < 0 && canMoveNext) {
+            commitSwipeCard(1);
+          } else if (gesture.dx > 0 && canMovePrevious) {
+            commitSwipeCard(-1);
+          } else {
+            resetSwipeCard();
+          }
+        },
+        onPanResponderTerminate: resetSwipeCard,
+        onPanResponderTerminationRequest: () => true,
+      }),
+    [
+      canMoveNext,
+      canMovePrevious,
+      files.length,
+      onMoveSelection,
+      swipeTranslateX,
+    ],
+  );
 
   return (
     <View style={styles.reviewScreen}>
@@ -342,37 +538,53 @@ function GitReviewView({
         </ScrollView>
       ) : null}
 
-      <Card style={styles.reviewFileCard}>
-        {file ? (
-          <>
-            <View style={styles.reviewFileHeader}>
-              <View style={styles.reviewScopeBadge}>
-                <Text style={styles.reviewScopeBadgeText}>
-                  {getReviewScopeBadgeLabel(file, scope, t)}
-                </Text>
-              </View>
-              <View style={styles.reviewFileTitleArea}>
-                <Text numberOfLines={1} style={styles.reviewFileTitle}>{file.path}</Text>
-              </View>
-            </View>
-            {loading || !diffMatchesSelection ? (
-              <ReviewEmptyMessage message={t("git.loadingDiff")} />
-            ) : hasDiff ? (
-              <ScrollView contentContainerStyle={styles.diffList}>
-                {diffLines.map((line, index) => (
-                  <DiffRow index={index} key={`${index}:${line.content}`} line={line} />
-                ))}
-              </ScrollView>
-            ) : (
-              <ReviewEmptyMessage
-                message={file.status === "untracked" ? t("git.untrackedNoDiff") : t("git.noDiff")}
-              />
-            )}
-          </>
+      <View
+        style={styles.reviewCarouselViewport}
+        onLayout={(event) => setCardWidth(event.nativeEvent.layout.width)}
+        {...swipeResponder.panHandlers}
+      >
+        {file && cardWidth > 0 ? (
+          <Animated.View
+            style={[
+              styles.reviewCarouselTrack,
+              { width: cardWidth * 3 },
+              carouselStyle,
+            ]}
+          >
+            <ReviewDiffCard
+              active={false}
+              cardWidth={cardWidth}
+              diff={previousDiff}
+              file={previousFile}
+              loading={Boolean(previousFile && !previousDiff)}
+              scope={scope}
+              onCopyText={onCopyText}
+            />
+            <ReviewDiffCard
+              active
+              cardWidth={cardWidth}
+              diff={currentDiff}
+              file={file}
+              loading={loading || !currentDiffMatchesSelection}
+              scope={scope}
+              onCopyText={onCopyText}
+            />
+            <ReviewDiffCard
+              active={false}
+              cardWidth={cardWidth}
+              diff={nextDiff}
+              file={nextFile}
+              loading={Boolean(nextFile && !nextDiff)}
+              scope={scope}
+              onCopyText={onCopyText}
+            />
+          </Animated.View>
         ) : (
-          <ReviewEmptyMessage message={t("git.review.noFiles")} />
+          <Card style={styles.reviewFileCard}>
+            <ReviewEmptyMessage message={t("git.review.noFiles")} />
+          </Card>
         )}
-      </Card>
+      </View>
 
       <View style={styles.reviewActions}>
         <Pressable
@@ -396,17 +608,153 @@ function GitReviewView({
   );
 }
 
+function ReviewDiffCard({
+  active,
+  cardWidth,
+  diff,
+  file,
+  loading,
+  scope,
+  onCopyText,
+}: {
+  active: boolean;
+  cardWidth: number;
+  diff?: GitDiffPayload;
+  file?: ChangedFile;
+  loading?: boolean;
+  scope: GitDiffScope;
+  onCopyText(text: string, notice: string, pageY?: number): void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const diffMatchesSelection = Boolean(
+    file && diff?.relativePath === file.path && (diff.scope ?? "unstaged") === scope,
+  );
+  const diffLines = parseDiffLines(diff?.diff ?? "");
+  const hasDiff = diffMatchesSelection && diffLines.length > 0;
+
+  return (
+    <View
+      pointerEvents={active ? "auto" : "none"}
+      style={[styles.reviewCardSlot, { width: cardWidth }]}
+    >
+      <Card style={styles.reviewFileCard}>
+        {file ? (
+          <>
+            <View style={styles.reviewFileHeader}>
+              <View style={styles.reviewScopeBadge}>
+                <Text style={styles.reviewScopeBadgeText}>
+                  {getReviewScopeBadgeLabel(file, scope, t)}
+                </Text>
+              </View>
+              <View style={styles.reviewFileTitleArea}>
+                <Text selectable={active} numberOfLines={1} style={styles.reviewFileTitle}>
+                  {file.path}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.copyActionRow}>
+              <Pressable
+                accessibilityRole="button"
+                style={styles.copyActionButton}
+                onPress={(event) =>
+                  onCopyText(
+                    file.path,
+                    t("git.copy.pathCopied", { path: file.path }),
+                    event.nativeEvent.pageY,
+                  )
+                }
+              >
+                <Text style={styles.copyActionText}>{t("git.copy.path")}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={!hasDiff}
+                style={[styles.copyActionButton, !hasDiff && styles.disabled]}
+                onPress={(event) =>
+                  onCopyText(
+                    diff?.diff ?? "",
+                    t("git.copy.diffCopied", { path: file.path }),
+                    event.nativeEvent.pageY,
+                  )
+                }
+              >
+                <Text style={styles.copyActionText}>{t("git.copy.diff")}</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.copyHint}>{t("git.copy.lineHint")}</Text>
+            <View style={styles.reviewSwipeArea}>
+              {loading || !diffMatchesSelection ? (
+                <ReviewEmptyMessage message={t("git.loadingDiff")} />
+              ) : hasDiff ? (
+                <ScrollView style={styles.diffScroller} contentContainerStyle={styles.diffList}>
+                  {diffLines.map((line, index) => (
+                    <DiffRow
+                      index={index}
+                      key={`${index}:${line.content}`}
+                      line={line}
+                      onCopyLine={(event) =>
+                        onCopyText(
+                          line.content,
+                          t("git.copy.lineCopied", { line: index + 1 }),
+                          event.nativeEvent.pageY,
+                        )
+                      }
+                    />
+                  ))}
+                </ScrollView>
+              ) : (
+                <ReviewEmptyMessage
+                  message={file.status === "untracked" ? t("git.untrackedNoDiff") : t("git.noDiff")}
+                />
+              )}
+            </View>
+          </>
+        ) : (
+          <ReviewEmptyMessage message={t("git.review.noFiles")} />
+        )}
+      </Card>
+    </View>
+  );
+}
+
+function CopyNoticeToast({
+  notice,
+  screenHeight,
+  screenPageY,
+}: {
+  notice: CopyNotice;
+  screenHeight: number;
+  screenPageY: number;
+}): JSX.Element {
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.copyNoticeToast,
+        getCopyNoticeToastPosition(notice.pageY, screenHeight, screenPageY),
+      ]}
+    >
+      <Text accessibilityLiveRegion="polite" style={styles.copyNoticeText}>
+        {notice.message}
+      </Text>
+    </View>
+  );
+}
+
 function FileSection({
   files,
   scope,
   title,
+  onCopyText,
   onOpen,
 }: {
   files: ChangedFile[];
   scope: FileStatsScope;
   title: string;
+  onCopyText(text: string, notice: string, pageY?: number): void;
   onOpen(file: ChangedFile): void;
 }): JSX.Element | null {
+  const { t } = useTranslation();
   if (files.length === 0) {
     return null;
   }
@@ -421,6 +769,13 @@ function FileSection({
           file={file}
           key={`${title}:${file.path}`}
           scope={scope}
+          onLongPress={(event) =>
+            onCopyText(
+              file.path,
+              t("git.copy.pathCopied", { path: file.path }),
+              event.nativeEvent.pageY,
+            )
+          }
           onPress={() => onOpen(file)}
         />
       ))}
@@ -431,16 +786,22 @@ function FileSection({
 function FileRow({
   file,
   scope,
+  onLongPress,
   onPress,
 }: {
   file: ChangedFile;
   scope: FileStatsScope;
+  onLongPress(event: GestureResponderEvent): void;
   onPress(): void;
 }): JSX.Element {
   const status = getScopedStatus(file, scope);
   const statusColor = STATUS_COLOR[status];
   return (
-    <Pressable style={styles.fileRow} onPress={onPress}>
+    <Pressable
+      style={styles.fileRow}
+      onLongPress={onLongPress}
+      onPress={onPress}
+    >
       <View style={[styles.fileIndicator, { backgroundColor: statusColor }]} />
       <View style={styles.fileInfo}>
         <Text numberOfLines={1} style={styles.filePath}>{file.path}</Text>
@@ -502,16 +863,54 @@ function ReviewEmptyMessage({ message }: { message: string }): JSX.Element {
   );
 }
 
-function DiffRow({ index, line }: { index: number; line: DiffLine }): JSX.Element {
+function DiffRow({
+  index,
+  line,
+  onCopyLine,
+}: {
+  index: number;
+  line: DiffLine;
+  onCopyLine(event: GestureResponderEvent): void;
+}): JSX.Element {
   return (
-    <View style={[styles.diffRow, getDiffRowStyle(line.type)]}>
+    <Pressable
+      accessibilityRole="button"
+      style={[styles.diffRow, getDiffRowStyle(line.type)]}
+      onLongPress={onCopyLine}
+    >
       <Text style={styles.diffLineNo}>{line.type === "hunk" || line.type === "meta" ? "" : index + 1}</Text>
       <Text selectable style={[styles.diffText, getDiffTextStyle(line.type)]}>{line.content || " "}</Text>
-    </View>
+    </Pressable>
   );
 }
 
 function noop(): void {}
+
+function getCopyNoticeToastPosition(
+  pageY: number | undefined,
+  screenHeight: number,
+  screenPageY: number,
+): { top: number } | { bottom: number } {
+  if (typeof pageY !== "number") {
+    return { bottom: spacing.xl };
+  }
+
+  const localY = pageY - screenPageY;
+  const topCandidate = localY - COPY_NOTICE_GAP - COPY_NOTICE_HEIGHT;
+  if (topCandidate >= spacing.sm) {
+    return { top: topCandidate };
+  }
+
+  return {
+    top: Math.max(
+      spacing.sm,
+      Math.min(
+        screenHeight - COPY_NOTICE_HEIGHT - spacing.sm,
+        localY + COPY_NOTICE_GAP,
+      ),
+    ),
+  };
+}
 
 function isFileInScope(file: ChangedFile, scope: GitDiffScope): boolean {
   if (scope === "all") {
@@ -610,6 +1009,54 @@ function getDiffLineType(content: string): DiffLineType {
   if (content.startsWith("+")) return "add";
   if (content.startsWith("-")) return "delete";
   return "context";
+}
+
+function getCachedDiff(
+  cache: Record<string, GitDiffPayload>,
+  fallback: GitDiffPayload | undefined,
+  file: ChangedFile | undefined,
+  scope: GitDiffScope,
+): GitDiffPayload | undefined {
+  if (!file) {
+    return undefined;
+  }
+  const cached = cache[toGitDiffCacheKey(file.path, scope)];
+  if (cached) {
+    return cached;
+  }
+  if (
+    fallback?.relativePath === file.path &&
+    (fallback.scope ?? "unstaged") === scope
+  ) {
+    return fallback;
+  }
+  return undefined;
+}
+
+function toGitDiffCacheKey(relativePath: string | undefined, scope: GitDiffScope): string {
+  return `${scope}:${relativePath ?? ""}`;
+}
+
+function shouldActivateReviewSwipe(dx: number, dy: number): boolean {
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  return (
+    absDx >= REVIEW_SWIPE_ACTIVATE_PX &&
+    absDx >= absDy * REVIEW_SWIPE_VERTICAL_RATIO
+  );
+}
+
+function shouldCommitReviewSwipe(dx: number, dy: number): boolean {
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  return (
+    absDx >= REVIEW_SWIPE_COMMIT_PX &&
+    absDx >= absDy * REVIEW_SWIPE_VERTICAL_RATIO
+  );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 interface DiffLine {
@@ -742,6 +1189,58 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.55,
+  },
+  copyNoticeToast: {
+    position: "absolute",
+    left: spacing.xl,
+    right: spacing.xl,
+    minHeight: COPY_NOTICE_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  copyNoticeText: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    borderColor: "rgba(48, 196, 141, 0.42)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    color: colors.success,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 17,
+    backgroundColor: "rgba(17, 24, 29, 0.96)",
+  },
+  copyHint: {
+    color: colors.textDim,
+    fontSize: 11,
+    lineHeight: 16,
+    paddingHorizontal: spacing.md,
+  },
+  copyActionRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    borderBottomColor: colors.borderSubtle,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  copyActionButton: {
+    minHeight: 30,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceRaised,
+  },
+  copyActionText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "900",
   },
   fileStack: {
     gap: spacing.lg,
@@ -923,11 +1422,27 @@ const styles = StyleSheet.create({
   fileChipTextActive: {
     color: colors.textPrimary,
   },
+  reviewCarouselViewport: {
+    flex: 1,
+    minHeight: 280,
+    overflow: "hidden",
+  },
+  reviewCarouselTrack: {
+    flex: 1,
+    flexDirection: "row",
+  },
+  reviewCardSlot: {
+    flex: 1,
+    paddingHorizontal: 2,
+  },
   reviewFileCard: {
     flex: 1,
     minHeight: 280,
     padding: 0,
     overflow: "hidden",
+  },
+  reviewSwipeArea: {
+    flex: 1,
   },
   reviewFileHeader: {
     flexDirection: "row",
@@ -963,6 +1478,9 @@ const styles = StyleSheet.create({
   },
   diffList: {
     paddingVertical: 4,
+  },
+  diffScroller: {
+    flex: 1,
   },
   diffRow: {
     flexDirection: "row",

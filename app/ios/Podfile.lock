@@ -1922,7 +1922,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - react-native-safe-area-context (5.7.0):
+  - react-native-safe-area-context (5.8.0):
     - boost
     - DoubleConversion
     - fast_float
@@ -1940,8 +1940,8 @@ PODS:
     - React-graphics
     - React-ImageManager
     - React-jsi
-    - react-native-safe-area-context/common (= 5.7.0)
-    - react-native-safe-area-context/fabric (= 5.7.0)
+    - react-native-safe-area-context/common (= 5.8.0)
+    - react-native-safe-area-context/fabric (= 5.8.0)
     - React-NativeModulesApple
     - React-RCTFabric
     - React-renderercss
@@ -1952,7 +1952,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - react-native-safe-area-context/common (5.7.0):
+  - react-native-safe-area-context/common (5.8.0):
     - boost
     - DoubleConversion
     - fast_float
@@ -1980,7 +1980,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - react-native-safe-area-context/fabric (5.7.0):
+  - react-native-safe-area-context/fabric (5.8.0):
     - boost
     - DoubleConversion
     - fast_float
@@ -3015,7 +3015,7 @@ SPEC CHECKSUMS:
   FBLazyVector: 06b1c8278e6e1b31ef68e9e14c296b7872e79e48
   fmt: 530618a01105dae0fa3a2f27c81ae11fa8f67eac
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
-  hermes-engine: 1f400a3876477b7760ebe20b31d3d36f3d352e85
+  hermes-engine: f618c6349de323aba2f8a0495fb083f685a8d6eb
   JitsiWebRTC: b47805ab5668be38e7ee60e2258f49badfe8e1d0
   RCT-Folly: b29feb752b08042c62badaef7d453f3bb5e6ae23
   RCTDeprecation: c5e70bcdbc24b9edbca24b96f3997319f01ba8fb
@@ -3054,7 +3054,7 @@ SPEC CHECKSUMS:
   React-Mapbuffer: ceeccd6570db88ba4bc04278073392adf96a0fc1
   React-microtasksnativemodule: c71eb8a79998c20dd13de58a7525eb32d200d9c8
   react-native-get-random-values: e2acf4070fe4b7325705a05af047449637a27a21
-  react-native-safe-area-context: befb5404eb8a16fdc07fa2bebab3568ecabcbb8a
+  react-native-safe-area-context: ebd2c2ece5e6e650a6963184039ec8cfd8960d86
   react-native-webrtc: e8f0ce746353adc2744a2b933645e1aeb41eaa74
   react-native-webview: 8407aaaf6b539b1e38b72fabb55d6885de03beaf
   React-NativeModulesApple: 70b1879ac2b642ef784fb6d43360c40803b0a142
@@ -3088,7 +3088,7 @@ SPEC CHECKSUMS:
   React-utils: d03e2ae03aae054c0d588c475dec38740add6f24
   React-webperformancenativemodule: d7e1a5cee24b48908676ab4748185017c78bb2e9
   ReactAppDependencyProvider: 3ec8fc5d32ad422f5b805523a5a5ea5556d8b3a2
-  ReactCodegen: 78c38c908e8bd795402d53ae4e20e0c04a3f05cd
+  ReactCodegen: 4df25e5196c4ff64b89a1fa7d7688c7efa99e59d
   ReactCommon: e788387a0b387a927a2a5d041fab09472fe8dedc
   ReactNativeCameraKit: 30a46ea51b791a914472a095a47384fc3519f14d
   RNCAsyncStorage: 29f0230e1a25f36c20b05f65e2eb8958d6526e82
