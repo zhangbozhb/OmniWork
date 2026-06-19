@@ -85,6 +85,7 @@ import { SecuritySettingsScreen } from "../screens/security/SecuritySettingsScre
 import { Button } from "../ui/components";
 import { SessionListScreen } from "../screens/sessions/SessionListScreen";
 import { TerminalScreen } from "../screens/terminal/TerminalScreen";
+import { FileBrowserScreen } from "../screens/workspaces/FileBrowserScreen";
 import { GitStatusScreen } from "../screens/workspaces/GitStatusScreen";
 import type { PairingConfig } from "../features/auth/types";
 import { parsePairingConfig } from "../features/auth/pairingConfig";
@@ -357,6 +358,7 @@ function AppContent(): JSX.Element {
     if (view === "terminal") {
       return selectedSession?.title ?? t("app.titles.terminal");
     }
+    if (view === "terminalFiles") return t("workspaces.tabs.files");
     if (view === "sessions") return t("app.titles.workspaces");
     if (view === "connectionPreference") return t("app.titles.connectionMode");
     if (view === "securitySettings") return t("appLock.settings.title");
@@ -1057,7 +1059,9 @@ function AppContent(): JSX.Element {
     if (
       connectionStatus !== "failed" ||
       !pairing ||
-      (view !== "sessions" && view !== "terminal") ||
+      (view !== "sessions" &&
+        view !== "terminal" &&
+        view !== "terminalFiles") ||
       failureDialogActiveRef.current
     ) {
       return;
@@ -1727,6 +1731,17 @@ function AppContent(): JSX.Element {
     }
   }
 
+  function handleOpenTerminalFiles(session: CodexSession): void {
+    const workspace = getSessionFilesWorkspace(session, workspaces);
+    setSelectedWorkspace(workspace);
+    requestWorkspaceDirectory(
+      workspace,
+      workspaceCache[workspace.path]?.files.currentPath ?? "",
+      { activate: true },
+    );
+    setView("terminalFiles");
+  }
+
   function handleTerminalInput(input: TerminalInputPayload): void {
     if (!pairing || !selectedSession || connectionStatus !== "authenticated") {
       return;
@@ -2268,7 +2283,10 @@ function AppContent(): JSX.Element {
               onChangeTransportPreference={handleChangeTransportPreference}
               onBack={() => setView("settings")}
             />
-          ) : view === "sessions" || view === "gitReview" ? (
+          ) : view === "sessions" ||
+            view === "gitReview" ||
+            view === "terminal" ||
+            view === "terminalFiles" ? (
             <>
               <SessionListScreen
                 sessions={sessions}
@@ -2325,28 +2343,64 @@ function AppContent(): JSX.Element {
                   />
                 </View>
               ) : null}
+              {(view === "terminal" || view === "terminalFiles") &&
+              selectedSession ? (
+                <View style={styles.fullScreenPage}>
+                  <TerminalScreen
+                    session={selectedSession}
+                    frame={selectedFrame}
+                    connectionStatus={connectionStatus}
+                    statusLabel={connectionMessage}
+                    readOnlyReason={
+                      selectedSessionCapabilities?.canInput
+                        ? undefined
+                        : (selectedSessionCapabilities?.unavailableReason ??
+                          t("app.errors.readOnlySession"))
+                    }
+                    canInput={Boolean(selectedSessionCapabilities?.canInput)}
+                    canResize={Boolean(selectedSessionCapabilities?.canResize)}
+                    textSize={terminalTextSize}
+                    onBack={() => setView("sessions")}
+                    onOpenFiles={() => handleOpenTerminalFiles(selectedSession)}
+                    onChangeTextSize={handleChangeTerminalTextSize}
+                    onRefreshSessions={handleRefreshSessions}
+                    onInput={handleTerminalInput}
+                    onResize={handleTerminalResize}
+                  />
+                </View>
+              ) : null}
+              {view === "terminalFiles" && selectedWorkspace ? (
+                <Pressable
+                  style={styles.presentedBackdrop}
+                  onPress={() => setView("terminal")}
+                >
+                  <Pressable
+                    style={styles.presentedPage}
+                    onPress={(event) => event.stopPropagation()}
+                  >
+                    <FileBrowserScreen
+                      workspace={selectedWorkspace}
+                      relativePath={fileRelativePath}
+                      entries={fileEntries}
+                      selectedFilePath={selectedFilePath}
+                      file={selectedFile}
+                      loading={filesLoading}
+                      presentation="modal"
+                      onBack={() => setView("terminal")}
+                      onRefresh={() =>
+                        handleRefreshWorkspaceFiles(
+                          selectedWorkspace,
+                          fileRelativePath,
+                        )
+                      }
+                      onOpenDirectory={handleOpenDirectory}
+                      onReadFile={handleReadFile}
+                      onCloseFilePreview={handleCloseFilePreview}
+                    />
+                  </Pressable>
+                </Pressable>
+              ) : null}
             </>
-          ) : selectedSession ? (
-            <TerminalScreen
-              session={selectedSession}
-              frame={selectedFrame}
-              connectionStatus={connectionStatus}
-              statusLabel={connectionMessage}
-              readOnlyReason={
-                selectedSessionCapabilities?.canInput
-                  ? undefined
-                  : (selectedSessionCapabilities?.unavailableReason ??
-                    t("app.errors.readOnlySession"))
-              }
-              canInput={Boolean(selectedSessionCapabilities?.canInput)}
-              canResize={Boolean(selectedSessionCapabilities?.canResize)}
-              textSize={terminalTextSize}
-              onBack={() => setView("sessions")}
-              onChangeTextSize={handleChangeTerminalTextSize}
-              onRefreshSessions={handleRefreshSessions}
-              onInput={handleTerminalInput}
-              onResize={handleTerminalResize}
-            />
           ) : null}
         </View>
         {!appLockScreen && showPrimaryTabs ? (
@@ -2367,6 +2421,19 @@ const styles = StyleSheet.create({
   },
   fullScreenPage: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#101417",
+  },
+  presentedBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.34)",
+  },
+  presentedPage: {
+    flex: 1,
+    marginTop: 18,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    overflow: "hidden",
     backgroundColor: "#101417",
   },
   loadingScreen: {
@@ -2501,6 +2568,49 @@ function toGitDiffCacheKey(
   scope: GitDiffScope,
 ): string {
   return `${scope}:${relativePath ?? ""}`;
+}
+
+function getSessionFilesWorkspace(
+  session: CodexSession,
+  workspaces: readonly WorkspaceDefinition[],
+): WorkspaceDefinition {
+  if (session.workspace_path) {
+    const exact = workspaces.find(
+      (workspace) => workspace.path === session.workspace_path,
+    );
+    if (exact) {
+      return exact;
+    }
+  }
+
+  const matched = workspaces
+    .filter((workspace) => isPathInside(session.cwd, workspace.path))
+    .sort((left, right) => right.path.length - left.path.length)[0];
+  if (matched) {
+    return matched;
+  }
+
+  const path = session.workspace_path || session.cwd;
+  return {
+    name: session.workspace_name ?? basename(path),
+    path,
+    isGitRepository: Boolean(session.git_repository),
+    status: "available",
+    source: "session",
+  };
+}
+
+function isPathInside(path: string, parent: string): boolean {
+  const normalizedPath = path.replace(/\/+$/g, "");
+  const normalizedParent = parent.replace(/\/+$/g, "");
+  return (
+    normalizedPath === normalizedParent ||
+    normalizedPath.startsWith(`${normalizedParent}/`)
+  );
+}
+
+function basename(path: string): string {
+  return path.split("/").filter(Boolean).at(-1) ?? path;
 }
 
 function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {

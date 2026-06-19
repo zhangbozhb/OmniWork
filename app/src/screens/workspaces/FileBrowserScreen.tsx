@@ -62,6 +62,7 @@ export interface FileBrowserScreenProps {
   file?: FilesReadPayload;
   loading?: boolean;
   embedded?: boolean;
+  presentation?: "push" | "modal";
   onBack?(): void;
   onRefresh(): void;
   onOpenDirectory(relativePath: string): void;
@@ -77,6 +78,7 @@ export function FileBrowserScreen({
   file,
   loading,
   embedded = false,
+  presentation = "push",
   onBack,
   onRefresh,
   onOpenDirectory,
@@ -237,34 +239,53 @@ export function FileBrowserScreen({
       onLayout={handleScreenLayout}
     >
       {!embedded ? (
-      <View style={styles.toolbar}>
-        <Button
-          accessibilityLabel={t("files.backToSessions")}
-          icon="arrowLeft"
-          iconOnly
-          style={styles.backButton}
-          onPress={onBack ?? noop}
-        >
-          {t("common.back")}
-        </Button>
-        <View style={styles.titleArea}>
-          <Text numberOfLines={1} style={styles.title}>
-            {t("files.title", { workspace: getWorkspaceDisplayName(workspace) })}
-          </Text>
-          <Text numberOfLines={1} style={styles.subtitle}>
-            {relativePath || "."}
-          </Text>
+        <View style={styles.toolbar}>
+          {presentation === "push" ? (
+            <Button
+              accessibilityLabel={t("files.backToSessions")}
+              icon="arrowLeft"
+              iconOnly
+              style={styles.backButton}
+              onPress={onBack ?? noop}
+            >
+              {t("common.back")}
+            </Button>
+          ) : null}
+          <Pressable
+            accessibilityRole={presentation === "modal" ? "button" : undefined}
+            style={styles.titleArea}
+            onPress={presentation === "modal" ? (onBack ?? noop) : undefined}
+          >
+            <Text numberOfLines={1} style={styles.title}>
+              {t("files.title", {
+                workspace: getWorkspaceDisplayName(workspace),
+              })}
+            </Text>
+            <Text numberOfLines={1} style={styles.subtitle}>
+              {relativePath || "."}
+            </Text>
+          </Pressable>
+          <Button
+            accessibilityLabel={t("files.refresh")}
+            icon="refresh"
+            iconOnly
+            style={styles.iconButton}
+            onPress={onRefresh}
+          >
+            {t("common.refresh")}
+          </Button>
+          {presentation === "modal" ? (
+            <Button
+              accessibilityLabel={t("files.preview.close")}
+              icon="close"
+              iconOnly
+              style={styles.closeButton}
+              onPress={onBack ?? noop}
+            >
+              {t("files.preview.close")}
+            </Button>
+          ) : null}
         </View>
-        <Button
-          accessibilityLabel={t("files.refresh")}
-          icon="refresh"
-          iconOnly
-          style={styles.iconButton}
-          onPress={onRefresh}
-        >
-          {t("common.refresh")}
-        </Button>
-      </View>
       ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -787,6 +808,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   iconButton: {
+    width: 42,
+    minHeight: 40,
+    paddingHorizontal: 0,
+  },
+  closeButton: {
     width: 42,
     minHeight: 40,
     paddingHorizontal: 0,

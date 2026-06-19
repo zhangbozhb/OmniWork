@@ -14,6 +14,7 @@ export type AppView =
   | "connectionPreference"
   | "sessions"
   | "gitReview"
+  | "terminalFiles"
   | "terminal";
 
 export type PrimaryTabView = "devices" | "settings";

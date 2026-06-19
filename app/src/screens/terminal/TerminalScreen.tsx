@@ -47,6 +47,7 @@ export interface TerminalScreenProps {
   statusLabel?: string;
   textSize: TerminalTextSize;
   onBack(): void;
+  onOpenFiles?(): void;
   onChangeTextSize(textSize: TerminalTextSize): void;
   onRefreshSessions(): void;
   onInput(input: TerminalInputPayload): void;
@@ -121,6 +122,7 @@ export function TerminalScreen({
   statusLabel,
   textSize,
   onBack,
+  onOpenFiles,
   onChangeTextSize,
   onRefreshSessions,
   onInput,
@@ -322,6 +324,21 @@ export function TerminalScreen({
             </Text>
           </Pressable>
           <View style={styles.toolbarActions}>
+            {onOpenFiles ? (
+              <Button
+                accessibilityLabel={t("workspaces.tabs.files")}
+                icon="folder"
+                iconOnly
+                style={styles.topIconButton}
+                onPress={() => {
+                  dismissTextSizeControls();
+                  Keyboard.dismiss();
+                  onOpenFiles();
+                }}
+              >
+                {t("workspaces.tabs.files")}
+              </Button>
+            ) : null}
             <Pressable
               accessibilityLabel="Change terminal text size"
               accessibilityRole="button"
@@ -706,6 +723,12 @@ const styles = StyleSheet.create({
   inputToggleButtonActive: {
     borderColor: colors.success,
     backgroundColor: colors.successSoft,
+  },
+  topIconButton: {
+    width: 38,
+    minHeight: 38,
+    borderRadius: 19,
+    paddingHorizontal: 0,
   },
   textSizePopover: {
     position: "absolute",
