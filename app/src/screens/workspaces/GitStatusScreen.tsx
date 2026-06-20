@@ -5,6 +5,7 @@ import {
   Dimensions,
   type GestureResponderEvent,
   PanResponder,
+  RefreshControl,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -241,6 +242,81 @@ export function GitStatusScreen({
     onOpenDiff(nextFile.path, scope);
   }
 
+  const overviewContent = (
+    <>
+      <Card style={styles.card}>
+        <View style={styles.summaryHeader}>
+          <View style={styles.summaryTitleArea}>
+            <Text style={styles.cardTitle}>
+              {status?.branch ?? t("git.unknownBranch")}
+            </Text>
+            <Text style={styles.meta}>
+              {status?.headSha ? `HEAD ${status.headSha}` : t("git.headUnknown")}
+              {typeof status?.ahead === "number"
+                ? ` · ${t("git.ahead", { count: status.ahead })}`
+                : ""}
+              {typeof status?.behind === "number"
+                ? ` · ${t("git.behind", { count: status.behind })}`
+                : ""}
+            </Text>
+          </View>
+          <Badge
+            backgroundColor={status?.hasChanges ? colors.warningSoft : colors.successSoft}
+            color={status?.hasChanges ? colors.warning : colors.success}
+          >
+            {status?.hasChanges ? t("git.changes") : t("git.clean")}
+          </Badge>
+        </View>
+
+        <View style={styles.statsRow}>
+          <StatPill label={t("git.summary.files")} value={String(files.length)} />
+          <StatPill label={t("git.summary.additions")} tone="add" value={`+${summary.additions}`} />
+          <StatPill label={t("git.summary.deletions")} tone="delete" value={`-${summary.deletions}`} />
+        </View>
+
+        <Button
+          disabled={files.length === 0}
+          icon="git"
+          style={[styles.fullDiffButton, files.length === 0 && styles.disabled]}
+          tone="primary"
+          onPress={() => openReview("all")}
+        >
+          {t("git.reviewChanges")}
+        </Button>
+      </Card>
+
+      {files.length > 0 ? (
+        <View style={styles.fileStack}>
+          <FileSection
+            files={files.filter((file) => file.staged)}
+            scope="staged"
+            title={t("git.scope.staged")}
+            onCopyText={copyText}
+            onOpen={(file) => openReview("staged", file.path)}
+          />
+          <FileSection
+            files={files.filter((file) => file.unstaged && file.status !== "untracked")}
+            scope="unstaged"
+            title={t("git.scope.unstaged")}
+            onCopyText={copyText}
+            onOpen={(file) => openReview("unstaged", file.path)}
+          />
+          <FileSection
+            files={files.filter((file) => file.status === "untracked")}
+            scope="untracked"
+            title={t("git.scope.untracked")}
+            onCopyText={copyText}
+            onOpen={(file) => openReview("untracked", file.path)}
+          />
+        </View>
+      ) : status ? (
+        <Text style={styles.empty}>{t("git.noChangedFiles")}</Text>
+      ) : loading ? (
+        <Text style={styles.empty}>{t("git.loadingStatus")}</Text>
+      ) : null}
+    </>
+  );
+
   return (
     <View
       ref={screenRef}
@@ -301,78 +377,20 @@ export function GitStatusScreen({
           onSelectFile={selectFile}
           onSelectScope={selectScope}
         />
+      ) : embedded ? (
+        <View style={styles.content}>{overviewContent}</View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          <Card style={styles.card}>
-            <View style={styles.summaryHeader}>
-              <View style={styles.summaryTitleArea}>
-                <Text style={styles.cardTitle}>
-                  {status?.branch ?? t("git.unknownBranch")}
-                </Text>
-                <Text style={styles.meta}>
-                  {status?.headSha ? `HEAD ${status.headSha}` : t("git.headUnknown")}
-                  {typeof status?.ahead === "number"
-                    ? ` · ${t("git.ahead", { count: status.ahead })}`
-                    : ""}
-                  {typeof status?.behind === "number"
-                    ? ` · ${t("git.behind", { count: status.behind })}`
-                    : ""}
-                </Text>
-              </View>
-              <Badge
-                backgroundColor={status?.hasChanges ? colors.warningSoft : colors.successSoft}
-                color={status?.hasChanges ? colors.warning : colors.success}
-              >
-                {status?.hasChanges ? t("git.changes") : t("git.clean")}
-              </Badge>
-            </View>
-
-            <View style={styles.statsRow}>
-              <StatPill label={t("git.summary.files")} value={String(files.length)} />
-              <StatPill label={t("git.summary.additions")} tone="add" value={`+${summary.additions}`} />
-              <StatPill label={t("git.summary.deletions")} tone="delete" value={`-${summary.deletions}`} />
-            </View>
-
-            <Button
-              disabled={files.length === 0}
-              icon="git"
-              style={[styles.fullDiffButton, files.length === 0 && styles.disabled]}
-              tone="primary"
-              onPress={() => openReview("all")}
-            >
-              {t("git.reviewChanges")}
-            </Button>
-          </Card>
-
-          {files.length > 0 ? (
-            <View style={styles.fileStack}>
-              <FileSection
-                files={files.filter((file) => file.staged)}
-                scope="staged"
-                title={t("git.scope.staged")}
-                onCopyText={copyText}
-                onOpen={(file) => openReview("staged", file.path)}
-              />
-              <FileSection
-                files={files.filter((file) => file.unstaged && file.status !== "untracked")}
-                scope="unstaged"
-                title={t("git.scope.unstaged")}
-                onCopyText={copyText}
-                onOpen={(file) => openReview("unstaged", file.path)}
-              />
-              <FileSection
-                files={files.filter((file) => file.status === "untracked")}
-                scope="untracked"
-                title={t("git.scope.untracked")}
-                onCopyText={copyText}
-                onOpen={(file) => openReview("untracked", file.path)}
-              />
-            </View>
-          ) : status ? (
-            <Text style={styles.empty}>{t("git.noChangedFiles")}</Text>
-          ) : loading ? (
-            <Text style={styles.empty}>{t("git.loadingStatus")}</Text>
-          ) : null}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={Boolean(loading)}
+              tintColor={colors.success}
+              onRefresh={onRefresh}
+            />
+          }
+        >
+          {overviewContent}
         </ScrollView>
       )}
       {copyNotice ? (

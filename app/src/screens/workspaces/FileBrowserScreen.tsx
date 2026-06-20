@@ -14,6 +14,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -232,6 +233,73 @@ export function FileBrowserScreen({
     });
   }
 
+  const browserContent = (
+    <>
+      <View style={styles.tree}>
+        <TreeRow
+          depth={0}
+          expanded
+          icon="folder"
+          label={getWorkspaceDisplayName(workspace)}
+          meta={t("files.workspaceRoot")}
+          onLongPress={() =>
+            openCopySheet(toCopyTarget(workspace, "", getWorkspaceDisplayName(workspace)))
+          }
+          onPress={() => onOpenDirectory("")}
+        />
+
+        {currentParts.map((part, index) => {
+          const path = currentParts.slice(0, index + 1).join("/");
+          return (
+            <TreeRow
+              depth={index + 1}
+              expanded
+              icon="folder"
+              key={path}
+              label={part}
+              meta={
+                index === currentParts.length - 1
+                  ? t("files.currentDirectory")
+                  : t("files.directory")
+              }
+              onLongPress={() =>
+                openCopySheet(toCopyTarget(workspace, path, part))
+              }
+              onPress={() => onOpenDirectory(path)}
+            />
+          );
+        })}
+
+        {entries.map((entry) => (
+          <TreeRow
+            depth={currentParts.length + 1}
+            icon={entry.type === "directory" ? "folder" : "file"}
+            key={entry.relativePath}
+            label={entry.name}
+            meta={formatEntryMeta(entry, t)}
+            selected={activeFilePath === entry.relativePath}
+            onLongPress={() =>
+              openCopySheet(
+                toCopyTarget(workspace, entry.relativePath, entry.name),
+              )
+            }
+            onPress={() =>
+              entry.type === "directory"
+                ? onOpenDirectory(entry.relativePath)
+                : onReadFile(entry.relativePath)
+            }
+          />
+        ))}
+      </View>
+
+      {entries.length === 0 ? (
+        <Text style={styles.empty}>
+          {loading ? t("common.loading") : t("files.empty")}
+        </Text>
+      ) : null}
+    </>
+  );
+
   return (
     <View
       ref={screenRef}
@@ -288,70 +356,23 @@ export function FileBrowserScreen({
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.tree}>
-          <TreeRow
-            depth={0}
-            expanded
-            icon="folder"
-            label={getWorkspaceDisplayName(workspace)}
-            meta={t("files.workspaceRoot")}
-            onLongPress={() =>
-              openCopySheet(toCopyTarget(workspace, "", getWorkspaceDisplayName(workspace)))
-            }
-            onPress={() => onOpenDirectory("")}
-          />
-
-          {currentParts.map((part, index) => {
-            const path = currentParts.slice(0, index + 1).join("/");
-            return (
-              <TreeRow
-                depth={index + 1}
-                expanded
-                icon="folder"
-                key={path}
-                label={part}
-                meta={
-                  index === currentParts.length - 1
-                    ? t("files.currentDirectory")
-                    : t("files.directory")
-                }
-                onLongPress={() =>
-                  openCopySheet(toCopyTarget(workspace, path, part))
-                }
-                onPress={() => onOpenDirectory(path)}
-              />
-            );
-          })}
-
-          {entries.map((entry) => (
-            <TreeRow
-              depth={currentParts.length + 1}
-              icon={entry.type === "directory" ? "folder" : "file"}
-              key={entry.relativePath}
-              label={entry.name}
-              meta={formatEntryMeta(entry, t)}
-              selected={activeFilePath === entry.relativePath}
-              onLongPress={() =>
-                openCopySheet(
-                  toCopyTarget(workspace, entry.relativePath, entry.name),
-                )
-              }
-              onPress={() =>
-                entry.type === "directory"
-                  ? onOpenDirectory(entry.relativePath)
-                  : onReadFile(entry.relativePath)
-              }
+      {embedded ? (
+        <View style={styles.content}>{browserContent}</View>
+      ) : (
+        <ScrollView
+          alwaysBounceVertical
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={Boolean(loading)}
+              tintColor={colors.success}
+              onRefresh={onRefresh}
             />
-          ))}
-        </View>
-
-        {entries.length === 0 ? (
-          <Text style={styles.empty}>
-            {loading ? t("common.loading") : t("files.empty")}
-          </Text>
-        ) : null}
-      </ScrollView>
+          }
+        >
+          {browserContent}
+        </ScrollView>
+      )}
       <FilePreviewSheet
         file={file}
         bottomInset={safeAreaInsets.bottom}

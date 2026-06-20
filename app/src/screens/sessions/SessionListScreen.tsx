@@ -8,6 +8,7 @@ import {
   type NativeSyntheticEvent,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -211,7 +212,11 @@ export function SessionListScreen({
   const [activeWorkspaceTab, setActiveWorkspaceTab] =
     useState<WorkspaceTab>("sessions");
   const workspacePagerRef = useRef<ScrollView | null>(null);
+  const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const [workspacePagerWidth, setWorkspacePagerWidth] = useState(0);
+  const [sessionRefreshing, setSessionRefreshing] = useState(false);
 
   const runtimeGroups = useMemo<RuntimeGroup[]>(
     () => [
@@ -282,6 +287,27 @@ export function SessionListScreen({
       normalizeProviderPreferences(current, providers),
     );
   }, [providers]);
+
+  useEffect(
+    () => () => {
+      if (sessionRefreshTimerRef.current) {
+        clearTimeout(sessionRefreshTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function handleRefreshSessionTab(): void {
+    setSessionRefreshing(true);
+    onRefreshSessions();
+    if (sessionRefreshTimerRef.current) {
+      clearTimeout(sessionRefreshTimerRef.current);
+    }
+    sessionRefreshTimerRef.current = setTimeout(() => {
+      setSessionRefreshing(false);
+      sessionRefreshTimerRef.current = undefined;
+    }, 1000);
+  }
 
   function openCreateModal(
     runtimeKind: CreatableRuntimeKind,
@@ -551,8 +577,18 @@ export function SessionListScreen({
           onScrollEndDrag={handleWorkspacePagerScrollEnd}
         >
           <ScrollView
+            alwaysBounceVertical
             directionalLockEnabled
             contentContainerStyle={styles.workspaceTabScrollContent}
+            refreshControl={
+              Platform.OS !== "web" ? (
+                <RefreshControl
+                  refreshing={sessionRefreshing}
+                  tintColor={colors.success}
+                  onRefresh={handleRefreshSessionTab}
+                />
+              ) : undefined
+            }
             style={[styles.workspaceTabPane, { width: workspacePagerWidth }]}
           >
             <View style={styles.runtimeSection}>
@@ -620,11 +656,20 @@ export function SessionListScreen({
           </ScrollView>
 
           {activeWorkspace.isGitRepository ? (
-            <View
-              style={[
-                styles.workspaceTabPane,
-                { width: workspacePagerWidth },
-              ]}
+            <ScrollView
+              alwaysBounceVertical
+              directionalLockEnabled
+              contentContainerStyle={styles.workspaceTabScrollContent}
+              refreshControl={
+                Platform.OS !== "web" ? (
+                  <RefreshControl
+                    refreshing={Boolean(gitLoading)}
+                    tintColor={colors.success}
+                    onRefresh={() => onRefreshWorkspaceGit(activeWorkspace)}
+                  />
+                ) : undefined
+              }
+              style={[styles.workspaceTabPane, { width: workspacePagerWidth }]}
             >
               <GitStatusScreen
                 embedded
@@ -643,10 +688,24 @@ export function SessionListScreen({
                 onPrefetchDiff={onPrefetchGitDiff}
                 onReadFileContent={onReadGitFileContent}
               />
-            </View>
+            </ScrollView>
           ) : null}
 
-          <View
+          <ScrollView
+            alwaysBounceVertical
+            directionalLockEnabled
+            contentContainerStyle={styles.workspaceTabScrollContent}
+            refreshControl={
+              Platform.OS !== "web" ? (
+                <RefreshControl
+                  refreshing={Boolean(filesLoading)}
+                  tintColor={colors.success}
+                  onRefresh={() =>
+                    onRefreshWorkspaceFiles(activeWorkspace, fileRelativePath)
+                  }
+                />
+              ) : undefined
+            }
             style={[styles.workspaceTabPane, { width: workspacePagerWidth }]}
           >
             <FileBrowserScreen
@@ -664,10 +723,22 @@ export function SessionListScreen({
               onReadFile={onReadFile}
               onCloseFilePreview={onCloseFilePreview}
             />
-          </View>
+          </ScrollView>
         </ScrollView>
       ) : (
-        <ScrollView directionalLockEnabled contentContainerStyle={styles.list}>
+        <ScrollView
+          alwaysBounceVertical
+          contentContainerStyle={[styles.list, styles.listStretch]}
+          refreshControl={
+            Platform.OS !== "web" ? (
+              <RefreshControl
+                refreshing={sessionRefreshing}
+                tintColor={colors.success}
+                onRefresh={handleRefreshSessionTab}
+              />
+            ) : undefined
+          }
+        >
           <>
             {realWorkspaceGroups.length === 0 ? (
               <Text style={styles.empty}>
@@ -1345,6 +1416,9 @@ const styles = StyleSheet.create({
   list: {
     gap: spacing.xl,
     paddingBottom: 84,
+  },
+  listStretch: {
+    flexGrow: 1,
   },
   runtimeSection: {
     gap: spacing.md,

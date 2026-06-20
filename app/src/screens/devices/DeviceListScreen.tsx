@@ -102,6 +102,7 @@ export function DeviceListScreen({
 
   return (
     <ScrollView
+      alwaysBounceVertical
       ref={scrollRef}
       contentContainerStyle={[
         styles.screen,

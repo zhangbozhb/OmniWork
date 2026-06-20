@@ -1302,6 +1302,7 @@ function AppContent(): JSX.Element {
       return;
     }
     sendToRelay(listSessionsRequest(pairing.deviceId));
+    sendToRelay(listWorkspacesRequest(pairing.deviceId));
   }
 
   function handleCreateSession(input: {
