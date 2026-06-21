@@ -2,6 +2,7 @@ import {
   createMessage,
   type FilesListRequestPayload,
   type FilesReadRequestPayload,
+  type FilesWriteRequestPayload,
   type GitDiffRequestPayload,
   type GitStatusRequestPayload,
 } from "@omniwork/protocol-ts";
@@ -22,6 +23,13 @@ export function readFileRequest(
   payload: FilesReadRequestPayload,
 ) {
   return createMessage("files.read", payload, { device_id: deviceId });
+}
+
+export function writeFileRequest(
+  deviceId: string,
+  payload: FilesWriteRequestPayload,
+) {
+  return createMessage("files.write", payload, { device_id: deviceId });
 }
 
 export function gitStatusRequest(

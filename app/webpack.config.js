@@ -3,6 +3,9 @@ const webpack = require("webpack");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 
 const workspaceRoot = path.resolve(__dirname, "..");
+const qrcodeSvgRoot = path.dirname(
+  require.resolve("react-native-qrcode-svg/package.json"),
+);
 
 const webPublicPath = process.env.OMNIWORK_WEB_PUBLIC_PATH ?? "/";
 const appVersion = require("./package.json").version;
@@ -51,6 +54,7 @@ module.exports = {
         include: [
           path.resolve(__dirname),
           path.resolve(workspaceRoot, "packages"),
+          qrcodeSvgRoot,
         ],
         use: {
           loader: "babel-loader",

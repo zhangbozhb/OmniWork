@@ -1,12 +1,16 @@
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 
 import type {
   FilesListPayload,
   FilesReadPayload,
+  FilesWritePayload,
+  FilesWriteRequestPayload,
   WorkspaceDefinition,
   WorkspaceFileEntry,
 } from "@omniwork/protocol-ts";
+import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
 
 const IGNORED_DIRECTORIES = new Set([
   ".git",
@@ -87,6 +91,90 @@ export class FileService {
       content: buffer.toString("utf8"),
       encoding: "utf8",
       size: info.size,
+      modifiedAt: info.mtime.toISOString(),
+      contentHash: hashText(buffer),
+    };
+  }
+
+  async write(
+    workspace: WorkspaceDefinition,
+    payload: FilesWriteRequestPayload,
+  ): Promise<FilesWritePayload> {
+    const relativePath = normalizeRelativePath(payload.relativePath);
+    if (!isSupportedTextFilePath(relativePath)) {
+      return {
+        workspacePath: workspace.path,
+        relativePath,
+        status: "unsupported",
+        encoding: "utf8",
+        size: 0,
+        message: "This file type is not editable.",
+      };
+    }
+    if (Buffer.byteLength(payload.content, "utf8") > MAX_TEXT_FILE_BYTES) {
+      return {
+        workspacePath: workspace.path,
+        relativePath,
+        status: "unsupported",
+        encoding: "too_large",
+        size: Buffer.byteLength(payload.content, "utf8"),
+        message: "Edited content is too large to save.",
+      };
+    }
+
+    const filePath = await resolveWorkspaceWritePath(workspace, relativePath);
+    const current = await this.read(workspace, relativePath);
+    if (current.encoding !== "utf8") {
+      return {
+        workspacePath: workspace.path,
+        relativePath,
+        status: "unsupported",
+        encoding: current.encoding,
+        size: current.size,
+        modifiedAt: current.modifiedAt,
+        contentHash: current.contentHash,
+        message: "Only UTF-8 text files can be edited.",
+      };
+    }
+    if (!current.contentHash) {
+      return {
+        workspacePath: workspace.path,
+        relativePath,
+        status: "unsupported",
+        encoding: current.encoding,
+        size: current.size,
+        modifiedAt: current.modifiedAt,
+        message: "Current file hash is unavailable. Reload the file before saving.",
+      };
+    }
+    if (payload.baseHash !== current.contentHash) {
+      return {
+        workspacePath: workspace.path,
+        relativePath,
+        status: "conflict",
+        content: current.content,
+        encoding: "utf8",
+        size: current.size,
+        modifiedAt: current.modifiedAt,
+        contentHash: current.contentHash,
+        baseHash: payload.baseHash,
+        message: "The file changed after it was opened.",
+      };
+    }
+
+    await writeFile(filePath, payload.content, "utf8");
+    const info = await stat(filePath);
+    const savedBuffer = Buffer.from(payload.content, "utf8");
+    return {
+      workspacePath: workspace.path,
+      relativePath,
+      status: "saved",
+      content: payload.content,
+      encoding: "utf8",
+      size: info.size,
+      modifiedAt: info.mtime.toISOString(),
+      contentHash: hashText(savedBuffer),
+      baseHash: payload.baseHash,
     };
   }
 }
@@ -105,6 +193,29 @@ async function resolveWorkspacePath(
     throw new Error("Path escapes workspace root.");
   }
   return resolvedTarget;
+}
+
+async function resolveWorkspaceWritePath(
+  workspace: WorkspaceDefinition,
+  relativePath: string,
+): Promise<string> {
+  if (workspace.status !== "available") {
+    throw new Error(`Workspace is not available: ${workspace.name ?? workspace.path}`);
+  }
+  const root = await realpath(workspace.path);
+  const target = resolve(root, relativePath || ".");
+  if (!isPathInside(target, root)) {
+    throw new Error("Path escapes workspace root.");
+  }
+  const parent = await realpath(dirname(target));
+  if (!isPathInside(parent, root)) {
+    throw new Error("Path escapes workspace root.");
+  }
+  return target;
+}
+
+function hashText(input: Buffer): string {
+  return createHash("sha256").update(input).digest("hex");
 }
 
 function isPathInside(path: string, parent: string): boolean {

@@ -15,6 +15,7 @@ export type AppView =
   | "sessions"
   | "gitReview"
   | "terminalFiles"
+  | "fileEditor"
   | "terminal";
 
 export type PrimaryTabView = "devices" | "settings";

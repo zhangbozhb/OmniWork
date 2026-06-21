@@ -95,6 +95,7 @@ export interface SessionListScreenProps {
   ): void;
   onOpenDirectory(relativePath: string): void;
   onReadFile(relativePath: string): void;
+  onEditFile(workspace: WorkspaceDefinition, relativePath: string): void;
   onCloseFilePreview(): void;
   onOpenGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onOpenGitReview(
@@ -155,6 +156,7 @@ export function SessionListScreen({
   onPrefetchWorkspaceTab,
   onOpenDirectory,
   onReadFile,
+  onEditFile,
   onCloseFilePreview,
   onOpenGitDiff,
   onOpenGitReview,
@@ -687,6 +689,9 @@ export function SessionListScreen({
                 }
                 onPrefetchDiff={onPrefetchGitDiff}
                 onReadFileContent={onReadGitFileContent}
+                onEditFile={(relativePath) =>
+                  onEditFile(activeWorkspace, relativePath)
+                }
               />
             </ScrollView>
           ) : null}
@@ -721,6 +726,9 @@ export function SessionListScreen({
               }
               onOpenDirectory={onOpenDirectory}
               onReadFile={onReadFile}
+              onEditFile={(relativePath) =>
+                onEditFile(activeWorkspace, relativePath)
+              }
               onCloseFilePreview={onCloseFilePreview}
             />
           </ScrollView>

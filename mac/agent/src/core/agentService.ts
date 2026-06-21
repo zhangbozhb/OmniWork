@@ -22,6 +22,7 @@ import type {
   AuthVerifyPayload,
   FilesListRequestPayload,
   FilesReadRequestPayload,
+  FilesWriteRequestPayload,
   GitDiffRequestPayload,
   GitStatusRequestPayload,
   SessionCreatePayload,
@@ -368,6 +369,7 @@ export class AgentService {
             "session.tmux.kill",
             "workspace.list",
             "files.read",
+            "files.write",
             "git.read",
             ...this.runtimes.capabilities(),
           ],
@@ -690,6 +692,15 @@ export class AgentService {
         }
         await this.resourceRequests.handleFilesRead(
           message as MessageEnvelope<FilesReadRequestPayload>,
+          dispatchContext,
+        );
+        break;
+      case "files.write":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        await this.resourceRequests.handleFilesWrite(
+          message as MessageEnvelope<FilesWriteRequestPayload>,
           dispatchContext,
         );
         break;

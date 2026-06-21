@@ -32,6 +32,7 @@ import type {
 import { Button } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 import { Icon } from "../../ui/icons";
+import { canEditFileContent } from "../../features/workspaces/editableFiles";
 
 type CopyTarget = {
   name: string;
@@ -68,6 +69,7 @@ export interface FileBrowserScreenProps {
   onRefresh(): void;
   onOpenDirectory(relativePath: string): void;
   onReadFile(relativePath: string): void;
+  onEditFile?(relativePath: string): void;
   onCloseFilePreview(): void;
 }
 
@@ -84,6 +86,7 @@ export function FileBrowserScreen({
   onRefresh,
   onOpenDirectory,
   onReadFile,
+  onEditFile,
   onCloseFilePreview,
 }: FileBrowserScreenProps): JSX.Element {
   const { t } = useTranslation();
@@ -384,6 +387,7 @@ export function FileBrowserScreen({
         panHandlers={previewPanResponder.panHandlers}
         visible={previewVisible}
         onClose={onCloseFilePreview}
+        onEdit={onEditFile}
         onExpand={expandFilePreview}
       />
       {copyNotice ? (
@@ -413,6 +417,7 @@ function FilePreviewSheet({
   panHandlers,
   visible,
   onClose,
+  onEdit,
   onExpand,
 }: {
   bottomInset: number;
@@ -425,10 +430,12 @@ function FilePreviewSheet({
   panHandlers: ReturnType<typeof PanResponder.create>["panHandlers"];
   visible: boolean;
   onClose(): void;
+  onEdit?(relativePath: string): void;
   onExpand(): void;
 }): JSX.Element {
   const { t } = useTranslation();
   const title = path ? basename(path) : t("files.preview.title");
+  const editable = canEditFileContent(path, file);
   return (
     <Modal
       animationType="none"
@@ -467,6 +474,19 @@ function FilePreviewSheet({
               </View>
             </View>
             <View style={styles.previewActions}>
+              {onEdit ? (
+                <Pressable
+                  accessibilityLabel={t("common.edit")}
+                  disabled={!editable || !path}
+                  style={[
+                    styles.previewIconButton,
+                    (!editable || !path) && styles.disabled,
+                  ]}
+                  onPress={() => path && onEdit(path)}
+                >
+                  <Icon name="edit" color={colors.textSecondary} size={16} />
+                </Pressable>
+              ) : null}
               {mode === "preview" ? (
                 <Pressable
                   accessibilityLabel={t("files.preview.expand")}
@@ -1059,6 +1079,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
+  },
+  disabled: {
+    opacity: 0.45,
   },
   previewTitleArea: {
     width: "100%",

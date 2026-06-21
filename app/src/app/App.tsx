@@ -30,6 +30,7 @@ import type {
   CodexSession,
   FilesListPayload,
   FilesReadPayload,
+  FilesWritePayload,
   GitDiffPayload,
   GitDiffScope,
   GitStatusPayload,
@@ -89,6 +90,7 @@ import { SessionListScreen } from "../screens/sessions/SessionListScreen";
 import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import { FileBrowserScreen } from "../screens/workspaces/FileBrowserScreen";
 import { GitStatusScreen } from "../screens/workspaces/GitStatusScreen";
+import { FileEditorScreen } from "../screens/workspaces/FileEditorScreen";
 import type { PairingConfig } from "../features/auth/types";
 import {
   decryptPairingConfig,
@@ -114,6 +116,7 @@ import {
   listFilesRequest,
   listWorkspacesRequest,
   readFileRequest,
+  writeFileRequest,
 } from "../features/workspaces/workspaceMessages";
 import {
   computeInitialTerminalSize,
@@ -257,6 +260,15 @@ function AppContent(): JSX.Element {
   >({});
   const [gitReviewPath, setGitReviewPath] = useState<string | undefined>();
   const [gitReviewScope, setGitReviewScope] = useState<GitDiffScope>("all");
+  const [fileEditorPath, setFileEditorPath] = useState<string | undefined>();
+  const [fileEditorReturnView, setFileEditorReturnView] =
+    useState<AppView>("sessions");
+  const [fileWriteLoadingKeys, setFileWriteLoadingKeys] = useState<
+    Record<string, boolean>
+  >({});
+  const [lastFileWriteResult, setLastFileWriteResult] = useState<
+    FilesWritePayload | undefined
+  >();
   const [defaultSessionCwd, setDefaultSessionCwd] = useState("");
   const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
     {},
@@ -345,6 +357,19 @@ function AppContent(): JSX.Element {
   const selectedFile = activeFilesCache?.selectedFilePath
     ? activeFilesCache.filesByPath[activeFilesCache.selectedFilePath]
     : undefined;
+  const editorFile = fileEditorPath
+    ? activeFilesCache?.filesByPath[fileEditorPath]
+    : undefined;
+  const editorLoading = Boolean(
+    fileEditorPath && activeFilesCache?.loadingFileKeys[fileEditorPath],
+  );
+  const editorSaving = Boolean(
+    selectedWorkspace &&
+      fileEditorPath &&
+      fileWriteLoadingKeys[
+        toWorkspaceFileKey(selectedWorkspace.path, fileEditorPath)
+      ],
+  );
   const filesLoading = Boolean(
     activeFilesCache?.loadingDirectoryKeys[fileRelativePath] ||
       (activeFilesCache?.selectedFilePath &&
@@ -1514,6 +1539,16 @@ function AppContent(): JSX.Element {
 
   function handleRefreshWorkspaceGit(workspace: WorkspaceDefinition): void {
     setSelectedWorkspace(workspace);
+    updateWorkspaceDataCache(workspace.path, (cache) => ({
+      ...cache,
+      git: {
+        ...cache.git,
+        diffCache: {},
+        diffLoadingKeys: {},
+        fileContentCache: {},
+        fileContentLoadingKeys: {},
+      },
+    }));
     requestWorkspaceGitStatus(workspace, { force: true });
   }
 
@@ -1538,32 +1573,47 @@ function AppContent(): JSX.Element {
     });
   }
 
-  function handleReadFile(relativePath: string): void {
-    if (
-      !pairing ||
-      !selectedWorkspace ||
-      connectionStatus !== "authenticated"
-    ) {
+  function requestWorkspaceFile(
+    workspace: WorkspaceDefinition,
+    relativePath: string,
+    options: { activatePreview?: boolean; force?: boolean } = {},
+  ): void {
+    if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
-    const workspacePath = selectedWorkspace.path;
+    const activatePreview = options.activatePreview ?? true;
+    const workspacePath = workspace.path;
     const filesCache =
       workspaceCache[workspacePath]?.files ?? createWorkspaceFilesCache();
-    if (filesCache.filesByPath[relativePath]) {
-      updateWorkspaceDataCache(workspacePath, (cache) => ({
-        ...cache,
-        files: {
-          ...cache.files,
-          selectedFilePath: relativePath,
-        },
-      }));
+    if (!options.force && filesCache.filesByPath[relativePath]) {
+      if (activatePreview) {
+        updateWorkspaceDataCache(workspacePath, (cache) => ({
+          ...cache,
+          files: {
+            ...cache.files,
+            selectedFilePath: relativePath,
+          },
+        }));
+      }
+      return;
+    }
+    if (filesCache.loadingFileKeys[relativePath]) {
+      if (activatePreview) {
+        updateWorkspaceDataCache(workspacePath, (cache) => ({
+          ...cache,
+          files: {
+            ...cache.files,
+            selectedFilePath: relativePath,
+          },
+        }));
+      }
       return;
     }
     updateWorkspaceDataCache(workspacePath, (cache) => ({
       ...cache,
       files: {
         ...cache.files,
-        selectedFilePath: relativePath,
+        selectedFilePath: activatePreview ? relativePath : cache.files.selectedFilePath,
         loadingFileKeys: {
           ...cache.files.loadingFileKeys,
           [relativePath]: true,
@@ -1576,6 +1626,72 @@ function AppContent(): JSX.Element {
         relativePath,
       }),
     );
+  }
+
+  function handleReadFile(relativePath: string): void {
+    if (!selectedWorkspace) {
+      return;
+    }
+    requestWorkspaceFile(selectedWorkspace, relativePath, {
+      activatePreview: true,
+    });
+  }
+
+  function handleOpenFileEditor(
+    workspace: WorkspaceDefinition,
+    relativePath: string,
+  ): void {
+    setSelectedWorkspace(workspace);
+    setFileEditorPath(relativePath);
+    setFileEditorReturnView(view);
+    setLastFileWriteResult(undefined);
+    setView("fileEditor");
+    requestWorkspaceFile(workspace, relativePath, { activatePreview: false });
+  }
+
+  function handleReloadEditorFile(): void {
+    if (!selectedWorkspace || !fileEditorPath) {
+      return;
+    }
+    setLastFileWriteResult(undefined);
+    requestWorkspaceFile(selectedWorkspace, fileEditorPath, {
+      activatePreview: false,
+      force: true,
+    });
+  }
+
+  function handleSaveEditorFile(content: string, baseHash: string): void {
+    if (
+      !pairing ||
+      !selectedWorkspace ||
+      !fileEditorPath ||
+      connectionStatus !== "authenticated"
+    ) {
+      return;
+    }
+    const workspacePath = selectedWorkspace.path;
+    const writeKey = toWorkspaceFileKey(workspacePath, fileEditorPath);
+    setFileWriteLoadingKeys((current) => ({ ...current, [writeKey]: true }));
+    setLastFileWriteResult(undefined);
+    sendToRelay(
+      writeFileRequest(pairing.deviceId, {
+        workspacePath,
+        relativePath: fileEditorPath,
+        content,
+        encoding: "utf8",
+        baseHash,
+      }),
+    );
+  }
+
+  function handleEditorContentChange(): void {
+    if (lastFileWriteResult) {
+      setLastFileWriteResult(undefined);
+    }
+  }
+
+  function handleCloseFileEditor(): void {
+    setView(fileEditorReturnView);
   }
 
   function handleCloseFilePreview(): void {
@@ -2164,6 +2280,72 @@ function AppContent(): JSX.Element {
         }));
         break;
       }
+      case "files.write": {
+        const payload = message.payload as FilesWritePayload;
+        const writeKey = toWorkspaceFileKey(
+          payload.workspacePath,
+          payload.relativePath,
+        );
+        const previousActiveDiffKey =
+          workspaceCache[payload.workspacePath]?.git.activeDiffKey;
+        const previousActiveDiff = parseGitDiffCacheKey(previousActiveDiffKey);
+        setFileWriteLoadingKeys((current) => omitKey(current, writeKey));
+        setLastFileWriteResult(payload);
+        if (payload.status === "saved") {
+          const savedFile: FilesReadPayload = {
+            workspacePath: payload.workspacePath,
+            relativePath: payload.relativePath,
+            content: payload.content ?? "",
+            encoding: "utf8",
+            size: payload.size,
+            modifiedAt: payload.modifiedAt,
+            contentHash: payload.contentHash,
+          };
+          updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
+            ...cache,
+            files: {
+              ...cache.files,
+              filesByPath: {
+                ...cache.files.filesByPath,
+                [payload.relativePath]: savedFile,
+              },
+            },
+            git: {
+              ...cache.git,
+              statusLoading: true,
+              diffCache: {},
+              diffLoadingKeys: cache.git.activeDiffKey
+                ? { [cache.git.activeDiffKey]: true }
+                : {},
+              fileContentCache: {
+                ...cache.git.fileContentCache,
+                [payload.relativePath]: savedFile,
+              },
+              fileContentLoadingKeys: omitKey(
+                cache.git.fileContentLoadingKeys,
+                payload.relativePath,
+              ),
+            },
+          }));
+          if (pairing && selectedWorkspace?.path === payload.workspacePath) {
+            sendToRelay(
+              gitStatusRequest(pairing.deviceId, {
+                workspacePath: payload.workspacePath,
+              }),
+            );
+            if (previousActiveDiff) {
+              sendToRelay(
+                gitDiffRequest(pairing.deviceId, {
+                  workspacePath: payload.workspacePath,
+                  relativePath: previousActiveDiff.relativePath,
+                  scope: previousActiveDiff.scope,
+                }),
+              );
+            }
+          }
+        }
+        break;
+      }
       case "git.status": {
         const payload = message.payload as GitStatusPayload;
         updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
@@ -2172,10 +2354,6 @@ function AppContent(): JSX.Element {
             ...cache.git,
             status: payload.status,
             statusLoading: false,
-            diffCache: {},
-            diffLoadingKeys: {},
-            fileContentCache: {},
-            fileContentLoadingKeys: {},
           },
         }));
         break;
@@ -2407,7 +2585,8 @@ function AppContent(): JSX.Element {
           ) : view === "sessions" ||
             view === "gitReview" ||
             view === "terminal" ||
-            view === "terminalFiles" ? (
+            view === "terminalFiles" ||
+            view === "fileEditor" ? (
             <>
               <SessionListScreen
                 sessions={sessions}
@@ -2439,6 +2618,7 @@ function AppContent(): JSX.Element {
                 onPrefetchWorkspaceTab={handlePrefetchWorkspaceTab}
                 onOpenDirectory={handleOpenDirectory}
                 onReadFile={handleReadFile}
+                onEditFile={handleOpenFileEditor}
                 onCloseFilePreview={handleCloseFilePreview}
                 onOpenGitDiff={handleOpenGitDiff}
                 onOpenGitReview={handleOpenGitReview}
@@ -2465,6 +2645,9 @@ function AppContent(): JSX.Element {
                     onBack={() => setView("sessions")}
                     onRefresh={() => handleRefreshWorkspaceGit(selectedWorkspace)}
                     onOpenDiff={handleOpenGitDiff}
+                    onEditFile={(relativePath) =>
+                      handleOpenFileEditor(selectedWorkspace, relativePath)
+                    }
                     onPrefetchDiff={handlePrefetchGitDiff}
                     onReadFileContent={handleReadGitFileContent}
                   />
@@ -2522,10 +2705,29 @@ function AppContent(): JSX.Element {
                       }
                       onOpenDirectory={handleOpenDirectory}
                       onReadFile={handleReadFile}
+                      onEditFile={(relativePath) =>
+                        handleOpenFileEditor(selectedWorkspace, relativePath)
+                      }
                       onCloseFilePreview={handleCloseFilePreview}
                     />
                   </Pressable>
                 </Pressable>
+              ) : null}
+              {view === "fileEditor" && selectedWorkspace && fileEditorPath ? (
+                <View style={styles.fullScreenPage}>
+                  <FileEditorScreen
+                    workspace={selectedWorkspace}
+                    relativePath={fileEditorPath}
+                    file={editorFile}
+                    loading={editorLoading}
+                    saving={editorSaving}
+                    writeResult={lastFileWriteResult}
+                    onBack={handleCloseFileEditor}
+                    onContentChange={handleEditorContentChange}
+                    onReload={handleReloadEditorFile}
+                    onSave={handleSaveEditorFile}
+                  />
+                </View>
               ) : null}
             </>
           ) : null}
@@ -2808,6 +3010,28 @@ function toGitDiffCacheKey(
   scope: GitDiffScope,
 ): string {
   return `${scope}:${relativePath ?? ""}`;
+}
+
+function parseGitDiffCacheKey(
+  key: string | undefined,
+): { relativePath?: string; scope: GitDiffScope } | undefined {
+  if (!key) {
+    return undefined;
+  }
+  const separatorIndex = key.indexOf(":");
+  if (separatorIndex < 0) {
+    return undefined;
+  }
+  const scope = key.slice(0, separatorIndex) as GitDiffScope;
+  if (scope !== "all" && scope !== "staged" && scope !== "unstaged") {
+    return undefined;
+  }
+  const relativePath = key.slice(separatorIndex + 1);
+  return { scope, relativePath: relativePath || undefined };
+}
+
+function toWorkspaceFileKey(workspacePath: string, relativePath: string): string {
+  return `${workspacePath}:${relativePath}`;
 }
 
 function getSessionFilesWorkspace(

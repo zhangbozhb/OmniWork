@@ -3,6 +3,7 @@ import {
   type CodexSession,
   type FilesListRequestPayload,
   type FilesReadRequestPayload,
+  type FilesWriteRequestPayload,
   type GitDiffRequestPayload,
   type GitStatusRequestPayload,
   type MessageEnvelope,
@@ -100,6 +101,34 @@ export class ResourceRequestHandler {
           id: message.id,
         },
       ),
+    );
+  }
+
+  async handleFilesWrite(
+    message: MessageEnvelope<FilesWriteRequestPayload>,
+    context?: AgentDispatchContext,
+  ): Promise<void> {
+    let payload;
+    try {
+      const workspace = await this.requireWorkspace(message.payload.workspacePath);
+      payload = await this.files.write(workspace, message.payload);
+    } catch (error) {
+      payload = {
+        workspacePath: message.payload.workspacePath,
+        relativePath: message.payload.relativePath,
+        status: "unsupported" as const,
+        encoding: "utf8" as const,
+        size: 0,
+        baseHash: message.payload.baseHash,
+        message: error instanceof Error ? error.message : "Failed to save file.",
+      };
+    }
+    this.sendToApp(
+      context,
+      createMessage("files.write", payload, {
+        device_id: this.deviceId,
+        id: message.id,
+      }),
     );
   }
 

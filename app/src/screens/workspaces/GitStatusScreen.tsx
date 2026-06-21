@@ -21,6 +21,7 @@ import type {
   WorkspaceDefinition,
   WorkspaceGitStatus,
 } from "@omniwork/protocol-ts";
+import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 
@@ -43,62 +44,6 @@ const STATUS_COLOR: Record<FileStatus, string> = {
 };
 
 const SCOPE_ORDER: GitDiffScope[] = ["all", "unstaged", "staged", "untracked"];
-const READABLE_UNTRACKED_FILE_EXTENSIONS = new Set([
-  "c",
-  "cc",
-  "cfg",
-  "cjs",
-  "conf",
-  "cpp",
-  "css",
-  "csv",
-  "cxx",
-  "env",
-  "go",
-  "h",
-  "hh",
-  "hpp",
-  "htm",
-  "html",
-  "hxx",
-  "ini",
-  "java",
-  "js",
-  "json",
-  "jsonl",
-  "jsx",
-  "kt",
-  "kts",
-  "less",
-  "log",
-  "markdown",
-  "md",
-  "mjs",
-  "php",
-  "properties",
-  "py",
-  "pyw",
-  "rb",
-  "rs",
-  "ruby",
-  "sass",
-  "scss",
-  "sh",
-  "sql",
-  "svelte",
-  "svg",
-  "swift",
-  "toml",
-  "ts",
-  "tsx",
-  "tsv",
-  "txt",
-  "vue",
-  "webmanifest",
-  "xml",
-  "yaml",
-  "yml",
-]);
 const REVIEW_SWIPE_ACTIVATE_PX = 36;
 const REVIEW_SWIPE_COMMIT_PX = 72;
 const REVIEW_SWIPE_MAX_DRAG_PX = 180;
@@ -123,6 +68,7 @@ export interface GitStatusScreenProps {
   onRefresh(): void;
   onOpenDiff(relativePath?: string, scope?: GitDiffScope): void;
   onOpenReview?(relativePath?: string, scope?: GitDiffScope): void;
+  onEditFile?(relativePath: string): void;
   onPrefetchDiff?(relativePath?: string, scope?: GitDiffScope): void;
   onReadFileContent?(relativePath: string): void;
 }
@@ -143,6 +89,7 @@ export function GitStatusScreen({
   onRefresh,
   onOpenDiff,
   onOpenReview,
+  onEditFile,
   onPrefetchDiff = onOpenDiff,
   onReadFileContent = noop,
 }: GitStatusScreenProps): JSX.Element {
@@ -397,6 +344,7 @@ export function GitStatusScreen({
           onMoveSelection={moveSelection}
           onPrefetchDiff={onPrefetchDiff}
           onReadFileContent={onReadFileContent}
+          onEditFile={onEditFile}
           onSelectFile={selectFile}
           onSelectScope={selectScope}
         />
@@ -441,6 +389,7 @@ function GitReviewView({
   onMoveSelection,
   onPrefetchDiff,
   onReadFileContent,
+  onEditFile,
   onSelectFile,
   onSelectScope,
 }: {
@@ -457,6 +406,7 @@ function GitReviewView({
   onMoveSelection(offset: number): void;
   onPrefetchDiff(relativePath?: string, scope?: GitDiffScope): void;
   onReadFileContent(relativePath: string): void;
+  onEditFile?(relativePath: string): void;
   onSelectFile(file: ChangedFile): void;
   onSelectScope(scope: GitDiffScope): void;
 }): JSX.Element {
@@ -700,6 +650,7 @@ function GitReviewView({
               loading={loading || !currentDiffMatchesSelection}
               scope={scope}
               onCopyText={onCopyText}
+              onEditFile={onEditFile}
             />
             <ReviewDiffCard
               active={false}
@@ -733,6 +684,7 @@ function ReviewDiffCard({
   loading,
   scope,
   onCopyText,
+  onEditFile,
 }: {
   active: boolean;
   cardWidth: number;
@@ -743,6 +695,7 @@ function ReviewDiffCard({
   loading?: boolean;
   scope: GitDiffScope;
   onCopyText(text: string, notice: string, pageY?: number): void;
+  onEditFile?(relativePath: string): void;
 }): JSX.Element {
   const { t } = useTranslation();
   const diffMatchesSelection = Boolean(
@@ -791,6 +744,20 @@ function ReviewDiffCard({
                   {file.path}
                 </Text>
               </Pressable>
+              {onEditFile &&
+              file.status !== "deleted" &&
+              isSupportedTextFilePath(file.path) ? (
+                <Button
+                  accessibilityLabel={t("common.edit")}
+                  icon="edit"
+                  iconOnly
+                  variant="ghost"
+                  style={styles.reviewHeaderIconButton}
+                  onPress={() => onEditFile(file.path)}
+                >
+                  {t("common.edit")}
+                </Button>
+              ) : null}
             </View>
             <View style={styles.reviewSwipeArea}>
               {loading || !diffMatchesSelection ? (
@@ -1193,16 +1160,7 @@ function shouldUseUntrackedFileContentFallback(
 }
 
 function canReadUntrackedFileContent(file: ChangedFile | undefined): boolean {
-  if (!file) {
-    return false;
-  }
-  const name = basename(file.path);
-  const extensionIndex = name.lastIndexOf(".");
-  if (extensionIndex < 0 || extensionIndex === name.length - 1) {
-    return false;
-  }
-  const extension = name.slice(extensionIndex + 1).toLowerCase();
-  return READABLE_UNTRACKED_FILE_EXTENSIONS.has(extension);
+  return Boolean(file && isSupportedTextFilePath(file.path));
 }
 
 function shouldActivateReviewSwipe(dx: number, dy: number): boolean {
@@ -1608,6 +1566,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 13,
     fontWeight: "900",
+  },
+  reviewHeaderIconButton: {
+    borderWidth: 0,
+    minHeight: 30,
+    width: 30,
   },
   diffList: {
     paddingVertical: 4,

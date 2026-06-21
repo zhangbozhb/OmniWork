@@ -59,6 +59,7 @@ export const messageTypeSchema = z.enum([
   "workspace.status",
   "files.list",
   "files.read",
+  "files.write",
   "git.status",
   "git.diff",
   "terminal.frame",
@@ -563,6 +564,33 @@ export const filesReadPayloadSchema = z
     content: z.string().optional(),
     encoding: z.enum(["utf8", "binary", "too_large"]),
     size: z.number().int().nonnegative(),
+    modifiedAt: isoDateTime.optional(),
+    contentHash: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const filesWriteRequestPayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    relativePath: z.string().min(1),
+    content: z.string(),
+    encoding: z.literal("utf8"),
+    baseHash: z.string().min(1),
+  })
+  .strict();
+
+export const filesWritePayloadSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    relativePath: z.string().min(1),
+    status: z.enum(["saved", "conflict", "unsupported"]),
+    content: z.string().optional(),
+    encoding: z.enum(["utf8", "binary", "too_large"]),
+    size: z.number().int().nonnegative(),
+    modifiedAt: isoDateTime.optional(),
+    contentHash: z.string().min(1).optional(),
+    baseHash: z.string().min(1).optional(),
+    message: z.string().optional(),
   })
   .strict();
 
@@ -724,6 +752,10 @@ const payloadSchemaByType = {
   "workspace.status": workspaceStatusPayloadSchema,
   "files.list": z.union([filesListRequestPayloadSchema, filesListPayloadSchema]),
   "files.read": z.union([filesReadRequestPayloadSchema, filesReadPayloadSchema]),
+  "files.write": z.union([
+    filesWriteRequestPayloadSchema,
+    filesWritePayloadSchema,
+  ]),
   "git.status": z.union([gitStatusRequestPayloadSchema, gitStatusPayloadSchema]),
   "git.diff": z.union([gitDiffRequestPayloadSchema, gitDiffPayloadSchema]),
   "terminal.frame": terminalFramePayloadSchema,

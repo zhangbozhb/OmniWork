@@ -10,6 +10,11 @@ export {
   PROTOCOL_VERSION,
   SUPPORTED_SESSION_STATUSES,
 } from "./constants.ts";
+export {
+  SUPPORTED_TEXT_FILE_EXTENSIONS,
+  getFileExtension,
+  isSupportedTextFilePath,
+} from "./textFiles.ts";
 import {
   E2E_NOISE_NNPSK0_CAPABILITY_V1,
   E2E_PROTOCOL_VERSION,
@@ -58,6 +63,7 @@ export type MessageType =
   | "workspace.status"
   | "files.list"
   | "files.read"
+  | "files.write"
   | "git.status"
   | "git.diff"
   | "terminal.frame"
@@ -122,6 +128,7 @@ export type KnownAgentCapability =
   | "session.tmux.kill"
   | "workspace.list"
   | "files.read"
+  | "files.write"
   | "git.read"
   | "terminal.shell"
   | "codex.cli"
@@ -679,6 +686,31 @@ export interface FilesReadPayload {
   content?: string;
   encoding: "utf8" | "binary" | "too_large";
   size: number;
+  modifiedAt?: string;
+  contentHash?: string;
+}
+
+export interface FilesWriteRequestPayload {
+  workspacePath: string;
+  relativePath: string;
+  content: string;
+  encoding: "utf8";
+  baseHash: string;
+}
+
+export type FilesWriteStatus = "saved" | "conflict" | "unsupported";
+
+export interface FilesWritePayload {
+  workspacePath: string;
+  relativePath: string;
+  status: FilesWriteStatus;
+  content?: string;
+  encoding: "utf8" | "binary" | "too_large";
+  size: number;
+  modifiedAt?: string;
+  contentHash?: string;
+  baseHash?: string;
+  message?: string;
 }
 
 export interface WorkspaceGitStatus {
