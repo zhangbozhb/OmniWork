@@ -11,11 +11,13 @@ import {
   AppState,
   type AppStateStatus,
   Dimensions,
+  Modal,
   Platform,
   Pressable,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -88,7 +90,11 @@ import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import { FileBrowserScreen } from "../screens/workspaces/FileBrowserScreen";
 import { GitStatusScreen } from "../screens/workspaces/GitStatusScreen";
 import type { PairingConfig } from "../features/auth/types";
-import { parsePairingConfig } from "../features/auth/pairingConfig";
+import {
+  decryptPairingConfig,
+  isEncryptedPairingConfig,
+  parsePairingConfig,
+} from "../features/auth/pairingConfig";
 import {
   closeSessionRequest,
   renameSessionRequest,
@@ -262,6 +268,12 @@ function AppContent(): JSX.Element {
     "Enter the Mac Agent key to pair.",
   );
   const [pairingError, setPairingError] = useState<string | undefined>();
+  const [pendingEncryptedPairingLink, setPendingEncryptedPairingLink] =
+    useState<string | undefined>();
+  const [encryptedPairingPassword, setEncryptedPairingPassword] = useState("");
+  const [encryptedPairingError, setEncryptedPairingError] = useState<
+    string | undefined
+  >();
   const [creatingSession, setCreatingSession] = useState(false);
   const [closingSessionIds, setClosingSessionIds] = useState<string[]>([]);
   const [killingSessionIds, setKillingSessionIds] = useState<string[]>([]);
@@ -507,6 +519,18 @@ function AppContent(): JSX.Element {
             autoOpenSessions: true,
           });
           setConnectionMessage("Pairing imported from link. Connecting...");
+          return;
+        }
+
+        if (initialUrl && isEncryptedPairingConfig(initialUrl)) {
+          pairingsRef.current = savedPairings;
+          setPairings(savedPairings);
+          setPairing(savedPairings[0] ?? null);
+          setPendingEncryptedPairingLink(initialUrl);
+          setEncryptedPairingPassword("");
+          setEncryptedPairingError(undefined);
+          setConnectionMessage("Encrypted pairing link detected.");
+          setView(savedPairings.length > 0 ? "devices" : "pairing");
           return;
         }
 
@@ -1113,6 +1137,13 @@ function AppContent(): JSX.Element {
 
   async function handlePairingUrl(url: string): Promise<void> {
     const nextPairing = parsePairingConfig(url);
+    if (!nextPairing && isEncryptedPairingConfig(url)) {
+      setPendingEncryptedPairingLink(url);
+      setEncryptedPairingPassword("");
+      setEncryptedPairingError(undefined);
+      setConnectionMessage("Encrypted pairing link detected.");
+      return;
+    }
     if (!nextPairing) {
       Alert.alert(
         "Invalid pairing link",
@@ -1126,6 +1157,38 @@ function AppContent(): JSX.Element {
     await saveAndActivatePairing(nextPairing, pairingsRef.current, {
       autoOpenSessions: true,
     });
+  }
+
+  async function handleEncryptedPairingSubmit(): Promise<void> {
+    if (!pendingEncryptedPairingLink) {
+      return;
+    }
+    if (encryptedPairingPassword.length !== 4) {
+      setEncryptedPairingError(t("pairing.encrypted.passwordRequired"));
+      return;
+    }
+    const nextPairing = decryptPairingConfig(
+      pendingEncryptedPairingLink,
+      encryptedPairingPassword,
+    );
+    if (!nextPairing) {
+      setEncryptedPairingError(t("pairing.encrypted.invalidPassword"));
+      return;
+    }
+    setPairingError(undefined);
+    setEncryptedPairingError(undefined);
+    setPendingEncryptedPairingLink(undefined);
+    setEncryptedPairingPassword("");
+    setConnectionMessage("Pairing imported from link. Connecting...");
+    await saveAndActivatePairing(nextPairing, pairingsRef.current, {
+      autoOpenSessions: true,
+    });
+  }
+
+  function handleEncryptedPairingCancel(): void {
+    setPendingEncryptedPairingLink(undefined);
+    setEncryptedPairingPassword("");
+    setEncryptedPairingError(undefined);
   }
 
   async function saveAndActivatePairing(
@@ -2470,6 +2533,67 @@ function AppContent(): JSX.Element {
         {!appLockScreen && showPrimaryTabs ? (
           <PrimaryTabBar activeView={view} onChange={setView} />
         ) : null}
+        <Modal
+          animationType="fade"
+          transparent
+          visible={Boolean(pendingEncryptedPairingLink)}
+          onRequestClose={handleEncryptedPairingCancel}
+        >
+          <View style={styles.encryptedPairingBackdrop}>
+            <View style={styles.encryptedPairingDialog}>
+              <Text style={styles.encryptedPairingTitle}>
+                {t("pairing.encrypted.title")}
+              </Text>
+              <Text style={styles.encryptedPairingText}>
+                {t("pairing.encrypted.description")}
+              </Text>
+              <TextInput
+                autoFocus
+                keyboardType="number-pad"
+                maxLength={4}
+                placeholder={t("pairing.encrypted.placeholder")}
+                placeholderTextColor="#64727c"
+                secureTextEntry
+                style={styles.encryptedPairingInput}
+                value={encryptedPairingPassword}
+                onChangeText={(value) => {
+                  setEncryptedPairingPassword(
+                    value.replace(/\D/g, "").slice(0, 4),
+                  );
+                  setEncryptedPairingError(undefined);
+                }}
+                onSubmitEditing={() => {
+                  void handleEncryptedPairingSubmit();
+                }}
+              />
+              {encryptedPairingError ? (
+                <Text style={styles.encryptedPairingError}>
+                  {encryptedPairingError}
+                </Text>
+              ) : null}
+              <View style={styles.encryptedPairingActions}>
+                <Button
+                  style={styles.encryptedPairingAction}
+                  variant="ghost"
+                  onPress={handleEncryptedPairingCancel}
+                >
+                  {t("common.cancel")}
+                </Button>
+                <Button
+                  disabled={encryptedPairingPassword.length !== 4}
+                  style={styles.encryptedPairingAction}
+                  tone="primary"
+                  variant="solid"
+                  onPress={() => {
+                    void handleEncryptedPairingSubmit();
+                  }}
+                >
+                  {t("pairing.encrypted.import")}
+                </Button>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -2499,6 +2623,58 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 22,
     overflow: "hidden",
     backgroundColor: "#101417",
+  },
+  encryptedPairingBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    backgroundColor: "rgba(0, 0, 0, 0.52)",
+  },
+  encryptedPairingDialog: {
+    width: "100%",
+    maxWidth: 420,
+    gap: 14,
+    borderRadius: 22,
+    borderColor: "#263037",
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 20,
+    backgroundColor: "#11181d",
+  },
+  encryptedPairingTitle: {
+    color: "#f5f7f8",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  encryptedPairingText: {
+    color: "#94a3ad",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  encryptedPairingInput: {
+    borderRadius: 14,
+    borderColor: "#263037",
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: "#f5f7f8",
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: 8,
+    textAlign: "center",
+    backgroundColor: "#0d1317",
+  },
+  encryptedPairingError: {
+    color: "#ff8b8b",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  encryptedPairingActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  encryptedPairingAction: {
+    flex: 1,
   },
   loadingScreen: {
     flex: 1,

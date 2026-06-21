@@ -31,12 +31,12 @@
 
 ## 2. 关键抽象
 
-| 抽象 | 位置 | 职责 |
-|---|---|---|
-| `SessionTransport` | `mac/agent/src/transport/`、`app/src/lib/transport/` | 业务模块面对的统一接口；`send` / `onMessage` / `switchPath` / `onPathChange` / `onEvent` |
-| `WebRtcPeerAdapter` | 同上 | 跨平台 WebRTC peer 抽象；Agent 用 `@roamhq/wrtc`，App Native 用 `react-native-webrtc`，App Web 用浏览器 WebRTC API |
-| `UpgradeCoordinator` | 同上 | 客户端升级状态机（idle → proposed → negotiating → committing → upgraded） |
-| `RelayUpgradeOrchestrator` | `relay/server/src/upgrade/orchestrator.ts` | Relay 端：触发条件、灰度、退避、metrics、控制消息透传 |
+| 抽象                       | 位置                                                 | 职责                                                                                                               |
+| -------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `SessionTransport`         | `mac/agent/src/transport/`、`app/src/lib/transport/` | 业务模块面对的统一接口；`send` / `onMessage` / `switchPath` / `onPathChange` / `onEvent`                           |
+| `WebRtcPeerAdapter`        | 同上                                                 | 跨平台 WebRTC peer 抽象；Agent 用 `@roamhq/wrtc`，App Native 用 `react-native-webrtc`，App Web 用浏览器 WebRTC API |
+| `UpgradeCoordinator`       | 同上                                                 | 客户端升级状态机（idle → proposed → negotiating → committing → upgraded）                                          |
+| `RelayUpgradeOrchestrator` | `relay/server/src/upgrade/orchestrator.ts`           | Relay 端：触发条件、灰度、退避、metrics、控制消息透传                                                              |
 
 ## 3. 升级流程
 
@@ -68,23 +68,23 @@ App                       Relay                       Agent
 
 - 同一时刻同一 `(device_id, app_connection_id)` 只能存在一个 upgrade（再次 propose 将被 coordinator 忽略）。
 - 客户端单次 upgrade 总超时（默认 10s，可配 `timeoutMs`）；超时即 `downgrade("timeout")`。
-- `peerFactory` 返回 null（如 Web 平台 / wrtc 加载失败） → 立即 `downgrade("peer_unavailable")`。
+- `peerFactory` 返回 null（如浏览器 WebRTC API 缺失 / wrtc 加载失败） → 立即 `downgrade("peer_unavailable")`。
 
 ## 4. 降级触发清单
 
 任何一项满足都会触发 `SessionTransport.switchPath('relay')` + 发送 `tunnel.upgrade.downgrade`：
 
-| 触发源 | 条件 | reason |
-|---|---|---|
-| 应用层心跳 | `transport.pong` 连续超时 ≥ 4 次（间隔 5s，单次超时 2.5s；strict 模式为 4s / 5s / 6 次） | `pong_timeout` |
-| DataChannel 背压 | `bufferedAmount > 1MB` 持续 ≥ 5s（每 1s 采样） | `buffered_overflow` |
-| ICE 状态 | `disconnected` 持续 ≥ 8s（strict 模式 16s） | `ice_disconnected` |
-| ICE 状态 | `failed` | `ice_failed` |
-| App 生命周期 | `AppState` ≠ `active`（进入 background / inactive） | `app_background` |
-| 客户端协商 | 升级总超时 | `timeout` |
-| 客户端协商 | `peerFactory` 返回 null | `peer_unavailable` |
-| 任意端业务异常 | 调用 `forceDowngrade(reason)` | 自定义 |
-| 客户端主动关闭 | App `transport.close()` 时 `currentPath==='p2p'`（如切换 `transport_preference`、退出账号） | `client_closing` |
+| 触发源           | 条件                                                                                        | reason              |
+| ---------------- | ------------------------------------------------------------------------------------------- | ------------------- |
+| 应用层心跳       | `transport.pong` 连续超时 ≥ 4 次（间隔 5s，单次超时 2.5s；strict 模式为 4s / 5s / 6 次）    | `pong_timeout`      |
+| DataChannel 背压 | `bufferedAmount > 1MB` 持续 ≥ 5s（每 1s 采样）                                              | `buffered_overflow` |
+| ICE 状态         | `disconnected` 持续 ≥ 8s（strict 模式 16s）                                                 | `ice_disconnected`  |
+| ICE 状态         | `failed`                                                                                    | `ice_failed`        |
+| App 生命周期     | `AppState` ≠ `active`（进入 background / inactive）                                         | `app_background`    |
+| 客户端协商       | 升级总超时                                                                                  | `timeout`           |
+| 客户端协商       | `peerFactory` 返回 null                                                                     | `peer_unavailable`  |
+| 任意端业务异常   | 调用 `forceDowngrade(reason)`                                                               | 自定义              |
+| 客户端主动关闭   | App `transport.close()` 时 `currentPath==='p2p'`（如切换 `transport_preference`、退出账号） | `client_closing`    |
 
 降级后 Relay 端按 `(device_id, app_connection_id)` 累计失败次数指数退避：30s → 2min → 10min → 永不再尝试（直到对应 App 重连或重新进入流程）。双端任一次 `committed` 成功都会清零该 App 连接的 backoff 计数。`client_closing` / `app_background` / `foreground_resume` / `network_changed` 例外——它们表达用户主动关闭、生命周期恢复或网络环境变化，仅用于清理旧 PeerConnection 与 metrics 计数，不计入退避，避免网络恢复后落入 `backoff_active`。
 
@@ -94,20 +94,20 @@ App                       Relay                       Agent
 
 完整示例见 [relay/server/README.md](../relay/server/README.md)。升级相关项：
 
-| 环境变量 | 默认 | 说明 |
-|---|---|---|
-| `OMNIWORK_UPGRADE_ENABLED` | `true` | 全局开关；`false` 时 Relay 永远不发起 propose |
-| `OMNIWORK_UPGRADE_ROLLOUT` | `100` | 灰度百分比 0..100；按 `sha1(device_id)` 哈希分桶 |
-| `OMNIWORK_UPGRADE_DEVICE_BLOCKLIST` | （空） | 逗号分隔 device_id；命中的 device 永不升级 |
-| `OMNIWORK_UPGRADE_ICE_SERVERS_JSON` | `[{"urls":"stun:stun.l.google.com:19302"}]` | propose 环节下发的 ICE servers |
-| `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS` | `3000` | 鉴权完成到 propose 的稳定窗口 |
-| `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF` | `true` | 是否尊重 App `mobile.connect.transport_preference`；`false` 时 Relay 全部按 `auto` 处理（运维回滚开关） |
+| 环境变量                               | 默认                                        | 说明                                                                                                    |
+| -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `OMNIWORK_UPGRADE_ENABLED`             | `true`                                      | 全局开关；`false` 时 Relay 永远不发起 propose                                                           |
+| `OMNIWORK_UPGRADE_ROLLOUT`             | `100`                                       | 灰度百分比 0..100；按 `sha1(device_id)` 哈希分桶                                                        |
+| `OMNIWORK_UPGRADE_DEVICE_BLOCKLIST`    | （空）                                      | 逗号分隔 device_id；命中的 device 永不升级                                                              |
+| `OMNIWORK_UPGRADE_ICE_SERVERS_JSON`    | `[{"urls":"stun:stun.l.google.com:19302"}]` | propose 环节下发的 ICE servers                                                                          |
+| `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS`    | `3000`                                      | 鉴权完成到 propose 的稳定窗口                                                                           |
+| `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF` | `true`                                      | 是否尊重 App `mobile.connect.transport_preference`；`false` 时 Relay 全部按 `auto` 处理（运维回滚开关） |
 
 客户端可观测开关：
 
-| 环境变量 | 端 | 说明 |
-|---|---|---|
-| `OMNIWORK_LOG_TRANSPORT` | Agent / App | `=1` 打印 transport 详细事件（path_change / ping_timeout / pong_received / downgrade / upgrade_*） |
+| 环境变量                 | 端          | 说明                                                                                                |
+| ------------------------ | ----------- | --------------------------------------------------------------------------------------------------- |
+| `OMNIWORK_LOG_TRANSPORT` | Agent / App | `=1` 打印 transport 详细事件（path change、ping timeout、pong received、downgrade、upgrade events） |
 
 ## 6. /metrics 字段
 
@@ -143,11 +143,11 @@ App                       Relay                       Agent
 
 App 在 `mobile.connect.payload.transport_preference` 中显式声明传输偏好，由 Relay 在 propose 守门时读取，并按以下三态分流：
 
-| 取值 | App 行为 | Relay 行为 |
-|---|---|---|
-| `auto`（默认） | 接受任何 propose | 仍按 `enabled` / `blocklist` / 灰度 / 退避 决策 |
-| `prefer_p2p` | 严格 P2P：业务消息只走 DataChannel；协商或运行期失败即关闭 session | 跳过灰度（rollout）守门；propose payload 携带 `strict: true`；仍受 `enabled` / `blocklist` / 退避 限制 |
-| `relay_only` | `peerFactory` 直接返回 `null`（防御性兜底，coordinator 标记 `peer_unavailable`） | 跳过 propose，不进入退避，不计 `failed`；累计 `skipped_by_pref` |
+| 取值           | App 行为                                                                         | Relay 行为                                                                                             |
+| -------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `auto`（默认） | 接受任何 propose                                                                 | 仍按 `enabled` / `blocklist` / 灰度 / 退避 决策                                                        |
+| `prefer_p2p`   | 严格 P2P：业务消息只走 DataChannel；协商或运行期失败即关闭 session               | 跳过灰度（rollout）守门；propose payload 携带 `strict: true`；仍受 `enabled` / `blocklist` / 退避 限制 |
+| `relay_only`   | `peerFactory` 直接返回 `null`（防御性兜底，coordinator 标记 `peer_unavailable`） | 跳过 propose，不进入退避，不计 `failed`；累计 `skipped_by_pref`                                        |
 
 字段缺省时 Relay 视为 `auto`。运维需要全局忽略 App 偏好时设 `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF=false`，Relay 会忽略 `transport_preference` 强制按 `auto` 流程执行（且不再下发 `strict: true`）。
 
@@ -158,11 +158,11 @@ App 端偏好的双层来源：
 
 面向用户的 UI 文案与底层取值映射如下：
 
-| UI 文案 | 底层取值 | 用户语义 |
-|---|---|---|
-| `Auto` | `auto` | 推荐模式：优先尝试 Direct，必要时允许 Relay 辅助连接 |
+| UI 文案       | 底层取值     | 用户语义                                                                              |
+| ------------- | ------------ | ------------------------------------------------------------------------------------- |
+| `Auto`        | `auto`       | 推荐模式：优先尝试 Direct，必要时允许 Relay 辅助连接                                  |
 | `Direct only` | `prefer_p2p` | 隐私优先：直连建立后，session payload data 不由 Relay 承载；直连不可用时 session 失败 |
-| `Relay only` | `relay_only` | 可靠性/诊断模式：固定使用 relay path；session payload data 仍保持加密 |
+| `Relay only`  | `relay_only` | 可靠性/诊断模式：固定使用 relay path；session payload data 仍保持加密                 |
 
 设备主界面展示实际连接路径，而不是底层协议枚举：`currentPath==='p2p'` 显示 `Direct`，`currentPath==='relay'` 显示 `Relay assisted`。控制面、认证和升级协商仍可能经过 Relay；`Direct only` 的承诺限定在业务 session payload data 不走 Relay 承载。
 
@@ -182,7 +182,7 @@ App 端偏好的双层来源：
 - **Relay 守门主动下发 downgrade**：`prefer_p2p` 偏好被 Relay 端 `enabled=false` / `deviceBlocklist` / 退避窗口命中时，orchestrator 不再静默吞掉 propose，而是主动向 mobile 下发 `tunnel.upgrade.downgrade(reason="strict_unavailable:<cause>")`（cause ∈ `relay_disabled` / `blocklisted` / `backoff_active`），并写入 `metrics.downgrade["strict_unavailable:<cause>"]`。App 端在收到该 reason 时直接调用 `transport.forceClose(reason)`，由 UI 把原因翻译成面向用户的友好文案。
 - **后台与网络变化处理**：`AppState` 进入 background / inactive 时走 `pauseForBackground()`，session 保持但暂停 P2P 心跳；回到 foreground 时 App 先本地复位旧 coordinator/peer，再发送 `app.network.changed(reason="foreground_resume")`，Relay 清退避并立即 propose。浏览器 `online/offline` / Network Information API 变化会发送 `reason="network_changed"` 走同一路径。该过程不算协商失败，不增加退避，也不触发 `forceClose`。
 - **TURN 默认禁用**：`webRtcPeerAdapter` 在 `onicecandidate` 环节过滤掉所有 `typ relay` candidate，确保仅打通 host / srflx / prflx 直连路径。如严苛 NAT 下 ICE 失败，按上一条直接关闭 session。
-- **Web/wrtc 加载失败**：`peerFactory` 返回 null 时 coordinator 立即 `downgrade("peer_unavailable")`，严格模式下转 `forceClose`，不建立 session。
+- **WebRTC/wrtc 加载失败**：`peerFactory` 返回 null 时 coordinator 立即 `downgrade("peer_unavailable")`，严格模式下转 `forceClose`，不建立 session。
 - **Metrics**：协商期失败仍按 `failed[reason]` 计入（`timeout` / `peer_unavailable` / `ice_failed` 等），Relay backoff 与 `auto` 模式一致；可在监控侧按 `prefs.prefer_p2p` × `failed[reason]` 维度过滤出严格模式失败率。
 
 ## 7. 升级控制面日志
@@ -190,7 +190,14 @@ App 端偏好的双层来源：
 Relay 通过 `logUpgradeEvent` 输出 JSON 行；`ts` 使用进程所在机器的本地时区偏移，便于用户直接对照本地日志时间：
 
 ```json
-{"ts":"2026-06-03T20:36:14.516+08:00","component":"omniwork-relay","event":"tunnel.upgrade.committed","upgrade_id":"...","device_id":"...","source_role":"mobile"}
+{
+  "ts": "2026-06-03T20:36:14.516+08:00",
+  "component": "omniwork-relay",
+  "event": "tunnel.upgrade.committed",
+  "upgrade_id": "...",
+  "device_id": "...",
+  "source_role": "mobile"
+}
 ```
 
 P2P propose 恢复后，Relay 只下发按 `app_connection_id` 定向的 propose 提示；实际信令继续走 App-Agent E2E 数据路径。额外事件：
@@ -263,5 +270,5 @@ encrypted-only 默认配置下，该入口会被拒绝：
 
 - 仅自建 STUN，未自建 TURN；严苛 NAT 下会停留在 relay path。
 - 单 Relay；多区域 / 异地多活不在 v1 范围。
-- Web 端不参与 P2P（`peerFactory` 返回 null，永远 relay path）。
+- Web 端依赖浏览器原生 WebRTC API 参与 P2P；不支持 WebRTC 的浏览器会返回 `peer_unavailable` 并按连接模式回退或失败。
 - iOS 后台保活、Live Activity 等系统级保留 P2P 的能力不做。

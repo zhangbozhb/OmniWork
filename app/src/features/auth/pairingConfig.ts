@@ -1,4 +1,8 @@
-import { decryptPairingLink, parsePairingLink } from "@omniwork/protocol-ts";
+import {
+  decryptPairingLink,
+  parseEncryptedPairingLink,
+  parsePairingLink,
+} from "@omniwork/protocol-ts";
 import { isValidSessionKey } from "./keyProof";
 import type { PairingConfig } from "./types";
 
@@ -47,6 +51,10 @@ export function decryptPairingConfig(
   } catch {
     return null;
   }
+}
+
+export function isEncryptedPairingConfig(input: string): boolean {
+  return Boolean(parseEncryptedPairingLink(input));
 }
 
 export function createAppInstanceId(): string {

@@ -156,7 +156,7 @@ MVP 鉴权模型：
 
 - Mac Agent：`@roamhq/wrtc`（Node 端 WebRTC 实现）；运行时为 Node.js 24 + `--experimental-strip-types`。
 - App（React Native）：`react-native-webrtc`；iOS 需 `pod install`，Android 需 `INTERNET` 权限。
-- App（react-native-web）：`peerFactory` 返回 null，永远停留在 relay path。
+- App（react-native-web）：使用浏览器原生 `RTCPeerConnection`；若 WebRTC API 缺失，`peerFactory` 返回 null 并按连接模式回退或失败。
 
 Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.md](../relay/server/README.md) 与 [relay-architecture.md §5](./relay-architecture.md)）：
 

@@ -106,7 +106,15 @@
     "web": {
       "eyebrow": "Web 配对",
       "title": "粘贴 Mac Agent 信息",
-      "text": "Web 以单页应用运行，不使用摄像头扫码。请粘贴 Mac Agent 生成的 Relay URL、设备 ID 和临时密钥。"
+      "text": "Web 以单页应用运行，不使用摄像头扫码。请粘贴 Mac Agent 信息，或打开加密分享链接并输入 4 位密码。"
+    },
+    "encrypted": {
+      "title": "加密配对链接",
+      "description": "请输入分享二维码或链接旁显示的 4 位密码。",
+      "placeholder": "0000",
+      "passwordRequired": "请输入 4 位密码。",
+      "invalidPassword": "无法解密此配对链接，请检查密码或重新获取链接。",
+      "import": "导入"
     },
     "manualFallback": "手动备用方式",
     "manualPairing": "手动配对",

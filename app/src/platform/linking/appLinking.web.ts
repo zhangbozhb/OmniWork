@@ -55,7 +55,7 @@ function getCurrentAppUrl(): string | null {
   }
 
   const query = window.location.search || hashQuery;
-  if (hasPairingParams(query)) {
+  if (hasPairingParams(query) || hasEncryptedPairingParams(query)) {
     clearSensitivePairingParamsFromAddressBar();
     return `${PAIRING_LINK_SCHEME}://${PAIRING_LINK_HOST}${query.startsWith("?") ? query : `?${query}`}`;
   }
@@ -81,6 +81,18 @@ function hasPairingParams(query: string): boolean {
   );
   return Boolean(
     params.get("relay_url") && params.get("device_id") && params.get("key"),
+  );
+}
+
+function hasEncryptedPairingParams(query: string): boolean {
+  const params = new URLSearchParams(
+    query.startsWith("?") ? query : `?${query}`,
+  );
+  return Boolean(
+    params.get("kind") === "pairing_qr_encrypted" &&
+      params.get("salt") &&
+      params.get("nonce") &&
+      params.get("ct"),
   );
 }
 
@@ -118,6 +130,15 @@ function removePairingParams(params: URLSearchParams): void {
     "key",
     "key_id",
     "v",
+    "kind",
+    "alg",
+    "kdf",
+    "salt",
+    "nonce",
+    "source",
+    "iat",
+    "exp",
+    "ct",
   ]) {
     params.delete(key);
   }
