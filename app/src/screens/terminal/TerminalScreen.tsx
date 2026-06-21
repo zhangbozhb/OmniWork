@@ -1,10 +1,11 @@
 import type { JSX } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   Keyboard,
   type KeyboardEvent,
   type LayoutChangeEvent,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -98,6 +99,8 @@ const BOTTOM_DOCK_BOTTOM_MARGIN = 12;
 const WEB_SAFE_AREA_BOTTOM_MARGIN =
   `calc(env(safe-area-inset-bottom, 0px) + ${BOTTOM_DOCK_BOTTOM_MARGIN}px)` as unknown as number;
 const INITIAL_BOTTOM_DOCK_HEIGHT = 156;
+const INITIAL_FLOATING_CONTROLS_HEIGHT = 100;
+const FLOATING_CONTROLS_LONG_PRESS_MS = 220;
 const ESTIMATED_FULL_QUICK_KEYS_WIDTH = 760;
 
 function getKeyboardBottomInset(event: KeyboardEvent): number {
@@ -143,6 +146,18 @@ export function TerminalScreen({
   const [focusMode, setFocusMode] = useState(false);
   const [textSizeControlsVisible, setTextSizeControlsVisible] = useState(false);
   const [composerVisible, setComposerVisible] = useState(true);
+  const [floatingControlsHeight, setFloatingControlsHeight] = useState(
+    INITIAL_FLOATING_CONTROLS_HEIGHT,
+  );
+  const [floatingControlsLift, setFloatingControlsLift] = useState(0);
+  const [floatingControlsDragging, setFloatingControlsDragging] =
+    useState(false);
+  const floatingControlsLiftRef = useRef(0);
+  const floatingControlsDragReadyRef = useRef(false);
+  const floatingControlsStartLiftRef = useRef(0);
+  const floatingControlsLongPressTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const [terminalViewport, setTerminalViewport] = useState<TerminalViewport>({
     width: Dimensions.get("window").width,
     height: Math.max(260, Dimensions.get("window").height - 260),
@@ -172,7 +187,12 @@ export function TerminalScreen({
     bottomDockHeight +
     effectiveKeyboardInset +
     BOTTOM_DOCK_BOTTOM_MARGIN +
-    spacing.md;
+    spacing.md +
+    floatingControlsLift;
+  const maxFloatingControlsLift = Math.max(
+    0,
+    terminalViewport.height - floatingControlsHeight - spacing.md,
+  );
   const terminalAreaBottomSpace =
     Platform.OS === "web" && effectiveKeyboardInset <= 0
       ? (`calc(${bottomDockHeight + BOTTOM_DOCK_BOTTOM_MARGIN}px + env(safe-area-inset-bottom, 0px))` as unknown as number)
@@ -206,6 +226,73 @@ export function TerminalScreen({
     };
   }, []);
 
+  useEffect(() => {
+    floatingControlsLiftRef.current = floatingControlsLift;
+  }, [floatingControlsLift]);
+
+  useEffect(
+    () => () => {
+      clearFloatingControlsLongPressTimer();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    setFloatingControlsLift((currentLift) =>
+      clampNumber(currentLift, 0, maxFloatingControlsLift),
+    );
+  }, [maxFloatingControlsLift]);
+
+  const floatingControlsPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          floatingControlsStartLiftRef.current = floatingControlsLiftRef.current;
+          floatingControlsDragReadyRef.current = false;
+          setFloatingControlsDragging(false);
+          clearFloatingControlsLongPressTimer();
+          floatingControlsLongPressTimeoutRef.current = setTimeout(() => {
+            floatingControlsStartLiftRef.current =
+              floatingControlsLiftRef.current;
+            floatingControlsDragReadyRef.current = true;
+          }, FLOATING_CONTROLS_LONG_PRESS_MS);
+        },
+        onPanResponderMove: (_event, gestureState) => {
+          if (!floatingControlsDragReadyRef.current) {
+            if (
+              Math.abs(gestureState.dx) > 6 ||
+              Math.abs(gestureState.dy) > 6
+            ) {
+              clearFloatingControlsLongPressTimer();
+            }
+            return;
+          }
+          if (Math.abs(gestureState.dy) <= Math.abs(gestureState.dx)) {
+            return;
+          }
+          const nextLift = clampNumber(
+            floatingControlsStartLiftRef.current - gestureState.dy,
+            0,
+            maxFloatingControlsLift,
+          );
+          setFloatingControlsDragging(true);
+          setFloatingControlsLift(nextLift);
+        },
+        onPanResponderRelease: () => {
+          clearFloatingControlsLongPressTimer();
+          floatingControlsDragReadyRef.current = false;
+          setFloatingControlsDragging(false);
+        },
+        onPanResponderTerminate: () => {
+          clearFloatingControlsLongPressTimer();
+          floatingControlsDragReadyRef.current = false;
+          setFloatingControlsDragging(false);
+        },
+      }),
+    [maxFloatingControlsLift],
+  );
+
   function sendDraft(): void {
     if (readOnly) {
       return;
@@ -227,6 +314,13 @@ export function TerminalScreen({
     if (canHideKeyboard) {
       setTerminalInputEnabled(false);
       Keyboard.dismiss();
+    }
+  }
+
+  function clearFloatingControlsLongPressTimer(): void {
+    if (floatingControlsLongPressTimeoutRef.current) {
+      clearTimeout(floatingControlsLongPressTimeoutRef.current);
+      floatingControlsLongPressTimeoutRef.current = null;
     }
   }
 
@@ -288,6 +382,13 @@ export function TerminalScreen({
     if (event.nativeEvent.layout.width >= ESTIMATED_FULL_QUICK_KEYS_WIDTH) {
       setAdvancedKeysVisible(false);
     }
+  }
+
+  function handleFloatingControlsLayout(event: LayoutChangeEvent): void {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+    setFloatingControlsHeight((currentHeight) =>
+      Math.abs(currentHeight - nextHeight) > 1 ? nextHeight : currentHeight,
+    );
   }
 
   return (
@@ -352,7 +453,9 @@ export function TerminalScreen({
             </Pressable>
             <Button
               accessibilityLabel={
-                composerVisible ? "Hide bottom input" : "Show bottom input"
+                composerVisible
+                  ? t("terminal.hideInput")
+                  : t("terminal.showInput")
               }
               icon={composerVisible ? "eyeOff" : "keyboard"}
               iconOnly
@@ -365,7 +468,9 @@ export function TerminalScreen({
                 toggleComposerVisible();
               }}
             >
-              {composerVisible ? "Hide input" : "Show input"}
+              {composerVisible
+                ? t("terminal.hideInput")
+                : t("terminal.showInput")}
             </Button>
           </View>
         </View>
@@ -555,15 +660,25 @@ export function TerminalScreen({
       <View
         style={[
           styles.floatingControls,
+          floatingControlsDragging && styles.floatingControlsDragging,
           {
             bottom: floatingControlsBottom,
           },
         ]}
+        onLayout={handleFloatingControlsLayout}
         onStartShouldSetResponderCapture={() => {
           dismissTextSizeControls();
           return false;
         }}
       >
+        <View
+          {...floatingControlsPanResponder.panHandlers}
+          accessibilityLabel={t("terminal.moveFloatingControls")}
+          accessibilityRole="button"
+          style={styles.floatingControlsDragHandle}
+        >
+          <View style={styles.floatingControlsDragIndicator} />
+        </View>
         <Button
           accessibilityLabel={
             focusMode
@@ -641,6 +756,13 @@ function getAgentStatusPresentation(status: TerminalConnectionStatus): {
         color: colors.textDim,
       };
   }
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
 }
 
 const styles = StyleSheet.create({
@@ -868,6 +990,21 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     padding: 5,
     backgroundColor: "rgba(17, 24, 29, 0.92)",
+  },
+  floatingControlsDragging: {
+    borderColor: colors.success,
+    backgroundColor: "rgba(17, 24, 29, 0.97)",
+  },
+  floatingControlsDragHandle: {
+    minHeight: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  floatingControlsDragIndicator: {
+    width: 22,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: colors.border,
   },
   floatingControlButton: {
     width: 40,
