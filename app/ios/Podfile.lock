@@ -2012,7 +2012,7 @@ PODS:
   - react-native-webrtc (124.0.7):
     - JitsiWebRTC (~> 124.0.0)
     - React-Core
-  - react-native-webview (13.16.1):
+  - react-native-webview (13.17.0):
     - boost
     - DoubleConversion
     - fast_float
@@ -3015,7 +3015,7 @@ SPEC CHECKSUMS:
   FBLazyVector: 06b1c8278e6e1b31ef68e9e14c296b7872e79e48
   fmt: 530618a01105dae0fa3a2f27c81ae11fa8f67eac
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
-  hermes-engine: f618c6349de323aba2f8a0495fb083f685a8d6eb
+  hermes-engine: 1f400a3876477b7760ebe20b31d3d36f3d352e85
   JitsiWebRTC: b47805ab5668be38e7ee60e2258f49badfe8e1d0
   RCT-Folly: b29feb752b08042c62badaef7d453f3bb5e6ae23
   RCTDeprecation: c5e70bcdbc24b9edbca24b96f3997319f01ba8fb
@@ -3056,7 +3056,7 @@ SPEC CHECKSUMS:
   react-native-get-random-values: e2acf4070fe4b7325705a05af047449637a27a21
   react-native-safe-area-context: ebd2c2ece5e6e650a6963184039ec8cfd8960d86
   react-native-webrtc: e8f0ce746353adc2744a2b933645e1aeb41eaa74
-  react-native-webview: 8407aaaf6b539b1e38b72fabb55d6885de03beaf
+  react-native-webview: 607c8fca1506107f046e39dee8570c5b5e3222bd
   React-NativeModulesApple: 70b1879ac2b642ef784fb6d43360c40803b0a142
   React-networking: 49160c13f35f3eb93791d062c330caea323bde87
   React-oscompat: f518cb4925e21c3ae08051c060dd054273613a4f
@@ -3088,7 +3088,7 @@ SPEC CHECKSUMS:
   React-utils: d03e2ae03aae054c0d588c475dec38740add6f24
   React-webperformancenativemodule: d7e1a5cee24b48908676ab4748185017c78bb2e9
   ReactAppDependencyProvider: 3ec8fc5d32ad422f5b805523a5a5ea5556d8b3a2
-  ReactCodegen: 4df25e5196c4ff64b89a1fa7d7688c7efa99e59d
+  ReactCodegen: 95d73e5eb8ab3e54656a46d38b968b86740a6b72
   ReactCommon: e788387a0b387a927a2a5d041fab09472fe8dedc
   ReactNativeCameraKit: 30a46ea51b791a914472a095a47384fc3519f14d
   RNCAsyncStorage: 29f0230e1a25f36c20b05f65e2eb8958d6526e82
