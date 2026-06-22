@@ -142,6 +142,7 @@ The Web target is intentionally kept in the React Native stack:
 - Web pairing does not use camera scanning; users paste the Relay URL, device ID, and temporary key, or open a plaintext or encrypted URL containing `pairing=`. Encrypted links prompt for the 4-digit password before importing the device.
 - Native storage continues to use Keychain, while Web stores pairing data in browser `sessionStorage` and clears the legacy `localStorage` key.
 - Web P2P uses the browser WebRTC API when available; browsers without WebRTC stay on the relay path or fail in direct-only mode.
+- `OMNIWORK_TERMINAL_STREAM_ENABLED=true` opts the App/Web into the experimental terminal byte stream path. The default remains the snapshot renderer for compatibility.
 
 ## Native Projects
 

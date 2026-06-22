@@ -23,6 +23,11 @@ import {
 
 export interface NativeTerminalViewProps {
   frame: string;
+  streamChunk?: {
+    data: string;
+    seq?: number;
+    streamId: string;
+  };
   layout: TerminalLayout;
   terminalSize: TerminalSize;
   // xterm 平台实现使用：终端自身接管输入/尺寸协商。RN 快照实现仅作为 fallback。

@@ -17,6 +17,11 @@ import type { TerminalLayout } from "../features/terminal/terminalLayout";
 
 export interface NativeTerminalViewProps {
   frame: string;
+  streamChunk?: {
+    data: string;
+    seq?: number;
+    streamId: string;
+  };
   layout: TerminalLayout;
   /**
    * Backend/session size state used as an initial fallback.
@@ -50,6 +55,7 @@ const TOUCH_SCROLL_THRESHOLD_PX = 8;
 
 export function NativeTerminalView({
   frame,
+  streamChunk,
   layout,
   terminalSize,
   readOnly = false,
@@ -64,6 +70,7 @@ export function NativeTerminalView({
   const isUserScrollingRef = useRef(false);
   const pendingFrameRef = useRef<string | null>(null);
   const lastWrittenFrameRef = useRef<string | null>(null);
+  const lastStreamChunkRef = useRef<string>("");
   const scrollUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -346,6 +353,19 @@ export function NativeTerminalView({
     }
     writeSnapshotFrame(terminal, frame);
   }, [frame, writeSnapshotFrame]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || !streamChunk) {
+      return;
+    }
+    const key = `${streamChunk.streamId}:${streamChunk.seq ?? ""}:${streamChunk.data.length}`;
+    if (lastStreamChunkRef.current === key) {
+      return;
+    }
+    lastStreamChunkRef.current = key;
+    terminal.write(streamChunk.data);
+  }, [streamChunk]);
 
   // 字号变化后交给 xterm 重新实测可见 rows/cols，再由 reportSize 同步给后端。
   useEffect(() => {

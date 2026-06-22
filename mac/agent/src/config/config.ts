@@ -34,6 +34,7 @@ export interface AgentConfig {
   sessionKeyPath: string;
   sessionStorePath: string;
   terminalSize: TerminalSize;
+  terminalStreamEnabled: boolean;
   businessSecurityMode: BusinessSecurityMode;
 }
 
@@ -104,6 +105,10 @@ export function loadAgentConfig(
     sessionStorePath:
       env.OMNIWORK_SESSION_STORE_PATH ?? join(appSupportDir, "sessions.sqlite"),
     terminalSize: DEFAULT_TERMINAL_SIZE,
+    terminalStreamEnabled: parseBoolean(
+      env.OMNIWORK_TERMINAL_STREAM_ENABLED,
+      false,
+    ),
     businessSecurityMode: parseBoolean(env.OMNIWORK_AGENT_REQUIRE_E2E, true)
       ? "e2e_required"
       : "plaintext_allowed",

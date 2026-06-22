@@ -839,8 +839,11 @@ function channelForEnvelope(envelope: MessageEnvelope): P2pChannelKind {
   switch (envelope.type) {
     case "terminal.input":
     case "terminal.resize":
+    case "terminal.stream.start":
+    case "terminal.stream.stop":
       return "input";
     case "terminal.frame":
+    case "terminal.stream.data":
       return "display";
     default:
       return "control";

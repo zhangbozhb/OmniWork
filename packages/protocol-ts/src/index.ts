@@ -9,6 +9,7 @@ export {
   PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_VERSION,
   SUPPORTED_SESSION_STATUSES,
+  TERMINAL_STREAM_CAPABILITY_V1,
 } from "./constants.ts";
 export {
   SUPPORTED_TEXT_FILE_EXTENSIONS,
@@ -26,6 +27,7 @@ import {
   PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_VERSION,
   SUPPORTED_SESSION_STATUSES,
+  TERMINAL_STREAM_CAPABILITY_V1,
 } from "./constants.ts";
 
 export type MessageType =
@@ -70,6 +72,11 @@ export type MessageType =
   | "terminal.input"
   | "terminal.resize"
   | "terminal.snapshot"
+  | "terminal.stream.start"
+  | "terminal.stream.ready"
+  | "terminal.stream.data"
+  | "terminal.stream.stop"
+  | "terminal.stream.error"
   | "terminal.ack"
   | "terminal.error"
   | "codex.thread.list"
@@ -121,6 +128,7 @@ export type KnownAgentCapability =
   | typeof E2E_NOISE_NNPSK0_CAPABILITY_V1
   | typeof ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1
   | typeof PLAINTEXT_BUSINESS_CAPABILITY_V1
+  | typeof TERMINAL_STREAM_CAPABILITY_V1
   | "terminal.tui"
   | "terminal.snapshot"
   | "session.tmux"
@@ -620,6 +628,34 @@ export interface TerminalSnapshotPayload {
   data: string;
   size: TerminalSize;
   captured_at: string;
+}
+
+export interface TerminalStreamStartPayload {
+  encoding?: "utf8";
+}
+
+export interface TerminalStreamReadyPayload {
+  stream_id: string;
+  encoding: "utf8";
+  started_at: string;
+}
+
+export interface TerminalStreamDataPayload {
+  stream_id: string;
+  encoding: "utf8";
+  data: string;
+  emitted_at: string;
+  byte_length?: number;
+}
+
+export interface TerminalStreamStopPayload {
+  stream_id?: string;
+  reason?: string;
+}
+
+export interface TerminalStreamErrorPayload {
+  code: string;
+  message: string;
 }
 
 export interface TerminalResizePayload extends TerminalSize {}

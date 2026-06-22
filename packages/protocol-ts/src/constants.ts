@@ -9,6 +9,7 @@ export const ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1 =
   "business.encrypted-only.v1" as const;
 export const PLAINTEXT_BUSINESS_CAPABILITY_V1 =
   "business.plaintext-allowed.v1" as const;
+export const TERMINAL_STREAM_CAPABILITY_V1 = "terminal.stream.v1" as const;
 export const PAIRING_LINK_SCHEME = "omniwork" as const;
 export const PAIRING_LINK_HOST = "pair" as const;
 

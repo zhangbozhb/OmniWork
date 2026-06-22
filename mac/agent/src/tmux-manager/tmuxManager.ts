@@ -167,6 +167,14 @@ export class TmuxManager {
     return stdout;
   }
 
+  async pipePane(tmuxSessionName: string, command: string): Promise<void> {
+    await runTmux(["pipe-pane", "-t", tmuxSessionName, command], tmuxSessionName);
+  }
+
+  async stopPipePane(tmuxSessionName: string): Promise<void> {
+    await runTmux(["pipe-pane", "-t", tmuxSessionName], tmuxSessionName);
+  }
+
   async getCursor(
     tmuxSessionName: string,
   ): Promise<{ x: number; y: number; paneHeight: number }> {

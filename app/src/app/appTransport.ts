@@ -3,6 +3,7 @@ import {
 } from "react-native";
 import {
   createMessage,
+  TERMINAL_STREAM_CAPABILITY_V1,
   type AppClientPlatform,
   type AppNetworkChangedPayload,
   type MessageEnvelope,
@@ -33,6 +34,9 @@ export function createAppSessionTransport(
       name: appConfig.appName,
       platform: currentAppPlatform(),
       version: appConfig.appVersion,
+      capabilities: appConfig.terminal.streamEnabled
+        ? [TERMINAL_STREAM_CAPABILITY_V1]
+        : undefined,
     },
   });
   const relayPath = new MobileRelayPath(session);

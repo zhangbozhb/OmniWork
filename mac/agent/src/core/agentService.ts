@@ -4,6 +4,7 @@ import {
   ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
   PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_SUPPORT_V1,
+  TERMINAL_STREAM_CAPABILITY_V1,
   createMessage,
   innerToMessage,
   isE2EBusinessMessage,
@@ -30,6 +31,8 @@ import type {
   TerminalErrorPayload,
   TerminalInputPayload,
   TerminalResizePayload,
+  TerminalStreamStartPayload,
+  TerminalStreamStopPayload,
   TunnelUpgradeAnswerPayload,
   TunnelUpgradeCandidatePayload,
   TunnelUpgradeCommittedPayload,
@@ -73,6 +76,7 @@ import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 import { ResourceRequestHandler } from "./resourceRequestHandler.ts";
 import { SessionRequestHandler } from "./sessionRequestHandler.ts";
 import { TerminalFramePusher } from "./terminalFramePusher.ts";
+import { TerminalStreamPusher } from "./terminalStreamPusher.ts";
 import { AppConnectionRegistry } from "./appConnectionRegistry.ts";
 import { AgentAdminServer } from "./adminServer.ts";
 import type { RelayCloseEvent } from "@omniwork/relay-client";
@@ -107,6 +111,7 @@ export class AgentService {
   private readonly sessionRequests: SessionRequestHandler;
   private readonly terminalBridge: TerminalBridge;
   private readonly terminalFramePusher: TerminalFramePusher;
+  private readonly terminalStreamPusher: TerminalStreamPusher;
   private readonly config: AgentConfig;
   private keyRecord: SessionKeyRecord | null = null;
   private agentStartedAt = Date.now();
@@ -177,6 +182,17 @@ export class AgentService {
       onMissingTmuxTarget: (sessionId, error) =>
         this.handleMissingTmuxTarget(sessionId, error),
     });
+    this.terminalStreamPusher = new TerminalStreamPusher({
+      deviceId: this.config.deviceId,
+      enabled: this.config.terminalStreamEnabled,
+      logger: this.logger,
+      sessionManager: this.sessionManager,
+      tmux: this.tmux,
+      sendToAppByConnectionId: (appConnectionId, message, channel) =>
+        this.sendToAppByConnectionId(appConnectionId, message, channel),
+      onMissingTmuxTarget: (sessionId, error) =>
+        this.handleMissingTmuxTarget(sessionId, error),
+    });
     this.sessionRequests = new SessionRequestHandler({
       deviceId: this.config.deviceId,
       defaultCwd: this.config.defaultCwd,
@@ -235,6 +251,7 @@ export class AgentService {
 
   stop(): void {
     this.stopping = true;
+    void this.terminalStreamPusher.stopAll();
     if (this.relayReconnectTimer) {
       clearTimeout(this.relayReconnectTimer);
       this.relayReconnectTimer = null;
@@ -364,6 +381,9 @@ export class AgentService {
               : PLAINTEXT_BUSINESS_CAPABILITY_V1,
             "terminal.tui",
             "terminal.snapshot",
+            ...(this.config.terminalStreamEnabled
+              ? [TERMINAL_STREAM_CAPABILITY_V1]
+              : []),
             "session.tmux",
             "session.tmux.attach",
             "session.tmux.kill",
@@ -572,6 +592,7 @@ export class AgentService {
     relay: AgentRelayClient | null,
     transport: AgentSessionTransport | null,
   ): void {
+    void this.terminalStreamPusher.stopAll();
     if (this.transport === transport) {
       this.transport = null;
     }
@@ -651,6 +672,9 @@ export class AgentService {
         if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
           return;
         }
+        if (message.session_id) {
+          await this.terminalStreamPusher.stop(message.session_id);
+        }
         await this.sessionRequests.handleClose(message, dispatchContext);
         break;
       case "session.rename":
@@ -665,6 +689,9 @@ export class AgentService {
       case "session.kill_tmux":
         if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
           return;
+        }
+        if (message.session_id) {
+          await this.terminalStreamPusher.stop(message.session_id);
         }
         await this.sessionRequests.handleKillTmux(message, dispatchContext);
         break;
@@ -749,6 +776,24 @@ export class AgentService {
           return;
         }
         await this.handleTerminalSnapshot(message, dispatchContext);
+        break;
+      case "terminal.stream.start":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        await this.handleTerminalStreamStart(
+          message as MessageEnvelope<TerminalStreamStartPayload>,
+          dispatchContext,
+        );
+        break;
+      case "terminal.stream.stop":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        await this.handleTerminalStreamStop(
+          message as MessageEnvelope<TerminalStreamStopPayload>,
+          dispatchContext,
+        );
         break;
       case "tunnel.upgrade.propose": {
         const payload = (
@@ -1260,6 +1305,32 @@ export class AgentService {
     }
   }
 
+  private async handleTerminalStreamStart(
+    message: MessageEnvelope<TerminalStreamStartPayload>,
+    context?: AgentDispatchContext,
+  ): Promise<void> {
+    if (!message.session_id || !context) {
+      return;
+    }
+    await this.terminalStreamPusher.start(
+      message.session_id,
+      context.appConnectionId,
+    );
+  }
+
+  private async handleTerminalStreamStop(
+    message: MessageEnvelope<TerminalStreamStopPayload>,
+    context?: AgentDispatchContext,
+  ): Promise<void> {
+    if (!message.session_id) {
+      return;
+    }
+    await this.terminalStreamPusher.stop(
+      message.session_id,
+      context?.appConnectionId,
+    );
+  }
+
   private async handleTerminalSnapshot(
     message: MessageEnvelope,
     context?: AgentDispatchContext,
@@ -1304,6 +1375,7 @@ export class AgentService {
     error: TmuxTargetMissingError,
   ): Promise<void> {
     this.terminalFramePusher.stop(sessionId);
+    await this.terminalStreamPusher.stop(sessionId);
     this.logger.warn("tmux target no longer exists; removing stale session", {
       session_id: sessionId,
       tmux_target: error.tmuxTarget,

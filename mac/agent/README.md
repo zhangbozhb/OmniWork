@@ -36,6 +36,7 @@ OMNIWORK_CLAUDE_COMMAND=claude
 OMNIWORK_GEMINI_COMMAND=gemini
 OMNIWORK_DEFAULT_CWD=/Users/me/Code
 OMNIWORK_APP_SUPPORT_DIR=/tmp/omniwork-agent
+OMNIWORK_TERMINAL_STREAM_ENABLED=false
 ```
 
 `OMNIWORK_AGENT_PROVIDERS` is the primary way to choose and extend Agent CLI

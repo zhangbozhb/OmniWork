@@ -66,6 +66,11 @@ export const messageTypeSchema = z.enum([
   "terminal.input",
   "terminal.resize",
   "terminal.snapshot",
+  "terminal.stream.start",
+  "terminal.stream.ready",
+  "terminal.stream.data",
+  "terminal.stream.stop",
+  "terminal.stream.error",
   "terminal.ack",
   "terminal.error",
   "codex.thread.list",
@@ -387,6 +392,44 @@ export const terminalSnapshotPayloadSchema = z.object({
   size: terminalSizeSchema,
   captured_at: isoDateTime,
 });
+
+export const terminalStreamStartPayloadSchema = z
+  .object({
+    encoding: z.literal("utf8").optional(),
+  })
+  .strict();
+
+export const terminalStreamReadyPayloadSchema = z
+  .object({
+    stream_id: z.string().min(1),
+    encoding: z.literal("utf8"),
+    started_at: isoDateTime,
+  })
+  .strict();
+
+export const terminalStreamDataPayloadSchema = z
+  .object({
+    stream_id: z.string().min(1),
+    encoding: z.literal("utf8"),
+    data: z.string(),
+    emitted_at: isoDateTime,
+    byte_length: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+export const terminalStreamStopPayloadSchema = z
+  .object({
+    stream_id: z.string().min(1).optional(),
+    reason: z.string().optional(),
+  })
+  .strict();
+
+export const terminalStreamErrorPayloadSchema = z
+  .object({
+    code: z.string().min(1),
+    message: z.string(),
+  })
+  .strict();
 
 export const terminalResizePayloadSchema = terminalSizeSchema;
 
@@ -763,6 +806,11 @@ const payloadSchemaByType = {
   "terminal.input": terminalInputPayloadSchema,
   "terminal.resize": terminalResizePayloadSchema,
   "terminal.snapshot": z.union([emptyPayloadSchema, terminalSnapshotPayloadSchema]),
+  "terminal.stream.start": terminalStreamStartPayloadSchema,
+  "terminal.stream.ready": terminalStreamReadyPayloadSchema,
+  "terminal.stream.data": terminalStreamDataPayloadSchema,
+  "terminal.stream.stop": terminalStreamStopPayloadSchema,
+  "terminal.stream.error": terminalStreamErrorPayloadSchema,
   "terminal.ack": terminalAckPayloadSchema,
   "terminal.error": terminalErrorPayloadSchema,
   "tunnel.upgrade.propose": tunnelUpgradeProposePayloadSchema,

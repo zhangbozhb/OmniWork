@@ -30,6 +30,12 @@ path is inside a Git repository; `Files` is scoped to the workspace boundary
 and supports browsing, previewing, and guarded UTF-8 text editing for supported
 file types.
 
+Terminal rendering keeps the existing `terminal.frame` snapshot path as the
+default. An experimental ttyd-style byte stream path can be enabled on both the
+App/Web and Mac Agent with `OMNIWORK_TERMINAL_STREAM_ENABLED=true`; it sends an
+initial snapshot first and then streams tmux pane output through
+`terminal.stream.*` messages. Leave the flag off for the compatibility mode.
+
 Useful local commands:
 
 ```sh

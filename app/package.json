@@ -73,7 +73,7 @@
     "pretty-format": "^30.4.1",
     "promise": "^8.3.0",
     "punycode": "^2.3.1",
-    "react": "^19.2.7",
+    "react": "19.2.0",
     "react-devtools-core": "^7.0.1",
     "react-dom": "19.2.0",
     "react-i18next": "^17.0.8",

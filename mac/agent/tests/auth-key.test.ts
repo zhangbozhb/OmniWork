@@ -79,6 +79,7 @@ const baseConfig: AgentConfig = {
   sessionKeyPath: path,
   sessionStorePath: join(dir, "sessions.sqlite"),
   terminalSize: { cols: 80, rows: 24 },
+  terminalStreamEnabled: false,
   businessSecurityMode: "e2e_required",
 };
 

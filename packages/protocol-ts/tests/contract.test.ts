@@ -55,6 +55,10 @@ import {
   terminalFramePayloadSchema,
   terminalInputPayloadSchema,
   terminalSnapshotPayloadSchema,
+  terminalStreamDataPayloadSchema,
+  terminalStreamReadyPayloadSchema,
+  terminalStreamStartPayloadSchema,
+  terminalStreamStopPayloadSchema,
 } from "../src/index.ts";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -347,6 +351,26 @@ describe("terminal payload schemas", () => {
       data: "abc",
       size: { cols: 80, rows: 24 },
       captured_at: new Date().toISOString(),
+    });
+  });
+
+  it("validates terminal stream payloads", () => {
+    terminalStreamStartPayloadSchema.parse({ encoding: "utf8" });
+    terminalStreamReadyPayloadSchema.parse({
+      stream_id: "term_stream_1",
+      encoding: "utf8",
+      started_at: new Date().toISOString(),
+    });
+    terminalStreamDataPayloadSchema.parse({
+      stream_id: "term_stream_1",
+      encoding: "utf8",
+      data: "abc",
+      emitted_at: new Date().toISOString(),
+      byte_length: 3,
+    });
+    terminalStreamStopPayloadSchema.parse({
+      stream_id: "term_stream_1",
+      reason: "test",
     });
   });
 

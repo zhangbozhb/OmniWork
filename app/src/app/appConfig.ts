@@ -14,6 +14,7 @@ type ExtraConfig = {
   terminal?: {
     cols?: number;
     rows?: number;
+    streamEnabled?: boolean;
   };
 };
 
@@ -42,6 +43,9 @@ export const appConfig = {
   terminal: {
     cols: extra.terminal?.cols ?? 100,
     rows: extra.terminal?.rows ?? 32,
+    streamEnabled:
+      extra.terminal?.streamEnabled ??
+      parseBoolean(env.OMNIWORK_TERMINAL_STREAM_ENABLED, false),
   },
 };
 
@@ -53,4 +57,18 @@ function inferSameOriginRelayUrl(): string | undefined {
 
   const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
   return `${wsProtocol}//${location.host}/relay/ws/mobile`;
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
 }

@@ -22,6 +22,20 @@ export function terminalSnapshotRequest(deviceId: string, sessionId: string) {
   });
 }
 
+export function terminalStreamStartRequest(deviceId: string, sessionId: string) {
+  return createMessage("terminal.stream.start", { encoding: "utf8" }, {
+    device_id: deviceId,
+    session_id: sessionId,
+  });
+}
+
+export function terminalStreamStopRequest(deviceId: string, sessionId: string) {
+  return createMessage("terminal.stream.stop", {}, {
+    device_id: deviceId,
+    session_id: sessionId,
+  });
+}
+
 export function terminalResizeRequest(
   deviceId: string,
   sessionId: string,

@@ -20,6 +20,11 @@ import {
 
 export interface NativeTerminalViewProps {
   frame: string;
+  streamChunk?: {
+    data: string;
+    seq?: number;
+    streamId: string;
+  };
   layout: TerminalLayout;
   /**
    * Backend/session size state used as an initial fallback by callers.
@@ -46,6 +51,7 @@ const TOUCH_SCROLL_THRESHOLD_PX = 8;
 
 export function NativeTerminalView({
   frame,
+  streamChunk,
   layout,
   terminalInputEnabled = false,
   readOnly = false,
@@ -55,6 +61,7 @@ export function NativeTerminalView({
   const webViewRef = useRef<WebView>(null);
   const readyRef = useRef(false);
   const lastFrameRef = useRef(frame);
+  const lastStreamChunkRef = useRef("");
   const onInputRef = useRef(onInput);
   const onResizeRef = useRef(onResize);
   const readOnlyRef = useRef(readOnly);
@@ -86,6 +93,18 @@ export function NativeTerminalView({
   useEffect(() => {
     writeFrame(frame);
   }, [frame, writeFrame]);
+
+  useEffect(() => {
+    if (!streamChunk || !readyRef.current) {
+      return;
+    }
+    const key = `${streamChunk.streamId}:${streamChunk.seq ?? ""}:${streamChunk.data.length}`;
+    if (lastStreamChunkRef.current === key) {
+      return;
+    }
+    lastStreamChunkRef.current = key;
+    sendBridgeCommand({ type: "streamWrite", data: streamChunk.data });
+  }, [sendBridgeCommand, streamChunk]);
 
   useEffect(() => {
     if (!readyRef.current) {
@@ -522,6 +541,10 @@ function createTerminalHtml(): string {
             return;
           }
           writeFrame(command.frame);
+          return;
+        }
+        if (command.type === "streamWrite") {
+          terminal.write(command.data || "");
           return;
         }
         if (command.type === "fit") {

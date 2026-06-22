@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -213,6 +214,7 @@ export function SessionListScreen({
     useState<WorkspaceDefinition | null>(null);
   const [activeWorkspaceTab, setActiveWorkspaceTab] =
     useState<WorkspaceTab>("sessions");
+  const { width: windowWidth } = useWindowDimensions();
   const workspacePagerRef = useRef<ScrollView | null>(null);
   const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -496,15 +498,19 @@ export function SessionListScreen({
     0,
     workspaceTabs.indexOf(activeWorkspaceTab),
   );
+  const effectiveWorkspacePagerWidth =
+    Platform.OS === "web"
+      ? workspacePagerWidth || Math.max(0, windowWidth - spacing.xl * 2)
+      : workspacePagerWidth;
   useEffect(() => {
-    if (!activeWorkspace || workspacePagerWidth <= 0) {
+    if (!activeWorkspace || effectiveWorkspacePagerWidth <= 0) {
       return;
     }
     workspacePagerRef.current?.scrollTo({
-      x: activeWorkspaceTabIndex * workspacePagerWidth,
+      x: activeWorkspaceTabIndex * effectiveWorkspacePagerWidth,
       animated: false,
     });
-  }, [activeWorkspace, activeWorkspaceTabIndex, workspacePagerWidth]);
+  }, [activeWorkspace, activeWorkspaceTabIndex, effectiveWorkspacePagerWidth]);
 
   function handleWorkspacePagerLayout(event: LayoutChangeEvent): void {
     const nextWidth = event.nativeEvent.layout.width;
@@ -516,16 +522,29 @@ export function SessionListScreen({
   function handleWorkspacePagerScrollEnd(
     event: NativeSyntheticEvent<NativeScrollEvent>,
   ): void {
-    if (!activeWorkspace || workspacePagerWidth <= 0) {
+    if (Platform.OS === "web") {
+      return;
+    }
+    if (!activeWorkspace || effectiveWorkspacePagerWidth <= 0) {
       return;
     }
     const nextIndex = Math.round(
-      event.nativeEvent.contentOffset.x / workspacePagerWidth,
+      event.nativeEvent.contentOffset.x / effectiveWorkspacePagerWidth,
     );
     const nextTab = workspaceTabs[nextIndex];
     if (nextTab && nextTab !== activeWorkspaceTab) {
       switchWorkspaceTab(activeWorkspace, nextTab);
     }
+  }
+
+  function workspaceTabPaneStyle(tab: WorkspaceTab) {
+    return [
+      styles.workspaceTabPane,
+      { width: effectiveWorkspacePagerWidth },
+      Platform.OS === "web" && activeWorkspaceTab !== tab
+        ? styles.webHiddenWorkspaceTabPane
+        : null,
+    ];
   }
 
   return (
@@ -590,7 +609,7 @@ export function SessionListScreen({
           horizontal
           pagingEnabled
           scrollEventThrottle={16}
-          scrollEnabled={workspacePagerWidth > 0}
+          scrollEnabled={effectiveWorkspacePagerWidth > 0}
           showsHorizontalScrollIndicator={false}
           style={styles.workspacePager}
           onLayout={handleWorkspacePagerLayout}
@@ -610,7 +629,7 @@ export function SessionListScreen({
                 />
               ) : undefined
             }
-            style={[styles.workspaceTabPane, { width: workspacePagerWidth }]}
+            style={workspaceTabPaneStyle("sessions")}
           >
             <View style={styles.runtimeSection}>
               {activeProviderGroups.length === 0 ? (
@@ -690,7 +709,7 @@ export function SessionListScreen({
                   />
                 ) : undefined
               }
-              style={[styles.workspaceTabPane, { width: workspacePagerWidth }]}
+              style={workspaceTabPaneStyle("git")}
             >
               <GitStatusScreen
                 embedded
@@ -730,7 +749,7 @@ export function SessionListScreen({
                 />
               ) : undefined
             }
-            style={[styles.workspaceTabPane, { width: workspacePagerWidth }]}
+            style={workspaceTabPaneStyle("files")}
           >
             <FileBrowserScreen
               embedded
@@ -1563,6 +1582,9 @@ const styles = StyleSheet.create({
   },
   workspaceTabPane: {
     gap: spacing.lg,
+  },
+  webHiddenWorkspaceTabPane: {
+    display: "none",
   },
   workspaceTabScrollContent: {
     gap: spacing.lg,

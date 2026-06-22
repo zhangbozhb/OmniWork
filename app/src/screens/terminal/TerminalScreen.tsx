@@ -41,6 +41,12 @@ import { colors, radii, spacing } from "../../ui/theme";
 export interface TerminalScreenProps {
   session: CodexSession;
   frame: string;
+  streamChunk?: {
+    sessionId: string;
+    data: string;
+    seq?: number;
+    streamId: string;
+  };
   canInput?: boolean;
   canResize?: boolean;
   connectionStatus?: TerminalConnectionStatus;
@@ -118,6 +124,7 @@ function getKeyboardBottomInset(event: KeyboardEvent): number {
 export function TerminalScreen({
   session,
   frame,
+  streamChunk,
   canInput = true,
   canResize = true,
   connectionStatus = "idle",
@@ -540,6 +547,7 @@ export function TerminalScreen({
       >
         <NativeTerminalView
           frame={frame}
+          streamChunk={streamChunk}
           layout={terminalLayout}
           terminalSize={terminalLayout.terminalSize}
           terminalInputEnabled={terminalInputEnabled && !readOnly}

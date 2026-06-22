@@ -3088,7 +3088,7 @@ SPEC CHECKSUMS:
   React-utils: d03e2ae03aae054c0d588c475dec38740add6f24
   React-webperformancenativemodule: d7e1a5cee24b48908676ab4748185017c78bb2e9
   ReactAppDependencyProvider: 3ec8fc5d32ad422f5b805523a5a5ea5556d8b3a2
-  ReactCodegen: 95d73e5eb8ab3e54656a46d38b968b86740a6b72
+  ReactCodegen: 6b19601d02dff615999735324e1404b18bc12930
   ReactCommon: e788387a0b387a927a2a5d041fab09472fe8dedc
   ReactNativeCameraKit: 30a46ea51b791a914472a095a47384fc3519f14d
   RNCAsyncStorage: 29f0230e1a25f36c20b05f65e2eb8958d6526e82

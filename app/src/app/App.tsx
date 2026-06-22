@@ -42,6 +42,8 @@ import type {
   TerminalInputPayload,
   TerminalResizePayload,
   TerminalSnapshotPayload,
+  TerminalStreamDataPayload,
+  TerminalStreamErrorPayload,
   TransportPath,
   TransportPreference,
   WorkspaceDefinition,
@@ -109,6 +111,8 @@ import {
   terminalInputRequest,
   terminalResizeRequest,
   terminalSnapshotRequest,
+  terminalStreamStartRequest,
+  terminalStreamStopRequest,
 } from "../features/terminal/terminalMessages";
 import {
   gitDiffRequest,
@@ -164,6 +168,13 @@ import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
 import { Icon, type IconName } from "../ui/icons";
 
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
+
+type TerminalStreamChunk = {
+  sessionId: string;
+  data: string;
+  seq?: number;
+  streamId: string;
+};
 
 type WorkspaceFilesCache = {
   currentPath: string;
@@ -273,6 +284,8 @@ function AppContent(): JSX.Element {
   const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
     {},
   );
+  const [terminalStreamChunk, setTerminalStreamChunk] =
+    useState<TerminalStreamChunk | null>(null);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
   const [connectionPath, setConnectionPath] = useState<TransportPath>("relay");
@@ -333,6 +346,8 @@ function AppContent(): JSX.Element {
   const selectedSessionRef = useRef<CodexSession | null>(null);
   const terminalTextSizeLoadedRef = useRef(false);
   const terminalFrameSeqRef = useRef<Record<string, number>>({});
+  const terminalStreamSeqRef = useRef<Record<string, number>>({});
+  const terminalStreamActiveRef = useRef<Record<string, string>>({});
   const terminalLastFrameAtRef = useRef<Record<string, number>>({});
   const terminalLastSnapshotRequestAtRef = useRef<Record<string, number>>({});
   const pendingTerminalFramesRef = useRef<Record<string, string>>({});
@@ -365,15 +380,15 @@ function AppContent(): JSX.Element {
   );
   const editorSaving = Boolean(
     selectedWorkspace &&
-      fileEditorPath &&
-      fileWriteLoadingKeys[
-        toWorkspaceFileKey(selectedWorkspace.path, fileEditorPath)
-      ],
+    fileEditorPath &&
+    fileWriteLoadingKeys[
+      toWorkspaceFileKey(selectedWorkspace.path, fileEditorPath)
+    ],
   );
   const filesLoading = Boolean(
     activeFilesCache?.loadingDirectoryKeys[fileRelativePath] ||
-      (activeFilesCache?.selectedFilePath &&
-        activeFilesCache.loadingFileKeys[activeFilesCache.selectedFilePath]),
+    (activeFilesCache?.selectedFilePath &&
+      activeFilesCache.loadingFileKeys[activeFilesCache.selectedFilePath]),
   );
   const activeGitCache = selectedWorkspaceCache?.git;
   const gitStatus = activeGitCache?.status;
@@ -387,7 +402,7 @@ function AppContent(): JSX.Element {
   const gitStatusLoading = Boolean(activeGitCache?.statusLoading);
   const gitDiffLoading = Boolean(
     activeGitCache?.activeDiffKey &&
-      activeGitCache.diffLoadingKeys[activeGitCache.activeDiffKey],
+    activeGitCache.diffLoadingKeys[activeGitCache.activeDiffKey],
   );
   const gitLoading = gitStatusLoading || gitDiffLoading;
 
@@ -1104,9 +1119,26 @@ function AppContent(): JSX.Element {
       return undefined;
     }
 
-    // 进入终端页时主动拉取一次 snapshot；后续帧由 Mac Agent 按内容变化主动 push（terminal.frame）。
+    // 进入终端页时主动拉取一次 snapshot；stream 模式只作为可选增量通道。
     requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
-    return undefined;
+    if (appConfig.terminal.streamEnabled) {
+      sendToRelay(
+        terminalStreamStartRequest(
+          pairing.deviceId,
+          selectedSession.session_id,
+        ),
+      );
+    }
+    return () => {
+      if (appConfig.terminal.streamEnabled) {
+        sendToRelay(
+          terminalStreamStopRequest(
+            pairing.deviceId,
+            selectedSession.session_id,
+          ),
+        );
+      }
+    };
   }, [connectionStatus, pairing, selectedSession, view]);
 
   useEffect(() => {
@@ -1438,7 +1470,9 @@ function AppContent(): JSX.Element {
     const workspacePath = workspace.path;
     const filesCache =
       workspaceCache[workspacePath]?.files ?? createWorkspaceFilesCache();
-    const hasCachedEntries = Boolean(filesCache.directoriesByPath[relativePath]);
+    const hasCachedEntries = Boolean(
+      filesCache.directoriesByPath[relativePath],
+    );
     if (!options.force && hasCachedEntries) {
       if (activate) {
         updateWorkspaceDataCache(workspacePath, (cache) => ({
@@ -1613,7 +1647,9 @@ function AppContent(): JSX.Element {
       ...cache,
       files: {
         ...cache.files,
-        selectedFilePath: activatePreview ? relativePath : cache.files.selectedFilePath,
+        selectedFilePath: activatePreview
+          ? relativePath
+          : cache.files.selectedFilePath,
         loadingFileKeys: {
           ...cache.files.loadingFileKeys,
           [relativePath]: true,
@@ -1792,10 +1828,7 @@ function AppContent(): JSX.Element {
     relativePath?: string,
     scope: GitDiffScope = "unstaged",
   ): void {
-    if (
-      !selectedWorkspace ||
-      connectionStatus !== "authenticated"
-    ) {
+    if (!selectedWorkspace || connectionStatus !== "authenticated") {
       return;
     }
     requestGitDiff(selectedWorkspace, relativePath, scope, { activate: false });
@@ -2068,8 +2101,11 @@ function AppContent(): JSX.Element {
     setGitReviewScope("all");
     setDefaultSessionCwd("");
     setTerminalFrames({});
+    setTerminalStreamChunk(null);
     pendingTerminalFramesRef.current = {};
     terminalFrameSeqRef.current = {};
+    terminalStreamSeqRef.current = {};
+    terminalStreamActiveRef.current = {};
     terminalLastFrameAtRef.current = {};
     terminalLastSnapshotRequestAtRef.current = {};
   }
@@ -2176,6 +2212,8 @@ function AppContent(): JSX.Element {
             if (!remoteSessionIds.has(sessionId)) {
               delete nextFrames[sessionId];
               delete terminalFrameSeqRef.current[sessionId];
+              delete terminalStreamSeqRef.current[sessionId];
+              delete terminalStreamActiveRef.current[sessionId];
               delete terminalLastFrameAtRef.current[sessionId];
               delete terminalLastSnapshotRequestAtRef.current[sessionId];
               delete pendingTerminalFramesRef.current[sessionId];
@@ -2183,6 +2221,9 @@ function AppContent(): JSX.Element {
           }
           return nextFrames;
         });
+        setTerminalStreamChunk((current) =>
+          current && !remoteSessionIds.has(current.sessionId) ? null : current,
+        );
         if (
           selectedSessionRef.current &&
           !remoteSessionIds.has(selectedSessionRef.current.session_id)
@@ -2401,7 +2442,56 @@ function AppContent(): JSX.Element {
       case "terminal.frame": {
         const payload = message.payload as TerminalFramePayload;
         if (message.session_id) {
+          if (terminalStreamActiveRef.current[message.session_id]) {
+            break;
+          }
           queueTerminalFrame(message.session_id, payload, message.seq);
+        }
+        break;
+      }
+      case "terminal.stream.ready": {
+        const payload = message.payload as { stream_id?: string };
+        if (message.session_id && payload.stream_id) {
+          terminalStreamActiveRef.current[message.session_id] =
+            payload.stream_id;
+          terminalStreamSeqRef.current[message.session_id] = 0;
+        }
+        break;
+      }
+      case "terminal.stream.data": {
+        const payload = message.payload as TerminalStreamDataPayload;
+        if (!message.session_id) {
+          break;
+        }
+        const activeStreamId =
+          terminalStreamActiveRef.current[message.session_id];
+        if (activeStreamId && activeStreamId !== payload.stream_id) {
+          break;
+        }
+        if (typeof message.seq === "number") {
+          const lastSeq = terminalStreamSeqRef.current[message.session_id] ?? 0;
+          if (message.seq <= lastSeq) {
+            break;
+          }
+          terminalStreamSeqRef.current[message.session_id] = message.seq;
+        }
+        terminalLastFrameAtRef.current[message.session_id] = Date.now();
+        setTerminalStreamChunk({
+          sessionId: message.session_id,
+          data: payload.data,
+          seq: message.seq,
+          streamId: payload.stream_id,
+        });
+        break;
+      }
+      case "terminal.stream.error": {
+        const payload = message.payload as TerminalStreamErrorPayload;
+        if (message.session_id) {
+          delete terminalStreamActiveRef.current[message.session_id];
+          delete terminalStreamSeqRef.current[message.session_id];
+        }
+        if (payload.code !== "TERMINAL_STREAM_DISABLED") {
+          setConnectionMessage(payload.message);
         }
         break;
       }
@@ -2643,7 +2733,9 @@ function AppContent(): JSX.Element {
                     initialPath={gitReviewPath}
                     initialScope={gitReviewScope}
                     onBack={() => setView("sessions")}
-                    onRefresh={() => handleRefreshWorkspaceGit(selectedWorkspace)}
+                    onRefresh={() =>
+                      handleRefreshWorkspaceGit(selectedWorkspace)
+                    }
                     onOpenDiff={handleOpenGitDiff}
                     onEditFile={(relativePath) =>
                       handleOpenFileEditor(selectedWorkspace, relativePath)
@@ -2659,6 +2751,12 @@ function AppContent(): JSX.Element {
                   <TerminalScreen
                     session={selectedSession}
                     frame={selectedFrame}
+                    streamChunk={
+                      terminalStreamChunk?.sessionId ===
+                      selectedSession.session_id
+                        ? terminalStreamChunk
+                        : undefined
+                    }
                     connectionStatus={connectionStatus}
                     statusLabel={connectionMessage}
                     readOnlyReason={
@@ -3030,7 +3128,10 @@ function parseGitDiffCacheKey(
   return { scope, relativePath: relativePath || undefined };
 }
 
-function toWorkspaceFileKey(workspacePath: string, relativePath: string): string {
+function toWorkspaceFileKey(
+  workspacePath: string,
+  relativePath: string,
+): string {
   return `${workspacePath}:${relativePath}`;
 }
 
