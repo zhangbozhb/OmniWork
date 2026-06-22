@@ -12,7 +12,7 @@
 - [PairingScreen](../app/src/screens/pairing/PairingScreen.tsx) + `PairingQrScannerModal.{native,web}.tsx`：扫码 / URL / 32 字符 key 三种配对方式。
 - [SessionListScreen](../app/src/screens/sessions/SessionListScreen.tsx)：按 workspace + provider 分组。
 - [TerminalScreen](../app/src/screens/terminal/TerminalScreen.tsx)：原始 TUI 快照 + 输入。
-- [FileBrowserScreen](../app/src/screens/workspaces/FileBrowserScreen.tsx) / [GitStatusScreen](../app/src/screens/workspaces/GitStatusScreen.tsx)：workspace 只读上下文。
+- [FileBrowserScreen](../app/src/screens/workspaces/FileBrowserScreen.tsx) / [FileEditorScreen](../app/src/screens/workspaces/FileEditorScreen.tsx) / [GitStatusScreen](../app/src/screens/workspaces/GitStatusScreen.tsx)：workspace 文件浏览、受控文本编辑与只读 Git 上下文。
 
 下文中的页面、交互流转可能与现有 5 屏存在差异；以代码为准，本设计为演进的目标态参考。
 

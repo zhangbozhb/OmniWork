@@ -82,7 +82,7 @@ pnpm --filter @omniwork/app build:android:aab
 
 产物：
 
-- App 构建脚本会先运行 `pnpm --filter @omniwork/app generate:xterm-assets`，从已安装的 `@xterm/*` 依赖生成 Native WebView 终端本地资源；升级 xterm 依赖后重新执行构建即可刷新资源。
+- App 构建脚本会先运行 `pnpm --filter @omniwork/app generate:xterm-assets`，从已安装的 `@xterm/*` 与 CodeMirror 依赖生成 Native WebView 终端和编辑器本地资源；升级 xterm 或 CodeMirror 依赖后重新执行构建即可刷新资源。
 - Gradle 会读取 `OMNIWORK_APP_VERSION` / `OMNIWORK_ANDROID_VERSION_CODE` / `OMNIWORK_ANDROID_PACKAGE` 环境变量注入 versionName / versionCode / applicationId。
 - 当同时提供 `OMNIWORK_RELEASE_KEYSTORE`、`OMNIWORK_RELEASE_KEYSTORE_PASSWORD`、`OMNIWORK_RELEASE_KEY_ALIAS`、`OMNIWORK_RELEASE_KEY_PASSWORD` 时使用 release 签名；否则回退到 debug 签名（仅供 CI 冒烟产物，不可分发）。
 - 默认 release 允许明文 `ws://` 流量（manifest 硬编码 `usesCleartextTraffic="true"`），方便扫码连公网 IP 形态的 Relay；业务消息必须通过 E2E 加密，不允许明文业务 fallback。

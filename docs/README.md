@@ -7,8 +7,9 @@
 1. [project-directory-structure.md](./project-directory-structure.md)：目录结构、模块边界、依赖方向与 MVP 状态。
 2. [engineering-requirements.md](./engineering-requirements.md)：工程、安全、协议、传输与验证要求。
 3. [relay-architecture.md](./relay-architecture.md)：Relay、P2P、E2E、metrics 与调试 runbook 的架构事实。
-4. [app-installation.md](./app-installation.md)：Android / iOS / Web 构建、签名、安装与环境变量。
-5. [deployment-web-server.md](./deployment-web-server.md)：生产 Web 路径、Nginx 反代、admin web 启用策略。
+4. [mobile-file-editing.md](./mobile-file-editing.md)：移动端文件编辑边界、CodeMirror 实现与 `files.write` 协议。
+5. [app-installation.md](./app-installation.md)：Android / iOS / Web 构建、签名、安装与环境变量。
+6. [deployment-web-server.md](./deployment-web-server.md)：生产 Web 路径、Nginx 反代、admin web 启用策略。
 
 ## 实现事实
 
@@ -17,6 +18,7 @@
 - [relay-architecture-implementation.md](./relay-architecture-implementation.md)：Relay / P2P / E2E 实现状态与不变量。
 - [p2p-per-app-connection.md](./p2p-per-app-connection.md)：多 App 连接下的 per-App P2P 升级粒度。
 - [e2e-noise-roadmap.md](./e2e-noise-roadmap.md)：E2E Noise 基线、落地状态和安全边界。
+- [mobile-file-editing.md](./mobile-file-editing.md)：移动端文件编辑实现、冲突检测与安全边界。
 
 ## 安全与交付
 

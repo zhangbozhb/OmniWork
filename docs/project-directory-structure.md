@@ -72,7 +72,7 @@ OmniWork/
 
 | 模块 | 主技术栈 | 说明 |
 | --- | --- | --- |
-| `app/` | React Native CLI + TypeScript + react-native-web | 同一套代码交付 Android/iOS APK/IPA 和 Web SPA；终端区域使用 React Native 视图 |
+| `app/` | React Native CLI + TypeScript + react-native-web | 同一套代码交付 Android/iOS APK/IPA 和 Web SPA；终端区域以 xterm Web/native WebView 视图为主 |
 | `mac/agent` | Node.js LTS + TypeScript | 管理 Relay 连接、tmux、PTY、Codex/Claude/Gemini runtime、本地状态 |
 | `relay/server` | Node.js LTS + TypeScript | MVP 实现；可替换为 Go/Rust |
 | `protocol/` | JSON Schema（auth/envelopes/sessions/terminal） | 跨端协议契约的可机读真相 |
@@ -81,7 +81,7 @@ OmniWork/
 
 ## app 目录
 
-`app/` 是 React Native App，负责 Android/iOS/Web 上的配对、设备选择、会话列表、TUI 渲染、文件浏览、git 状态查看与输入体验。Web 端是单页面程序，不实现摄像头扫码。
+`app/` 是 React Native App，负责 Android/iOS/Web 上的配对、设备选择、会话列表、TUI 渲染、文件浏览与受控文本编辑、git 状态查看与输入体验。Web 端是单页面程序，不实现摄像头扫码。
 
 真实结构：
 
@@ -96,12 +96,17 @@ app/
 |-- babel.config.js
 |-- metro.config.js
 |-- webpack.config.js
+|-- .env.example
 |-- web/
 |   |-- index.html
 |-- assets/
 |   |-- icon.png
 |-- scripts/
 |   |-- buildIosRelease.mjs
+|   |-- ensureIosPods.mjs
+|   |-- generateCodeMirrorWebViewAssets.mjs
+|   |-- generateXtermWebViewAssets.mjs
+|-- tests/
 |-- src/
 |   |-- main.tsx
 |   |-- app/
@@ -110,37 +115,41 @@ app/
 |   |   |-- appModel.ts           # App 纯业务工具：pairing/session upsert、状态文案、标题辅助
 |   |   |-- appTransport.ts       # App 传输装配：Relay/P2P wiring 与网络变化订阅
 |   |   |-- appTypes.ts           # App 顶层视图、连接状态与传输适配类型
+|   |-- editor/                  # CodeMirror Web / Native WebView 编辑器
 |   |-- features/
+|   |   |-- app-lock/            # App 锁定、手势密码与自动锁定规则
 |   |   |-- auth/                # hmacSha256 + keyProof + 类型
 |   |   |-- sessions/            # sessionCapabilities / sessionMessages
 |   |   |-- terminal/            # terminalLayout / terminalMessages
-|   |   |-- workspaces/          # workspaceMessages
-|   |   |-- i18n/                  # App/Web 共用多语言初始化、语言枚举与资源
+|   |   |-- workspaces/          # workspaceMessages + editableFiles
+|   |-- i18n/                    # App/Web 共用多语言初始化、语言枚举与资源
 |   |-- lib/
 |   |   |-- relay-client/        # mobileRelaySession.ts
 |   |   |-- transport/           # SessionTransport / UpgradeCoordinator / WebRTC peer adapter（native/web 双实现）
 |   |-- platform/
+|   |   |-- app-lock-storage/    # App lock 持久化平台分包
 |   |   |-- linking/             # appLinking 平台分包
+|   |   |-- owner-auth/          # 设备所有者认证平台分包
 |   |   |-- secure-storage/      # securePairingStore 平台分包
 |   |-- screens/
 |   |   |-- devices/             # DeviceListScreen
 |   |   |-- pairing/             # PairingScreen + PairingQrScannerModal（native/web）
+|   |   |-- security/            # AppLockIntro / GestureSetup / GestureUnlock / SecuritySettings
 |   |   |-- sessions/            # SessionListScreen
 |   |   |-- settings/            # SettingsScreen + ConnectionPreferenceScreen
 |   |   |-- terminal/            # TerminalScreen
-|   |   |-- workspaces/          # FileBrowserScreen + GitStatusScreen
+|   |   |-- workspaces/          # FileBrowserScreen + FileEditorScreen + GitStatusScreen
 |   |-- terminal/                # NativeTerminalView + terminalText
 |   |-- ui/                      # 通用组件（KeyboardAwareScrollView / components / icons / theme / confirm）
 |-- ios/
 |-- android/
-|-- .env.example
 ```
 
 ### app 内部边界
 
 `screens/`：
 
-- 移动端导航级页面，包含 `devices` / `pairing` / `sessions` / `settings` / `terminal` / `workspaces`。
+- 移动端导航级页面，包含 `devices` / `pairing` / `security` / `sessions` / `settings` / `terminal` / `workspaces`。
 - 不直接实现复杂业务逻辑；组合 `features/` 与 `lib/`。
 - `workspaces/GitStatusScreen` 采用 Git Overview + Review 分层：概览页展示分支、摘要与变更文件，Review 视图按 scope 与文件阅读 diff，避免在概览页底部堆叠完整 diff。
 
@@ -149,6 +158,12 @@ app/
 - 按业务能力拆分。
 - 每个 feature 内部可以有自己的 state、消息编解码、hooks、组件。
 - 不跨 feature 深层引用，只通过公开入口引用。
+
+`editor/`：
+
+- 维护 CodeMirror 编辑器的 Web / Native WebView 分包与离线 WebView 资产。
+- 支撑文件预览进入编辑、dirty 状态、改动行号、按需 diff、保存前冲突检测所需的内容读取。
+- Native WebView 资产由 `app/scripts/generateCodeMirrorWebViewAssets.mjs` 从本地依赖生成，不运行时加载远程脚本。
 
 `i18n/`：
 
@@ -165,11 +180,11 @@ app/
 `lib/transport/`：
 
 - 关键升级链路在 App 端的实装：`sessionTransport.ts`、`upgradeCoordinator.ts`、`webRtcPeerAdapter.{native,web}.ts`、`relayPath.ts`、`index.ts`。
-- 详见 [relay-architecture.md](./relay-architecture.md)；Web 端无 WebRTC 升级能力，使用占位实现。
+- 详见 [relay-architecture.md](./relay-architecture.md)；Web 端通过浏览器原生 WebRTC API 参与升级，缺少 API 时按连接模式回退或失败。
 
 `platform/`：
 
-- Android/iOS/Web 的平台能力适配（QR 扫码 linking、安全存储）。
+- Android/iOS/Web 的平台能力适配（QR 扫码 linking、安全存储、App lock 存储、设备所有者认证）。
 - 业务层只依赖 `platform` 暴露的统一接口，不直接依赖 Keychain 或浏览器 API。
 - 通过 `*.native.ts` / `*.web.ts` 平台分包实现差异。
 
@@ -184,7 +199,7 @@ app/
 - 通用 UI 组件（含 confirm 弹窗、KeyboardAwareScrollView、theme、icons）。
 - 不放业务页面。
 
-> 暂未实装但仍属规划：`screens/login`（MVP 通过配对码登录，未独立 login 屏）、`features/codex-structured`（App 侧结构化 Codex UI feature 目录尚未落地；协议层已有 `codex.*` 消息类型，等接入 Codex app-server 后再补 UI 与运行时适配）、`features/notifications` / `features/audit` / `lib/storage` / `lib/telemetry` / `lib/feature-flags` / `src/styles` / `src/generated/protocol`。在企业化能力按需补齐，不预先创建空目录。
+> 暂未实装但仍属规划：`screens/login`（MVP 通过配对码登录，未独立 login 屏）、结构化 Codex UI 运行时接入（协议层已有 `codex.*` 消息类型，等接入 Codex app-server 后再补 UI 与运行时适配）、`features/notifications` / `features/audit` / `lib/storage` / `lib/telemetry` / `lib/feature-flags` / `src/styles` / `src/generated/protocol`。当前仓库中若存在空占位目录，不代表能力已经落地；实现事实以有代码文件和协议处理链路为准。
 
 ### app 跨端要求
 
@@ -193,10 +208,11 @@ app/
 - Web 端只能新增入口、构建配置和必要平台适配，不复制整套页面。
 - 平台差异优先放在 `src/platform/` 或局部 `.native.tsx` / `.web.tsx` 组件中。
 - 不再新增 `src/native/` 作为业务依赖目录。
-- 终端渲染默认使用 React Native 原生快照视图。
+- 终端渲染默认使用 xterm Web/native WebView 视图；React Native 快照视图只作为兼容 fallback。
 - 推送通知（规划）使用 APNs / FCM 或公司统一推送网关，不使用 Web Push 作为交付链路。
 - 移动端安全存储使用平台安全存储能力，不能使用普通明文 AsyncStorage 存临时 key。
 - Web 端不使用扫码能力，配对通过手动输入或 URL 导入完成。
+- 文件编辑仅面向 `SUPPORTED_TEXT_FILE_EXTENSIONS` 中声明的 UTF-8 文本文件，保存必须携带打开时的 `contentHash` 作为 `baseHash`，由 Mac Agent 做冲突检测。
 
 ## mac 目录
 
@@ -319,8 +335,15 @@ relay/
 |   |-- tsconfig.json
 |   |-- src/
 |   |   |-- main.ts
+|   |   |-- adminAuth.ts
+|   |   |-- adminControlStore.ts
+|   |   |-- adminPage.ts
 |   |   |-- config.ts            # 含 OMNIWORK_UPGRADE_* 等环境变量解析
+|   |   |-- relayAdminController.ts
+|   |   |-- relayE2EController.ts
+|   |   |-- relayLog.ts
 |   |   |-- relayServer.ts       # WS 路由 + auth + 升级消息分发 + /healthz /readyz /metrics /debug/upgrade
+|   |   |-- relayTypes.ts
 |   |   |-- tokenBucket.ts
 |   |   |-- websocket.ts
 |   |   |-- upgrade/
@@ -330,7 +353,7 @@ relay/
 |   |   |   |-- orchestrator.test.ts
 ```
 
-> `@omniwork/relay-server` 的 `test` 脚本只执行 `src/main.ts --check` 做配置自检；`tests/upgrade/orchestrator.test.ts` 是源码中的单测文件，但尚未接入 package script。
+> `@omniwork/relay-server` 的 `test` 脚本已执行 `adminAuth`、`adminControlStore`、`upgrade/orchestrator`、`relayServer` 单测，并在最后运行 `src/main.ts --check` 做配置自检。
 
 演进若公司决定用 Go/Rust 重写生产 Relay，可保留同样的协议边界，目录可演进为：
 
@@ -481,6 +504,9 @@ scripts/
 |   |-- app-key-proof.test.mjs       # App 端 HMAC proof 单元验证
 |   |-- mac-agent-key.sh             # Agent key 文件权限/格式自检
 |   |-- mobile-upgrade-simulator.mjs # 模拟手机端跑通 P2P 升级全流程
+|   |-- package-boundaries.mjs       # package 边界自检
+|-- deploy/
+|   |-- buildWebDeploy.mjs           # Web SPA 部署目录准备
 ```
 
 根 `package.json` 中暴露的相关 npm scripts：
@@ -489,7 +515,9 @@ scripts/
 - `verify:relay`
 - `verify:mac-key`
 - `verify:upgrade:simulator`
+- `verify:package-boundaries`
 - `verify:security`
+- `deploy:web:build`、`deploy:web:prepare`
 
 > P2P 升级 e2e 验证脚本是 mobile simulator：需要先启动真实 Relay 与 Mac Agent，再运行 `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY> --key-id <KEY_ID>`。安全基础验证运行 `pnpm verify:security`，等价于 `@omniwork/e2e-noise` 测试。
 
@@ -519,7 +547,9 @@ docs/
 |-- engineering-requirements.md
 |-- auth-key-design.md
 |-- app-installation.md
+|-- deployment-web-server.md
 |-- e2e-noise-roadmap.md
+|-- mobile-file-editing.md
 |-- mobile-codex-tui-workbench-design.md
 |-- mobile-codex-tui-technical-solution.md
 |-- p2p-per-app-connection.md

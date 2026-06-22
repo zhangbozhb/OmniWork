@@ -124,8 +124,9 @@ Operational endpoints:
   `downgrade[reason]`, `prefs[preference]`, `skipped_by_pref`, `in_flight`,
   `active_p2p`, `durations` (p50/p95/max over the last 100 successful
   upgrades).
-- `POST /debug/upgrade?device_id=<id>` — manually triggers an upgrade for a
-  paired device; included in metrics and logs.
+- `POST /debug/upgrade?device_id=<id>&app_connection_id=<connection_id>` —
+  manually triggers an upgrade for one E2E-ready App connection under a paired
+  device; included in metrics and logs.
 - `GET /admin/web` — development-only Relay admin web page for viewing online
   Agents and Apps. Requires HTTPS and a valid admin session.
 - `GET /admin/api/status` — Relay admin status summary.

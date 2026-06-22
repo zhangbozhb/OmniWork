@@ -12,7 +12,7 @@ browser access without introducing a second UI stack.
 - Workspace-first session management through the Mac Agent, with a Workspace Detail bottom-tab layout for `Sessions`, `Git`, and `Files`.
 - Sessions are grouped by Agent Provider inside each Workspace, with secondary management actions moved behind a `More` dialog.
 - Workspace picker for new sessions, using Mac Agent discovered remote project directories instead of requiring users to type common working directories.
-- Read-only workspace file browser for viewing files inside the selected workspace boundary.
+- Workspace file browser and guarded UTF-8 text editor for supported files inside the selected workspace boundary.
 - Read-only Git status and diff views, shown only for workspaces that the Mac Agent reports as Git repositories.
 - User-editable session titles, with Terminal screens using the session title as the primary header.
 - Terminal screen with Native WebView/xterm rendering, local generated xterm assets, and quick keys.
@@ -54,10 +54,12 @@ pnpm --filter @omniwork/app verify:targets
 This runs TypeScript checking, iOS Metro bundle, Android Metro bundle, and the
 Web production build.
 
-Native WebView terminal assets are generated from the installed `@xterm/*`
-packages before app start, bundle, build, typecheck, lint, and test scripts.
+Native WebView terminal and editor assets are generated from the installed
+`@xterm/*` and CodeMirror packages before app start, bundle, build, typecheck,
+lint, and test scripts.
 Run `pnpm --filter @omniwork/app generate:xterm-assets` manually after changing
-xterm dependencies if you need to inspect the generated file before packaging.
+xterm or CodeMirror dependencies if you need to inspect the generated files
+before packaging.
 
 ## Installable Builds
 
@@ -128,7 +130,8 @@ pnpm --filter @omniwork/app android
 pnpm --filter @omniwork/app ios
 ```
 
-The terminal surface is implemented as native React Native UI for the MVP. A higher-fidelity native terminal renderer can be added later if the TUI needs full ANSI behavior.
+The terminal surface uses xterm through Web/native WebView assets. The React
+Native snapshot path is only a fallback for compatibility.
 
 ## Web Support
 

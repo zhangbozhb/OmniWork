@@ -13,7 +13,7 @@ TypeScript/Node.js Mac Agent for managing Agent CLI TUI sessions.
 - Manages configured Agent CLI TUI sessions through `tmux` once tmux is installed.
 - Persists user-edited session titles through the `session.rename` protocol message.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.
-- Provides read-only workspace file listing/reading and read-only Git status/diff messages.
+- Provides workspace file listing/reading/writing for supported UTF-8 text files, plus read-only Git status/diff messages.
 - Server-driven terminal frames: each attached session runs a ~450ms pusher in `src/core/agentService.ts` that captures the current PTY snapshot, hashes it with SHA-1, and emits `terminal.frame` only when the hash changes. The App no longer polls the snapshot on a 3s idle interval or after each input.
 - Serves the local Agent Admin UI from `static/admin/index.html`; keep UI HTML/CSS/JS there instead of embedding it in `src/core/adminServer.ts`.
 
@@ -75,11 +75,11 @@ When a session cwd is inside a Git repository, the workspace is promoted to the
 Git root; otherwise the cwd itself is used. The workspace path is the stable
 identifier, and the display name falls back to the final path segment. Git UI
 appears in the App only when the discovered workspace is inside a Git
-repository; non-Git directories still support read-only file browsing and
-session grouping.
+repository; non-Git directories still support file browsing, guarded text
+editing for supported file types, and session grouping.
 
 ## Verify
 
 ```sh
-node --experimental-strip-types tests/auth-key.test.ts
+pnpm --filter @omniwork/mac-agent test
 ```

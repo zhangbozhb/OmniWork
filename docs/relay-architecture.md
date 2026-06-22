@@ -243,16 +243,10 @@ P2P propose 恢复后，Relay 只下发按 `app_connection_id` 定向的 propose
 ### 8.5 手工触发 upgrade（调试）
 
 ```sh
-curl -X POST "http://<relay-host>:<port>/debug/upgrade?device_id=<id>"
+curl -X POST "http://<relay-host>:<port>/debug/upgrade?device_id=<id>&app_connection_id=<connection_id>"
 ```
 
-encrypted-only 默认配置下，该入口会被拒绝：
-
-```json
-{ "error": "p2p_debug_disabled_until_e2e" }
-```
-
-演进 P2P path 完成 E2E 收口并临时关闭 `OMNIWORK_RELAY_REQUIRE_E2E` 时，成功响应：
+当前实现按 App connection 粒度触发升级，要求目标 App 的业务 E2E 通道已经 ready。成功响应：
 
 ```json
 { "ok": true, "upgrade_id": "upg_..." }
@@ -261,10 +255,10 @@ encrypted-only 默认配置下，该入口会被拒绝：
 失败响应：
 
 - `400 { "error": "missing_device_id" }`：未传 query 参数。
-- `409 { "error": "p2p_debug_disabled_until_e2e" }`：Relay 要求业务 encrypted-only，调试入口被禁用，避免直接下发明文 `tunnel.upgrade.*`。
-- `404 { "error": "device_not_online" }`：device 没有 agent 或 mobile 在线。
+- `400 { "error": "missing_app_connection_id" }`：未传 App 连接 ID。
+- `404 { "error": "device_not_online" }`：device 没有 agent 在线、App 连接不存在、App 不属于该 device，或目标 App 的 E2E 业务通道尚未 ready。
 
-注意：旧的 `/debug/upgrade` 会直接走 `triggerUpgrade`，不受 ROLLOUT / DEVICE_BLOCKLIST / 退避限制；在 E2E 收口完成前保持禁用，避免调试面绕过 `e2e.message` 门禁。
+注意：`/debug/upgrade` 会直接走 `triggerUpgrade`，不受 ROLLOUT / DEVICE_BLOCKLIST / 退避限制；仅用于调试指定 App connection 的升级路径。
 
 ## 9. 已知限制 / 不在范围
 

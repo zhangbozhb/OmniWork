@@ -26,8 +26,9 @@ tmux session working directories, then sent to the App together with sessions.
 The App uses Workspace as the primary project object, groups sessions inside
 each Workspace by provider, and uses a Workspace Detail bottom-tab layout for
 `Sessions`, `Git`, and `Files`. `Git` appears only when the discovered workspace
-path is inside a Git repository; `Files` is a read-only browser scoped to the
-workspace boundary.
+path is inside a Git repository; `Files` is scoped to the workspace boundary
+and supports browsing, previewing, and guarded UTF-8 text editing for supported
+file types.
 
 Useful local commands:
 

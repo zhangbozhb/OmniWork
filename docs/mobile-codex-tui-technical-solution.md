@@ -14,7 +14,7 @@
 - 兼容通道（tmux + Native WebView/xterm 终端）：已落地，见 [mac/agent/src/pty-bridge](../mac/agent/src/pty-bridge)、[mac/agent/src/tmux-manager](../mac/agent/src/tmux-manager) 与 [app/src/terminal](../app/src/terminal)。
 - Codex app-server adapter 尚未落地，仍属于结构化 Codex UI 方向。
 - Agent Provider 元数据层：`packages/protocol-ts` 定义 + Mac Agent 配置化 provider 已实现。
-- Workspace 只读上下文层：已实现 `workspace.list/status` + `files.list/read` + `git.status/diff`，详见 [mac/agent/src/workspace](../mac/agent/src/workspace) / [files](../mac/agent/src/files) / [git](../mac/agent/src/git)。
+- Workspace 上下文层：已实现 `workspace.list/status` + `files.list/read/write` + `git.status/diff`，其中文件写入仅支持受控 UTF-8 文本编辑，详见 [mac/agent/src/workspace](../mac/agent/src/workspace) / [files](../mac/agent/src/files) / [git](../mac/agent/src/git)。
 - Relay + P2P 升级：已落地（终版见 [relay-architecture.md](./relay-architecture.md)），不在本文档继续维护。
 
 ## 结论摘要
@@ -46,12 +46,12 @@
    - App 会话列表按 Mac Agent 下发的 provider 分组展示，并在创建会话时传递 `runtime_kind`。
    - 未识别的外部 tmux 会话归入 `other`，只展示和附加，不作为可创建 provider。
 
-4. **Workspace 只读上下文层**
+4. **Workspace 上下文层**
    - Workspace 是远端项目目录，不是 Agent 端静态配置；Mac Agent 从 managed session 和 external tmux session 的 cwd 自主发现 workspace。
    - 如果 session cwd 位于 Git 仓库内，workspace path 提升为 Git root；否则使用 cwd 本身。workspace path 是稳定标识，展示名为空时使用路径最后一级目录。
    - `session.list` 下发 workspace 元数据，App 以 Workspace 作为一级项目对象；Workspace Detail 使用底部 Tab 展示 `Sessions` / `Git` / `Files`。
    - `Sessions` Tab 按 provider 分组，例如 OmniWork workspace 内展示 Codex、Claude、OpenCode 各自相关的 session。
-   - `Files` Tab 仅允许只读浏览 workspace 边界内的文件，禁止通过相对路径越界。
+   - `Files` Tab 允许在 workspace 边界内浏览、预览文件，并对支持的 UTF-8 文本文件执行受控编辑；保存通过打开时的内容哈希做冲突检测，禁止通过相对路径越界。
    - `Git` Tab 仅当目标 workspace 是 Git 仓库时显示，能力限制为只读 `status` / `diff`，不提供 stage、commit、reset、push 等写操作。
 
 MVP 可以采用兼容通道。正式企业版建议兼容通道与主通道并存：默认使用结构化通道，必要时切换到原始 TUI。
@@ -243,7 +243,7 @@ flowchart LR
 - `PairingScreen`：输入或扫码 32 字符临时 key。
 - `DeviceListScreen`：选择 Mac。
 - `SessionListScreen`：会话列表。
-- `TerminalScreen`：原始 TUI 快照，React Native 原生终端视图。
+- `TerminalScreen`：原始 TUI 快照，Native WebView/xterm 终端视图；RN 文本快照仅作为 fallback。
 - `CodexSessionScreen`：结构化 Codex UI。
 - `SettingsScreen`：安全、通知、键盘偏好。
 
