@@ -665,6 +665,7 @@ export interface WorkspaceFileEntry {
   path: string;
   relativePath: string;
   type: "file" | "directory";
+  isSymlink?: boolean;
   size?: number;
   modifiedAt?: string;
 }

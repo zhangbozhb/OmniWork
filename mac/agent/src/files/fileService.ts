@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
 import type {
@@ -21,6 +21,12 @@ const IGNORED_DIRECTORIES = new Set([
   ".next",
   ".turbo",
 ]);
+const IGNORED_FILE_NAMES = new Set([
+  ".DS_Store",
+  ".DS+Store",
+  "Thumbs.db",
+  "Desktop.ini",
+]);
 const MAX_TEXT_FILE_BYTES = 1024 * 1024;
 
 export class FileService {
@@ -32,10 +38,18 @@ export class FileService {
     const entries = await readdir(directory, { withFileTypes: true });
     const files = await Promise.all(
       entries
-        .filter((entry) => !isIgnoredEntry(entry.name, entry.isDirectory()))
-        .map(async (entry): Promise<WorkspaceFileEntry> => {
+        .filter((entry) => !isIgnoredEntryName(entry.name))
+        .map(async (entry): Promise<WorkspaceFileEntry | undefined> => {
           const absolutePath = join(directory, entry.name);
-          const info = await stat(absolutePath);
+          const linkInfo = await lstat(absolutePath);
+          const isSymlink = linkInfo.isSymbolicLink();
+          const info = isSymlink
+            ? await stat(absolutePath).catch(() => linkInfo)
+            : linkInfo;
+          const type = info.isDirectory() ? "directory" : "file";
+          if (isIgnoredDirectory(entry.name, type)) {
+            return undefined;
+          }
           const entryRelativePath = normalizeRelativePath(
             join(relativePath, entry.name),
           );
@@ -43,7 +57,8 @@ export class FileService {
             name: entry.name,
             path: absolutePath,
             relativePath: entryRelativePath,
-            type: entry.isDirectory() ? "directory" : "file",
+            type,
+            isSymlink: isSymlink || undefined,
             size: info.size,
             modifiedAt: info.mtime.toISOString(),
           };
@@ -53,7 +68,7 @@ export class FileService {
     return {
       workspacePath: workspace.path,
       relativePath: normalizeRelativePath(relativePath),
-      entries: files.sort(compareFileEntries),
+      entries: files.filter(isWorkspaceFileEntry).sort(compareFileEntries),
     };
   }
 
@@ -227,8 +242,18 @@ function isPathInside(path: string, parent: string): boolean {
   );
 }
 
-function isIgnoredEntry(name: string, directory: boolean): boolean {
-  return directory && IGNORED_DIRECTORIES.has(name);
+function isIgnoredEntryName(name: string): boolean {
+  return IGNORED_FILE_NAMES.has(name);
+}
+
+function isIgnoredDirectory(name: string, type: WorkspaceFileEntry["type"]): boolean {
+  return type === "directory" && IGNORED_DIRECTORIES.has(name);
+}
+
+function isWorkspaceFileEntry(
+  entry: WorkspaceFileEntry | undefined,
+): entry is WorkspaceFileEntry {
+  return Boolean(entry);
 }
 
 function normalizeRelativePath(path: string): string {

@@ -537,6 +537,7 @@ const workspaceFileEntrySchema = z
     path: z.string(),
     relativePath: z.string(),
     type: z.enum(["file", "directory"]),
+    isSymlink: z.boolean().optional(),
     size: z.number().int().nonnegative().optional(),
     modifiedAt: isoDateTime.optional(),
   })

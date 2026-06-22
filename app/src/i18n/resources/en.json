@@ -312,6 +312,7 @@
     "workspaceRoot": "workspace root",
     "currentDirectory": "current directory",
     "directory": "directory",
+    "symlink": "symlink",
     "empty": "No files.",
     "tooLarge": "File is too large to preview ({{size}}).",
     "binaryDisabled": "Binary file preview is disabled.",

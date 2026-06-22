@@ -436,6 +436,15 @@ function FilePreviewSheet({
   const { t } = useTranslation();
   const title = path ? basename(path) : t("files.preview.title");
   const editable = canEditFileContent(path, file);
+
+  function handleEdit(): void {
+    if (!path || !onEdit) {
+      return;
+    }
+    onClose();
+    onEdit(path);
+  }
+
   return (
     <Modal
       animationType="none"
@@ -482,7 +491,7 @@ function FilePreviewSheet({
                     styles.previewIconButton,
                     (!editable || !path) && styles.disabled,
                   ]}
-                  onPress={() => path && onEdit(path)}
+                  onPress={handleEdit}
                 >
                   <Icon name="edit" color={colors.textSecondary} size={16} />
                 </Pressable>
@@ -825,7 +834,8 @@ function formatEntryMeta(
   t: (key: string) => string,
 ): string {
   const size = typeof entry.size === "number" ? ` · ${formatBytes(entry.size)}` : "";
-  return `${entry.type === "directory" ? t("files.directory") : entry.type}${size}`;
+  const type = entry.type === "directory" ? t("files.directory") : entry.type;
+  return `${entry.isSymlink ? `${t("files.symlink")} · ` : ""}${type}${size}`;
 }
 
 const styles = StyleSheet.create({
