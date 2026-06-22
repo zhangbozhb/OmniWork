@@ -217,6 +217,7 @@ export function SessionListScreen({
   const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
+  const enteredWorkspacePathsRef = useRef<Set<string>>(new Set());
   const [workspacePagerWidth, setWorkspacePagerWidth] = useState(0);
   const [sessionRefreshing, setSessionRefreshing] = useState(false);
 
@@ -359,7 +360,25 @@ export function SessionListScreen({
   function openWorkspace(workspace: WorkspaceDefinition): void {
     setSelectedWorkspace(workspace);
     setActiveWorkspaceTab("sessions");
+    if (refreshWorkspaceOnFirstEntry(workspace)) {
+      return;
+    }
     prefetchAdjacentWorkspaceTabs(workspace, "sessions");
+  }
+
+  function refreshWorkspaceOnFirstEntry(
+    workspace: WorkspaceDefinition,
+  ): boolean {
+    if (enteredWorkspacePathsRef.current.has(workspace.path)) {
+      return false;
+    }
+    enteredWorkspacePathsRef.current.add(workspace.path);
+    onRefreshSessions();
+    onRefreshWorkspaceFiles(workspace, "");
+    if (workspace.isGitRepository) {
+      onRefreshWorkspaceGit(workspace);
+    }
+    return true;
   }
 
   function prefetchAdjacentWorkspaceTabs(
