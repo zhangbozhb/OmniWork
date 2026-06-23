@@ -1,0 +1,195 @@
+site/astro.config.mjs
+  s_ad770a042ee33d::t_878a75a5bdbe65 1-6
+scripts/deploy/buildWebDeploy.mjs
+  s_ad770a042ee33d::t_53898d7584b8d5 14,17,22-25,35,44
+site/src/pages/docs/overview.astro
+  s_ad770a042ee33d::t_078eeb749e7141 47-53
+  s_ad770a042ee33d::t_3d8c115701ac4e 13,19,25-26,33-34
+  s_ad770a042ee33d::t_55ee9f68543144 18
+  s_ad770a042ee33d::t_e8ff13136d7f09 1-11,14-15,17,20-21,23,29-30,32,35-36,38,42-44
+  s_ad770a042ee33d::t_dee835b1ee33af 12
+  s_ad770a042ee33d::t_cd09cf75f45b3b 16,22,24,27-28,31,37,39-41
+  s_ad770a042ee33d::t_4cf4ab1eebbe2c 45-46
+desktop/agent/package.json
+  s_ad770a042ee33d::t_d355ee23c90646 2
+README.md
+  s_ad770a042ee33d::t_3351890b5f2cf1 6-7,12,14,25,36,44,47,49
+site/src/components/Header.astro
+  s_ad770a042ee33d::t_425d4aa1fe72d1 1-97
+site/src/pages/docs/features.astro
+  s_ad770a042ee33d::t_63b1ecc09a9740 4-7,10-12,15-17,20-22,25-28,35,41,44,48-56,58-70,73-97,99-102,104-107,109-114,116-124,126-130,132-140,142-225
+  s_ad770a042ee33d::t_5efd5812e4b0ab 19
+  s_ad770a042ee33d::t_528648c087ba75 45
+  s_ad770a042ee33d::t_26ef657e8d1fef 1-3,36-40,42-43,46-47,103,108,115,125,141
+  s_ad770a042ee33d::t_dfac7453ca0652 8-9,13-14,18,23-24,29-34
+  s_ad770a042ee33d::t_ecac380ff9d5f7 57,71,98,131
+  s_ad770a042ee33d::t_4a23a434ec82ad 72
+pnpm-workspace.yaml
+  s_ad770a042ee33d::t_8b638ecb96285b 2
+  s_ad770a042ee33d::t_d4baa4b42b9462 9-10
+  s_ad770a042ee33d::t_10e5c389cb7fd4 4
+site/public/downloads.json
+  s_ad770a042ee33d::t_2c5f5f1fec0c9e 1-3,6-14,16-23,25-28,30,33-44
+  s_ad770a042ee33d::t_49675f2caf8c5e 4-5,15,24
+  s_ad770a042ee33d::t_2e3d1fc85823a0 45
+  s_ad770a042ee33d::t_0709229f7a233d 29
+  s_ad770a042ee33d::t_5084a55005a5fe 31
+  s_ad770a042ee33d::t_f8d8c7d1754f17 32
+site/src/env.d.ts
+  s_ad770a042ee33d::t_637ad119873d31 1
+site/src/pages/docs/security.astro
+  s_ad770a042ee33d::t_156d7821f4730b 45-46
+  s_ad770a042ee33d::t_7c706b7ccce57d 109
+  s_ad770a042ee33d::t_2574dd8765ef7b 64,66-67
+  s_ad770a042ee33d::t_b6d6af9375e0a4 100,103,106,108,113
+  s_ad770a042ee33d::t_d1c7daaf6d96f3 44
+  s_ad770a042ee33d::t_08cdf523cf86ba 1-3,34-38,40-41,63,65,68-69,85,99,101,104-105,107,110-112,114-117
+  s_ad770a042ee33d::t_7ddf9da4a16531 86
+  s_ad770a042ee33d::t_9b09a86396c029 4-7,10-11,15-16,20-22,25-28,33,39,42,47-50,52-62,70-80,82-84,87-98,118-130,132-150,155-169,177-178,187-193,195-300
+  s_ad770a042ee33d::t_13959d199c5bff 51,131,151-154,170-176,179-186,194
+  s_ad770a042ee33d::t_0a5da4247ef11b 102
+  s_ad770a042ee33d::t_d27d209a00e41f 43
+  s_ad770a042ee33d::t_8ccd5d6f46361f 9
+  s_ad770a042ee33d::t_a073df9cd95d05 24
+  s_ad770a042ee33d::t_0be30fd8e3c701 81
+  s_ad770a042ee33d::t_4ab796011d6304 8,12-14,17-19,23,29-32
+docs/project-directory-structure.md
+  s_ad770a042ee33d::t_3cb86869e01103 739
+  s_ad770a042ee33d::t_6dece220a5f076 25-26,36-37,52-53,57,68-70,79
+site/src/pages/download.astro
+  s_ad770a042ee33d::t_5a8b3fef639aba 46
+  s_ad770a042ee33d::t_261c560e2c2819 58
+  s_ad770a042ee33d::t_7a5e76e5fa6892 69
+  s_ad770a042ee33d::t_1d817428686929 55-57
+  s_ad770a042ee33d::t_1cfec0ea9fe5d4 26
+  s_ad770a042ee33d::t_1ded759cb2883c 35-36
+  s_ad770a042ee33d::t_35c8f79f15f30e 1-25,27-34,37-44,47-50,52-54,59-62,64-68,70-72,74,76-161
+  s_ad770a042ee33d::t_80ed0122c5091c 45,51,63,73,75
+package.json
+  s_ad770a042ee33d::t_397459ba2f53d4 25
+  s_ad770a042ee33d::t_d86dcbdde09099 35
+  s_ad770a042ee33d::t_e5baaaab8134f1 13
+  s_ad770a042ee33d::t_1703cb9a6ad5eb 12,23-24
+site/src/pages/docs/getting-started.astro
+  s_ad770a042ee33d::t_b9c40f05b1336d 34,36
+  s_ad770a042ee33d::t_2debe099a7f653 1-12,15-16,24,28-33,35,37-44
+  s_ad770a042ee33d::t_c0ccf61869b614 13-14,17-23,25-26
+  s_407c354387997e::t_82ae6ba298b48e 27
+scripts/verify/mobile-upgrade-simulator.mjs
+  s_ad770a042ee33d::t_c7769b07dad106 14,16
+site/src/components/Footer.astro
+  s_ad770a042ee33d::t_fa89240bec0f7f 1-9,11-57
+  s_ad770a042ee33d::t_0dd3b61cc7b88e 10
+site/src/pages/docs/index.astro
+  s_ad770a042ee33d::t_0796beb1ec7e38 1-12,14-17,26,35,37,39-42
+  s_ad770a042ee33d::t_c47a41c0ba485a 23-24
+  s_ad770a042ee33d::t_5dd82cc007056f 30
+  s_ad770a042ee33d::t_d45e94acf37df0 13,18-22,25,28,33,36,38
+  s_ad770a042ee33d::t_6551b739bf4049 27,29,31-32,34
+site/src/layouts/BaseLayout.astro
+  s_ad770a042ee33d::t_a562307dd439d9 1-30
+site/src/pages/docs/product.astro
+  s_ad770a042ee33d::t_b70d6a75c30484 9,14,18-19,23-24,29,32
+  s_ad770a042ee33d::t_46c1ba0d8a4d22 30-31
+  h_f833b9c201e94e 49-50
+  s_ad770a042ee33d::t_c5646cc0261071 77,79-80,83,86,90
+  s_ad770a042ee33d::t_df96ea0a11bea9 108,127-130,144-150,153-160,168
+  s_ad770a042ee33d::t_bb29a2c0a26744 1-3,34-38,40-41,62,76,84,87-88,92-94
+  s_ad770a042ee33d::t_d433934a1d9f04 85
+  s_ad770a042ee33d::t_88bab3b6416474 4-8,10-12,15-17,20-22,25-28,33,39,42,46-48,51-61,63-75,89,91,95-107,109-126,131-143,151-152,161-167,169-239
+  s_ad770a042ee33d::t_a473bd4df8fbd5 13
+  s_ad770a042ee33d::t_ed1aa0eaa323f7 44-45,78,81-82
+  s_ad770a042ee33d::t_9c555f9176a6e3 43
+site/tsconfig.json
+  s_ad770a042ee33d::t_0c3335526cc230 1-9
+site/src/pages/docs/faq.astro
+  s_ad770a042ee33d::t_0c12269d64a320 1-40
+site/src/components/DocsNav.astro
+  s_ad770a042ee33d::t_bb6d904674a258 1-2,8-12
+  s_ad770a042ee33d::t_795265e52877f7 3-7
+site/src/pages/docs/design.astro
+  h_f833b9c201e94e 44
+  s_ad770a042ee33d::t_930a159c95e9c4 4-7,10-12,15-17,20-22,25-28,34,40,43,47-55,58-59,61,63-65,68-70,73-75,78-79,81-93,103-230
+  s_ad770a042ee33d::t_7fb6c06989e366 8-9,13-14,18-19,23-24,29-33
+  s_ad770a042ee33d::t_cefa9b305490f7 57,62,66-67,71-72,76-77
+  s_ad770a042ee33d::t_d6b0b7f7b12781 60
+  s_ad770a042ee33d::t_f5b9ab2fc2d410 1-3,35-39,41-42,56,80,94-102
+  s_ad770a042ee33d::t_a5f4eef2c765bb 45-46
+site/src/pages/index.astro
+  s_ad770a042ee33d::t_5930340cb8fdb6 45-47,133-134,136-139,142-150,226-232
+  s_ad770a042ee33d::t_5729b39843ad53 43,53-54
+  s_ad770a042ee33d::t_3ca92cdd7b263a 76
+  s_ad770a042ee33d::t_2bbc9a620e6c48 58
+  s_ad770a042ee33d::t_d3b4e57e4cc853 34
+  s_ad770a042ee33d::t_b070f6796c8715 75
+  s_ad770a042ee33d::t_0ff591ad884710 14-15
+  s_ad770a042ee33d::t_dd90aa500ecb36 6-7,10-11,18-19,22-23,26-27,32-33,35
+  h_f833b9c201e94e 44,48,50,108
+  s_ad770a042ee33d::t_f4a7ed60575c3f 67
+  s_ad770a042ee33d::t_1e11ad23259d1b 91-92,94-97,100,107
+  s_ad770a042ee33d::t_3175b85055bb67 1-5,8-9,12-13,16-17,20-21,24-25,28-31,36-42,49,51-52,55-57,59-66,68-74,77-90,93,98-99,101-106,109-132,135,140-141,151-225,233-235
+site/src/pages/docs/install.astro
+  s_ad770a042ee33d::t_0766155020f9e1 1-5,7-14,17-23,25,27-37,39-43
+  s_ad770a042ee33d::t_b1f5d99b608a70 6
+  s_ad770a042ee33d::t_5de498506e9538 38
+  s_ad770a042ee33d::t_26a39ab5de9781 24,26
+  s_ad770a042ee33d::t_67877214bfdebf 15-16
+site/src/pages/changelog.astro
+  s_ad770a042ee33d::t_754e17c4a30546 1-59
+site/src/styles/global.css
+  s_ad770a042ee33d::t_bf24e085fc2cf3 1-271
+docs/deployment-web-server.md
+  s_ad770a042ee33d::t_8a085421794f14 9-10,23-26,44-45,49,54-59
+.gitignore
+  s_ad770a042ee33d::t_05b055b011ebd9 7
+site/package.json
+  s_ad770a042ee33d::t_d53e77c2fd0ca1 1-18
+scripts/verify/desktop-agent-key.sh
+  s_ad770a042ee33d::t_bb47ba057e93fe 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2a8904bb4838fade9163c533707663742d1c11b7",
+  "prompts": {},
+  "humans": {
+    "h_f833b9c201e94e": {
+      "author": "zhangbozhb <zhangbozhb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_407c354387997e": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a38f37288a2a67542803e74",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": "zhangbozhb <zhangbozhb@gmail.com>"
+    },
+    "s_ad770a042ee33d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a38f5a688a2a675428041e0",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": null
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {
+    "s_ad770a042ee33d": {
+      "tool": "trae",
+      "conversation_id": "6a38f5a688a2a675428041e0",
+      "session_id": "6a38f5a688a2a675428041e0",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_ad770a042ee33d::t_5d33c5e672ad9f": {
+      "tool": "trae",
+      "conversation_id": "6a38f5a688a2a675428041e0",
+      "session_id": "6a38f5a688a2a675428041e0",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
