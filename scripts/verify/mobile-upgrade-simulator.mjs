@@ -11,9 +11,9 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
-// 借用 mac/agent 的 node_modules（其中已安装 @roamhq/wrtc）
+// 借用 desktop/agent 的 node_modules（其中已安装 @roamhq/wrtc）
 const require = createRequire(
-  new URL("../../mac/agent/package.json", import.meta.url),
+  new URL("../../desktop/agent/package.json", import.meta.url),
 );
 const wrtc = require("@roamhq/wrtc");
 

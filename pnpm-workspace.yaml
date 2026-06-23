@@ -1,7 +1,10 @@
 packages:
+  - "site"
   - "app"
-  - "mac/agent"
+  - "desktop/agent"
   - "relay/*"
   - "packages/*"
 allowBuilds:
   dtrace-provider: true
+  esbuild: true
+  sharp: true

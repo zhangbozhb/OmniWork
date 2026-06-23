@@ -12,7 +12,7 @@
 
 ## 支持类型
 
-可编辑扩展名由 `@omniwork/protocol-ts` 的 `SUPPORTED_TEXT_FILE_EXTENSIONS` 统一维护，App、Git 预览和 Mac Agent 共用同一套判断。当前范围包括常见源码、配置、日志、Markdown、CSV/TSV、HTML/CSS/SVG/XML/YAML/TOML/JSON 等文本文件。
+可编辑扩展名由 `@omniwork/protocol-ts` 的 `SUPPORTED_TEXT_FILE_EXTENSIONS` 统一维护，App、Git 预览和 桌面端 Agent 共用同一套判断。当前范围包括常见源码、配置、日志、Markdown、CSV/TSV、HTML/CSS/SVG/XML/YAML/TOML/JSON 等文本文件。
 
 ## 交互模型
 
@@ -61,7 +61,7 @@
 }
 ```
 
-Mac Agent 写入前会校验：
+桌面端 Agent 写入前会校验：
 
 - 工作区可用。
 - 路径不越过工作区根目录。

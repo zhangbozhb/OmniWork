@@ -6,6 +6,8 @@ server in production.
 ## Principle
 
 - Production uses Nginx to serve static web assets and terminate HTTPS.
+- The public website under `/` is built from `site/` and contains only project
+  introduction, public docs, downloads, changelog, and the `/app/` entry.
 - Production keeps the Node relay focused on `/relay/ws/...`, `/admin/api/...`,
   health checks, and internal operational endpoints.
 - The Node-served admin web page is disabled by default. Enable it only for
@@ -18,7 +20,10 @@ server in production.
 
 | Path | Owner | Purpose |
 | --- | --- | --- |
-| `/` | Nginx static | Project landing page |
+| `/` | Nginx static | Public website landing page |
+| `/docs/` | Nginx static | Public documentation |
+| `/download/` | Nginx static | Public download page |
+| `/changelog/` | Nginx static | Public release notes entry |
 | `/app/` | Nginx static | Web client SPA |
 | `/admin/` | Nginx static, optional | Production admin UI |
 | `/admin/api/` | Relay via Nginx proxy | Admin API and session auth |
@@ -36,17 +41,22 @@ OMNIWORK_WEB_RELAY_URL=wss://omniwork.example.com/relay/ws/mobile \
 pnpm deploy:web:build
 ```
 
-This runs the Web client build with `OMNIWORK_WEB_PUBLIC_PATH=/app/`, then
-prepares:
+This runs the Public Web build, then runs the Web client build with
+`OMNIWORK_WEB_PUBLIC_PATH=/app/`, then prepares:
 
 ```text
 dist/deploy/
+├── site/
 ├── app/
 └── admin/
 ```
 
-Publish those directories to `/var/www/omniwork/app/` and
-`/var/www/omniwork/admin/`.
+Publish those directories to `/var/www/omniwork/site/`,
+`/var/www/omniwork/app/`, and `/var/www/omniwork/admin/`.
+
+The Public Web build comes from `site/` and includes `downloads.json`. Keep
+`downloads.json` on a shorter cache policy than hashed static assets so release
+links can be updated without waiting for a long CDN TTL.
 
 `OMNIWORK_WEB_PUBLIC_PATH` controls webpack's asset prefix. Use `/` for local
 root hosting and `/app/` for the production path described here.

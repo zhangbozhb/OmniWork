@@ -1,0 +1,59 @@
+---
+import { readFileSync } from "node:fs";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+
+const downloads = JSON.parse(
+  readFileSync(new URL("../../public/downloads.json", import.meta.url), "utf8"),
+) as {
+  version: string;
+  releasedAt: string;
+  releaseUrl: string;
+  allReleasesUrl: string;
+};
+---
+
+<BaseLayout title="发布记录" description="OmniWork public changelog and release links.">
+  <section class="section">
+    <div class="container">
+      <p class="eyebrow">Changelog</p>
+      <h1 class="section-title">版本记录以 GitHub Releases 为准。</h1>
+      <p class="section-lede">
+        Public Web 展示当前版本摘要，并把完整 release notes、历史版本和下载资产交给 GitHub Releases 管理。
+      </p>
+    </div>
+  </section>
+
+  <section class="section changelog-section">
+    <div class="container">
+      <article class="card release-card">
+        <span class="pill">Current</span>
+        <h2>{downloads.version}</h2>
+        <p>发布时间：{downloads.releasedAt}</p>
+        <p>
+          第一阶段 Public Web 使用静态 manifest 展示下载入口。真实版本发布后，发布说明和安装包以 GitHub Releases
+          中的内容为准。
+        </p>
+        <div class="button-row">
+          <a class="button primary" href={downloads.releaseUrl}>当前 Release</a>
+          <a class="button" href={downloads.allReleasesUrl}>全部 Releases</a>
+        </div>
+      </article>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .changelog-section {
+    padding-top: 0;
+  }
+
+  .release-card {
+    max-width: 760px;
+  }
+
+  .release-card h2 {
+    margin: 0 0 12px;
+    font-size: 36px;
+    letter-spacing: -0.04em;
+  }
+</style>

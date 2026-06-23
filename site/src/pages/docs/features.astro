@@ -1,0 +1,225 @@
+---
+import DocsNav from "@/components/DocsNav.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+
+const featurePillars = [
+  {
+    label: "Security",
+    title: "以安全为基石",
+    text: "设备配对、端到端加密（E2E）、Workspace 文件边界控制以及可信的下载分发渠道，共同构筑了系统的默认安全模型。",
+  },
+  {
+    label: "Human",
+    title: "以用户为中心",
+    text: "界面设计紧密围绕用户需要关注的项目、任务、代码变更及后续操作展开，隐藏底层的技术复杂性。",
+  },
+  {
+    label: "Continuity",
+    title: "多端协同工作",
+    text: "同一个 Workspace 支持在电脑、手机与浏览器间无缝切换，跨设备协同不会打断当前的工作上下文。",
+  },
+  {
+    label: "Open",
+    title: "极具扩展性",
+    text: "基于共享协议与 Provider 机制接入更多 Agent，摆脱客户端与单一工具强绑定的局限。",
+  },
+];
+
+const featureMap = [
+  ["Workspace", "项目上下文", "将会话、Git 状态、文件浏览与终端统一收束至工作区对象下。"],
+  ["Sessions", "任务无缝接续", "按 Provider 分组展示正在进行中的 Agent 工作流。"],
+  ["Git", "人工审核确认", "快速查看分支、代码状态、变更文件与 Diff，轻松评估 Agent 操作带来的影响。"],
+  ["Files", "受控文件处理", "在 Workspace 的安全边界内，支持浏览、预览及编辑常见的文本文件。"],
+  ["Terminal", "终端随时介入", "借助 xterm 与 WebView 技术，随时随地接管 Agent 命令行交互。"],
+  ["Relay/P2P", "网络稳定可达", "Relay 确保基础连接，P2P 提供网络优化，业务数据的安全始终由端到端加密（E2E）保障。"],
+];
+---
+
+<BaseLayout title="核心特性" description="OmniWork core features.">
+  <div class="container doc-layout">
+    <DocsNav />
+    <article class="prose features-page">
+      <p class="eyebrow">Features</p>
+      <h1>核心特性</h1>
+      <p class="features-lede">
+        OmniWork 的核心特性紧密围绕开发者的真实工作流展开。通过隐藏底层的技术复杂性，它将分散的会话、文件与 Git 状态统一收束，让跨设备协同变得自然且安全。
+      </p>
+
+      <section class="feature-pillar-grid" aria-label="核心特性支柱">
+        {featurePillars.map((pillar) => (
+          <div class="feature-pillar">
+            <span>{pillar.label}</span>
+            <h2>{pillar.title}</h2>
+            <p>{pillar.text}</p>
+          </div>
+        ))}
+      </section>
+
+      <h2>能力地图</h2>
+      <div class="feature-map" role="table" aria-label="OmniWork 能力地图">
+        <div class="feature-row header" role="row">
+          <div role="columnheader">能力</div>
+          <div role="columnheader">用户价值</div>
+          <div role="columnheader">设计说明</div>
+        </div>
+        {featureMap.map((row) => (
+          <div class="feature-row" role="row">
+            {row.map((cell) => <div role="cell">{cell}</div>)}
+          </div>
+        ))}
+      </div>
+
+      <h2>基于工作流的特性体验</h2>
+      <div class="feature-flow" aria-label="OmniWork 工作流">
+        <div>
+          <span>1</span>
+          <strong>选择 Workspace</strong>
+          <small>先确定项目上下文。</small>
+        </div>
+        <div>
+          <span>2</span>
+          <strong>进入 Session</strong>
+          <small>接续正在进行的 Agent 任务。</small>
+        </div>
+        <div>
+          <span>3</span>
+          <strong>查看 Git / Files</strong>
+          <small>判断变更，处理必要文件。</small>
+        </div>
+        <div>
+          <span>4</span>
+          <strong>回到 Terminal</strong>
+          <small>继续输入、确认或收尾。</small>
+        </div>
+      </div>
+    </article>
+  </div>
+</BaseLayout>
+
+<style>
+  .features-page {
+    max-width: 920px;
+  }
+
+  .features-lede {
+    max-width: 840px;
+    font-size: 18px;
+  }
+
+  .feature-pillar-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin: 34px 0 48px;
+  }
+
+  .feature-pillar,
+  .feature-map,
+  .feature-flow div {
+    border: 1px solid rgba(46, 230, 166, 0.24);
+    background:
+      linear-gradient(180deg, rgba(46, 230, 166, 0.1), rgba(70, 217, 255, 0.025)),
+      rgba(7, 16, 22, 0.78);
+    box-shadow: var(--shadow);
+  }
+
+  .feature-pillar {
+    min-height: 220px;
+    padding: 24px;
+    border-radius: 26px;
+  }
+
+  .feature-pillar span,
+  .feature-flow span {
+    color: var(--accent);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .feature-pillar h2 {
+    margin: 18px 0 12px;
+    font-size: 28px;
+    letter-spacing: -0.04em;
+  }
+
+  .feature-pillar p {
+    margin: 0;
+  }
+
+  .feature-map {
+    overflow: hidden;
+    margin: 24px 0 46px;
+    border-radius: 24px;
+  }
+
+  .feature-row {
+    display: grid;
+    grid-template-columns: 0.65fr 0.78fr 1.57fr;
+    border-top: 1px solid var(--line);
+  }
+
+  .feature-row:first-child {
+    border-top: 0;
+  }
+
+  .feature-row > div {
+    padding: 16px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  .feature-row > div:first-child {
+    color: var(--text);
+    font-weight: 800;
+  }
+
+  .feature-row.header > div {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.055);
+    font-weight: 800;
+  }
+
+  .feature-flow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .feature-flow div {
+    min-height: 168px;
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .feature-flow strong {
+    display: block;
+    margin-top: 18px;
+    font-size: 20px;
+    line-height: 1.18;
+  }
+
+  .feature-flow small {
+    display: block;
+    margin-top: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  @media (max-width: 920px) {
+    .feature-pillar-grid,
+    .feature-flow,
+    .feature-row {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .feature-row.header {
+      display: none;
+    }
+  }
+</style>

@@ -1,0 +1,40 @@
+---
+import DocsNav from "@/components/DocsNav.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="FAQ" description="Frequently asked questions for OmniWork public users.">
+  <div class="container doc-layout">
+    <DocsNav />
+    <article class="prose">
+      <p class="eyebrow">FAQ</p>
+      <h1>常见问题</h1>
+
+      <h2>Public Web 和 Web App 有什么区别？</h2>
+      <p>
+        Public Web 是官网、文档和下载入口，占用 `/`、`/docs/` 和 `/download/`。
+        Web App 是产品客户端，占用 `/app/`，负责配对、查看 Workspace 和进入终端。
+      </p>
+
+      <h2>为什么 iOS 不直接优先下载 IPA？</h2>
+      <p>
+        普通 iOS 用户应使用 App Store。IPA 需要满足 Apple 签名和分发条件，不能作为普通用户的默认安装方式。
+      </p>
+
+      <h2>Android APK 从哪里下载？</h2>
+      <p>
+        APK 通过 GitHub Releases 分发。下载页会展示当前版本、Release 链接和 SHA256 校验信息。
+      </p>
+
+      <h2>Web App 是否支持二维码扫描？</h2>
+      <p>
+        Web App 不使用摄像头扫描。你需要手动输入 Relay URL、device ID 和临时 key，或使用配对链接导入。
+      </p>
+
+      <h2>为什么这里没有 Admin、metrics 或 debug 说明？</h2>
+      <p>
+        这些属于内部运维和受控管理能力，不应暴露给公网访客。Public Web 只保留普通用户需要的公开信息。
+      </p>
+    </article>
+  </div>
+</BaseLayout>

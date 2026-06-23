@@ -1,0 +1,45 @@
+{
+  "version": "v0.1.0",
+  "releasedAt": "2026-06-23",
+  "releaseUrl": "https://github.com/zhangbozhb/OmniWork/releases/tag/v0.1.0",
+  "allReleasesUrl": "https://github.com/zhangbozhb/OmniWork/releases",
+  "assets": {
+    "ios": {
+      "appStore": {
+        "label": "Download on the App Store",
+        "url": "https://apps.apple.com/app/<app-id>",
+        "type": "app_store"
+      },
+      "ipa": {
+        "label": "Download signed IPA",
+        "url": "https://github.com/zhangbozhb/OmniWork/releases/download/v0.1.0/omniwork-ios-v0.1.0.ipa",
+        "type": "github_release_asset",
+        "sha256": null,
+        "note": "仅用于已签名且满足 Apple 分发条件的场景。普通用户应优先使用 App Store。"
+      }
+    },
+    "android": {
+      "apk": {
+        "label": "Download Android APK",
+        "url": "https://github.com/zhangbozhb/OmniWork/releases/download/v0.1.0/omniwork-android-v0.1.0.apk",
+        "type": "github_release_asset",
+        "sha256": "<sha256>"
+      }
+    },
+    "desktopAgent": {
+      "archive": {
+        "label": "Download Desktop Agent",
+        "url": "https://github.com/zhangbozhb/OmniWork/releases/download/v0.1.0/omniwork-agent-v0.1.0-desktop.zip",
+        "type": "github_release_asset",
+        "sha256": "<sha256>"
+      }
+    },
+    "web": {
+      "app": {
+        "label": "Open Web App",
+        "url": "/app/",
+        "type": "internal"
+      }
+    }
+  }
+}

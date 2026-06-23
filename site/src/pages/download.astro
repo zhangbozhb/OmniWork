@@ -1,0 +1,161 @@
+---
+import { readFileSync } from "node:fs";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+
+type DownloadLink = {
+  label: string;
+  url: string;
+  type: string;
+  sha256?: string | null;
+  note?: string;
+};
+
+type DownloadsManifest = {
+  version: string;
+  releasedAt: string;
+  releaseUrl: string;
+  allReleasesUrl: string;
+  assets: {
+    ios: {
+      appStore: DownloadLink;
+      ipa?: DownloadLink;
+    };
+    android: {
+      apk: DownloadLink;
+    };
+    desktopAgent: {
+      archive: DownloadLink;
+    };
+    web: {
+      app: DownloadLink;
+    };
+  };
+};
+
+const isDownloadLink = (link: DownloadLink | undefined): link is DownloadLink => Boolean(link);
+
+const downloads = JSON.parse(
+  readFileSync(new URL("../../public/downloads.json", import.meta.url), "utf8"),
+) as DownloadsManifest;
+
+const groups = [
+  {
+    id: "ios",
+    title: "iOS",
+    description: "正式用户推荐通过 App Store 安装；签名 IPA 仅作为特殊分发场景的备选方案。",
+    links: [downloads.assets.ios.appStore, downloads.assets.ios.ipa].filter(isDownloadLink),
+  },
+  {
+    id: "android",
+    title: "Android",
+    description: "APK 安装包通过 GitHub Releases 进行分发，并同步提供 SHA256 校验值。",
+    links: [downloads.assets.android.apk],
+  },
+  {
+    id: "desktop-agent",
+    title: "Desktop Agent",
+    description: "桌面端 Agent 用于连接本地工作区、tmux 会话及 Agent Provider。",
+    links: [downloads.assets.desktopAgent.archive],
+  },
+  {
+    id: "web",
+    title: "Web App",
+    description: "浏览器客户端由现有的 Web SPA 承载，访问入口固定为 /app/。",
+    links: [downloads.assets.web.app],
+  },
+];
+---
+
+<BaseLayout title="下载" description="Download OmniWork for iOS, Android, Desktop Agent, and Web.">
+  <section class="section">
+    <div class="container">
+      <p class="eyebrow">Download</p>
+      <h1 class="section-title">选择适合您的平台入口。</h1>
+      <p class="section-lede">
+        当前版本为 {downloads.version}，发布时间为 {downloads.releasedAt}。建议优先通过官方商店或 GitHub Releases 获取安装包，Web 客户端请直接访问 <code>/app/</code>。
+      </p>
+      <div class="button-row">
+        <a class="button primary" href={downloads.releaseUrl}>查看当前 Release</a>
+        <a class="button" href={downloads.allReleasesUrl}>历史版本</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section download-section">
+    <div class="container download-grid">
+      {groups.map((group) => (
+        <article class="card download-card" id={group.id}>
+          <span class="pill">{group.title}</span>
+          <h2>{group.title}</h2>
+          <p>{group.description}</p>
+          <div class="download-links">
+            {group.links.map((link) => (
+              <div class="download-link">
+                <a class="button primary" href={link.url}>{link.label}</a>
+                {link.sha256 && <code>SHA256: {link.sha256}</code>}
+                {link.note && <small>{link.note}</small>}
+              </div>
+            ))}
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .download-section {
+    padding-top: 0;
+  }
+
+  .download-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .download-card {
+    min-height: 300px;
+  }
+
+  .download-card h2 {
+    margin: 0 0 12px;
+    font-size: 28px;
+    letter-spacing: -0.03em;
+  }
+
+  .download-card p {
+    margin-bottom: 22px;
+  }
+
+  .download-links {
+    display: grid;
+    gap: 14px;
+  }
+
+  .download-link {
+    display: grid;
+    gap: 8px;
+    justify-items: start;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  .download-link code {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .download-link small {
+    color: var(--danger);
+    line-height: 1.6;
+  }
+
+  @media (max-width: 820px) {
+    .download-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

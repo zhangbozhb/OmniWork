@@ -12,15 +12,15 @@
 
 ## 总体要求
 
-本工程采用 monorepo，手机 App、Mac Agent、Relay、协议、共享 SDK、部署材料都在同一个仓库下维护。
+本工程采用 monorepo，手机 App、桌面端 Agent、Relay、协议、共享 SDK、部署材料都在同一个仓库下维护。
 
 核心工程约束：
 
 - `app/` 是 Android/iOS 跨端移动 App。
-- `mac/` 是 TypeScript / Node.js 技术栈的 Mac 本地 Agent。
+- `desktop/` 是 TypeScript / Node.js 技术栈的 电脑 本地 Agent。
 - `relay/` 是公司内网中继服务，可根据团队能力选择 Go、Rust 或 TypeScript。
 - `protocol/` 是跨端协议契约唯一源头。
-- `packages/` 存放可被 App 和 Mac Agent 复用的 TypeScript SDK 与纯逻辑。
+- `packages/` 存放可被 App 和 桌面端 Agent 复用的 TypeScript SDK 与纯逻辑。
 
 ## App 工程要求
 
@@ -53,15 +53,15 @@
 安全要求：
 
 - MVP 范围不接入 SSO。
-- App 使用 Mac Agent 启动生成的 32 字符临时 key 完成连接鉴权。
+- App 使用 桌面端 Agent 启动生成的 32 字符临时 key 完成连接鉴权。
 - key 不得存入普通明文存储。
 - App 不得加载远程网页作为主界面；移动端主交付必须是 React Native APK/IPA，native 体验优先于 Web 实验入口。
 - 终端 WebView 只能加载本地打包的 xterm HTML/CSS/JS 资源，不得在运行时依赖 CDN 或远程网页。
 - 终端剪贴板能力默认受限，OSC 52 等能力需要显式策略控制。
 
-## Mac Agent 工程要求
+## 桌面端 Agent 工程要求
 
-`mac/` 必须采用 TypeScript / Node.js 技术栈。
+`desktop/` 必须采用 TypeScript / Node.js 技术栈。
 
 推荐技术栈：
 
@@ -70,10 +70,10 @@
 - tmux。
 - 会话状态使用 SQLite，默认文件为 `sessions.sqlite`；旧 `sessions.json` 仅作为首次导入来源，显式传入 `.json` 存储路径时会自动映射到同名 `.sqlite`。
 - 临时 key 文件存储。
-- macOS Keychain adapter 只作为演进持久凭证能力预留。
+- 电脑系统 Keychain adapter 只作为演进持久凭证能力预留。
 - WebSocket Relay client。
 
-本工程已补齐 `relay/server` 的 TypeScript MVP，用于 App 与 Mac Agent 的公司内网消息中继；正式生产可继续替换为公司统一 Relay 平台，但协议和鉴权流程保持一致。
+本工程已补齐 `relay/server` 的 TypeScript MVP，用于 App 与 桌面端 Agent 的公司内网消息中继；正式生产可继续替换为公司统一 Relay 平台，但协议和鉴权流程保持一致。
 
 Relay 安全约束（`relay/server`）：
 
@@ -93,7 +93,7 @@ Relay 安全约束（`relay/server`）：
 - 临时 key 文件读写统一封装在 `auth-key` 模块。
 - Keychain 操作保留为演进能力，MVP 不作为登录依赖。
 
-macOS 集成要求：
+电脑系统 集成要求：
 
 - Agent 默认不监听局域网地址。
 - Agent 只主动连接公司内网 Relay。
@@ -110,19 +110,19 @@ MVP 范围不使用 SSO、OIDC、持久设备绑定或 refresh token。
 
 MVP 鉴权模型：
 
-- Mac Agent 是 key 来源。
-- Mac Agent 每次启动临时生成一个固定 32 字符长度的随机字符串作为 key。
+- 桌面端 Agent 是 key 来源。
+- 桌面端 Agent 每次启动临时生成一个固定 32 字符长度的随机字符串作为 key。
 - key 使用加密安全随机数生成器。
-- key 保存到 Mac 本地文件。
+- key 保存到 电脑 本地文件。
 - App 通过手动输入、扫码或演进本机展示方式获得 key。
 - App 使用该 key 完成本次连接授权。
-- Mac Agent 重启后旧 key 失效，App 需要重新输入新 key。
+- 桌面端 Agent 重启后旧 key 失效，App 需要重新输入新 key。
 
 推荐连接校验：
 
 - Relay 下发 nonce。
 - App 用 key 对 nonce 做 HMAC-SHA256。
-- Mac Agent 用本地 key 校验 proof。
+- 桌面端 Agent 用本地 key 校验 proof。
 - Relay 不保存 key 明文。
 
 安全要求：
@@ -139,7 +139,7 @@ MVP 鉴权模型：
 要求：
 
 - 先定义 schema，再生成 TypeScript 类型。
-- `app/` 和 `mac/` 优先复用同一套 TypeScript 协议类型。
+- `app/` 和 `desktop/` 优先复用同一套 TypeScript 协议类型。
 - Relay 如使用 Go/Rust，也从 `protocol/` 生成对应语言类型。
 - 生成代码只放 `generated/`，不得手工修改。
 - 协议破坏性变更必须升级版本并补 contract test。
@@ -154,7 +154,7 @@ MVP 鉴权模型：
 
 依赖与运行时：
 
-- Mac Agent：`@roamhq/wrtc`（Node 端 WebRTC 实现）；运行时为 Node.js 24 + `--experimental-strip-types`。
+- 桌面端 Agent：`@roamhq/wrtc`（Node 端 WebRTC 实现）；运行时为 Node.js 24 + `--experimental-strip-types`。
 - App（React Native）：`react-native-webrtc`；iOS 需 `pod install`，Android 需 `INTERNET` 权限。
 - App（react-native-web）：使用浏览器原生 `RTCPeerConnection`；若 WebRTC API 缺失，`peerFactory` 返回 null 并按连接模式回退或失败。
 
@@ -174,8 +174,8 @@ Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.m
 验证脚本：
 
 - `pnpm verify:relay`：Relay 配置自检。
-- `pnpm verify:mac-key`：Agent 临时 key 写入与权限校验。
-- `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY> --key-id <KEY_ID>`：连接已启动的 Relay 与 Mac Agent，用 mobile simulator 跑通 propose → committed → DataChannel 验证链路。脚本入口 [scripts/verify/mobile-upgrade-simulator.mjs](../scripts/verify/mobile-upgrade-simulator.mjs)。
+- `pnpm verify:desktop-key`：Agent 临时 key 写入与权限校验。
+- `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY> --key-id <KEY_ID>`：连接已启动的 Relay 与 桌面端 Agent，用 mobile simulator 跑通 propose → committed → DataChannel 验证链路。脚本入口 [scripts/verify/mobile-upgrade-simulator.mjs](../scripts/verify/mobile-upgrade-simulator.mjs)。
 - `pnpm verify:security`：运行 `@omniwork/e2e-noise` 测试，覆盖 Noise 握手、加解密、seq 防重放和篡改检测。
 
 ## 共享包要求
@@ -193,12 +193,12 @@ Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.m
 
 限制：
 
-- `mac/agent` 可以依赖 `protocol-ts`、`e2e-noise`、`relay-client`、`terminal-core`、`config`。
+- `desktop/agent` 可以依赖 `protocol-ts`、`e2e-noise`、`relay-client`、`terminal-core`、`config`。
 - `app/` 可以依赖 `protocol-ts`、`e2e-noise`、`relay-client`、`terminal-core`、`mobile-ui`。
-- `mac/agent` 不依赖 `mobile-ui`。
-- `app/` 不依赖 `mac/agent` 内部模块。
-- `mac/` 不依赖 `app/src` 内部模块。
-- Relay 不依赖 App/Mac 内部实现。
+- `desktop/agent` 不依赖 `mobile-ui`。
+- `app/` 不依赖 `desktop/agent` 内部模块。
+- `desktop/` 不依赖 `app/src` 内部模块。
+- Relay 不依赖 App/Desktop 内部实现。
 
 ## 验证要求
 
@@ -206,22 +206,22 @@ MVP 范围至少验证：
 
 - Android App 可连接 Relay。
 - iOS App 可连接 Relay。
-- Mac Agent 可连接 Relay。
-- Mac Agent 可创建 `tmux + codex` 会话。
+- 桌面端 Agent 可连接 Relay。
+- 桌面端 Agent 可创建 `tmux + codex` 会话。
 - App 可查看原始 TUI。
 - App 可输入文字、回车、方向键、`Esc`、`Tab`、`Ctrl+C`。
 - App 可切换至少 3 个 TUI 会话。
-- App 断开后 Mac 会话继续运行。
+- App 断开后 电脑 会话继续运行。
 - App 重连后恢复终端快照。
 - Agent 重启后恢复已有 tmux 会话。
 
 企业化能力至少验证：
 
-- Mac Agent 每次启动生成 32 字符临时 key。
+- 桌面端 Agent 每次启动生成 32 字符临时 key。
 - key 文件路径、权限和内容格式正确。
 - App 使用正确 key 可连接。
 - App 使用错误 key 不能连接。
-- Mac Agent 重启后旧 key 失效。
+- 桌面端 Agent 重启后旧 key 失效。
 - Relay 不记录完整 key。
 - LaunchAgent 自启动。
 - 审计日志。

@@ -16,7 +16,7 @@
 ```text
 +----------+      WebSocket / wss      +-------------+      WebSocket / wss      +-----------+
 |   App    | <-----------------------> |    Relay    | <-----------------------> |   Agent   |
-| (RN/Web) |   default business path   |  (公网入口)   |   default business path   |  (macOS)  |
+| (RN/Web) |   default business path   |  (公网入口)   |   default business path   |  (电脑系统)  |
 +----------+                           +-------------+                           +-----------+
      ^                                                                                  ^
      |                       WebRTC DataChannel (优选业务路径)                            |
@@ -25,7 +25,7 @@
 ```
 
 - **Relay**：始终在线、公网可达，承载 WS 业务中继与升级控制面（SDP/ICE 透传）。本身不再持有任何 `RTCPeerConnection`。
-- **Agent**：macOS Node 进程，使用 `@roamhq/wrtc` 充当 P2P answerer。
+- **Agent**：电脑系统 Node 进程，使用 `@roamhq/wrtc` 充当 P2P answerer。
 - **App**：React Native（`react-native-webrtc`）/ Web（浏览器 `RTCPeerConnection`），充当 P2P offerer；若运行环境缺少 WebRTC 能力则 `peerFactory` 返回 null 并按偏好回退或失败。
 - **业务协议**（`session.*`、`terminal.*`、`auth.*`、`workspace.*`、`files.*`、`git.*`、`agent.heartbeat`）由 E2E 内层 envelope 承载；路径切换由传输层吸收。完整消息族以 [packages/protocol-ts/src/index.ts](../packages/protocol-ts/src/index.ts) 为单一来源，对应 JSON Schema 见 [protocol/](../protocol/)。
 
@@ -33,7 +33,7 @@
 
 | 抽象                       | 位置                                                 | 职责                                                                                                               |
 | -------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `SessionTransport`         | `mac/agent/src/transport/`、`app/src/lib/transport/` | 业务模块面对的统一接口；`send` / `onMessage` / `switchPath` / `onPathChange` / `onEvent`                           |
+| `SessionTransport`         | `desktop/agent/src/transport/`、`app/src/lib/transport/` | 业务模块面对的统一接口；`send` / `onMessage` / `switchPath` / `onPathChange` / `onEvent`                           |
 | `WebRtcPeerAdapter`        | 同上                                                 | 跨平台 WebRTC peer 抽象；Agent 用 `@roamhq/wrtc`，App Native 用 `react-native-webrtc`，App Web 用浏览器 WebRTC API |
 | `UpgradeCoordinator`       | 同上                                                 | 客户端升级状态机（idle → proposed → negotiating → committing → upgraded）                                          |
 | `RelayUpgradeOrchestrator` | `relay/server/src/upgrade/orchestrator.ts`           | Relay 端：触发条件、灰度、退避、metrics、控制消息透传                                                              |

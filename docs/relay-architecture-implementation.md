@@ -170,7 +170,7 @@ MVP 范围的基础验收：
 pnpm --filter @omniwork/protocol-ts test
 pnpm --filter @omniwork/protocol-ts typecheck
 pnpm --filter @omniwork/relay-server typecheck
-pnpm --filter @omniwork/mac-agent typecheck
+pnpm --filter @omniwork/desktop-agent typecheck
 pnpm --filter @omniwork/app typecheck
 pnpm verify:relay
 ```

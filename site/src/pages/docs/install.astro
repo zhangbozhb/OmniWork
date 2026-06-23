@@ -1,0 +1,43 @@
+---
+import DocsNav from "@/components/DocsNav.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="安装指南" description="Install OmniWork clients and Desktop Agent.">
+  <div class="container doc-layout">
+    <DocsNav />
+    <article class="prose">
+      <p class="eyebrow">Install</p>
+      <h1>安装指南</h1>
+
+      <h2>iOS</h2>
+      <p>
+        正式用户应从 App Store 安装 OmniWork。GitHub Releases 上的 IPA 只适用于已签名且满足 Apple
+        分发条件的场景，例如 Ad Hoc、企业签名、开发测试或 MDM。
+      </p>
+
+      <h2>Android</h2>
+      <p>
+        Android APK 通过 GitHub Releases 分发。下载后应核对页面展示的 SHA256，确认文件与发布版本一致。
+      </p>
+
+      <h2>桌面端 Agent</h2>
+      <p>
+        桌面端 Agent 通过 GitHub Releases 分发。它负责发现工作区、连接 tmux sessions，并向 App/Web
+        提供 Workspace、Git、Files 和 Terminal 能力。
+      </p>
+
+      <h2>Web App</h2>
+      <p>
+        Web App 入口是 <a href="/app/">/app/</a>。它复用产品 Web SPA，不属于 Public Web 本身。
+        Web 配对不使用摄像头扫描，需要手动输入配对信息或打开配对链接。
+      </p>
+
+      <h2>历史版本</h2>
+      <p>
+        历史安装包、release notes 和校验文件以 <a href="https://github.com/zhangbozhb/OmniWork/releases">GitHub Releases</a>
+        为准。
+      </p>
+    </article>
+  </div>
+</BaseLayout>

@@ -1,5 +1,5 @@
 {
-  "name": "@omniwork/mac-agent",
+  "name": "@omniwork/desktop-agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",

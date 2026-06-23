@@ -1,0 +1,300 @@
+---
+import DocsNav from "@/components/DocsNav.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+
+const securityHighlights = [
+  {
+    label: "E2E",
+    title: "端到端加密传输",
+    text: "业务数据在 App 与桌面端 Agent 之间全程加密。Relay 仅处理外层路由，无法解密会话、终端、文件或 Git 等核心业务内容。",
+  },
+  {
+    label: "Integrity",
+    title: "严防中间人篡改",
+    text: "结合 Noise 握手协议、AAD、序列号（seq）及重放检测机制，精准识别篡改与密钥不匹配。一旦发现异常，立即阻断连接，拒绝降级为明文通信。",
+  },
+  {
+    label: "Zero-Trust",
+    title: "Relay 零信任机制",
+    text: "Relay 仅负责连接建立、路由转发、限流及 P2P 升级协调，不存储业务密钥、不执行业务指令、不读取任何业务明文。",
+  },
+  {
+    label: "Boundary",
+    title: "工作区严格隔离",
+    text: "文件浏览与编辑被严格限制在 Workspace 范围内。文本保存时会附带内容哈希（Hash），由桌面端 Agent 执行冲突检测，有效防止越权访问与数据误覆盖。",
+  },
+];
+
+const guaranteeRows = [
+  ["Relay 抓包窃听", "仅能获取 E2E 外层消息与路由元数据", "无法窥探业务明文，保障数据隐私"],
+  ["Relay 篡改密文", "App 或 Agent 端校验失败", "直接切断连接，拒绝执行被篡改的指令"],
+  ["Relay 重放旧消息", "接收端触发 seq/重放检测并拒绝", "确保旧有的业务指令不会被重复执行"],
+  ["伪造明文业务指令", "Relay 与 Agent 默认拒绝", "系统不提供静默的明文降级（Fallback）机制"],
+];
+---
+
+<BaseLayout title="安全设计" description="OmniWork security model.">
+  <div class="container doc-layout">
+    <DocsNav />
+    <article class="prose security-page">
+      <p class="eyebrow">Security</p>
+      <h1>安全设计</h1>
+      <p class="security-lede">
+        在 OmniWork 中，安全不仅仅是一层附加的保护网，更是产品设计的核心底层机制。
+        我们默认将所有业务数据置于 App 与桌面端 Agent 的端到端加密通道中。Relay 仅充当通信桥梁，不参与任何具体的内容交付，也不具备解密业务数据的能力。
+      </p>
+
+      <section class="security-hero" aria-label="核心安全承诺">
+        <div class="security-seal">
+          <span>encrypted-only</span>
+          <strong>业务内容只在两端解密</strong>
+          <p>Relay 只负责连接与转发，无法读取、存储或还原会话、终端、文件与 Git 等业务内容。</p>
+        </div>
+        <div class="security-grid">
+          {securityHighlights.map((item) => (
+            <div class="security-card">
+              <span>{item.label}</span>
+              <h2>{item.title}</h2>
+              <p>{item.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <h2>通信链路解析</h2>
+      <p>
+        无论是通过 Relay 进行常规通信，还是升级至 P2P 直连，安全边界始终锁定在 App 与 Agent 的端到端（E2E）会话中。
+        P2P 机制仅用于优化网络路径与提升性能，绝不替代底层的加密保障；而 Relay 仅用于提升网络可达性与路由效率，永远不会成为业务数据的信任方。
+      </p>
+
+      <div class="security-flow" aria-label="App Agent 端到端加密路径">
+        <div class="endpoint">
+          <span>App / Web</span>
+          <strong>加密业务消息</strong>
+        </div>
+        <div class="relay-node">
+          <span>Relay</span>
+          <strong>只转发密文</strong>
+          <small>不可解密，不执行业务命令</small>
+        </div>
+        <div class="endpoint">
+          <span>桌面端 Agent</span>
+          <strong>解密并执行</strong>
+        </div>
+      </div>
+
+      <h2>关键攻击面防御策略</h2>
+      <div class="guarantee-table" role="table" aria-label="安全场景处理方式">
+        <div class="guarantee-row header" role="row">
+          <div role="columnheader">场景</div>
+          <div role="columnheader">系统行为</div>
+          <div role="columnheader">结果</div>
+        </div>
+        {guaranteeRows.map((row) => (
+          <div class="guarantee-row" role="row">
+            {row.map((cell) => <div role="cell">{cell}</div>)}
+          </div>
+        ))}
+      </div>
+
+      <h2>设备配对与身份认证</h2>
+      <p>
+        在当前的 MVP 版本中，桌面端 Agent 启动时会生成一个 32 字符的临时密钥（Key）。用户需在 App 或 Web 端输入 Relay URL、Device ID 及该临时密钥以完成配对。
+        <code>auth.proof</code> 仅用于 Relay 的准入校验与失败限流，真正的业务通道必须等待 E2E 握手成功后方可使用。
+      </p>
+
+      <h2>本地存储与文件边界</h2>
+      <p>
+        移动端的配对信息将安全地保存在操作系统的受信任存储区（Keychain/Keystore），Web 端则使用浏览器的 sessionStorage。
+        文件操作权限被严格限定在 Workspace 内部，且仅支持常见 UTF-8 文本文件的编辑。在保存文件时，系统会附带打开时的内容哈希值，交由桌面端 Agent 进行严格的冲突检测与写入保护。
+      </p>
+
+      <div class="note">
+        公开站点（Public Web）绝不处理配对、不保存密钥、不接触用户的工作区数据，同时严格对外屏蔽 Admin、Metrics、Debug 等内部运维端点。
+      </div>
+    </article>
+  </div>
+</BaseLayout>
+
+<style>
+  .security-page {
+    max-width: 920px;
+  }
+
+  .security-lede {
+    max-width: 840px;
+    font-size: 18px;
+  }
+
+  .security-hero {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.82fr) minmax(0, 1.18fr);
+    gap: 18px;
+    margin: 34px 0 48px;
+  }
+
+  .security-seal,
+  .security-card,
+  .relay-node,
+  .endpoint,
+  .guarantee-table {
+    border: 1px solid rgba(46, 230, 166, 0.24);
+    background:
+      linear-gradient(180deg, rgba(46, 230, 166, 0.1), rgba(70, 217, 255, 0.025)),
+      rgba(7, 16, 22, 0.78);
+    box-shadow: var(--shadow);
+  }
+
+  .security-seal {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 100%;
+    padding: 30px;
+    border-radius: 26px;
+  }
+
+  .security-seal span,
+  .security-card span,
+  .relay-node span,
+  .endpoint span {
+    color: var(--accent);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .security-seal strong {
+    display: block;
+    max-width: 360px;
+    margin-top: 24px;
+    font-size: clamp(30px, 3.8vw, 42px);
+    line-height: 1.08;
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+  }
+
+  .security-seal p {
+    max-width: 360px;
+    margin: 18px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.75;
+  }
+
+  .security-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .security-card {
+    min-height: 210px;
+    padding: 22px;
+    border-radius: 24px;
+  }
+
+  .security-card h2 {
+    margin: 14px 0 10px;
+    font-size: 22px;
+  }
+
+  .security-card p {
+    margin: 0;
+    font-size: 15px;
+  }
+
+  .security-flow {
+    display: grid;
+    grid-template-columns: 1fr 1.08fr 1fr;
+    gap: 12px;
+    margin: 24px 0 46px;
+  }
+
+  .relay-node,
+  .endpoint {
+    position: relative;
+    min-height: 160px;
+    padding: 22px;
+    border-radius: 24px;
+  }
+
+  .relay-node {
+    border-color: rgba(255, 184, 107, 0.34);
+    background:
+      linear-gradient(180deg, rgba(255, 184, 107, 0.1), rgba(70, 217, 255, 0.025)),
+      rgba(7, 16, 22, 0.78);
+  }
+
+  .endpoint strong,
+  .relay-node strong {
+    display: block;
+    margin-top: 18px;
+    font-size: 24px;
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+  }
+
+  .relay-node small {
+    display: block;
+    margin-top: 10px;
+    color: var(--danger);
+    line-height: 1.5;
+  }
+
+  .guarantee-table {
+    overflow: hidden;
+    margin: 24px 0 46px;
+    border-radius: 24px;
+  }
+
+  .guarantee-row {
+    display: grid;
+    grid-template-columns: 0.9fr 1.25fr 1fr;
+    border-top: 1px solid var(--line);
+  }
+
+  .guarantee-row:first-child {
+    border-top: 0;
+  }
+
+  .guarantee-row > div {
+    padding: 16px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .guarantee-row.header > div {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.055);
+    font-weight: 800;
+  }
+
+  @media (max-width: 920px) {
+    .security-hero,
+    .security-flow {
+      grid-template-columns: 1fr;
+    }
+
+    .security-seal {
+      min-height: 240px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .security-grid,
+    .guarantee-row {
+      grid-template-columns: 1fr;
+    }
+
+    .guarantee-row {
+      padding: 12px 0;
+    }
+
+    .guarantee-row.header {
+      display: none;
+    }
+  }
+</style>

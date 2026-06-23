@@ -1,6 +1,6 @@
-# OmniWork Mac Agent
+# OmniWork 桌面端 Agent
 
-TypeScript/Node.js Mac Agent for managing Agent CLI TUI sessions.
+TypeScript/Node.js 桌面端 Agent for managing Agent CLI TUI sessions.
 
 ## Current MVP
 
@@ -27,8 +27,8 @@ Useful environment variables:
 
 ```sh
 OMNIWORK_RELAY_URL=wss://relay.company.example/relay/ws/agent
-OMNIWORK_DEVICE_ID=my-mac
-OMNIWORK_AGENT_DISPLAY_NAME="Alice MacBook"
+OMNIWORK_DEVICE_ID=my-desktop
+OMNIWORK_AGENT_DISPLAY_NAME="Alice DesktopBook"
 OMNIWORK_AGENT_IDENTITY_PATH=/Users/me/.omniwork/agent.json
 OMNIWORK_AGENT_IDENTITY_KEYCHAIN=1
 OMNIWORK_CODEX_COMMAND=codex
@@ -40,7 +40,7 @@ OMNIWORK_TERMINAL_STREAM_ENABLED=false
 ```
 
 `OMNIWORK_AGENT_PROVIDERS` is the primary way to choose and extend Agent CLI
-providers. When it is unset, the Mac Agent falls back to the default Codex,
+providers. When it is unset, the 桌面端 Agent falls back to the default Codex,
 Claude, and Gemini presets. The `OMNIWORK_CODEX_COMMAND`,
 `OMNIWORK_CLAUDE_COMMAND`, and `OMNIWORK_GEMINI_COMMAND` variables only override
 those fallback preset commands.
@@ -70,7 +70,7 @@ Provider metadata is sent to the App through `agent.hello` and `session.list`,
 so the App can display and create configured providers without hardcoded
 Codex/Claude/Gemini assumptions.
 
-Workspaces are not configured provider lists. The Mac Agent discovers them from
+Workspaces are not configured provider lists. The 桌面端 Agent discovers them from
 the current working directories of managed sessions and existing tmux sessions.
 When a session cwd is inside a Git repository, the workspace is promoted to the
 Git root; otherwise the cwd itself is used. The workspace path is the stable
@@ -82,5 +82,5 @@ editing for supported file types, and session grouping.
 ## Verify
 
 ```sh
-pnpm --filter @omniwork/mac-agent test
+pnpm --filter @omniwork/desktop-agent test
 ```

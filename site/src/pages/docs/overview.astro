@@ -1,0 +1,53 @@
+---
+import DocsNav from "@/components/DocsNav.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="项目概览" description="OmniWork project overview.">
+  <div class="container doc-layout">
+    <DocsNav />
+    <article class="prose">
+      <p class="eyebrow">Overview</p>
+      <h1>项目概览</h1>
+      <p class="overview-lede">
+        OmniWork 不仅仅是一个终端，它是你随时随地驾驭本地 Agent 的专属控制台。我们将电脑上的强大操作体验，平滑且安全地延伸至你的 iOS、Android 与浏览器端，让你不再受限于物理设备。
+      </p>
+
+      <h2>我们解决的核心痛点</h2>
+      <p>
+        传统的 Agent 命令行工具通常局限于本地终端——开发者必须守在电脑前才能查看会话、审查代码差异（Diff）或输入指令。
+        OmniWork 拒绝这种低效模式。我们将这些高频交互转化为跨设备的操作界面，同时坚守电脑本机作为实际执行环境的绝对安全原则。
+      </p>
+
+      <h2>系统架构组成</h2>
+      <ul>
+        <li><strong>App / Web 客户端</strong>：承担设备配对、环境选择，并提供 Workspace、会话、Git、文件与终端的交互界面。</li>
+        <li><strong>桌面端 Agent</strong>：作为运行在电脑本地的守护进程，负责发现工作区、管理 tmux 会话、对接各种 Agent Provider，并执行底层的文件与 Git 操作。</li>
+        <li><strong>Relay 中继服务</strong>：在公网或企业内网中提供稳定的连接中转，协助客户端与桌面端 Agent 顺利建立加密通道。</li>
+        <li><strong>共享协议层</strong>：定义了跨端消息、身份认证、会话状态、终端交互、文件传输及网络升级链路的标准数据结构。</li>
+        <li><strong>公开站点 (Public Web)</strong>：即您当前访问的站点，专门用于项目介绍、公开文档查阅、应用下载及 Web 客户端的访问入口引导。</li>
+      </ul>
+
+      <h2>工作运行机制</h2>
+      <p>
+        用户首先在电脑上启动 Agent，系统会生成 Relay URL、Device ID 与临时密钥。随后，用户在 iOS、Android 或 Web 客户端输入这些信息完成配对。
+        客户端将通过 Relay 中继（或在条件允许时自动升级为 P2P 直连）与桌面端 Agent 建立安全连接。连接成功后，用户即可选定工作区，在统一的上下文中管理会话、审阅 Git 变更、浏览项目文件并接管终端交互。
+      </p>
+
+      <h2>适用人群</h2>
+      <ul>
+        <li>频繁使用 Codex、Claude、Gemini、OpenCode 等基于命令行的 Agent 工具的开发者。</li>
+        <li>希望在离开电脑屏幕后，依然能够随时查看并接续本地 Agent 任务的用户。</li>
+        <li>期望在移动端快速审阅会话状态、代码 Diff、文件内容及终端输出的早期采用者。</li>
+      </ul>
+    </article>
+  </div>
+</BaseLayout>
+
+<style>
+  .overview-lede {
+    font-size: 18px;
+    line-height: 1.7;
+    margin-bottom: 2rem;
+  }
+</style>

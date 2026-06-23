@@ -1,0 +1,97 @@
+---
+const navItems = [
+  { href: "/docs/", label: "Docs" },
+  { href: "/download/", label: "Download" },
+  { href: "/changelog/", label: "Changelog" },
+  { href: "/app/", label: "Web App" },
+];
+---
+
+<header class="site-header">
+  <a class="brand" href="/" aria-label="OmniWork home">
+    <span class="brand-mark">OW</span>
+    <span>OmniWork</span>
+  </a>
+  <nav class="nav" aria-label="Primary navigation">
+    {navItems.map((item) => <a href={item.href}>{item.label}</a>)}
+  </nav>
+</header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: min(1120px, calc(100% - 40px));
+    margin: 0 auto;
+    padding: 18px 0;
+    backdrop-filter: blur(18px);
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(46, 230, 166, 0.62);
+    border-radius: 12px;
+    color: #04130f;
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(7, 16, 22, 0.74);
+  }
+
+  .nav a {
+    padding: 9px 12px;
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .nav a:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  @media (max-width: 720px) {
+    .site-header {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 14px;
+      width: min(100% - 28px, 1120px);
+    }
+
+    .nav {
+      width: 100%;
+      overflow-x: auto;
+      justify-content: flex-start;
+    }
+
+    .nav a {
+      white-space: nowrap;
+    }
+  }
+</style>

@@ -1,0 +1,235 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+
+const features = [
+  {
+    title: "以工作区为核心",
+    text: "将工作区作为核心对象，使会话、Git 状态和文件浏览统一在相同的上下文中。",
+  },
+  {
+    title: "多端无缝协同",
+    text: "iOS、Android 与 Web 端采用统一的产品架构，Web 客户端通过 /app/ 独立运行。",
+  },
+  {
+    title: "桌面端 Agent",
+    text: "桌面端 Agent 负责连接本地 tmux、工作区及 Agent Provider，将远程操作精准映射至本地环境。",
+  },
+  {
+    title: "Relay 与 P2P 通信",
+    text: "通过 Relay 保障网络可达性，以 P2P 作为网络升级路径；公开站点仅作展示，不暴露内部运维接口。",
+  },
+  {
+    title: "文件与 Git 管理",
+    text: "在授权的工作区内，支持浏览文件、预览文本、查看 Git 状态及代码差异。",
+  },
+  {
+    title: "终端交互界面",
+    text: "基于 xterm 与 WebView 提供终端交互，让移动设备和浏览器也能轻松接入工作流。",
+  },
+];
+
+const platforms = [
+  { name: "iOS", href: "/download/#ios", text: "推荐通过 App Store 正式安装，签名 IPA 仅作为特殊分发的备选方案。" },
+  { name: "Android", href: "/download/#android", text: "APK 安装包通过 GitHub Releases 分发，并提供版本号与校验值。" },
+  { name: "桌面端 Agent", href: "/download/#desktop-agent", text: "桌面端 Agent 程序通过 GitHub Releases 分发。" },
+  { name: "Web App", href: "/app/", text: "无需安装移动端应用，直接在浏览器中打开客户端。" },
+];
+---
+
+<BaseLayout title="OmniWork" description="OmniWork public website, docs, downloads, and Web App entry.">
+  <section class="hero section">
+    <div class="container hero-grid">
+      <div>
+        <p class="eyebrow">下一代 Agent 控制台</p>
+        <h2 class="hero-title">
+          <span>打破设备边界</span>
+          <span>让专属 <span class="nowrap">Agent</span></span>
+          <span>随叫随到</span>
+        </h2>
+        <p class="section-lede">
+          摆脱对本地终端的物理依赖。无论是在通勤途中还是咖啡馆，OmniWork 都能让你随时随地掌控电脑本地的 Agent 工作流。无缝接续会话、审阅代码变更、接管终端操作，让开发者的灵感不再受限于设备。
+        </p>
+        <div class="button-row">
+          <a class="button primary" href="/download/">获取 OmniWork</a>
+          <a class="button" href="/docs/">探索核心能力</a>
+          <a class="button" href="/app/">打开 Web App</a>
+        </div>
+      </div>
+      <!-- 占位图，后续可替换为多端截图 -->
+      <div class="terminal-card" aria-label="OmniWork connection flow preview">
+        <div class="terminal-top">
+          <span></span><span></span><span></span>
+        </div>
+        <pre><code>$ omniwork agent start
+key: 32-character temporary key
+relay: wss://omniwork.example.com/relay/ws/agent
+
+App/Web -> Relay/P2P -> Desktop Agent
+Workspace -> Sessions -> Terminal</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <p class="eyebrow">核心边界</p>
+      <h2 class="section-title">专注于创造的跨端工作台</h2>
+      <div class="card-grid">
+        {features.map((feature) => (
+          <article class="card">
+            <span class="pill">{feature.title}</span>
+            <h3>{feature.title}</h3>
+            <p>{feature.text}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section flow-section">
+    <div class="container">
+      <p class="eyebrow">运行机制</p>
+      <h2 class="section-title">统一的公开入口，清晰的安全边界</h2>
+      <div class="flow">
+        <div>公开官网<br /><small>/</small></div>
+        <div>文档中心<br /><small>/docs/</small></div>
+        <div>下载入口<br /><small>/download/</small></div>
+        <div>Web 客户端<br /><small>/app/</small></div>
+      </div>
+      <p class="section-lede">
+        公开站点无需登录，不调用 Relay，也不暴露 Admin。其核心作用是引导用户获取正确的安装方式、查阅公开文档以及访问现有的 Web 客户端。
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <p class="eyebrow">平台入口</p>
+      <h2 class="section-title">选择对应的平台入口</h2>
+      <div class="card-grid platform-grid">
+        {platforms.map((platform) => (
+          <a class="card platform-card" href={platform.href}>
+            <h3>{platform.name}</h3>
+            <p>{platform.text}</p>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .hero {
+    padding-top: 96px;
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.06fr) minmax(360px, 0.94fr);
+    gap: 36px;
+    align-items: center;
+  }
+
+  .hero-title {
+    max-width: 660px;
+    margin: 0;
+    font-size: clamp(42px, 6.2vw, 76px);
+    line-height: 1.02;
+    letter-spacing: -0.045em;
+    text-wrap: balance;
+  }
+
+  .hero-title span {
+    display: block;
+  }
+
+  .hero-title .nowrap {
+    display: inline;
+    white-space: nowrap;
+  }
+
+  .terminal-card {
+    overflow: hidden;
+    border: 1px solid rgba(70, 217, 255, 0.26);
+    border-radius: 28px;
+    background: linear-gradient(180deg, rgba(12, 24, 33, 0.92), rgba(5, 11, 16, 0.96));
+    box-shadow: var(--shadow);
+  }
+
+  .terminal-top {
+    display: flex;
+    gap: 8px;
+    padding: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .terminal-top span {
+    width: 11px;
+    height: 11px;
+    border-radius: 999px;
+    background: var(--faint);
+  }
+
+  .terminal-card pre {
+    margin: 0;
+    padding: 26px;
+    color: #c9f8e8;
+    font-size: 14px;
+    line-height: 1.8;
+    white-space: pre-wrap;
+  }
+
+  .flow-section {
+    border-block: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 36px;
+  }
+
+  .flow div {
+    min-height: 112px;
+    padding: 20px;
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background: rgba(12, 24, 33, 0.82);
+    font-weight: 800;
+  }
+
+  .flow small {
+    display: block;
+    margin-top: 8px;
+    color: var(--accent);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  }
+
+  .platform-card {
+    min-height: 180px;
+    transition:
+      border-color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .platform-card:hover {
+    border-color: rgba(46, 230, 166, 0.52);
+    transform: translateY(-2px);
+  }
+
+  @media (max-width: 920px) {
+    .hero-grid,
+    .flow {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .hero-title {
+      font-size: clamp(38px, 13vw, 54px);
+      letter-spacing: -0.04em;
+    }
+  }
+</style>

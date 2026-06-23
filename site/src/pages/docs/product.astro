@@ -1,0 +1,239 @@
+---
+import DocsNav from "@/components/DocsNav.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+
+const principles = [
+  {
+    label: "Secure",
+    title: "安全",
+    text: "在连接、身份认证、数据传输、文件操作与信息公开等环节均遵循最小权限原则。支持远程接入，但绝不因此增加本地运行环境的风险。",
+  },
+  {
+    label: "Anywhere",
+    title: "让创造，无处不在",
+    text: "无论离开电脑还是切换设备，都能快速回到同一个 Workspace、会话、代码变更与终端上下文中，工作流不再因设备切换而中断。",
+  },
+  {
+    label: "Usable",
+    title: "开箱即用",
+    text: "无需深入了解 Relay、P2P、通信协议及平台差异。界面始终聚焦于项目本身、当前任务、代码变更以及下一步的核心操作。",
+  },
+  {
+    label: "Open",
+    title: "开放且可控",
+    text: "通过统一的共享协议与 Provider 机制接入多种 Agent 工具。在提供强大扩展能力的同时，确保边界清晰、行为可验证。",
+  },
+];
+
+const designRules = [
+  ["拒绝通用远控", "仅开放 Agent 工作流所必需的核心模块：Workspace、会话、Git、文件及终端。"],
+  ["保留本地执行环境", "Agent 命令行、tmux 会话、文件系统及 Git 操作仍保留在用户的电脑本地执行。"],
+  ["限制 Relay 信任边界", "Relay 仅负责连接建立与路由转发，业务数据的安全边界始终控制在客户端与桌面端 Agent 之间。"],
+  ["多端底层一致", "Android、iOS 与 Web 端采用统一的产品模型，通过适配层处理平台差异，避免重复开发。"],
+];
+---
+
+<BaseLayout title="产品理念" description="OmniWork product principles.">
+  <div class="container doc-layout">
+    <DocsNav />
+    <article class="prose principle-page">
+      <p class="eyebrow">Product</p>
+      <h1>产品理念</h1>
+      <p class="principle-lede">
+        灵感与工作不该被局限在固定的办公桌前。OmniWork 的诞生，是为了让顶尖的 Agent 能力如影随形。安全、让创造无处不在、开箱即用、开放可控，构成了我们赋能开发者的四大基石。
+      </p>
+
+      <section class="principle-hero" aria-label="产品理念四原则">
+        <div class="principle-statement">
+          <span>core belief</span>
+          <strong>重塑你的创造边界</strong>
+          <p>不要让强大的 Agent 被锁在办公桌上。在绝对安全的前提下，把控制权交还给你——无论身在何处，灵感与代码始终同步。</p>
+        </div>
+        <div class="principle-grid">
+          {principles.map((item) => (
+            <div class="principle-card">
+              <span>{item.label}</span>
+              <h2>{item.title}</h2>
+              <p>{item.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <h2>理念如何落地</h2>
+      <div class="principle-table" role="table" aria-label="产品理念落地方式">
+        <div class="principle-row header" role="row">
+          <div role="columnheader">设计取舍</div>
+          <div role="columnheader">落地方式</div>
+        </div>
+        {designRules.map((row) => (
+          <div class="principle-row" role="row">
+            <div role="cell">{row[0]}</div>
+            <div role="cell">{row[1]}</div>
+          </div>
+        ))}
+      </div>
+
+      <h2>以 Workspace 为核心的产品架构</h2>
+      <p>
+        Workspace（工作区）是 OmniWork 的核心对象。所有的会话、Git 状态、文件和终端都被统一组织在 Workspace 之下。
+        通过这种方式，用户面对的不再是零散的终端窗口，而是“某个具体项目中的 Agent 工作状态”。
+      </p>
+
+      <h2>本地执行，远程接入</h2>
+      <p>
+        桌面端 Agent 构成了严格的执行边界：Agent 命令行、tmux 会话、文件系统及 Git 均在本地运行。移动端与 Web 端仅作为轻量化的访问与操作入口。
+        这使得项目能够充分复用用户现有的本地开发环境，而无需将核心能力全部迁移至云端。
+      </p>
+
+      <div class="principle-note">
+        当前，公开站点仅负责项目介绍、文档查阅与下载引导。实际的设备配对、会话管理、文件浏览、Git 操作及终端交互，均在 <code>/app/</code> 产品客户端中完成。
+      </div>
+    </article>
+  </div>
+</BaseLayout>
+
+<style>
+  .principle-page {
+    max-width: 920px;
+  }
+
+  .principle-lede {
+    max-width: 840px;
+    font-size: 18px;
+  }
+
+  .principle-hero {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.86fr) minmax(0, 1.14fr);
+    gap: 18px;
+    margin: 34px 0 48px;
+  }
+
+  .principle-statement,
+  .principle-card,
+  .principle-table,
+  .principle-note {
+    border: 1px solid rgba(46, 230, 166, 0.24);
+    background:
+      linear-gradient(180deg, rgba(46, 230, 166, 0.1), rgba(70, 217, 255, 0.025)),
+      rgba(7, 16, 22, 0.78);
+    box-shadow: var(--shadow);
+  }
+
+  .principle-statement {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 100%;
+    padding: 30px;
+    border-radius: 26px;
+  }
+
+  .principle-statement span,
+  .principle-card span {
+    color: var(--accent);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .principle-statement strong {
+    display: block;
+    max-width: 380px;
+    margin-top: 24px;
+    font-size: clamp(30px, 3.8vw, 42px);
+    line-height: 1.08;
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+  }
+
+  .principle-statement p {
+    max-width: 380px;
+    margin: 18px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.75;
+  }
+
+  .principle-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .principle-card {
+    min-height: 210px;
+    padding: 22px;
+    border-radius: 24px;
+  }
+
+  .principle-card h2 {
+    margin: 14px 0 10px;
+    font-size: 24px;
+  }
+
+  .principle-card p {
+    margin: 0;
+    font-size: 15px;
+  }
+
+  .principle-table {
+    overflow: hidden;
+    margin: 24px 0 46px;
+    border-radius: 24px;
+  }
+
+  .principle-row {
+    display: grid;
+    grid-template-columns: 0.7fr 1.3fr;
+    border-top: 1px solid var(--line);
+  }
+
+  .principle-row:first-child {
+    border-top: 0;
+  }
+
+  .principle-row > div {
+    padding: 16px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  .principle-row.header > div {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.055);
+    font-weight: 800;
+  }
+
+  .principle-note {
+    margin-top: 30px;
+    padding: 20px;
+    border-radius: 22px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  @media (max-width: 920px) {
+    .principle-hero,
+    .principle-row {
+      grid-template-columns: 1fr;
+    }
+
+    .principle-statement {
+      min-height: 240px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .principle-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .principle-row.header {
+      display: none;
+    }
+  }
+</style>

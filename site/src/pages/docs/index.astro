@@ -1,0 +1,42 @@
+---
+import DocsNav from "@/components/DocsNav.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="公开文档" description="OmniWork public documentation.">
+  <div class="container doc-layout">
+    <DocsNav />
+    <article class="prose">
+      <p class="eyebrow">Docs</p>
+      <h1>公开文档</h1>
+      <p>
+        此处汇集了面向大众与早期测试用户的核心文档。关于内部部署流程、Admin API、监控指标（Metrics）、调试信息（Debug）及密钥实现等内部细节，将不会在公开站点展示。
+      </p>
+
+      <h2>推荐阅读顺序</h2>
+      <ol>
+        <li><a href="/docs/overview/">项目概览</a>：快速了解 OmniWork 的定位、核心价值及系统构成。</li>
+        <li><a href="/docs/product/">产品理念</a>：深入理解安全保障、多端无缝衔接、开箱即用与开放可控四大设计原则。</li>
+        <li><a href="/docs/features/">核心特性</a>：了解以安全为基石、以用户为中心的设计思路，以及工作区、会话、Git、文件、终端等核心能力。</li>
+        <li><a href="/docs/security/">安全设计</a>：全面了解临时密钥机制、Relay 安全边界、端到端加密（E2E）与文件编辑保护策略。</li>
+        <li><a href="/docs/design/">体验设计</a>：解析移动端与 Web 端在交互组织与信息架构上的设计考量。</li>
+        <li><a href="/docs/getting-started/">快速开始</a>：通过最短路径完成客户端安装、桌面端 Agent 启动与设备配对。</li>
+        <li><a href="/docs/install/">安装指南</a>：按平台获取 iOS、Android、桌面端 Agent 及 Web 端的详细安装说明。</li>
+        <li><a href="/docs/faq/">常见问题 (FAQ)</a>：获取关于网络连接、软件下载及浏览器兼容性等常见问题的解答。</li>
+      </ol>
+
+      <h2>项目简介</h2>
+      <p>
+        OmniWork 是一款专为 Agent 工作流打造的终端工作台。它将用户电脑本地的 Agent 工具、tmux 会话、项目文件、Git 状态及终端交互能力，通过移动端与 Web 客户端有机整合，构建出一个打破设备限制的高效工作环境。
+      </p>
+      <p>
+        本站的公开文档不仅提供基础的“操作指南”，更深入阐述了 OmniWork 的“设计初衷”：将安全作为默认前提，追求多设备间的无缝协同，坚持以人为本的交互逻辑，确立明确的协议边界，并解释了为何 App 与 Web 端需要共享同一套产品架构。
+      </p>
+
+      <h2>信息公开边界</h2>
+      <p>
+        公开站点仅展示从普通用户视角出发所需了解的信息。若涉及内部系统运维、Relay 深度调试或后台管理操作，请查阅代码仓库内部文档并在受控环境中执行。
+      </p>
+    </article>
+  </div>
+</BaseLayout>

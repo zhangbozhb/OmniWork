@@ -1,0 +1,44 @@
+---
+import DocsNav from "@/components/DocsNav.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="快速开始" description="Get started with OmniWork.">
+  <div class="container doc-layout">
+    <DocsNav />
+    <article class="prose">
+      <p class="eyebrow">Getting started</p>
+      <h1>快速开始</h1>
+      <p>
+        OmniWork 的最短路径是：安装客户端，启动桌面端 Agent，输入 Relay URL、device ID 和临时 key，
+        连接成功后开始使用。
+      </p>
+
+      <h2>1. 获取客户端</h2>
+      <p>在你的手机或浏览器中准备好客户端：</p>
+      <ul>
+        <li><strong>iOS</strong>：从 App Store 下载。</li>
+        <li><strong>Android</strong>：从 GitHub Releases 下载 APK。</li>
+        <li><strong>Web</strong>：直接访问 <code>/app/</code>。</li>
+      </ul>
+
+      <h2>2. 启动桌面端 Agent</h2>
+      <p>在电脑上启动 Agent 后，记录页面或终端中显示的 Relay URL、device ID 和 32 字符临时 key。</p>
+      <pre><code>pnpm dev:desktop</code></pre>
+
+      <h2>3. 连接设备</h2>
+      <p>
+        在 iOS、Android 或 Web App 中输入配对信息。Web 不使用二维码扫描，需要手动输入或通过配对链接导入。
+      </p>
+
+      <h2>4. 发现并使用工作区</h2>
+      <p>
+        连接成功后，选择一个桌面端 Agent 发现的 Workspace。Git 标签只会在该 Workspace 位于 Git 仓库内时出现。
+      </p>
+
+      <div class="note">
+        Public Web 不处理配对过程，也不会保存临时 key。配对和工作区操作都发生在 App/Web 客户端中。
+      </div>
+    </article>
+  </div>
+</BaseLayout>

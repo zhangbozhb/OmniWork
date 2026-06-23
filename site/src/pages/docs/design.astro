@@ -1,0 +1,230 @@
+---
+import DocsNav from "@/components/DocsNav.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+
+const designPillars = [
+  {
+    label: "Context",
+    title: "状态无缝同步",
+    text: "Workspace、会话、Git、文件及终端始终围绕同一个项目进行组织，确保用户在切换设备后无需重新寻找工作状态。",
+  },
+  {
+    label: "Focus",
+    title: "聚焦核心操作",
+    text: "针对移动端屏幕空间有限的特点，界面优先展示当前状态、潜在风险与高频操作，低频管理功能则收纳于二级入口。",
+  },
+  {
+    label: "Control",
+    title: "把控执行边界",
+    text: "敏感的风险操作必须经过人工确认；Git 与文件管理功能主要服务于用户的 Review 与判断，避免自动化流程越权执行。",
+  },
+  {
+    label: "Consistency",
+    title: "多端体验一致",
+    text: "iOS、Android 与 Web 端采用统一的产品架构。无论使用何种设备，信息架构与操作预期均保持高度一致。",
+  },
+];
+
+const interactionRules = [
+  ["工作区详情 (Workspace Detail)", "聚合会话 / Git / 文件", "首先明确当前所在的项目环境，随后展开具体的任务、代码变更与文件列表。"],
+  ["Git 按需呈现", "仅在 Git 仓库中显示", "避免在非 Git 工作区中展示无意义的操作入口。"],
+  ["受限的文件边界", "仅在工作区内浏览与编辑", "有效降低越权访问风险，同时让用户清楚地知道当前正在处理哪个项目的文件。"],
+  ["Web 端免扫码", "支持手动输入或配对链接", "尊重浏览器的使用场景，避免将移动端的扫码交互生硬地移植到 Web 端。"],
+  ["高危操作拦截", "统一的确认弹窗 (ConfirmDialog)", "易用性不等于放弃保护，任何风险操作前都必须触发明确的确认流程。"],
+];
+---
+
+<BaseLayout title="体验设计" description="OmniWork design principles.">
+  <div class="container doc-layout">
+    <DocsNav />
+    <article class="prose design-page">
+      <p class="eyebrow">Design</p>
+      <h1>体验设计</h1>
+      <p class="design-lede">
+        OmniWork 的目标并非在移动端复刻复杂的桌面 IDE。我们剥离了冗余的视觉元素，只保留 Agent 工作流中最核心的判断与接续能力。让你无论使用何种设备，都能一目了然地掌控全局、快速决策，享受行云流水般的工作体验。
+      </p>
+
+      <section class="design-hero" aria-label="体验设计原则">
+        {designPillars.map((pillar) => (
+          <div class="design-card">
+            <span>{pillar.label}</span>
+            <h2>{pillar.title}</h2>
+            <p>{pillar.text}</p>
+          </div>
+        ))}
+      </section>
+
+      <h2>跨设备的工作连续性</h2>
+      <div class="design-flow" aria-label="跨设备工作连续性">
+        <div>
+          <span>Desktop</span>
+          <strong>启动 Agent</strong>
+          <small>本机作为核心执行环境。</small>
+        </div>
+        <div>
+          <span>Mobile</span>
+          <strong>查看会话状态</strong>
+          <small>离开电脑也能随时跟进任务。</small>
+        </div>
+        <div>
+          <span>Review</span>
+          <strong>确认 Git / 文件变更</strong>
+          <small>先评估影响，再决定下一步操作。</small>
+        </div>
+        <div>
+          <span>Web</span>
+          <strong>打开 /app/ 接续工作</strong>
+          <small>在浏览器中无缝回到相同的工作上下文。</small>
+        </div>
+      </div>
+
+      <h2>交互规则</h2>
+      <div class="design-table" role="table" aria-label="体验设计交互规则">
+        <div class="design-row header" role="row">
+          <div role="columnheader">设计点</div>
+          <div role="columnheader">界面表现</div>
+          <div role="columnheader">原因</div>
+        </div>
+        {interactionRules.map((row) => (
+          <div class="design-row" role="row">
+            {row.map((cell) => <div role="cell">{cell}</div>)}
+          </div>
+        ))}
+      </div>
+
+      <h2>文档体验</h2>
+      <p>
+        公开文档按“理解项目、理解边界、安装使用、排查问题”的顺序组织。内部工程设计可以保留在仓库 `docs/`，
+        但发布到 Public Web 前需要改写成用户能理解且适合公开的信息。
+      </p>
+    </article>
+  </div>
+</BaseLayout>
+
+<style>
+  .design-page {
+    max-width: 920px;
+  }
+
+  .design-lede {
+    max-width: 840px;
+    font-size: 18px;
+  }
+
+  .design-hero {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin: 34px 0 48px;
+  }
+
+  .design-card,
+  .design-flow div,
+  .design-table {
+    border: 1px solid rgba(46, 230, 166, 0.24);
+    background:
+      linear-gradient(180deg, rgba(46, 230, 166, 0.1), rgba(70, 217, 255, 0.025)),
+      rgba(7, 16, 22, 0.78);
+    box-shadow: var(--shadow);
+  }
+
+  .design-card {
+    min-height: 220px;
+    padding: 24px;
+    border-radius: 26px;
+  }
+
+  .design-card span,
+  .design-flow span {
+    color: var(--accent);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .design-card h2 {
+    margin: 18px 0 12px;
+    font-size: 28px;
+    letter-spacing: -0.04em;
+  }
+
+  .design-card p {
+    margin: 0;
+  }
+
+  .design-flow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 24px 0 46px;
+  }
+
+  .design-flow div {
+    min-height: 172px;
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .design-flow strong {
+    display: block;
+    margin-top: 18px;
+    font-size: 20px;
+    line-height: 1.18;
+  }
+
+  .design-flow small {
+    display: block;
+    margin-top: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .design-table {
+    overflow: hidden;
+    margin: 24px 0 46px;
+    border-radius: 24px;
+  }
+
+  .design-row {
+    display: grid;
+    grid-template-columns: 0.72fr 0.82fr 1.46fr;
+    border-top: 1px solid var(--line);
+  }
+
+  .design-row:first-child {
+    border-top: 0;
+  }
+
+  .design-row > div {
+    padding: 16px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  .design-row > div:first-child {
+    color: var(--text);
+    font-weight: 800;
+  }
+
+  .design-row.header > div {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.055);
+    font-weight: 800;
+  }
+
+  @media (max-width: 920px) {
+    .design-hero,
+    .design-flow,
+    .design-row {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .design-row.header {
+      display: none;
+    }
+  }
+</style>

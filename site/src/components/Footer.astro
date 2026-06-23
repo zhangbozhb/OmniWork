@@ -1,0 +1,57 @@
+<footer class="footer">
+  <div class="footer-inner">
+    <div>
+      <strong>OmniWork</strong>
+    </div>
+    <div class="footer-links">
+      <a href="/docs/">Docs</a>
+      <a href="/download/">Download</a>
+      <a href="/app/">Web App</a>
+      <a href="https://github.com/zhangbozhb/OmniWork">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    border-top: 1px solid var(--line);
+    background: rgba(5, 11, 16, 0.7);
+  }
+
+  .footer-inner {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    width: min(1120px, calc(100% - 40px));
+    margin: 0 auto;
+    padding: 36px 0;
+  }
+
+  .footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  .footer-links a {
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .footer-links a:hover {
+    color: var(--text);
+  }
+
+  @media (max-width: 720px) {
+    .footer-inner {
+      flex-direction: column;
+      width: min(100% - 28px, 1120px);
+    }
+
+    .footer-links {
+      justify-content: flex-start;
+    }
+  }
+</style>
