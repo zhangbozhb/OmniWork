@@ -34,6 +34,17 @@
 - [mobile-codex-tui-technical-solution.md](./mobile-codex-tui-technical-solution.md)：技术方案、风险与演进方向。
 - [agent-probe-sink-design.md](./agent-probe-sink-design.md)：Codex、Claude Code 等 coding agent 的 Probe/Sink 消息感知、过滤与多端投递设计。
 
+## 长期架构边界
+
+后续功能建设统一按以下模型理解，避免把 tmux、Codex、workspace 和 session 混成同一层概念：
+
+- `Workspace`：工作目录 / repo / 项目上下文，不代表具体交互形态。
+- `WorkSession`：一次可恢复的工作单元，关联一个 workspace，可挂载多个 surface。
+- `Surface`：用户交互入口，例如 `TerminalSurface`、`AgentSurface`、文件和 diff surface。
+- `RuntimeBinding`：surface 背后的本机实现绑定，例如 tmux session、PTY、Codex app-server thread、Claude Code 协议实例。
+
+`tmux`、PTY、shell，以及运行在 tmux 中的 Codex / Claude Code TUI 都属于终端类 surface。只有存在 app-server 或等价结构化协议绑定时，才创建 Agent 类 surface。Agent 类 surface 不替代终端类 surface；结构化通道失效时应降级回终端类 surface。
+
 ## 维护规则
 
 - 代码改动后同步检查相关文档，避免实现与文档漂移。

@@ -71,6 +71,141 @@ MVP 不做：
 
 桌面端负责运行和持久化会话，手机端负责展示、输入和切换。手机断开不会影响 电脑 上已有的会话。
 
+长期产品定位不是停留在远程终端，而是在同一个 workspace 下同时提供终端级操作和结构化 Agent 工作流：
+
+- 终端级操作保证通用性，可覆盖 shell、tmux、PTY，以及运行在终端里的 Codex / Claude Code TUI。
+- 结构化 Agent 工作流提供语义化的任务状态、计划、工具调用、审批、diff、通知和恢复能力。
+- 两者可以同时存在。终端是稳定兜底，Agent surface 是产品化主体验。
+
+## 工作模型
+
+后续建设统一采用四层模型：
+
+```text
+Workspace
+  工作目录、repo、项目上下文。
+
+WorkSession
+  一次可恢复的工作单元，属于一个 Workspace。
+
+Surface
+  用户可见、可操作的交互入口。
+
+RuntimeBinding
+  Surface 背后的本机进程、协议或服务绑定。
+```
+
+建议字段：
+
+```text
+Workspace
+  workspace_id
+  path
+  repository metadata
+
+WorkSession
+  session_id
+  workspace_id
+  title
+  status
+  created_at
+  last_active_at
+
+Surface
+  surface_id
+  session_id
+  kind: terminal | agent | file | diff
+  provider?: shell | codex | claude-code | opencode | gemini
+  status: active | detached | ended
+
+RuntimeBinding
+  binding_id
+  surface_id
+  backend: tmux | pty | codex_app_server | claude_protocol | hook_probe
+  external_ref: tmux_name | thread_id | socket_path | process_id
+```
+
+边界规则：
+
+- `Workspace` 不代表交互形态，只代表工作上下文。
+- `WorkSession` 不等同于 tmux session，也不等同于 Codex thread。
+- `Surface` 是 App 面向用户展示和操作的入口。
+- `RuntimeBinding` 是本机实现细节，不应直接暴露给 App 作为产品概念。
+
+### TerminalSurface
+
+`TerminalSurface` 负责终端类交互：
+
+```text
+输入：
+  text / key / paste / resize
+
+输出：
+  terminal.snapshot / terminal.frame
+
+典型后端：
+  tmux / PTY / shell
+```
+
+运行在 tmux 里的 Codex / Claude Code TUI 仍然属于 `TerminalSurface`。此时 Desktop Agent 操作的是字符流、按键和终端画面，不拥有 thread、turn、approval、diff 等结构化语义。
+
+### AgentSurface
+
+`AgentSurface` 负责结构化 coding agent 交互：
+
+```text
+输入：
+  submit prompt
+  approve / reject
+  cancel turn
+  resume thread
+  provide user input
+
+输出：
+  thread event
+  turn event
+  plan update
+  tool progress
+  diff update
+  approval request
+  completion / failure
+
+典型后端：
+  Codex app-server
+  Claude Code 等价结构化协议
+```
+
+`AgentSurface` 不应被设计成纯聊天。聊天输入只是 command composer；主界面应是 `Thread + Turn + Timeline + Approval + Diff + Tool Activity`。
+
+### 模糊地带处理
+
+同一个 `WorkSession` 可以同时存在 `TerminalSurface` 和 `AgentSurface`：
+
+```text
+tmux 里运行 Codex TUI
+  -> TerminalSurface active
+
+如果能绑定到 Codex app-server thread
+  -> AgentSurface active
+  -> 与 TerminalSurface 关联到同一个 WorkSession
+
+用户退出 Codex 回到 shell
+  -> AgentSurface ended 或 detached
+  -> TerminalSurface 继续 active
+
+用户重新运行 Codex
+  -> 新 AgentSurface attached
+  -> TerminalSurface 不变
+```
+
+处理原则：
+
+- 有 tmux / PTY 就可以提供 `TerminalSurface`。
+- 只有存在结构化协议绑定时，才创建 `AgentSurface`。
+- `AgentSurface` 不接管、不替代 `TerminalSurface`。
+- 结构化通道失效时，降级到 `TerminalSurface`，不能销毁整个 `WorkSession`。
+- App 可以优先展示 `AgentSurface`，但必须保留打开终端的入口。
+
 ## 推荐架构
 
 正式环境推荐采用「TypeScript 电脑 本地 Agent + 公司内网中继 + Android/iOS 跨端移动 App」。

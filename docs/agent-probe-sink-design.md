@@ -33,6 +33,8 @@ Android / iOS / Web App
 - App 只接收过滤后的 `AgentAppMessage`。
 - Relay 仍只转发 E2E 加密业务消息，不理解 Probe 或 Agent 消息语义。
 - Codex Probe 采用 app-server、hooks、PTY/tmux 三通道：app-server 是结构化主路径，hooks 是生命周期和治理补充路径，PTY/tmux 是兼容兜底路径。
+- tmux / PTY 属于 `TerminalSurface` 后端；Codex app-server 或其他结构化协议才属于 `AgentSurface` 后端。
+- Hooks 只提供感知和治理信号，不作为 AgentSurface 的主交互协议。
 
 ## 实装状态
 
@@ -49,12 +51,55 @@ Android / iOS / Web App
 | 中文术语 | 英文术语 | 定义 |
 |---|---|---|
 | 编码 Agent | Coding Agent | Codex、Claude Code、OpenCode、Gemini CLI 等运行在电脑本地的 CLI / TUI / app-server 编码工具。 |
+| 工作区 | Workspace | 工作目录、repo 或项目上下文，不代表具体交互形态。 |
+| 工作会话 | WorkSession | 一次可恢复的工作单元，可同时挂载多个交互入口。 |
+| 交互入口 | Surface | App 面向用户展示和操作的入口，例如 TerminalSurface、AgentSurface、文件和 diff surface。 |
+| 运行绑定 | RuntimeBinding | Surface 背后的本机实现绑定，例如 tmux session、PTY、app-server thread、socket 或进程。 |
+| 终端交互入口 | TerminalSurface | 基于字符流、按键、resize、终端快照和终端帧的交互入口。 |
+| Agent 交互入口 | AgentSurface | 基于结构化 Agent 协议的交互入口，承载 prompt、turn、plan、tool、approval、diff 和 completion。 |
 | Agent 探针 | Agent Probe | 针对某一类 coding agent 的专属感知模块，负责理解该 Agent 的事件源。 |
 | 探针 Hook | Probe Hook | Probe 内部接入具体事件源的机制，例如 app-server event、CLI hook、PTY 输出、tmux pane 状态、进程生命周期、文件变更或 Git diff。 |
 | 探针接收器 | Agent Probe Sink | Desktop Agent 内部统一接收 Probe 事件的入口。 |
 | 事件归一化器 | Agent Event Normalizer | 补齐 session、workspace、provider 等元数据，并把事件转成统一语义。 |
 | 消息过滤器 | Agent Message Filter | 判断哪些事件能进入 App 消息流或系统通知，并执行去重、频控、权限和敏感信息过滤。 |
 | 消息路由器 | Agent Message Router | 根据 App 在线状态、端类型和消息优先级选择投递路径。 |
+
+## Surface 与 Probe 的关系
+
+Probe/Sink 不直接定义 App 的交互形态，它负责把 coding agent 的私有事件转成统一事实流。`Surface` 决定这些事实如何被用户操作和查看。
+
+```text
+TerminalSurface
+  后端：tmux / PTY / shell
+  输入：text / key / paste / resize
+  输出：terminal.snapshot / terminal.frame
+
+AgentSurface
+  后端：Codex app-server / Claude Code 结构化协议
+  输入：prompt / approval / cancel / resume / user input
+  输出：thread / turn / plan / tool / diff / completion event
+
+Probe Sink
+  输入：app-server event / hooks / PTY signal / process / git
+  输出：AgentProbeEvent / AgentAppMessage
+```
+
+运行在 tmux 中的 Codex / Claude Code TUI 仍然是 `TerminalSurface`。只有当 Desktop Agent 能绑定到 app-server thread 或等价结构化协议时，才创建 `AgentSurface`。两者可以属于同一个 `WorkSession`：
+
+```text
+tmux -> codex TUI
+  TerminalSurface active
+
+Codex app-server thread detected
+  AgentSurface active
+  TerminalSurface still active
+
+Codex TUI exits to shell
+  AgentSurface ended / detached
+  TerminalSurface still active
+```
+
+`AgentSurface` 的产品形态不是纯聊天，而是 `Thread + Turn + Timeline + Approval + Diff + Tool Activity + Composer`。聊天气泡只适合展示 user prompt 和 assistant response；plan、tool、diff、approval 必须保留结构化组件。
 
 ## 职责边界
 

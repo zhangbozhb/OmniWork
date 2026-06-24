@@ -858,6 +858,64 @@ Remodex 是一个开源的 Codex 远程控制参考项目，包含 电脑 本地
 - 可以把审批等待、任务完成、任务失败等 Codex 状态转成过滤后的 `agent.message`。
 - TUI 通道仍可作为 fallback。
 
+### Surface 架构演进
+
+目标：
+
+- 将当前 tmux / PTY 能力收敛为 `TerminalSurface`，而不是继续把 tmux 视为唯一会话模型。
+- 引入 `WorkSession` 与 `Surface` 分层：`WorkSession` 表示可恢复工作单元，`Surface` 表示用户交互入口。
+- 在同一个 `WorkSession` 下允许同时存在 `TerminalSurface` 和 `AgentSurface`。
+- 新增 `RuntimeBinding` 概念，用于记录 surface 与本机后端的绑定关系，例如 tmux session、PTY、Codex app-server thread 或 Claude Code 结构化协议实例。
+
+核心规则：
+
+- `TerminalSurface` 负责终端字符流、按键、resize、snapshot 和 frame。
+- `AgentSurface` 负责结构化 Agent 交互，包括 prompt、turn、plan、tool progress、approval、diff、completion。
+- 运行在 tmux 中的 Codex / Claude Code TUI 属于 `TerminalSurface`；只有接入 app-server 或等价结构化协议时才属于 `AgentSurface`。
+- `AgentSurface` 可以和 `TerminalSurface` 关联到同一个 `WorkSession`，但不能替代后者。
+- 结构化通道异常或协议不支持时，必须回退到 `TerminalSurface`。
+
+面向 App 的协议分层：
+
+```text
+workspace.*
+  workspace.list
+  workspace.open
+
+session.*
+  session.create
+  session.list
+  session.close
+  session.rename
+
+surface.*
+  surface.list
+  surface.open
+  surface.close
+  surface.status
+
+terminal.*
+  terminal.input
+  terminal.resize
+  terminal.snapshot
+  terminal.frame
+
+agent.*
+  agent.prompt.submit
+  agent.approval.respond
+  agent.turn.cancel
+  agent.thread.resume
+  agent.event
+```
+
+建设顺序：
+
+1. 稳定 `TerminalSurface`：继续打牢 tmux / PTY、重连、输入、快照和多会话。
+2. 引入 `Surface` 概念：App 与 Desktop Agent 按 `surface_id` 打开和订阅交互入口。
+3. Probe 先增强感知：Hooks / app-server event 进入 Probe Sink，用于状态卡片、通知和审批提醒。
+4. Codex `AgentSurface` MVP：支持 thread timeline、turn 状态、approval、diff、completion。
+5. 多 Agent 抽象：Codex 跑通后，再把 Claude Code、OpenCode、Gemini CLI 等接入统一 AgentSurface 语义。
+
 ### 移动体验与通知
 
 目标：
@@ -1003,24 +1061,24 @@ Relay:
   session-key.json for temporary key
   Keychain only for future long-lived secrets
   SQLite session store
+  WorkSession / Surface / RuntimeBinding managers
   Agent Probe Sink + Agent Message Filter
-  tmux
-  Codex app-server adapter after structured Codex phase starts
-  PTY adapter
+  TerminalSurface backend: tmux / PTY
+  AgentSurface backend: Codex app-server adapter after structured Codex phase starts
 ```
 
 ## 推荐最终方案
 
 MVP 闭环：
 
-- 用 `tmux + PTY + Native WebView/xterm 终端视图 + WebSocket Relay` 做出真实手机操作 Codex TUI 的 MVP。
+- 用 `TerminalSurface + tmux + PTY + Native WebView/xterm 终端视图 + WebSocket Relay` 做出真实手机操作 Codex TUI 的 MVP。
 - 重点验证网络、输入、重连、多会话和企业安全边界。
 
 结构化体验：
 
-- 引入 Codex app-server adapter。
-- 手机端新增结构化 Codex UI。
-- TUI 通道保留为 fallback。
+- 引入 `AgentSurface` 与 Codex app-server adapter。
+- 手机端新增结构化 Codex UI，形态为 thread / turn timeline、approval、diff、tool activity 和输入 composer。
+- `TerminalSurface` 保留为 fallback。
 - 引入 `Agent Probe Sink`，先落地 CodexProbe 三通道，再让 Claude Code 等专属 Probe 的状态事件进入统一过滤和 App 消息通道。
 
 企业化体验：
@@ -1031,7 +1089,7 @@ MVP 闭环：
 
 一句话技术方案：
 
-> 用公司内网 Relay 打通 Android/iOS APK/IPA App 与 TypeScript 桌面端 Agent；桌面端 Agent 管理配置化 CLI provider 与 tmux/PTY，演进在本机安全接入 Codex app-server；移动 App 用结构化 Codex UI 作为产品化主体验，用 Native WebView/xterm 终端视图作为 MVP 和兼容通道。
+> 用公司内网 Relay 打通 Android/iOS APK/IPA App 与 TypeScript 桌面端 Agent；桌面端 Agent 以 Workspace / WorkSession / Surface / RuntimeBinding 管理本机工作流；TerminalSurface 承载 tmux/PTY 通用终端，AgentSurface 承载 Codex app-server 等结构化 coding agent 协议；移动 App 用结构化 Agent UI 作为产品化主体验，用 Native WebView/xterm 终端视图作为 MVP 和兼容通道。
 
 ## 参考来源
 
