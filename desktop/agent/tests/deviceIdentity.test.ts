@@ -7,6 +7,7 @@ import {
   createCheckFactorHash,
   createIdentityChecksum,
   resolveAgentDeviceId,
+  safeKeychainAvailable,
   type AgentIdentityRecord,
 } from "../src/config/deviceIdentity.ts";
 
@@ -59,5 +60,60 @@ const secondDeviceId = resolveAgentDeviceId({
 });
 assert.match(secondDeviceId, /^dev_[0-9a-f]{16}$/);
 assert.notEqual(secondDeviceId, firstDeviceId);
+
+assert.equal(
+  safeKeychainAvailable({
+    platform: "linux",
+    execFile() {
+      throw new Error("should not be called");
+    },
+  }),
+  false,
+);
+
+assert.equal(
+  safeKeychainAvailable({
+    platform: "darwin",
+    execFile() {
+      throw new Error("default keychain unavailable");
+    },
+  }),
+  false,
+);
+
+const securityCalls: Array<{ command: string; args: string[] }> = [];
+assert.equal(
+  safeKeychainAvailable({
+    platform: "darwin",
+    homeDir: "/Users/test",
+    exists(path) {
+      return path === "/Users/test/Library/Keychains/login.keychain-db";
+    },
+    execFile(command, args) {
+      securityCalls.push({ command, args });
+      if (args[0] === "default-keychain") {
+        return "\"~/Library/Keychains/login.keychain-db\"\n";
+      }
+      if (args[0] === "show-keychain-info") {
+        return "";
+      }
+      throw new Error("unexpected security command");
+    },
+  }),
+  true,
+);
+assert.deepEqual(securityCalls, [
+  {
+    command: "security",
+    args: ["default-keychain", "-d", "user"],
+  },
+  {
+    command: "security",
+    args: [
+      "show-keychain-info",
+      "/Users/test/Library/Keychains/login.keychain-db",
+    ],
+  },
+]);
 
 console.log("device identity tests passed");

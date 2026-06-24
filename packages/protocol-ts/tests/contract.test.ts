@@ -282,6 +282,8 @@ describe("e2e business message helpers", () => {
     assert.equal(isE2EBusinessMessage("terminal.input"), true);
     assert.equal(isE2EBusinessMessage("app.connection.heartbeat"), true);
     assert.equal(isE2EBusinessMessage("tunnel.upgrade.offer"), true);
+    assert.equal(isE2EBusinessMessage("agent.message"), true);
+    assert.equal(isE2EBusinessMessage("agent.message.list"), true);
     assert.equal(isE2EBusinessMessage("auth.ok"), false);
     assert.equal(isE2EBusinessMessage("e2e.message"), false);
   });

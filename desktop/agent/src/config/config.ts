@@ -21,6 +21,10 @@ export interface AgentConfig {
   adminHost: string;
   adminPort: number;
   adminToken?: string;
+  agentProbeEnabled: boolean;
+  agentProbeHost: string;
+  agentProbePort: number;
+  agentProbeToken?: string;
   connectionHeartbeatMs: number;
   connectionStaleMs: number;
   connectionDisconnectMs: number;
@@ -65,6 +69,10 @@ export function loadAgentConfig(
     adminHost: env.OMNIWORK_AGENT_ADMIN_HOST ?? "127.0.0.1",
     adminPort: parsePositiveInteger(env.OMNIWORK_AGENT_ADMIN_PORT, 17668),
     adminToken: env.OMNIWORK_AGENT_ADMIN_TOKEN?.trim() || undefined,
+    agentProbeEnabled: parseBoolean(env.OMNIWORK_AGENT_PROBE_ENABLED, true),
+    agentProbeHost: env.OMNIWORK_AGENT_PROBE_HOST ?? "127.0.0.1",
+    agentProbePort: parsePositiveInteger(env.OMNIWORK_AGENT_PROBE_PORT, 17669),
+    agentProbeToken: env.OMNIWORK_AGENT_PROBE_TOKEN?.trim() || undefined,
     connectionHeartbeatMs: parsePositiveInteger(
       env.OMNIWORK_AGENT_CONNECTION_HEARTBEAT_MS,
       10000,
@@ -326,10 +334,6 @@ function resolveDeviceId(env: NodeJS.ProcessEnv): string {
   return resolveAgentDeviceId({
     identityPath: env.OMNIWORK_AGENT_IDENTITY_PATH,
     ipAddress: env.OMNIWORK_AGENT_IDENTITY_IP,
-    keychainEnabled:
-      env.OMNIWORK_AGENT_IDENTITY_KEYCHAIN === undefined
-        ? undefined
-        : parseBoolean(env.OMNIWORK_AGENT_IDENTITY_KEYCHAIN, true),
   });
 }
 

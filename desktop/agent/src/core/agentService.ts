@@ -12,6 +12,10 @@ import {
   parseMessageEnvelope,
   type AppConnectionGoodbyePayload,
   type AppConnectionHeartbeatPayload,
+  type AgentAppMessage,
+  type AgentMessageAckPayload,
+  type AgentMessageListRequestPayload,
+  type AgentMessageReadRequestPayload,
   type MessageEnvelope,
   type P2pChannelKind,
 } from "@omniwork/protocol-ts";
@@ -79,6 +83,10 @@ import { TerminalFramePusher } from "./terminalFramePusher.ts";
 import { TerminalStreamPusher } from "./terminalStreamPusher.ts";
 import { AppConnectionRegistry } from "./appConnectionRegistry.ts";
 import { AgentAdminServer } from "./adminServer.ts";
+import { AgentMessageService } from "../probes/agentMessageService.ts";
+import { AgentHookReceiver } from "../probes/agentHookReceiver.ts";
+import { ensureClaudeHooksInstalled } from "../probes/claudeHookInstaller.ts";
+import { ensureCodexHooksInstalled } from "../probes/codexHookInstaller.ts";
 import type { RelayCloseEvent } from "@omniwork/relay-client";
 import {
   classifyRelayClose,
@@ -119,6 +127,8 @@ export class AgentService {
   private relay: AgentRelayClient | null = null;
   private transport: AgentSessionTransport | null = null;
   private adminServer: AgentAdminServer | null = null;
+  private agentHookReceiver: AgentHookReceiver | null = null;
+  private readonly agentMessages: AgentMessageService;
   private readonly upgradeCoordinators = new Map<string, UpgradeCoordinator>();
   private readonly e2ePeers = new Map<string, AppE2EPeer>();
   private readonly authenticatedAppConnectionIds = new Set<string>();
@@ -136,6 +146,9 @@ export class AgentService {
     (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
   constructor(config: AgentConfig) {
     this.config = config;
+    this.agentMessages = new AgentMessageService({
+      onMessage: (message) => this.broadcastAgentMessage(message),
+    });
     this.appConnections = new AppConnectionRegistry({
       heartbeatIntervalMs: config.connectionHeartbeatMs,
       staleTimeoutMs: config.connectionStaleMs,
@@ -201,6 +214,7 @@ export class AgentService {
       sessionManager: this.sessionManager,
       terminalFramePusher: this.terminalFramePusher,
       sendToApp: (context, message) => this.sendToApp(context, message),
+      prepareRuntime: (runtime) => this.prepareRuntime(runtime),
       handleTerminalSnapshot: (message, context) =>
         this.handleTerminalSnapshot(message, context),
     });
@@ -229,6 +243,14 @@ export class AgentService {
       } else {
         printPairingDetailsWithoutRelay(this.config, this.keyRecord);
       }
+      await this.prepareRuntime({
+        kind: "codex",
+        command: process.env.OMNIWORK_CODEX_COMMAND ?? "codex",
+      });
+      await this.prepareRuntime({
+        kind: "claude",
+        command: process.env.OMNIWORK_CLAUDE_COMMAND ?? "claude",
+      });
 
       const tmuxAvailable = await this.tmux.isAvailable();
       if (!tmuxAvailable) {
@@ -241,6 +263,7 @@ export class AgentService {
       // reconcile 的职责分离；具体规则集中在 SessionManager.applyStartupPatches。
       await this.sessionManager.applyStartupPatches();
       await this.startAdminServer();
+      await this.startAgentHookReceiver();
 
       this.startRelayConnector();
     } catch (error) {
@@ -267,6 +290,8 @@ export class AgentService {
     }
     this.adminServer?.close();
     this.adminServer = null;
+    this.agentHookReceiver?.close();
+    this.agentHookReceiver = null;
   }
 
   private startRelayConnector(): void {
@@ -391,6 +416,8 @@ export class AgentService {
             "files.read",
             "files.write",
             "git.read",
+            "agent.message",
+            "agent.probe.codex",
             ...this.runtimes.capabilities(),
           ],
         },
@@ -792,6 +819,33 @@ export class AgentService {
         }
         await this.handleTerminalStreamStop(
           message as MessageEnvelope<TerminalStreamStopPayload>,
+          dispatchContext,
+        );
+        break;
+      case "agent.message.list":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.handleAgentMessageList(
+          message as MessageEnvelope<AgentMessageListRequestPayload>,
+          dispatchContext,
+        );
+        break;
+      case "agent.message.read":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.handleAgentMessageRead(
+          message as MessageEnvelope<AgentMessageReadRequestPayload>,
+          dispatchContext,
+        );
+        break;
+      case "agent.message.ack":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.handleAgentMessageAck(
+          message as MessageEnvelope<AgentMessageAckPayload>,
           dispatchContext,
         );
         break;
@@ -1331,6 +1385,62 @@ export class AgentService {
     );
   }
 
+  private handleAgentMessageList(
+    message: MessageEnvelope<AgentMessageListRequestPayload>,
+    context?: AgentDispatchContext,
+  ): void {
+    this.sendToApp(
+      context,
+      createMessage(
+        "agent.message.list",
+        { messages: this.agentMessages.list(message.payload) },
+        {
+          device_id: this.config.deviceId,
+          id: message.id,
+        },
+      ),
+    );
+  }
+
+  private handleAgentMessageRead(
+    message: MessageEnvelope<AgentMessageReadRequestPayload>,
+    context?: AgentDispatchContext,
+  ): void {
+    this.sendToApp(
+      context,
+      createMessage(
+        "agent.message.read",
+        { message: this.agentMessages.read(message.payload.message_id) },
+        {
+          device_id: this.config.deviceId,
+          id: message.id,
+        },
+      ),
+    );
+  }
+
+  private handleAgentMessageAck(
+    message: MessageEnvelope<AgentMessageAckPayload>,
+    context?: AgentDispatchContext,
+  ): void {
+    this.sendToApp(
+      context,
+      createMessage(
+        "agent.message.ack",
+        {
+          message: this.agentMessages.ack(
+            message.payload.message_id,
+            message.payload.read === true,
+          ),
+        },
+        {
+          device_id: this.config.deviceId,
+          id: message.id,
+        },
+      ),
+    );
+  }
+
   private async handleTerminalSnapshot(
     message: MessageEnvelope,
     context?: AgentDispatchContext,
@@ -1442,6 +1552,108 @@ export class AgentService {
     });
   }
 
+  private async startAgentHookReceiver(): Promise<void> {
+    if (!this.config.agentProbeEnabled || this.agentHookReceiver) {
+      return;
+    }
+    const token = this.config.agentProbeToken ?? this.requireKeyRecord().key;
+    const receiver = new AgentHookReceiver({
+      host: this.config.agentProbeHost,
+      port: this.config.agentProbePort,
+      token,
+      onProbeEvent: (event) => {
+        const message = this.agentMessages.publishProbeEvent(event);
+        if (message) {
+          this.logger.info("agent probe event accepted", {
+            provider: event.provider,
+            event_type: event.event_type,
+            session_id: event.session_id,
+            message_kind: message.message_kind,
+          });
+        }
+      },
+    });
+    try {
+      await receiver.start();
+      this.agentHookReceiver = receiver;
+      this.logger.info("agent hook receiver started", {
+        url: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
+        token_source: this.config.agentProbeToken ? "env" : "session_key",
+      });
+    } catch (error) {
+      receiver.close();
+      this.logger.warn("agent hook receiver disabled after startup failure", {
+        host: this.config.agentProbeHost,
+        port: this.config.agentProbePort,
+        error: String(error),
+      });
+    }
+  }
+
+  private async prepareRuntime(runtime: {
+    kind: string;
+    command: string;
+  }): Promise<void> {
+    if (!this.config.agentProbeEnabled) {
+      return;
+    }
+    if (isCodexRuntime(runtime)) {
+      await this.prepareCodexRuntime();
+      return;
+    }
+    if (isClaudeRuntime(runtime)) {
+      await this.prepareClaudeRuntime();
+    }
+  }
+
+  private async prepareCodexRuntime(): Promise<void> {
+    try {
+      const result = await ensureCodexHooksInstalled({
+        receiverUrl: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
+        sessionKeyPath: this.config.sessionKeyPath,
+      });
+      if (!result.installed) {
+        this.logger.warn("codex hooks auto install skipped", {
+          hooks_path: result.hooksPath,
+          reason: result.reason,
+        });
+        return;
+      }
+      this.logger.info("codex hooks auto install checked", {
+        hooks_path: result.hooksPath,
+        changed: result.changed,
+      });
+    } catch (error) {
+      this.logger.warn("codex hooks auto install failed", {
+        error: String(error),
+      });
+    }
+  }
+
+  private async prepareClaudeRuntime(): Promise<void> {
+    try {
+      const result = await ensureClaudeHooksInstalled({
+        receiverUrl: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
+        sessionKeyPath: this.config.sessionKeyPath,
+      });
+      if (!result.installed) {
+        this.logger.warn("claude hooks auto install skipped", {
+          settings_path: result.settingsPath,
+          reason: result.reason,
+        });
+        return;
+      }
+      this.logger.info("claude hooks auto install checked", {
+        settings_path: result.settingsPath,
+        changed: result.changed,
+      });
+    } catch (error) {
+      this.logger.warn("claude hooks auto install failed", {
+        error: String(error),
+      });
+    }
+  }
+
   private agentInfo(): {
     device_id: string;
     agent_instance_id: string;
@@ -1476,6 +1688,15 @@ export class AgentService {
     }
 
     this.transport.send(message);
+  }
+
+  private broadcastAgentMessage(message: AgentAppMessage): void {
+    this.send(
+      createMessage("agent.message", message, {
+        device_id: this.config.deviceId,
+        session_id: message.session_id,
+      }),
+    );
   }
 
   private sendToApp(
@@ -1578,4 +1799,37 @@ function appConnectionIdFromMessage(
   return typeof payload.app_connection_id === "string"
     ? payload.app_connection_id
     : undefined;
+}
+
+function isCodexRuntime(runtime: { kind: string; command: string }): boolean {
+  if (runtime.kind === "codex") {
+    return true;
+  }
+  return firstShellWord(runtime.command) === "codex";
+}
+
+function isClaudeRuntime(runtime: { kind: string; command: string }): boolean {
+  if (runtime.kind === "claude") {
+    return true;
+  }
+  return firstShellWord(runtime.command) === "claude";
+}
+
+function firstShellWord(command: string): string | undefined {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const match = /^("(?:[^"\\]|\\.)*"|'[^']*'|[^\s]+)/.exec(trimmed);
+  const word = match?.[1];
+  if (!word) {
+    return undefined;
+  }
+  if (
+    (word.startsWith('"') && word.endsWith('"')) ||
+    (word.startsWith("'") && word.endsWith("'"))
+  ) {
+    return word.slice(1, -1);
+  }
+  return word;
 }

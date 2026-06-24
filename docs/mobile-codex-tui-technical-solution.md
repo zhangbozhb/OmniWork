@@ -8,12 +8,15 @@
 
 关联中继与传输方案：[relay-architecture.md](./relay-architecture.md)（终版架构）
 
+关联 Agent 消息感知与推送设计：[agent-probe-sink-design.md](./agent-probe-sink-design.md)
+
 ## 实装状态
 
 - 主通道（Agent Provider CLI runtime adapter）：已落地基础适配层，见 [desktop/agent/src/runtime/](../desktop/agent/src/runtime/)；provider 配置驱动 + `session.list` 下发已对齐。
 - 兼容通道（tmux + Native WebView/xterm 终端）：已落地，见 [desktop/agent/src/pty-bridge](../desktop/agent/src/pty-bridge)、[desktop/agent/src/tmux-manager](../desktop/agent/src/tmux-manager) 与 [app/src/terminal](../app/src/terminal)。
 - Codex app-server adapter 尚未落地，仍属于结构化 Codex UI 方向。
 - Agent Provider 元数据层：`packages/protocol-ts` 定义 + 桌面端 Agent 配置化 provider 已实现。
+- Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex hook receiver、Desktop Agent 启动时 Codex hook 自动安装、Codex hook 归一化、内存消息过滤/去重和在线 App `agent.message` 广播；Codex app-server channel、持久化 pending inbox、系统 Push 尚未落地。
 - Workspace 上下文层：已实现 `workspace.list/status` + `files.list/read/write` + `git.status/diff`，其中文件写入仅支持受控 UTF-8 文本编辑，详见 [desktop/agent/src/workspace](../desktop/agent/src/workspace) / [files](../desktop/agent/src/files) / [git](../desktop/agent/src/git)。
 - Relay + P2P 升级：已落地（终版见 [relay-architecture.md](./relay-architecture.md)），不在本文档继续维护。
 
@@ -54,6 +57,15 @@
    - `Files` Tab 允许在 workspace 边界内浏览、预览文件，并对支持的 UTF-8 文本文件执行受控编辑；保存通过打开时的内容哈希做冲突检测，禁止通过相对路径越界。
    - `Git` Tab 仅当目标 workspace 是 Git 仓库时显示，能力限制为只读 `status` / `diff`，不提供 stage、commit、reset、push 等写操作。
 
+5. **Agent Probe Sink 消息感知层**
+   - Codex、Claude Code、OpenCode、Gemini CLI 等 coding agent 各自实现专属 Agent Probe，通过 hook 或结构化事件源感知自身运行状态和事件。
+   - Codex Probe 采用三通道：app-server 结构化主路径、Codex hooks 生命周期补充路径、PTY/tmux 兼容兜底路径。
+   - 桌面端 Agent 内部提供统一 `Agent Probe Sink`，接收不同 Probe 上报的 `AgentProbeEvent`。
+   - Probe 只负责感知和归一化，不直接推送 App，也不直接连接 Relay。
+   - 桌面端 Agent 内部消息过滤层负责去重、频控、权限、敏感信息裁剪和通知升级。
+   - App 只消费过滤后的 `AgentAppMessage`，不理解 Codex / Claude Code 私有事件协议。
+   - 详细设计以 [agent-probe-sink-design.md](./agent-probe-sink-design.md) 为准。
+
 MVP 可以采用兼容通道。正式企业版建议兼容通道与主通道并存：默认使用结构化通道，必要时切换到原始 TUI。
 
 ## 工程技术栈要求
@@ -85,6 +97,8 @@ Codex CLI 不仅支持传统交互式 TUI，也支持 app-server 协议。官方
 - WebSocket 模式中，一个 JSON-RPC 消息对应一个 WebSocket text frame。
 - app-server 可暴露 `/readyz` 和 `/healthz` 健康检查。
 - `codex --remote ws://...` 可以让交互式 TUI 连接远端 app-server。
+- app-server 提供 thread、turn、item 级事件，可作为 Codex Probe 的结构化主信号源。
+- Codex hooks 提供 SessionStart、UserPromptSubmit、PreToolUse、PermissionRequest、PostToolUse、Stop、SubagentStart/Stop、PreCompact/PostCompact 等生命周期事件，可作为 Codex Probe 的补充信号源。
 
 关键限制：
 
@@ -92,12 +106,14 @@ Codex CLI 不仅支持传统交互式 TUI，也支持 app-server 协议。官方
 - 非 loopback WebSocket 监听目前不应直接远程暴露。
 - 暴露 WebSocket 时需要配置 capability token 或 signed bearer token。
 - app-server 使用 bounded queues；客户端需要处理 overloaded / retry。
+- hooks 需要遵守 Codex 的信任模型；非 managed hook 需要用户 review/trust，managed hook 应由企业配置或 MDM 下发。
 
 技术判断：
 
 - 直接把 app-server 暴露给手机不合适。
 - 桌面端 Agent 应作为 app-server 的本地守护和安全边界。
 - 公司中继只面对 桌面端 Agent 和手机，不直接面对裸 Codex app-server。
+- Codex Probe 的主路径是 app-server 事件订阅，hooks 只把事件投递给 Desktop Agent 本地 hook receiver，不能直接推送 App 或 Relay。
 
 ### Web SPA 与浏览器终端技术
 
@@ -202,6 +218,7 @@ flowchart LR
 
   Agent --> Control["控制面"]
   Agent --> Runtime["Agent Provider 运行时适配层"]
+  Agent --> ProbeSink["Agent Probe Sink<br/>消息感知与过滤"]
   Agent --> Tmux["tmux 会话池"]
   Agent --> Store["sessions.sqlite + session-key.json"]
 
@@ -211,6 +228,9 @@ flowchart LR
   Tmux --> ProviderTUI["Configured Agent CLI TUI"]
 
   AppServer --> CodexHarness["Codex harness"]
+  ProviderTUI --> AgentProbe["Agent Probe<br/>Codex / Claude Code / OpenCode"]
+  AppServer --> AgentProbe
+  AgentProbe --> ProbeSink
 ```
 
 ## 模块拆分
@@ -288,6 +308,8 @@ flowchart LR
 - 管理本机 Codex 会话。
 - 启动和监督 `codex app-server`。
 - 启动和监督 `tmux` / Codex TUI。
+- 提供内部 `Agent Probe Sink`，接收 Codex、Claude Code、OpenCode、Gemini CLI 等专属 Probe 的事件。
+- 对 Probe 事件执行归一化、去重、频控、敏感信息过滤和通知升级。
 - 将本地 PTY / app-server 事件转换为企业中继协议。
 - 存储本地会话 registry。
 - 每次启动生成 32 字符临时 key。
@@ -464,6 +486,20 @@ codex.diff.event
 codex.error
 ```
 
+Agent 消息感知与投递面：
+
+```text
+agent.probe.event
+agent.message
+agent.message.list
+agent.message.read
+agent.message.ack
+agent.notification.settings.get
+agent.notification.settings.set
+```
+
+其中 `agent.probe.event` 是桌面端 Agent 内部 Probe 到 Sink 的逻辑事件，不应通过 Relay 暴露给 App；App 只接收过滤后的 `agent.message` 及其同步、已读和回执消息。
+
 ### Backpressure
 
 WebSocket 本身不提供标准 backpressure，因此协议层必须实现：
@@ -504,6 +540,10 @@ codex_sessions
 tmux_sessions
 app_server_instances
 terminal_snapshots
+agent_probe_events
+agent_app_messages
+agent_message_deliveries
+agent_notification_settings
 agent_settings
 ```
 
@@ -806,6 +846,8 @@ Remodex 是一个开源的 Codex 远程控制参考项目，包含 电脑 本地
 - 桌面端 Agent 内部启动 `codex app-server`。
 - Adapter 与 app-server 用 stdio / unix socket / loopback 建立连接。
 - 手机端增加结构化 Codex UI。
+- CodexProbe 的 App Server Channel 订阅 thread / turn / item / approval / diff / plan 事件，并归一化为 `AgentProbeEvent`。
+- CodexProbe 的 Hooks Channel 提供本地 hook receiver，接收 Codex hooks 投递的生命周期、工具调用、审批和 Stop 事件。
 
 验收：
 
@@ -813,6 +855,7 @@ Remodex 是一个开源的 Codex 远程控制参考项目，包含 电脑 本地
 - 可以展示流式事件。
 - 可以处理 approval。
 - 可以查看 diff 摘要。
+- 可以把审批等待、任务完成、任务失败等 Codex 状态转成过滤后的 `agent.message`。
 - TUI 通道仍可作为 fallback。
 
 ### 移动体验与通知
@@ -923,6 +966,8 @@ Relay:
 桌面端 Agent:
   TypeScript + Node.js LTS
   tmux-manager / pty-bridge
+  Agent Probe Sink
+  CodexProbe / ClaudeCodeProbe MVP 粗粒度探针
   tmux
   sessions.sqlite
   session-key.json
@@ -958,6 +1003,7 @@ Relay:
   session-key.json for temporary key
   Keychain only for future long-lived secrets
   SQLite session store
+  Agent Probe Sink + Agent Message Filter
   tmux
   Codex app-server adapter after structured Codex phase starts
   PTY adapter
@@ -975,6 +1021,7 @@ MVP 闭环：
 - 引入 Codex app-server adapter。
 - 手机端新增结构化 Codex UI。
 - TUI 通道保留为 fallback。
+- 引入 `Agent Probe Sink`，先落地 CodexProbe 三通道，再让 Claude Code 等专属 Probe 的状态事件进入统一过滤和 App 消息通道。
 
 企业化体验：
 
@@ -992,6 +1039,7 @@ MVP 闭环：
 - [OpenAI Codex CLI Reference](https://developers.openai.com/codex/cli/reference)
 - [OpenAI Codex CLI Features](https://developers.openai.com/codex/cli/features)
 - [OpenAI Codex App Server](https://developers.openai.com/codex/app-server)
+- [OpenAI Codex Hooks](https://developers.openai.com/codex/hooks)
 - [OpenAI Codex App Server Engineering Blog](https://openai.com/index/unlocking-the-codex-harness/)
 - [openai/codex app-server source](https://github.com/openai/codex/tree/main/codex-rs/app-server)
 - [node-pty](https://github.com/microsoft/node-pty)

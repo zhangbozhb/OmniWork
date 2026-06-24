@@ -66,6 +66,9 @@ const baseConfig: AgentConfig = {
   adminEnabled: true,
   adminHost: "127.0.0.1",
   adminPort: 17668,
+  agentProbeEnabled: true,
+  agentProbeHost: "127.0.0.1",
+  agentProbePort: 17669,
   connectionHeartbeatMs: 10000,
   connectionStaleMs: 30000,
   connectionDisconnectMs: 90000,
@@ -141,7 +144,6 @@ assert.throws(
 const configEnv = {
   OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
   OMNIWORK_AGENT_IDENTITY_PATH: join(dir, "agent.json"),
-  OMNIWORK_AGENT_IDENTITY_KEYCHAIN: "0",
   OMNIWORK_AGENT_IDENTITY_IP: "10.0.0.2",
 };
 assert.match(

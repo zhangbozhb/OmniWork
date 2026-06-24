@@ -87,6 +87,12 @@ export type MessageType =
   | "codex.approval.answer"
   | "codex.diff.event"
   | "codex.error"
+  | "agent.message"
+  | "agent.message.list"
+  | "agent.message.read"
+  | "agent.message.ack"
+  | "agent.notification.settings.get"
+  | "agent.notification.settings.set"
   | "tunnel.upgrade.propose"
   | "tunnel.upgrade.offer"
   | "tunnel.upgrade.answer"
@@ -141,6 +147,8 @@ export type KnownAgentCapability =
   | "terminal.shell"
   | "codex.cli"
   | "codex.app_server"
+  | "agent.message"
+  | "agent.probe.codex"
   | "claude.cli"
   | "gemini.cli";
 export type AgentCapability = KnownAgentCapability | (string & {});
@@ -797,6 +805,130 @@ export interface GitDiffPayload {
   relativePath?: string;
   scope?: GitDiffScope;
   diff: string;
+}
+
+export type AgentProbeProvider =
+  | "codex"
+  | "claude-code"
+  | "opencode"
+  | "gemini"
+  | (string & {});
+
+export type AgentProbeEventType =
+  | "agent.started"
+  | "agent.thinking"
+  | "agent.plan_created"
+  | "agent.tool_call_started"
+  | "agent.tool_call_finished"
+  | "agent.file_changed"
+  | "agent.git_diff_changed"
+  | "agent.approval_required"
+  | "agent.waiting_user_input"
+  | "agent.user_prompt_submitted"
+  | "agent.compaction_started"
+  | "agent.compaction_finished"
+  | "agent.subagent_started"
+  | "agent.subagent_completed"
+  | "agent.completed"
+  | "agent.failed"
+  | "agent.exited";
+
+export type AgentProbeSeverity =
+  | "debug"
+  | "info"
+  | "notice"
+  | "warning"
+  | "critical";
+
+export type AgentProbeSourceKind =
+  | "app-server"
+  | "cli-hook"
+  | "pty"
+  | "tmux"
+  | "process"
+  | "filesystem"
+  | "git";
+
+export interface AgentProbeEvent {
+  id: string;
+  provider: AgentProbeProvider;
+  probe_id: string;
+  session_id: string;
+  workspace_id?: string;
+  workspace_path?: string;
+  event_type: AgentProbeEventType;
+  severity: AgentProbeSeverity;
+  title?: string;
+  summary?: string;
+  payload?: Record<string, unknown>;
+  source: {
+    kind: AgentProbeSourceKind;
+    raw_event_id?: string;
+  };
+  created_at: string;
+}
+
+export type AgentAppMessageKind =
+  | "status"
+  | "plan"
+  | "approval"
+  | "input_required"
+  | "result"
+  | "error"
+  | "diff_summary";
+
+export type AgentAppMessagePriority =
+  | "low"
+  | "normal"
+  | "high"
+  | "critical";
+
+export interface AgentAppMessage {
+  id: string;
+  type: "agent.message";
+  provider: string;
+  session_id: string;
+  workspace_id?: string;
+  message_kind: AgentAppMessageKind;
+  title: string;
+  summary?: string;
+  priority: AgentAppMessagePriority;
+  action?: {
+    type: "open_session" | "open_approval" | "open_diff" | "open_workspace";
+    session_id?: string;
+    workspace_id?: string;
+  };
+  created_at: string;
+  delivered_at?: string;
+  read_at?: string;
+}
+
+export interface AgentMessageListRequestPayload {
+  session_id?: string;
+  provider?: string;
+  unread_only?: boolean;
+  limit?: number;
+}
+
+export interface AgentMessageListPayload {
+  messages: AgentAppMessage[];
+}
+
+export interface AgentMessageReadRequestPayload {
+  message_id: string;
+}
+
+export interface AgentMessageReadPayload {
+  message?: AgentAppMessage;
+}
+
+export interface AgentMessageAckPayload {
+  message_id: string;
+  read?: boolean;
+}
+
+export interface AgentMessageAckResultPayload {
+  message?: AgentAppMessage;
 }
 
 export function createMessage<TPayload>(

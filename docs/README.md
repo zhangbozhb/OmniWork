@@ -32,6 +32,7 @@
 
 - [mobile-codex-tui-workbench-design.md](./mobile-codex-tui-workbench-design.md)：产品设计、MVP 目标、非目标和验收口径。
 - [mobile-codex-tui-technical-solution.md](./mobile-codex-tui-technical-solution.md)：技术方案、风险与演进方向。
+- [agent-probe-sink-design.md](./agent-probe-sink-design.md)：Codex、Claude Code 等 coding agent 的 Probe/Sink 消息感知、过滤与多端投递设计。
 
 ## 维护规则
 

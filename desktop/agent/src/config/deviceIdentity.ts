@@ -1,7 +1,17 @@
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir, hostname as systemHostname, networkInterfaces } from "node:os";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import {
+  homedir,
+  hostname as systemHostname,
+  networkInterfaces,
+} from "node:os";
 import { dirname, join } from "node:path";
 
 export interface AgentIdentityRecord {
@@ -20,6 +30,17 @@ export interface ResolveAgentDeviceIdOptions {
   ipAddress?: string;
 }
 
+export interface SafeKeychainOptions {
+  platform?: NodeJS.Platform;
+  execFile?: (
+    command: string,
+    args: string[],
+    options: { encoding: "utf8"; stdio: ["ignore", "pipe", "ignore"] },
+  ) => string;
+  exists?: (path: string) => boolean;
+  homeDir?: string;
+}
+
 const KEYCHAIN_SERVICE = "OmniWork";
 const KEYCHAIN_ACCOUNT = "agent-device-identity";
 
@@ -28,10 +49,12 @@ export function resolveAgentDeviceId(
 ): string {
   const identityPath = options.identityPath ?? defaultIdentityPath();
   const now = options.now ?? new Date();
-  const keychainEnabled =
-    options.keychainEnabled ?? process.platform === "darwin";
+  const keychainEnabled = options.keychainEnabled ?? true;
+  const keychainPath = keychainEnabled ? resolveSafeKeychainPath() : null;
 
-  const keychainRecord = keychainEnabled ? readKeychainIdentity() : null;
+  const keychainRecord = keychainPath
+    ? readKeychainIdentity(keychainPath)
+    : null;
   if (keychainRecord && isValidIdentityRecord(keychainRecord, options)) {
     writeLocalIdentity(identityPath, keychainRecord);
     return keychainRecord.deviceId;
@@ -39,15 +62,15 @@ export function resolveAgentDeviceId(
 
   const localRecord = readLocalIdentity(identityPath);
   if (localRecord && isValidIdentityRecord(localRecord, options)) {
-    if (keychainEnabled) {
-      writeKeychainIdentity(localRecord);
+    if (keychainPath) {
+      writeKeychainIdentity(localRecord, keychainPath);
     }
     return localRecord.deviceId;
   }
 
   const record = createIdentityRecord(now, options);
-  if (keychainEnabled) {
-    writeKeychainIdentity(record);
+  if (keychainPath) {
+    writeKeychainIdentity(record, keychainPath);
   }
   writeLocalIdentity(identityPath, record);
   return record.deviceId;
@@ -161,7 +184,54 @@ function writeLocalIdentity(path: string, record: AgentIdentityRecord): void {
   }
 }
 
-function readKeychainIdentity(): AgentIdentityRecord | null {
+export function safeKeychainAvailable(
+  options: SafeKeychainOptions = {},
+): boolean {
+  return resolveSafeKeychainPath(options) !== null;
+}
+
+function resolveSafeKeychainPath(
+  options: SafeKeychainOptions = {},
+): string | null {
+  if ((options.platform ?? process.platform) !== "darwin") {
+    return null;
+  }
+
+  const fileExists = options.exists ?? existsSync;
+
+  try {
+    const rawPath = runSecurity(
+      ["default-keychain", "-d", "user"],
+      options,
+    ).trim();
+    const keychainPath = normalizeKeychainPath(rawPath, options.homeDir);
+    if (!keychainPath || !fileExists(keychainPath)) {
+      return null;
+    }
+
+    runSecurity(["show-keychain-info", keychainPath], options);
+    return keychainPath;
+  } catch {
+    return null;
+  }
+}
+
+function runSecurity(args: string[], options: SafeKeychainOptions): string {
+  if (options.execFile) {
+    return options.execFile("security", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  }
+  return execFileSync("security", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+}
+
+function readKeychainIdentity(
+  keychainPath: string,
+): AgentIdentityRecord | null {
   try {
     const raw = execFileSync(
       "security",
@@ -172,6 +242,7 @@ function readKeychainIdentity(): AgentIdentityRecord | null {
         "-a",
         KEYCHAIN_ACCOUNT,
         "-w",
+        keychainPath,
       ],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     ).trim();
@@ -181,7 +252,10 @@ function readKeychainIdentity(): AgentIdentityRecord | null {
   }
 }
 
-function writeKeychainIdentity(record: AgentIdentityRecord): void {
+function writeKeychainIdentity(
+  record: AgentIdentityRecord,
+  keychainPath: string,
+): void {
   try {
     execFileSync(
       "security",
@@ -194,10 +268,28 @@ function writeKeychainIdentity(record: AgentIdentityRecord): void {
         KEYCHAIN_ACCOUNT,
         "-w",
         JSON.stringify(record),
+        keychainPath,
       ],
       { stdio: "ignore" },
     );
   } catch {
     // Keychain can be unavailable in CI, SSH sessions, or non-interactive runs.
   }
+}
+
+function normalizeKeychainPath(
+  value: string,
+  homeDir = homedir(),
+): string | null {
+  const unquoted = value.trim().replace(/^"(.+)"$/, "$1");
+  if (!unquoted) {
+    return null;
+  }
+  if (unquoted === "~") {
+    return homeDir;
+  }
+  if (unquoted.startsWith("~/")) {
+    return join(homeDir, unquoted.slice(2));
+  }
+  return unquoted;
 }

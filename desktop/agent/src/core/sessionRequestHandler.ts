@@ -2,6 +2,7 @@ import {
   createMessage,
   type CodexSession,
   type MessageEnvelope,
+  type RuntimeKind,
   type SessionCreatePayload,
   type SessionListPayload,
   type SessionRenamePayload,
@@ -25,6 +26,10 @@ type SessionRequestHandlerOptions = {
   sessionManager: SessionManager;
   terminalFramePusher: TerminalFramePusher;
   sendToApp(context: AgentDispatchContext | undefined, message: MessageEnvelope): void;
+  prepareRuntime?(runtime: {
+    kind: RuntimeKind;
+    command: string;
+  }): Promise<void>;
   handleTerminalSnapshot(
     message: MessageEnvelope,
     context?: AgentDispatchContext,
@@ -64,6 +69,11 @@ export class SessionRequestHandler {
   ): Promise<void> {
     let session;
     try {
+      const runtime = this.options.runtimes.get(message.payload?.runtime_kind);
+      await this.options.prepareRuntime?.({
+        kind: runtime.kind,
+        command: message.payload?.command ?? runtime.buildTuiCommand(),
+      });
       session = await this.options.sessionManager.create(
         message.payload ?? {},
         (nextSession) => this.sendSessionStatus(nextSession, context),

@@ -1,0 +1,172 @@
+import { strict as assert } from "node:assert";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+
+import { ensureCodexHooksInstalled } from "../src/probes/codexHookInstaller.ts";
+
+test("ensureCodexHooksInstalled creates user hooks file with OmniWork hooks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-agent-hooks-"));
+  const hooksPath = join(dir, ".codex", "hooks.json");
+
+  const result = await ensureCodexHooksInstalled({
+    hooksPath,
+    receiverUrl: "http://127.0.0.1:17669/api/probes/hooks",
+    sessionKeyPath: "/tmp/session-key.json",
+  });
+  const parsed = JSON.parse(await readFile(hooksPath, "utf8"));
+
+  assert.equal(result.installed, true);
+  assert.equal(result.changed, true);
+  assert.equal(parsed.hooks.SessionStart.length, 1);
+  assert.equal(parsed.hooks.PermissionRequest.length, 1);
+  assert.equal(parsed.hooks.PostToolUse.length, 1);
+  assert.equal(parsed.hooks.Stop.length, 1);
+  assert.match(
+    parsed.hooks.SessionStart[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_SOURCE='codex'/u,
+  );
+  assert.match(
+    parsed.hooks.SessionStart[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_EVENT='SessionStart'/u,
+  );
+  assert.match(
+    parsed.hooks.PermissionRequest[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_EVENT='PermissionRequest'/u,
+  );
+  assert.match(
+    parsed.hooks.PostToolUse[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_EVENT='PostToolUse'/u,
+  );
+  assert.match(
+    parsed.hooks.Stop[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_EVENT='Stop'/u,
+  );
+  assert.notEqual(
+    parsed.hooks.SessionStart[0].hooks[0].command,
+    parsed.hooks.Stop[0].hooks[0].command,
+  );
+  assert.match(
+    parsed.hooks.Stop[0].hooks[0].command,
+    /OMNIWORK_SESSION_KEY_PATH='\/tmp\/session-key\.json'/u,
+  );
+  assert.match(
+    parsed.hooks.Stop[0].hooks[0].command,
+    /omniwork-agent-hook\.mjs/u,
+  );
+});
+
+test("ensureCodexHooksInstalled preserves existing hooks and is idempotent", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-agent-hooks-"));
+  const hooksPath = join(dir, "hooks.json");
+  await writeFile(
+    hooksPath,
+    JSON.stringify({
+      hooks: {
+        Stop: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "echo existing",
+              },
+            ],
+          },
+        ],
+      },
+      other: true,
+    }),
+  );
+
+  const first = await ensureCodexHooksInstalled({ hooksPath });
+  const second = await ensureCodexHooksInstalled({ hooksPath });
+  const parsed = JSON.parse(await readFile(hooksPath, "utf8"));
+
+  assert.equal(first.changed, true);
+  assert.equal(second.changed, false);
+  assert.equal(parsed.other, true);
+  assert.equal(parsed.hooks.Stop.length, 2);
+  assert.equal(parsed.hooks.Stop[0].hooks[0].command, "echo existing");
+});
+
+test("ensureCodexHooksInstalled removes stale OmniWork hook commands", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-agent-hooks-"));
+  const hooksPath = join(dir, "hooks.json");
+  await writeFile(
+    hooksPath,
+    JSON.stringify({
+      hooks: {
+        Stop: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "node /old/path/omniwork-agent-hook.mjs",
+              },
+              {
+                type: "command",
+                command: "echo existing",
+              },
+            ],
+          },
+        ],
+        PermissionRequest: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "node /other/old/path/omniwork-agent-hook.mjs",
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+
+  const result = await ensureCodexHooksInstalled({
+    hooksPath,
+    receiverUrl: "http://127.0.0.1:17669/api/probes/hooks",
+    sessionKeyPath: "/tmp/current-session-key.json",
+  });
+  const parsed = JSON.parse(await readFile(hooksPath, "utf8"));
+
+  assert.equal(result.installed, true);
+  assert.equal(result.changed, true);
+  assert.equal(parsed.hooks.Stop.length, 2);
+  assert.equal(parsed.hooks.Stop[0].hooks.length, 1);
+  assert.equal(parsed.hooks.Stop[0].hooks[0].command, "echo existing");
+  assert.doesNotMatch(
+    JSON.stringify(parsed),
+    /\/old\/path\/omniwork-agent-hook\.mjs/u,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(parsed),
+    /\/other\/old\/path\/omniwork-agent-hook\.mjs/u,
+  );
+  assert.match(
+    parsed.hooks.PermissionRequest[0].hooks[0].command,
+    /OMNIWORK_SESSION_KEY_PATH='\/tmp\/current-session-key\.json'/u,
+  );
+  assert.match(
+    parsed.hooks.PermissionRequest[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_SOURCE='codex'/u,
+  );
+  assert.match(
+    parsed.hooks.PermissionRequest[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_EVENT='PermissionRequest'/u,
+  );
+});
+
+test("ensureCodexHooksInstalled does not overwrite invalid json", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-agent-hooks-"));
+  const hooksPath = join(dir, "hooks.json");
+  await writeFile(hooksPath, "{");
+
+  const result = await ensureCodexHooksInstalled({ hooksPath });
+
+  assert.equal(result.installed, false);
+  assert.equal(result.reason, "invalid_json");
+  assert.equal(await readFile(hooksPath, "utf8"), "{");
+});

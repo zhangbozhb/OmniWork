@@ -54,6 +54,7 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
     context: TestDispatchContext | undefined;
     message: MessageEnvelope;
   }> = [];
+  const preparedRuntimes: Array<{ kind: string; command: string }> = [];
   const subscribers: Array<{ sessionId: string; appConnectionId: string }> = [];
   const startedSessionIds: string[] = [];
 
@@ -91,6 +92,9 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
     sendToApp(nextContext, message): void {
       sent.push({ context: nextContext, message });
     },
+    async prepareRuntime(runtime): Promise<void> {
+      preparedRuntimes.push(runtime);
+    },
     async handleTerminalSnapshot(message, nextContext): Promise<void> {
       snapshots.push({ context: nextContext, message });
     },
@@ -118,6 +122,7 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
     ),
     ["created", "starting", "running"],
   );
+  assert.deepEqual(preparedRuntimes, [{ kind: "codex", command: "codex" }]);
   assert.deepEqual(snapshots, [
     {
       context,
