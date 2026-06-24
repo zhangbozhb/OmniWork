@@ -24,6 +24,8 @@
     "site:preview": "pnpm --filter @omniwork/site preview",
     "deploy:web:build": "pnpm site:build && OMNIWORK_WEB_PUBLIC_PATH=/app/ pnpm app:build:web && node scripts/deploy/buildWebDeploy.mjs",
     "deploy:web:prepare": "node scripts/deploy/buildWebDeploy.mjs",
+    "release:desktop-agent": "node scripts/release/packageDesktopAgent.mjs",
+    "release:downloads": "node scripts/release/updateDownloadsManifest.mjs",
     "relay:start": "pnpm --filter @omniwork/relay-server start",
     "verify:app-auth": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/verify/app-key-proof.test.mjs",
     "verify:app:targets": "pnpm --filter @omniwork/app verify:targets",

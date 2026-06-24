@@ -82,7 +82,8 @@ def releaseKeystorePath = System.getenv("OMNIWORK_RELEASE_KEYSTORE")
 def releaseKeystorePassword = System.getenv("OMNIWORK_RELEASE_KEYSTORE_PASSWORD")
 def releaseKeyAlias = System.getenv("OMNIWORK_RELEASE_KEY_ALIAS")
 def releaseKeyPassword = System.getenv("OMNIWORK_RELEASE_KEY_PASSWORD")
-def hasReleaseSigning = releaseKeystorePath != null && releaseKeystorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null
+def hasValue = { value -> value != null && value.toString().trim().length() > 0 }
+def hasReleaseSigning = hasValue(releaseKeystorePath) && hasValue(releaseKeystorePassword) && hasValue(releaseKeyAlias) && hasValue(releaseKeyPassword)
 
 android {
     ndkVersion rootProject.ext.ndkVersion

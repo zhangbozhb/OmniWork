@@ -21,5 +21,17 @@
   "devDependencies": {
     "@types/node": "^22.19.19",
     "typescript": "^5.8.0"
+  },
+  "bin": {
+    "omniwork-agent": "bin/omniwork-agent.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "static/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.6.0"
   }
 }

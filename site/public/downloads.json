@@ -23,15 +23,15 @@
         "label": "Download Android APK",
         "url": "https://github.com/zhangbozhb/OmniWork/releases/download/v0.1.0/omniwork-android-v0.1.0.apk",
         "type": "github_release_asset",
-        "sha256": "<sha256>"
+        "sha256": null
       }
     },
     "desktopAgent": {
       "archive": {
-        "label": "Download Desktop Agent",
-        "url": "https://github.com/zhangbozhb/OmniWork/releases/download/v0.1.0/omniwork-agent-v0.1.0-desktop.zip",
+        "label": "Download Desktop Agent Node package (linux-x64)",
+        "url": "https://github.com/zhangbozhb/OmniWork/releases/download/v0.1.0/omniwork-desktop-agent-v0.1.0-linux-x64.tgz",
         "type": "github_release_asset",
-        "sha256": "<sha256>"
+        "sha256": null
       }
     },
     "web": {
