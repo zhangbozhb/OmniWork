@@ -1,0 +1,323 @@
+docs/agent-probe-sink-design.md
+  s_cc3bbbee0ce945::t_69c37c0dc95f74 36-37,54-59,67-102 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3c116803f2901c2b75bf9d","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[36,37]},{"Range":[54,59]},{"Range":[67,102]}]}]}
+docs/mobile-codex-tui-workbench-design.md
+  s_cc3bbbee0ce945::t_ca6b6a1ae17f8a 74-208 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3c114d03f2901c2b75bf3e","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[74,208]}]}]}
+docs/mobile-codex-tui-technical-solution.md
+  s_cc3bbbee0ce945::t_9c8c62d70a5bf5 861-918 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3c115603f2901c2b75bf5d","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[861,918]}]}]}
+  s_cc3bbbee0ce945::t_31466248f01a1e 1064,1066-1067,1074,1079-1081,1092 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3c115f03f2901c2b75bf7d","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":1064},{"Range":[1066,1067]},{"Single":1074},{"Range":[1079,1081]},{"Single":1092}]}]}
+docs/README.md
+  s_cc3bbbee0ce945::t_9f86aa081ba618 37-47 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3c112f03f2901c2b75bf26","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[37,47]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a23f9a00d40e2a4f903d9de973f599aded4da8bc",
+  "prompts": {},
+  "humans": {
+    "h_f833b9c201e94e": {
+      "author": "zhangbozhb <zhangbozhb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_cc3bbbee0ce945": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a3c0c1803f2901c2b75bd87",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": "zhangbozhb <zhangbozhb@gmail.com>"
+    }
+  },
+  "attestation_metadata": {
+    "docs/README.md": [
+      {
+        "hash": "s_cc3bbbee0ce945::t_9f86aa081ba618",
+        "line_ranges": [
+          {
+            "Range": [
+              37,
+              47
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3c112f03f2901c2b75bf26",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  37,
+                  47
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "docs/agent-probe-sink-design.md": [
+      {
+        "hash": "s_cc3bbbee0ce945::t_69c37c0dc95f74",
+        "line_ranges": [
+          {
+            "Range": [
+              36,
+              37
+            ]
+          },
+          {
+            "Range": [
+              54,
+              59
+            ]
+          },
+          {
+            "Range": [
+              67,
+              102
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3c116803f2901c2b75bf9d",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  36,
+                  37
+                ]
+              },
+              {
+                "Range": [
+                  54,
+                  59
+                ]
+              },
+              {
+                "Range": [
+                  67,
+                  102
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "docs/mobile-codex-tui-technical-solution.md": [
+      {
+        "hash": "s_cc3bbbee0ce945::t_9c8c62d70a5bf5",
+        "line_ranges": [
+          {
+            "Range": [
+              861,
+              918
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3c115603f2901c2b75bf5d",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  861,
+                  918
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hash": "s_cc3bbbee0ce945::t_31466248f01a1e",
+        "line_ranges": [
+          {
+            "Single": 1064
+          },
+          {
+            "Range": [
+              1066,
+              1067
+            ]
+          },
+          {
+            "Single": 1074
+          },
+          {
+            "Range": [
+              1079,
+              1081
+            ]
+          },
+          {
+            "Single": 1092
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3c115f03f2901c2b75bf7d",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 1064
+              },
+              {
+                "Range": [
+                  1066,
+                  1067
+                ]
+              },
+              {
+                "Single": 1074
+              },
+              {
+                "Range": [
+                  1079,
+                  1081
+                ]
+              },
+              {
+                "Single": 1092
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "docs/mobile-codex-tui-workbench-design.md": [
+      {
+        "hash": "s_cc3bbbee0ce945::t_ca6b6a1ae17f8a",
+        "line_ranges": [
+          {
+            "Range": [
+              74,
+              208
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3c114d03f2901c2b75bf3e",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  74,
+                  208
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_cc3bbbee0ce945": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_0bab69ddfb3c6e": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_2b1af72dd9ec79": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_31466248f01a1e": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_4e3ecdcef7c750": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_660c0dab93f42b": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_69c37c0dc95f74": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_8c2331bf8cb862": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_9c8c62d70a5bf5": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_9f86aa081ba618": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_ca6b6a1ae17f8a": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_d39fb3e6d92f34": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc3bbbee0ce945::t_e619a026077987": {
+      "tool": "trae",
+      "conversation_id": "6a3c0c1803f2901c2b75bd87",
+      "session_id": "6a3c0c1803f2901c2b75bd87",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
