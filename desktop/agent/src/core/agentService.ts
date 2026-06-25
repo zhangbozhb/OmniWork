@@ -16,6 +16,7 @@ import {
   type AgentMessageAckPayload,
   type AgentMessageListRequestPayload,
   type AgentMessageReadRequestPayload,
+  type AgentProbeEvent,
   type MessageEnvelope,
   type P2pChannelKind,
 } from "@omniwork/protocol-ts";
@@ -86,6 +87,7 @@ import { AppConnectionRegistry } from "./appConnectionRegistry.ts";
 import { AgentAdminServer } from "./adminServer.ts";
 import { AgentMessageService } from "../probes/agentMessageService.ts";
 import { AgentHookReceiver } from "../probes/agentHookReceiver.ts";
+import { enrichProbeEventWithSessions } from "../probes/agentProbeEnrichment.ts";
 import { ensureClaudeHooksInstalled } from "../probes/claudeHookInstaller.ts";
 import { ensureCodexHooksInstalled } from "../probes/codexHookInstaller.ts";
 import type { RelayCloseEvent } from "@omniwork/relay-client";
@@ -1576,13 +1578,25 @@ export class AgentService {
       host: this.config.agentProbeHost,
       port: this.config.agentProbePort,
       token,
-      onProbeEvent: (event) => {
-        const message = this.agentMessages.publishProbeEvent(event);
+      onProbeEvent: async (event) => {
+        const enrichedEvent = await this.enrichProbeEvent(event).catch(
+          (error) => {
+            this.logger.warn("agent probe event enrichment failed", {
+              provider: event.provider,
+              event_type: event.event_type,
+              session_id: event.session_id,
+              error: String(error),
+            });
+            return event;
+          },
+        );
+        const message = this.agentMessages.publishProbeEvent(enrichedEvent);
         if (message) {
           this.logger.info("agent probe event accepted", {
-            provider: event.provider,
-            event_type: event.event_type,
-            session_id: event.session_id,
+            provider: enrichedEvent.provider,
+            event_type: enrichedEvent.event_type,
+            session_id: enrichedEvent.session_id,
+            surface_id: enrichedEvent.surface_id,
             message_kind: message.message_kind,
           });
         }
@@ -1710,7 +1724,17 @@ export class AgentService {
       createMessage("agent.message", message, {
         device_id: this.config.deviceId,
         session_id: message.session_id,
+        surface_id: message.surface_id,
       }),
+    );
+  }
+
+  private async enrichProbeEvent(
+    event: AgentProbeEvent,
+  ): Promise<AgentProbeEvent> {
+    return enrichProbeEventWithSessions(
+      event,
+      await this.sessionManager.list(),
     );
   }
 

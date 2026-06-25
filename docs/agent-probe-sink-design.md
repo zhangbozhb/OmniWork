@@ -84,6 +84,8 @@ Probe Sink
   输出：AgentProbeEvent / AgentAppMessage
 ```
 
+当前阶段不要求用户配置消息归属，也不向终端启动命令注入可见的 session/surface 环境变量。Hook payload 进入 Desktop Agent 后，由接收端根据现有 session、workspace path 和 provider 自动补齐 `AgentProbeEvent.surface_id` 与 `AgentAppMessage.surface_id`。App 默认查看全部消息；只有在点击消息跳转、或按 workspace/session/surface 自动分组时才使用这些内部字段。
+
 运行在 tmux 中的 Codex / Claude Code TUI 仍然是 `TerminalSurface`。只有当 Desktop Agent 能绑定到 app-server thread 或等价结构化协议时，才创建 `AgentSurface`。两者可以属于同一个 `WorkSession`：
 
 ```text

@@ -872,6 +872,7 @@ export interface AgentProbeEvent {
   provider: AgentProbeProvider;
   probe_id: string;
   session_id: string;
+  surface_id?: string;
   workspace_id?: string;
   workspace_path?: string;
   event_type: AgentProbeEventType;
@@ -902,6 +903,7 @@ export interface AgentAppMessage {
   type: "agent.message";
   provider: string;
   session_id: string;
+  surface_id?: string;
   workspace_id?: string;
   message_kind: AgentAppMessageKind;
   title: string;
@@ -910,6 +912,7 @@ export interface AgentAppMessage {
   action?: {
     type: "open_session" | "open_approval" | "open_diff" | "open_workspace";
     session_id?: string;
+    surface_id?: string;
     workspace_id?: string;
   };
   created_at: string;
@@ -919,6 +922,7 @@ export interface AgentAppMessage {
 
 export interface AgentMessageListRequestPayload {
   session_id?: string;
+  surface_id?: string;
   provider?: string;
   unread_only?: boolean;
   limit?: number;

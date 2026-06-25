@@ -10,6 +10,7 @@ function probeEvent(overrides: Partial<AgentProbeEvent>): AgentProbeEvent {
     provider: "codex",
     probe_id: "codex-hooks",
     session_id: "sess-1",
+    surface_id: "surface_sess-1_terminal",
     event_type: "agent.approval_required",
     severity: "warning",
     title: "Codex needs approval",
@@ -37,6 +38,8 @@ test("AgentMessageService converts actionable probe events to app messages", () 
   assert.equal(message?.message_kind, "approval");
   assert.equal(message?.priority, "high");
   assert.equal(message?.action?.type, "open_approval");
+  assert.equal(message?.surface_id, "surface_sess-1_terminal");
+  assert.equal(message?.action?.surface_id, "surface_sess-1_terminal");
   assert.equal(service.list().length, 1);
   assert.equal(pushed.length, 1);
 });
@@ -62,6 +65,7 @@ test("AgentMessageService supports read ack and filtered list", () => {
     probeEvent({
       id: "second",
       session_id: "sess-2",
+      surface_id: "surface_sess-2_terminal",
       provider: "claude-code",
       event_type: "agent.failed",
       severity: "critical",
@@ -71,6 +75,10 @@ test("AgentMessageService supports read ack and filtered list", () => {
   assert.ok(first);
   assert.equal(service.list({ provider: "codex" }).length, 1);
   assert.equal(service.list({ session_id: "sess-2" }).length, 1);
+  assert.equal(
+    service.list({ surface_id: "surface_sess-1_terminal" }).length,
+    1,
+  );
   assert.equal(service.ack(first.id, true)?.read_at !== undefined, true);
   assert.equal(service.list({ unread_only: true }).length, 1);
 });

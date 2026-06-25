@@ -17,7 +17,7 @@
 - 兼容通道（tmux + Native WebView/xterm 终端）：已落地，见 [desktop/agent/src/pty-bridge](../desktop/agent/src/pty-bridge)、[desktop/agent/src/tmux-manager](../desktop/agent/src/tmux-manager) 与 [app/src/terminal](../app/src/terminal)。
 - Codex app-server adapter 尚未落地，仍属于结构化 Codex UI 方向。
 - Terminal Provider 元数据层：`packages/protocol-ts` 定义 + 桌面端 Agent 配置化 provider 已实现。
-- Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex hook receiver、Desktop Agent 启动时 Codex hook 自动安装、Codex hook 归一化、内存消息过滤/去重和在线 App `agent.message` 广播；Codex app-server channel、持久化 pending inbox、系统 Push 尚未落地。
+- Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex / Claude hook receiver、Desktop Agent 启动时 hook 自动安装、hook 归一化、接收端按现有 session/workspace/provider 自动关联 `surface_id`、内存消息过滤/去重和在线 App `agent.message` 广播；Codex app-server channel、持久化 pending inbox、系统 Push 尚未落地。
 - Workspace 上下文层：已实现 `workspace.list/status` + `files.list/read/write` + `git.status/diff`，其中文件写入仅支持受控 UTF-8 文本编辑，详见 [desktop/agent/src/workspace](../desktop/agent/src/workspace) / [files](../desktop/agent/src/files) / [git](../desktop/agent/src/git)。
 - Relay + P2P 升级：已落地（终版见 [relay-architecture.md](./relay-architecture.md)），不在本文档继续维护。
 

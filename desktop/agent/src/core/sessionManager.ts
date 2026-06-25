@@ -177,6 +177,7 @@ export class SessionManager {
       : { cwd: payload.cwd ?? this.defaults.cwd, workspace: undefined };
     const cwd = resolvedWorkspace.cwd;
     const command = payload.command ?? terminalProvider.buildTuiCommand();
+    const primarySurfaceId = toTerminalSurfaceId(sessionId);
     const size = clampTerminalSize(
       payload.terminal_size ?? this.defaults.terminalSize,
     );
@@ -188,7 +189,7 @@ export class SessionManager {
 
     const created: TerminalSession = {
       session_id: sessionId,
-      primary_surface_id: toTerminalSurfaceId(sessionId),
+      primary_surface_id: primarySurfaceId,
       surfaces: [
         createTerminalSurface({
           sessionId,

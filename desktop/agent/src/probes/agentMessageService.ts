@@ -132,6 +132,9 @@ export class AgentMessageService {
         if (filter.session_id && message.session_id !== filter.session_id) {
           return false;
         }
+        if (filter.surface_id && message.surface_id !== filter.surface_id) {
+          return false;
+        }
         if (filter.provider && message.provider !== filter.provider) {
           return false;
         }
@@ -170,6 +173,7 @@ export class AgentMessageService {
       type: "agent.message",
       provider: event.provider,
       session_id: event.session_id,
+      surface_id: event.surface_id,
       workspace_id: event.workspace_id,
       message_kind: mapping.kind,
       title: event.title ?? mapping.title,
@@ -179,6 +183,7 @@ export class AgentMessageService {
       action: {
         type: mapping.action,
         session_id: event.session_id,
+        surface_id: event.surface_id,
         workspace_id: event.workspace_id,
       },
       created_at: event.created_at,

@@ -19,7 +19,7 @@ export interface AgentHookReceiverOptions {
   port: number;
   token: string;
   maxBodyBytes?: number;
-  onProbeEvent(event: AgentProbeEvent): void;
+  onProbeEvent(event: AgentProbeEvent): void | Promise<void>;
 }
 
 export class AgentHookReceiver {
@@ -84,7 +84,7 @@ export class AgentHookReceiver {
       return;
     }
 
-    this.options.onProbeEvent(event);
+    await this.options.onProbeEvent(event);
     this.writeJson(response, 202, { accepted: true, event_id: event.id });
   }
 
