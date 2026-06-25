@@ -64,3 +64,39 @@ test("normalizeClaudeHookPayload can use OmniWork hook event fallback", () => {
   assert.equal(event.event_type, "agent.exited");
   assert.equal(event.payload?.omniwork_hook_event, "SessionEnd");
 });
+
+test("normalizeClaudeHookPayload maps Claude Code notification and failure hooks", () => {
+  const notification = normalizeClaudeHookPayload({
+    session_id: "sess-1",
+    hook_event_name: "Notification",
+    message: "Claude Code is waiting for input",
+    notification_type: "input_required",
+  });
+  const failure = normalizeClaudeHookPayload({
+    session_id: "sess-1",
+    hook_event_name: "PostToolUseFailure",
+    tool_name: "Bash",
+    reason: "command failed",
+  });
+  const denied = normalizeClaudeHookPayload({
+    session_id: "sess-1",
+    hook_event_name: "PermissionDenied",
+    tool_name: "Write",
+    reason: "blocked by user",
+  });
+
+  assert.ok(notification);
+  assert.equal(notification.event_type, "agent.waiting_user_input");
+  assert.equal(notification.severity, "warning");
+  assert.equal(notification.summary, "Claude Code is waiting for input");
+  assert.equal(notification.payload?.notification_type, "input_required");
+
+  assert.ok(failure);
+  assert.equal(failure.event_type, "agent.failed");
+  assert.equal(failure.severity, "critical");
+  assert.equal(failure.summary, "command failed");
+
+  assert.ok(denied);
+  assert.equal(denied.event_type, "agent.failed");
+  assert.equal(denied.title, "Claude Code permission denied for Write");
+});

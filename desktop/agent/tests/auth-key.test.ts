@@ -157,6 +157,19 @@ assert.equal(
   }).deviceId,
   "custom-device",
 );
+assert.equal(
+  loadAgentConfig(
+    {
+      ...configEnv,
+      OMNIWORK_CLAUDECODE_COMMAND: "claudecode",
+    },
+    {
+      commandExists: (command) => command === "claudecode",
+    },
+  ).terminalProviders.find((provider) => provider.kind === "claude")
+    ?.defaultCommand,
+  "claudecode",
+);
 assert.deepEqual(
   loadAgentConfig(
     {

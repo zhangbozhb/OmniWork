@@ -180,7 +180,10 @@ function readDefaultTerminalProviderCommandOverrides(
 ): Record<string, string> {
   return {
     codex: env.OMNIWORK_CODEX_COMMAND ?? "codex",
-    claude: env.OMNIWORK_CLAUDE_COMMAND ?? "claude",
+    claude:
+      env.OMNIWORK_CLAUDE_COMMAND ??
+      env.OMNIWORK_CLAUDECODE_COMMAND ??
+      "claude",
     gemini: env.OMNIWORK_GEMINI_COMMAND ?? "gemini",
   };
 }

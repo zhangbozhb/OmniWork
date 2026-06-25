@@ -159,6 +159,9 @@ function resolveProvider(
   if (url.pathname === "/api/probes/claude-code/hooks") {
     return "claude-code";
   }
+  if (url.pathname === "/api/probes/claudecode/hooks") {
+    return "claude-code";
+  }
   if (url.pathname !== "/api/probes/hooks") {
     return null;
   }
@@ -166,7 +169,7 @@ function resolveProvider(
   const source =
     readString(body.omniwork_hook_source) ??
     readString(url.searchParams.get("source"));
-  if (source === "claude") {
+  if (source === "claude" || source === "claudecode") {
     return "claude-code";
   }
   if (source === "codex" || source === "claude-code") {

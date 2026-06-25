@@ -263,7 +263,10 @@ export class AgentService {
       });
       await this.prepareTerminalProvider({
         kind: "claude",
-        command: process.env.OMNIWORK_CLAUDE_COMMAND ?? "claude",
+        command:
+          process.env.OMNIWORK_CLAUDE_COMMAND ??
+          process.env.OMNIWORK_CLAUDECODE_COMMAND ??
+          "claude",
       });
 
       const tmuxAvailable = await this.tmux.isAvailable();
@@ -435,6 +438,7 @@ export class AgentService {
             "agent.notification.settings",
             "agent.probe.codex",
             "agent.probe.codex.app_server",
+            "agent.probe.claude_code",
             "agent.probe.tmux",
             ...this.terminalProviders.capabilities(),
           ],
@@ -1948,10 +1952,19 @@ function isClaudeTerminalProvider(terminalProvider: {
   kind: string;
   command: string;
 }): boolean {
-  if (terminalProvider.kind === "claude") {
+  if (
+    terminalProvider.kind === "claude" ||
+    terminalProvider.kind === "claude-code" ||
+    terminalProvider.kind === "claudecode"
+  ) {
     return true;
   }
-  return firstShellWord(terminalProvider.command) === "claude";
+  const command = firstShellWord(terminalProvider.command);
+  return (
+    command === "claude" ||
+    command === "claude-code" ||
+    command === "claudecode"
+  );
 }
 
 function firstShellWord(command: string): string | undefined {

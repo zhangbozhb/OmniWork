@@ -89,6 +89,7 @@ function toTerminalProviderKind(provider: string): string | undefined {
     case "codex":
       return "codex";
     case "claude-code":
+    case "claudecode":
       return "claude";
     case "gemini":
       return "gemini";

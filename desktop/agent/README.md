@@ -33,6 +33,7 @@ OMNIWORK_AGENT_DISPLAY_NAME="Alice DesktopBook"
 OMNIWORK_AGENT_IDENTITY_PATH=/Users/me/.omniwork/agent.json
 OMNIWORK_CODEX_COMMAND=codex
 OMNIWORK_CLAUDE_COMMAND=claude
+OMNIWORK_CLAUDECODE_COMMAND=claudecode
 OMNIWORK_GEMINI_COMMAND=gemini
 OMNIWORK_DEFAULT_CWD=/Users/me/Code
 OMNIWORK_APP_SUPPORT_DIR=/tmp/omniwork-agent
@@ -48,8 +49,11 @@ uses `~/.omniwork/agent.json`.
 `OMNIWORK_TERMINAL_PROVIDERS` is the primary way to choose and extend terminal
 providers. When it is unset, the 桌面端 Agent falls back to the default Codex,
 Claude, and Gemini presets. The `OMNIWORK_CODEX_COMMAND`,
-`OMNIWORK_CLAUDE_COMMAND`, and `OMNIWORK_GEMINI_COMMAND` variables only override
-those fallback preset commands.
+`OMNIWORK_CLAUDE_COMMAND`, `OMNIWORK_CLAUDECODE_COMMAND`, and
+`OMNIWORK_GEMINI_COMMAND` variables only override those fallback preset
+commands. `OMNIWORK_CLAUDECODE_COMMAND` is an alias for environments where the
+Claude Code executable or wrapper is named `claudecode`; internally the Probe
+provider remains `claude-code`.
 
 Example custom provider set:
 

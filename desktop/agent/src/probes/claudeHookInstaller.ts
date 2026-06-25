@@ -30,6 +30,13 @@ const MANAGED_CLAUDE_HOOK_EVENTS: ManagedClaudeHookEvent[] = [
     matcher: "startup|resume|clear|compact",
   },
   {
+    name: "UserPromptSubmit",
+  },
+  {
+    name: "PreToolUse",
+    matcher: "*",
+  },
+  {
     name: "PermissionRequest",
     matcher: "*",
   },
@@ -38,7 +45,35 @@ const MANAGED_CLAUDE_HOOK_EVENTS: ManagedClaudeHookEvent[] = [
     matcher: "*",
   },
   {
+    name: "PostToolUseFailure",
+    matcher: "*",
+  },
+  {
+    name: "PermissionDenied",
+    matcher: "*",
+  },
+  {
+    name: "Notification",
+  },
+  {
+    name: "PreCompact",
+  },
+  {
+    name: "PostCompact",
+  },
+  {
+    name: "SubagentStart",
+    matcher: "*",
+  },
+  {
+    name: "SubagentStop",
+    matcher: "*",
+  },
+  {
     name: "Stop",
+  },
+  {
+    name: "SessionEnd",
   },
 ];
 

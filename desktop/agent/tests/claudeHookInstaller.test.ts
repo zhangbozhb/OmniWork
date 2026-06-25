@@ -20,9 +20,19 @@ test("ensureClaudeHooksInstalled creates user settings with OmniWork hooks", asy
   assert.equal(result.installed, true);
   assert.equal(result.changed, true);
   assert.equal(parsed.hooks.SessionStart.length, 1);
+  assert.equal(parsed.hooks.UserPromptSubmit.length, 1);
+  assert.equal(parsed.hooks.PreToolUse.length, 1);
   assert.equal(parsed.hooks.PermissionRequest.length, 1);
   assert.equal(parsed.hooks.PostToolUse.length, 1);
+  assert.equal(parsed.hooks.PostToolUseFailure.length, 1);
+  assert.equal(parsed.hooks.PermissionDenied.length, 1);
+  assert.equal(parsed.hooks.Notification.length, 1);
+  assert.equal(parsed.hooks.PreCompact.length, 1);
+  assert.equal(parsed.hooks.PostCompact.length, 1);
+  assert.equal(parsed.hooks.SubagentStart.length, 1);
+  assert.equal(parsed.hooks.SubagentStop.length, 1);
   assert.equal(parsed.hooks.Stop.length, 1);
+  assert.equal(parsed.hooks.SessionEnd.length, 1);
   assert.match(
     parsed.hooks.SessionStart[0].hooks[0].command,
     /OMNIWORK_AGENT_HOOK_SOURCE='claude-code'/u,
@@ -34,6 +44,14 @@ test("ensureClaudeHooksInstalled creates user settings with OmniWork hooks", asy
   assert.match(
     parsed.hooks.PermissionRequest[0].hooks[0].command,
     /OMNIWORK_AGENT_HOOK_EVENT='PermissionRequest'/u,
+  );
+  assert.match(
+    parsed.hooks.Notification[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_EVENT='Notification'/u,
+  );
+  assert.match(
+    parsed.hooks.SessionEnd[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_EVENT='SessionEnd'/u,
   );
   assert.match(
     parsed.hooks.Stop[0].hooks[0].command,

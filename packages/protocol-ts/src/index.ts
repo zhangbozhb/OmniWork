@@ -153,8 +153,10 @@ export type KnownAgentCapability =
   | "agent.notification.settings"
   | "agent.probe.codex"
   | "agent.probe.codex.app_server"
+  | "agent.probe.claude_code"
   | "agent.probe.tmux"
   | "claude.cli"
+  | "claudecode.cli"
   | "gemini.cli";
 export type AgentCapability = KnownAgentCapability | (string & {});
 
@@ -832,6 +834,7 @@ export interface GitDiffPayload {
 export type AgentProbeProvider =
   | "codex"
   | "claude-code"
+  | "claudecode"
   | "opencode"
   | "gemini"
   | (string & {});

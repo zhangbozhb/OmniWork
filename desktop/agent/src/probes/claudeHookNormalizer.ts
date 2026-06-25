@@ -19,6 +19,7 @@ export interface ClaudeHookPayload {
   tool_input?: unknown;
   tool_response?: unknown;
   message?: unknown;
+  notification_type?: unknown;
   stop_hook_active?: unknown;
   trigger?: unknown;
   permission_mode?: unknown;
@@ -79,8 +80,13 @@ function eventTypeFromHook(hookName: string): AgentProbeEventType | null {
       return "agent.tool_call_started";
     case "PermissionRequest":
       return "agent.approval_required";
+    case "PermissionDenied":
+    case "PostToolUseFailure":
+      return "agent.failed";
     case "PostToolUse":
       return "agent.tool_call_finished";
+    case "Notification":
+      return "agent.waiting_user_input";
     case "PreCompact":
       return "agent.compaction_started";
     case "PostCompact":
@@ -100,6 +106,12 @@ function eventTypeFromHook(hookName: string): AgentProbeEventType | null {
 
 function severityFromHook(hookName: string): AgentProbeSeverity {
   if (hookName === "PermissionRequest") {
+    return "warning";
+  }
+  if (hookName === "PermissionDenied" || hookName === "PostToolUseFailure") {
+    return "critical";
+  }
+  if (hookName === "Notification") {
     return "warning";
   }
   if (hookName === "PostToolUse") {
@@ -122,10 +134,20 @@ function titleFromHook(hookName: string, toolName: string | undefined): string {
       return toolName
         ? `Claude Code needs approval for ${toolName}`
         : "Claude Code needs approval";
+    case "PermissionDenied":
+      return toolName
+        ? `Claude Code permission denied for ${toolName}`
+        : "Claude Code permission denied";
     case "PostToolUse":
       return toolName
         ? `Claude Code finished ${toolName}`
         : "Claude Code finished a tool";
+    case "PostToolUseFailure":
+      return toolName
+        ? `Claude Code failed ${toolName}`
+        : "Claude Code tool failed";
+    case "Notification":
+      return "Claude Code notification";
     case "Stop":
       return "Claude Code turn completed";
     case "SessionEnd":
@@ -152,6 +174,7 @@ function summaryFromHook(
   const trigger = readString(payload.trigger);
   const message = readString(payload.message);
   const reason = readString(payload.reason);
+  const notificationType = readString(payload.notification_type);
   const toolInput = readToolInputSummary(payload.tool_input);
 
   if (hookName === "UserPromptSubmit") {
@@ -162,6 +185,12 @@ function summaryFromHook(
   }
   if (hookName === "SessionEnd") {
     return reason ? `reason: ${reason}` : undefined;
+  }
+  if (hookName === "Notification") {
+    return truncate(message ?? notificationType, 240);
+  }
+  if (hookName === "PermissionDenied" || hookName === "PostToolUseFailure") {
+    return truncate(reason ?? message ?? toolInput, 240);
   }
   if (hookName === "PreCompact" || hookName === "PostCompact") {
     return trigger ? `trigger: ${trigger}` : undefined;
@@ -199,6 +228,7 @@ function sanitizePayload(payload: ClaudeHookPayload): Record<string, unknown> {
     cwd: readString(payload.cwd),
     source: readString(payload.source),
     tool_name: readString(payload.tool_name),
+    notification_type: readString(payload.notification_type),
     trigger: readString(payload.trigger),
     permission_mode: readString(payload.permission_mode),
     reason: readString(payload.reason),

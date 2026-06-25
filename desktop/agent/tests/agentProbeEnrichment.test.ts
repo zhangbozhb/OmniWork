@@ -99,3 +99,35 @@ test("enrichProbeEventWithSessions picks the matching provider and workspace", (
   assert.equal(enriched.session_id, "sess-claude");
   assert.equal(enriched.surface_id, "surface_sess-claude_terminal");
 });
+
+test("enrichProbeEventWithSessions accepts claudecode as a Claude Code alias", () => {
+  const enriched = enrichProbeEventWithSessions(
+    probeEvent({
+      provider: "claudecode",
+      workspace_path: "/tmp/claude-project",
+    }),
+    [
+      fakeSession({
+        session_id: "sess-claude",
+        primary_surface_id: "surface_sess-claude_terminal",
+        terminal_provider_kind: "claude",
+        terminal_provider_label: "Claude",
+        workspace_path: "/tmp/claude-project",
+        cwd: "/tmp/claude-project",
+        surfaces: [
+          {
+            surface_id: "surface_sess-claude_terminal",
+            session_id: "sess-claude",
+            kind: "terminal",
+            title: "Claude 1",
+            status: "active",
+            provider: "claude",
+          },
+        ],
+      }),
+    ],
+  );
+
+  assert.equal(enriched.session_id, "sess-claude");
+  assert.equal(enriched.surface_id, "surface_sess-claude_terminal");
+});
