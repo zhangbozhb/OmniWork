@@ -439,6 +439,8 @@ export class AgentService {
             "agent.probe.codex",
             "agent.probe.codex.app_server",
             "agent.probe.claude_code",
+            "agent.probe.trae",
+            "agent.probe.trae_cn",
             "agent.probe.tmux",
             ...this.terminalProviders.capabilities(),
           ],

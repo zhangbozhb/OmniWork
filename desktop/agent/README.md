@@ -14,7 +14,7 @@ TypeScript/Node.js 桌面端 Agent for managing Terminal provider TUI sessions.
 - Persists user-edited session titles through the `session.rename` protocol message.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.
 - Provides workspace file listing/reading/writing for supported UTF-8 text files, plus read-only Git status/diff messages.
-- Runs a local Agent Probe hook receiver and auto-installs Codex / Claude Code hooks with the shared `omniwork-agent-hook.mjs` script.
+- Runs a local Agent Probe hook receiver for Codex / Claude Code / Trae / Trae CN events and auto-installs Codex / Claude Code hooks with the shared `omniwork-agent-hook.mjs` script.
 - Server-driven terminal frames: each attached session runs a ~450ms pusher in `src/core/agentService.ts` that captures the current PTY snapshot, hashes it with SHA-1, and emits `terminal.frame` only when the hash changes. The App no longer polls the snapshot on a 3s idle interval or after each input.
 - Serves the local Agent Admin UI from `static/admin/index.html`; keep UI HTML/CSS/JS there instead of embedding it in `src/core/adminServer.ts`.
 
@@ -35,6 +35,8 @@ OMNIWORK_CODEX_COMMAND=codex
 OMNIWORK_CLAUDE_COMMAND=claude
 OMNIWORK_CLAUDECODE_COMMAND=claudecode
 OMNIWORK_GEMINI_COMMAND=gemini
+OMNIWORK_TRAE_COMMAND=traecli
+OMNIWORK_TRAE_CN_COMMAND=traecli
 OMNIWORK_DEFAULT_CWD=/Users/me/Code
 OMNIWORK_APP_SUPPORT_DIR=/tmp/omniwork-agent
 OMNIWORK_TERMINAL_STREAM_ENABLED=false
@@ -48,12 +50,14 @@ uses `~/.omniwork/agent.json`.
 
 `OMNIWORK_TERMINAL_PROVIDERS` is the primary way to choose and extend terminal
 providers. When it is unset, the 桌面端 Agent falls back to the default Codex,
-Claude, and Gemini presets. The `OMNIWORK_CODEX_COMMAND`,
-`OMNIWORK_CLAUDE_COMMAND`, `OMNIWORK_CLAUDECODE_COMMAND`, and
-`OMNIWORK_GEMINI_COMMAND` variables only override those fallback preset
+Claude, Gemini, Trae, and Trae CN presets. The `OMNIWORK_CODEX_COMMAND`,
+`OMNIWORK_CLAUDE_COMMAND`, `OMNIWORK_CLAUDECODE_COMMAND`,
+`OMNIWORK_GEMINI_COMMAND`, `OMNIWORK_TRAE_COMMAND`, and
+`OMNIWORK_TRAE_CN_COMMAND` variables only override those fallback preset
 commands. `OMNIWORK_CLAUDECODE_COMMAND` is an alias for environments where the
 Claude Code executable or wrapper is named `claudecode`; internally the Probe
-provider remains `claude-code`.
+provider remains `claude-code`. Trae and Trae CN Probe events are kept as
+separate providers: `trae` and `trae-cn`.
 
 Example custom provider set:
 

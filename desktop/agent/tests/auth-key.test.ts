@@ -170,6 +170,27 @@ assert.equal(
     ?.defaultCommand,
   "claudecode",
 );
+{
+  const providers = loadAgentConfig(
+    {
+      ...configEnv,
+      OMNIWORK_TRAE_COMMAND: "traecli",
+      OMNIWORK_TRAE_CN_COMMAND: "traecli-cn",
+    },
+    {
+      commandExists: (command) =>
+        command === "traecli" || command === "traecli-cn",
+    },
+  ).terminalProviders;
+  assert.equal(
+    providers.find((provider) => provider.kind === "trae")?.defaultCommand,
+    "traecli",
+  );
+  assert.equal(
+    providers.find((provider) => provider.kind === "trae-cn")?.defaultCommand,
+    "traecli-cn",
+  );
+}
 assert.deepEqual(
   loadAgentConfig(
     {

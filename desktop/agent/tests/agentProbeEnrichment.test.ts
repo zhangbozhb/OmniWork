@@ -4,7 +4,9 @@ import { test } from "node:test";
 import type { AgentProbeEvent, TerminalSession } from "@omniwork/protocol-ts";
 import { enrichProbeEventWithSessions } from "../src/probes/agentProbeEnrichment.ts";
 
-function fakeSession(overrides: Partial<TerminalSession> = {}): TerminalSession {
+function fakeSession(
+  overrides: Partial<TerminalSession> = {},
+): TerminalSession {
   const now = new Date().toISOString();
   return {
     session_id: "sess-1",
@@ -130,4 +132,36 @@ test("enrichProbeEventWithSessions accepts claudecode as a Claude Code alias", (
 
   assert.equal(enriched.session_id, "sess-claude");
   assert.equal(enriched.surface_id, "surface_sess-claude_terminal");
+});
+
+test("enrichProbeEventWithSessions accepts Trae provider aliases", () => {
+  const enriched = enrichProbeEventWithSessions(
+    probeEvent({
+      provider: "traex",
+      workspace_path: "/tmp/trae-project",
+    }),
+    [
+      fakeSession({
+        session_id: "sess-trae",
+        primary_surface_id: "surface_sess-trae_terminal",
+        terminal_provider_kind: "trae",
+        terminal_provider_label: "Trae",
+        workspace_path: "/tmp/trae-project",
+        cwd: "/tmp/trae-project",
+        surfaces: [
+          {
+            surface_id: "surface_sess-trae_terminal",
+            session_id: "sess-trae",
+            kind: "terminal",
+            title: "Trae 1",
+            status: "active",
+            provider: "trae",
+          },
+        ],
+      }),
+    ],
+  );
+
+  assert.equal(enriched.session_id, "sess-trae");
+  assert.equal(enriched.surface_id, "surface_sess-trae_terminal");
 });

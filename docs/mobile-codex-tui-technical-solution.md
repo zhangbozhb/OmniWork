@@ -17,7 +17,7 @@
 - 兼容通道（tmux + Native WebView/xterm 终端）：已落地，见 [desktop/agent/src/pty-bridge](../desktop/agent/src/pty-bridge)、[desktop/agent/src/tmux-manager](../desktop/agent/src/tmux-manager) 与 [app/src/terminal](../app/src/terminal)。
 - Codex app-server adapter 尚未完成进程管理和主动订阅；当前已落地 `codexAppServerNormalizer` 与本机 HTTP ingest endpoint，可把 app-server 的 thread / turn / approval / diff / completion 事件归一化为 `AgentProbeEvent`，供消息、通知和后续 AgentSurface timeline 复用。
 - Terminal Provider 元数据层：`packages/protocol-ts` 定义 + 桌面端 Agent 配置化 provider 已实现。
-- Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex / Claude hook receiver、Desktop Agent 启动时 hook 自动安装、hook 归一化、Codex app-server event HTTP ingest、Claude Code 官方生命周期 hook 主干映射、`claudecode` 输入别名归一化、tmux target missing Probe、接收端按现有 session/workspace/provider 自动关联 `surface_id`、SQLite pending inbox、已读回执、通知偏好持久化、脱敏系统通知候选 payload 和在线 App `agent.message` 广播；平台原生系统 Push gateway 尚未落地。
+- Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex / Claude / Trae / Trae-CN hook receiver、Desktop Agent 启动时 Codex / Claude hook 自动安装、hook 归一化、Codex app-server event HTTP ingest、Claude Code 官方生命周期 hook 主干映射、`claudecode` 输入别名归一化、Trae / Trae-CN hook provider 归一化、tmux target missing Probe、接收端按现有 session/workspace/provider 自动关联 `surface_id`、SQLite pending inbox、已读回执、通知偏好持久化、脱敏系统通知候选 payload 和在线 App `agent.message` 广播；平台原生系统 Push gateway 尚未落地。
 - Workspace 上下文层：已实现 `workspace.list/status` + `files.list/read/write` + `git.status/diff`，其中文件写入仅支持受控 UTF-8 文本编辑，详见 [desktop/agent/src/workspace](../desktop/agent/src/workspace) / [files](../desktop/agent/src/files) / [git](../desktop/agent/src/git)。
 - Relay + P2P 升级：已落地（终版见 [relay-architecture.md](./relay-architecture.md)），不在本文档继续维护。
 
@@ -59,7 +59,7 @@
    - `Git` Tab 仅当目标 workspace 是 Git 仓库时显示，能力限制为只读 `status` / `diff`，不提供 stage、commit、reset、push 等写操作。
 
 5. **Agent Probe Sink 消息感知层**
-   - Codex、Claude Code、OpenCode、Gemini CLI 等 coding agent 各自实现专属 Agent Probe，通过 hook 或结构化事件源感知自身运行状态和事件。
+   - Codex、Claude Code、Trae、Trae-CN、OpenCode、Gemini CLI 等 coding agent 各自实现专属 Agent Probe，通过 hook 或结构化事件源感知自身运行状态和事件。
    - Codex Probe 采用三通道：app-server 结构化主路径、Codex hooks 生命周期补充路径、PTY/tmux 兼容兜底路径。
    - 桌面端 Agent 内部提供统一 `Agent Probe Sink`，接收不同 Probe 上报的 `AgentProbeEvent`。
    - Probe 只负责感知和归一化，不直接推送 App，也不直接连接 Relay。
@@ -915,7 +915,7 @@ agent.*
 2. 引入 `Surface` 概念：App 与 Desktop Agent 按 `surface_id` 打开和订阅交互入口。
 3. Probe 先增强感知：Hooks / app-server event 进入 Probe Sink，用于状态卡片、通知和审批提醒。
 4. Codex `AgentSurface` MVP：先落地 app-server 事件归一化和本机 ingest，支持 thread / turn / approval / diff / completion 进入统一 Probe Sink；再接入 app-server 进程管理、主动订阅与 App timeline。
-5. 多 Agent 抽象：Claude Code 先以 hooks Probe Channel 接入统一 `AgentProbeEvent` / `AgentAppMessage` 语义，并把 `claudecode` 作为输入别名归一化为 `claude-code`；OpenCode、Gemini CLI 后续按同样 provider-specific Probe 模式接入。只有 provider 暴露等价 app-server / structured protocol 时才升级为 `AgentSurface` 主交互协议。
+5. 多 Agent 抽象：Claude Code 先以 hooks Probe Channel 接入统一 `AgentProbeEvent` / `AgentAppMessage` 语义，并把 `claudecode` 作为输入别名归一化为 `claude-code`；Trae / Trae-CN 根据本机 `~/.trae` 与 `~/.trae-cn` 目录调研结果，先接入 hook provider normalizer、CLI preset 和 session/surface 自动关联；OpenCode、Gemini CLI 后续按同样 provider-specific Probe 模式接入。只有 provider 暴露等价 app-server / structured protocol 时才升级为 `AgentSurface` 主交互协议。
 
 ### 移动体验与通知
 

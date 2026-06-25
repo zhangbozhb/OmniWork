@@ -185,6 +185,11 @@ function readDefaultTerminalProviderCommandOverrides(
       env.OMNIWORK_CLAUDECODE_COMMAND ??
       "claude",
     gemini: env.OMNIWORK_GEMINI_COMMAND ?? "gemini",
+    trae: env.OMNIWORK_TRAE_COMMAND ?? "traecli",
+    "trae-cn":
+      env.OMNIWORK_TRAE_CN_COMMAND ??
+      env.OMNIWORK_TRAECN_COMMAND ??
+      "traecli",
   };
 }
 

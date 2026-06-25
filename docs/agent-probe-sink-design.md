@@ -4,12 +4,12 @@
 
 ## 结论摘要
 
-对 Codex、Claude Code、OpenCode、Gemini CLI 这类 coding agent，不采用外部 Agent 直接推送到 App 的模型，也不把不同 Agent 的私有事件协议暴露给 App。
+对 Codex、Claude Code、Trae、Trae-CN、OpenCode、Gemini CLI 这类 coding agent，不采用外部 Agent 直接推送到 App 的模型，也不把不同 Agent 的私有事件协议暴露给 App。
 
 最终采用「专属 Agent Probe + Hook 感知 + Desktop Agent 内部 Probe Sink + 本机消息过滤 + 多端投递」架构：
 
 ```text
-Codex / Claude Code / OpenCode / Gemini CLI
+Codex / Claude Code / Trae / Trae-CN / OpenCode / Gemini CLI
         ↓
 专属 Agent Probe + Hook
         ↓
@@ -40,10 +40,11 @@ Android / iOS / Web App
 
 - 已落地：`packages/protocol-ts` 中的 `AgentProbeEvent`、`AgentAppMessage` 与 `agent.message*` 协议类型。
 - 已落地：桌面端 Agent 内部 `AgentMessageService`，支持 Probe Event 幂等去重、基础过滤、SQLite pending inbox、已读回执和在线 App 广播。
-- 已落地：Codex / Claude Code Hooks Channel 的本机 HTTP receiver，默认监听 `127.0.0.1:17669/api/probes/hooks`，通过 `Authorization: Bearer <token>` 校验，并按 `omniwork_hook_source` 分发到对应 Probe。
-- 已落地：`desktop/agent/bin/omniwork-agent-hook.mjs`，用于 Codex / Claude Code command hook 将 stdin JSON 转交给本机 receiver。
+- 已落地：Codex / Claude Code / Trae / Trae-CN Hooks Channel 的本机 HTTP receiver，默认监听 `127.0.0.1:17669/api/probes/hooks`，通过 `Authorization: Bearer <token>` 校验，并按 `omniwork_hook_source` 分发到对应 Probe。
+- 已落地：`desktop/agent/bin/omniwork-agent-hook.mjs`，用于 Codex / Claude Code / Trae / Trae-CN command hook 将 stdin JSON 转交给本机 receiver。
 - 已落地：Codex hooks 自动安装。Desktop Agent 启动生成 session key 后会立即检测并合并写入 `~/.codex/hooks.json`，该步骤发生在 admin server / hook receiver 监听端口之前；启动 Codex runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Codex 会话启动。
 - 已落地：Claude Code hooks 自动安装。Desktop Agent 启动生成 session key 后会检测并合并写入 `~/.claude/settings.json`；启动 Claude runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Claude 会话启动。当前支持 `claude-code` 与 `claudecode` 输入别名，内部统一归一化为 `claude-code` provider。
+- 已落地：Trae / Trae-CN hook payload normalizer 和本机 HTTP ingest provider 解析，支持 `/api/probes/trae/hooks`、`/api/probes/trae-cn/hooks` 以及共享 `/api/probes/hooks?source=...`。根据本机 `~/.trae/traecli.toml`、`~/.trae/traecli.yaml`、`~/.trae/hooks.json` 和 `~/.trae-cn/hooks.json` 调研，当前只接入 hook 事件语义；不自动改写 `~/.trae*` 配置，不把 Trae / Trae-CN 升级为完整 AgentSurface 主交互协议。
 - 已落地：Codex app-server event normalizer 和本机 HTTP ingest endpoint（`/api/probes/codex/app-server`），可把 thread / turn / approval / diff / completion 等结构化事件归一化为 `AgentProbeEvent`。当前尚未接入 app-server 进程管理和主动订阅。
 - 已落地：tmux Probe 的最小事件路径，tmux target 消失时会产生 `agent.exited` 并进入消息流。
 - 已落地：通知偏好持久化协议、App 设置页开关、服务端通知资格判断和脱敏系统通知 payload 生成。当前仅形成可接入 Push gateway 的候选通知，尚未接入平台原生 Push。
@@ -53,7 +54,7 @@ Android / iOS / Web App
 
 | 中文术语 | 英文术语 | 定义 |
 |---|---|---|
-| 编码 Agent | Coding Agent | Codex、Claude Code、OpenCode、Gemini CLI 等运行在电脑本地的 CLI / TUI / app-server 编码工具。 |
+| 编码 Agent | Coding Agent | Codex、Claude Code、Trae、Trae-CN、OpenCode、Gemini CLI 等运行在电脑本地的 CLI / TUI / app-server 编码工具。 |
 | 工作区 | Workspace | 工作目录、repo 或项目上下文，不代表具体交互形态。 |
 | 工作会话 | WorkSession | 一次可恢复的工作单元，可同时挂载多个交互入口。 |
 | 交互入口 | Surface | App 面向用户展示和操作的入口，例如 TerminalSurface、AgentSurface、文件和 diff surface。 |
@@ -115,6 +116,8 @@ Codex TUI exits to shell
 ```text
 CodexProbe
 ClaudeCodeProbe
+TraeProbe
+TraeCnProbe
 OpenCodeProbe
 GeminiCliProbe
 ```
@@ -443,6 +446,25 @@ Claude Code hook 到 Probe Event 的默认映射：
 | `Stop` | `agent.completed` | 可进入 App 内消息，系统 Push 可选 |
 | `SessionEnd` | `agent.exited` | 本地记录 |
 
+Trae / Trae-CN hook 到 Probe Event 的默认映射与 Claude Code 保持一致，并额外兼容 `traecli.yaml` 中的 snake_case 事件名：
+
+| Trae Hook | AgentProbeEvent | 默认处理 |
+|---|---|---|
+| `SessionStart` / `session_start` | `agent.started` | 可进入 App 内消息，不系统 Push |
+| `UserPromptSubmit` / `user_prompt_submit` | `agent.user_prompt_submitted` | 本地记录，默认不发 App |
+| `PreToolUse` / `pre_tool_use` | `agent.tool_call_started` | 本地记录，默认不发 App |
+| `PermissionRequest` / `permission_request` | `agent.approval_required` | 可进入 App 内消息，可系统 Push |
+| `PermissionDenied` / `permission_denied` | `agent.failed` | 可进入 App 内消息，可系统 Push |
+| `PostToolUse` / `post_tool_use` | `agent.tool_call_finished` | 本地记录 |
+| `PostToolUseFailure` / `post_tool_use_failure` | `agent.failed` | 可进入 App 内消息，可系统 Push |
+| `Notification` / `notification` | `agent.waiting_user_input` | 可进入 App 内消息，可系统 Push |
+| `PreCompact` / `pre_compact` | `agent.compaction_started` | 本地记录 |
+| `PostCompact` / `post_compact` | `agent.compaction_finished` | 本地记录 |
+| `SubagentStart` / `subagent_start` | `agent.subagent_started` | App 内消息可选 |
+| `SubagentStop` / `subagent_stop` | `agent.subagent_completed` | App 内消息可选 |
+| `Stop` / `stop` | `agent.completed` | 可进入 App 内消息，系统 Push 可选 |
+| `SessionEnd` / `session_end` | `agent.exited` | 本地记录 |
+
 Codex hook 到 Probe Event 的默认映射：
 
 | Codex Hook | CodexProbe 事件 | 默认处理 |
@@ -491,6 +513,26 @@ Process lifecycle hook
 Workspace / Git hook
   - 辅助判断文件修改和 diff 变化
 ```
+
+### Trae / Trae-CN Probe
+
+Trae 与 Trae-CN 当前按 Coding Agent Probe 接入，不按完整 `AgentSurface` 主协议接入。原因是本地 `~/.trae` 与 `~/.trae-cn` 目录只证明了 CLI hook、skills、agents、MCP schema、memory 和 worktree 组织存在，尚未发现可等价 Codex app-server 的 thread / turn / approval / diff 主交互协议。
+
+本机调研到的组织方式：
+
+- `~/.trae/hooks.json` 与 `~/.trae-cn/hooks.json`：均为 `version + hooks` 结构，当前包含 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`。
+- `~/.trae/traecli.toml`：声明 `features.hooks = true`，并覆盖 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`PermissionRequest`、`Notification`、`SessionEnd`、`Stop`、`PreCompact`、`PostCompact`、`SubagentStart`、`SubagentStop`。
+- `~/.trae/traecli.yaml`：使用 snake_case event 名称，例如 `user_prompt_submit`、`post_tool_use_failure`、`permission_request`、`session_end`、`subagent_start`。
+- `~/.trae-cn/builtin_skills`、`~/.trae-cn/skills`、`~/.trae/skills`：采用 `SKILL.md + references/scripts/assets` 的能力包组织。
+- `~/.trae/agents`：采用 markdown frontmatter `name/description` 加角色、输入、输出约束的 agent 定义。
+- `~/.trae-cn/mcps/.../tools/*.json`：按 workspace/session/agent scope 存放 MCP server metadata 与 tool schema。
+
+当前实现支持：
+
+- dedicated endpoints：`/api/probes/trae/hooks`、`/api/probes/trae-cn/hooks`、`/api/probes/trae_cn/hooks`。
+- shared endpoint source：`trae`、`traex`、`coco` 归一化为 `trae`；`trae-cn`、`trae_cn`、`traecn` 归一化为 `trae-cn`。
+- hook name alias：支持 PascalCase 和 snake_case 两种事件命名。
+- session/surface 自动关联：`trae`、`traex`、`coco` 匹配 `trae` terminal provider；`trae-cn`、`trae_cn`、`traecn` 匹配 `trae-cn` terminal provider。
 
 ### 其他 Coding Agent Probe
 

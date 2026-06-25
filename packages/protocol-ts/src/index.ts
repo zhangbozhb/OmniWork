@@ -154,10 +154,14 @@ export type KnownAgentCapability =
   | "agent.probe.codex"
   | "agent.probe.codex.app_server"
   | "agent.probe.claude_code"
+  | "agent.probe.trae"
+  | "agent.probe.trae_cn"
   | "agent.probe.tmux"
   | "claude.cli"
   | "claudecode.cli"
-  | "gemini.cli";
+  | "gemini.cli"
+  | "trae.cli"
+  | "trae_cn.cli";
 export type AgentCapability = KnownAgentCapability | (string & {});
 
 export type AppClientPlatform = "ios" | "android" | "web" | "desktop";
@@ -466,6 +470,22 @@ export const DEFAULT_TERMINAL_PROVIDER_DEFINITIONS: readonly TerminalProviderDef
       capability: "gemini.cli",
       summary: "Gemini CLI TUI session",
       defaultCommand: "gemini",
+      creatable: true,
+    },
+    {
+      kind: "trae",
+      displayName: "Trae",
+      capability: "trae.cli",
+      summary: "Trae CLI coding agent session",
+      defaultCommand: "traecli",
+      creatable: true,
+    },
+    {
+      kind: "trae-cn",
+      displayName: "Trae CN",
+      capability: "trae_cn.cli",
+      summary: "Trae CN CLI coding agent session",
+      defaultCommand: "traecli",
       creatable: true,
     },
     {
@@ -835,6 +855,8 @@ export type AgentProbeProvider =
   | "codex"
   | "claude-code"
   | "claudecode"
+  | "trae"
+  | "trae-cn"
   | "opencode"
   | "gemini"
   | (string & {});

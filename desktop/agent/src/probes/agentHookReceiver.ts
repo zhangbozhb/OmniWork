@@ -20,6 +20,11 @@ import {
   normalizeCodexAppServerEvent,
   type CodexAppServerEventPayload,
 } from "./codexAppServerNormalizer.ts";
+import {
+  normalizeTraeHookPayload,
+  normalizeTraeProbeProvider,
+  type TraeHookPayload,
+} from "./traeHookNormalizer.ts";
 
 export interface AgentHookReceiverOptions {
   host: string;
@@ -162,6 +167,15 @@ function resolveProvider(
   if (url.pathname === "/api/probes/claudecode/hooks") {
     return "claude-code";
   }
+  if (url.pathname === "/api/probes/trae/hooks") {
+    return "trae";
+  }
+  if (
+    url.pathname === "/api/probes/trae-cn/hooks" ||
+    url.pathname === "/api/probes/trae_cn/hooks"
+  ) {
+    return "trae-cn";
+  }
   if (url.pathname !== "/api/probes/hooks") {
     return null;
   }
@@ -169,11 +183,18 @@ function resolveProvider(
   const source =
     readString(body.omniwork_hook_source) ??
     readString(url.searchParams.get("source"));
+  if (!source) {
+    return null;
+  }
   if (source === "claude" || source === "claudecode") {
     return "claude-code";
   }
   if (source === "codex" || source === "claude-code") {
     return source;
+  }
+  const traeProvider = normalizeTraeProbeProvider(source);
+  if (traeProvider) {
+    return traeProvider;
   }
   return null;
 }
@@ -187,6 +208,10 @@ function normalizeHookPayload(
   }
   if (provider === "claude-code") {
     return normalizeClaudeHookPayload(payload as ClaudeHookPayload);
+  }
+  const traeProvider = normalizeTraeProbeProvider(provider);
+  if (traeProvider) {
+    return normalizeTraeHookPayload(traeProvider, payload as TraeHookPayload);
   }
   return null;
 }
