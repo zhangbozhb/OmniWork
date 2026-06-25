@@ -1,11 +1,11 @@
-import type { CodexSession } from "@omniwork/protocol-ts";
+import type { TerminalSession } from "@omniwork/protocol-ts";
 import type { PairingConfig } from "../features/auth/types";
 import type { AppView, PrimaryTabView } from "./appTypes";
 
 export function upsertSession(
-  sessions: CodexSession[],
-  nextSession: CodexSession,
-): CodexSession[] {
+  sessions: TerminalSession[],
+  nextSession: TerminalSession,
+): TerminalSession[] {
   const index = sessions.findIndex(
     (session) => session.session_id === nextSession.session_id,
   );
@@ -87,7 +87,7 @@ export function formatErrorMessage(
 }
 
 export function isTransitionalSessionStatus(
-  status: CodexSession["status"],
+  status: TerminalSession["status"],
 ): boolean {
   return status === "created" || status === "starting";
 }

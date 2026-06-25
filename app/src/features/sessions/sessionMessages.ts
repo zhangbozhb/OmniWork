@@ -28,9 +28,9 @@ export function renameSessionRequest(
   );
 }
 
-export function killTmuxSessionRequest(deviceId: string, sessionId: string) {
+export function killTerminalSessionRequest(deviceId: string, sessionId: string) {
   return createMessage(
-    "session.kill_tmux",
+    "session.kill_terminal",
     { session_id: sessionId },
     { device_id: deviceId, session_id: sessionId },
   );

@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://omniwork.local/protocol/sessions/session.schema.json",
-  "title": "AgentSession",
+  "title": "TerminalSession",
   "type": "object",
   "required": [
     "session_id",
-    "runtime_kind",
-    "runtime_label",
+    "terminal_provider_kind",
+    "terminal_provider_label",
     "title",
     "cwd",
     "command",
@@ -18,8 +18,8 @@
   ],
   "properties": {
     "session_id": { "type": "string" },
-    "runtime_kind": { "type": "string" },
-    "runtime_label": { "type": "string" },
+    "terminal_provider_kind": { "type": "string" },
+    "terminal_provider_label": { "type": "string" },
     "title": { "type": "string" },
     "cwd": { "type": "string" },
     "command": { "type": "string" },

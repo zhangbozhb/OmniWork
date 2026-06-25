@@ -21,20 +21,20 @@ import { useTranslation } from "react-i18next";
 
 import type {
   AgentCapability,
-  AgentProviderDefinition,
-  CodexSession,
+  TerminalProviderDefinition,
+  TerminalSession,
   FilesReadPayload,
   GitDiffPayload,
   GitDiffScope,
-  RuntimeKind,
+  TerminalProviderKind,
   WorkspaceDefinition,
   WorkspaceFileEntry,
   WorkspaceGitStatus,
 } from "@omniwork/protocol-ts";
 import {
-  getAgentProviderDefinition,
-  getCreatableAgentProviders,
-  isCreatableRuntimeKind,
+  getTerminalProviderDefinition,
+  getCreatableTerminalProviders,
+  isCreatableTerminalProviderKind,
 } from "@omniwork/protocol-ts";
 import i18n from "../../i18n";
 import { getSessionCapabilities } from "../../features/sessions/sessionCapabilities";
@@ -43,11 +43,11 @@ import { colors, radii, spacing, typography } from "../../ui/theme";
 import { FileBrowserScreen } from "../workspaces/FileBrowserScreen";
 import { GitStatusScreen } from "../workspaces/GitStatusScreen";
 
-type CreatableRuntimeKind = RuntimeKind;
+type CreatableTerminalProviderKind = TerminalProviderKind;
 type WorkspaceTab = "sessions" | "git" | "files";
 
-type RuntimeGroup = {
-  kind: RuntimeKind;
+type TerminalProviderGroup = {
+  kind: TerminalProviderKind;
   label: string;
   summary: string;
   capability?: AgentCapability;
@@ -57,8 +57,8 @@ type RuntimeGroup = {
 };
 
 export interface SessionListScreenProps {
-  sessions: CodexSession[];
-  providers: AgentProviderDefinition[];
+  sessions: TerminalSession[];
+  providers: TerminalProviderDefinition[];
   workspaces: WorkspaceDefinition[];
   providerPreferenceScope: string;
   creating: boolean;
@@ -80,7 +80,7 @@ export interface SessionListScreenProps {
   onRefreshSessions(): void;
   onCreateSession(input: {
     cwd: string;
-    runtimeKind: CreatableRuntimeKind;
+    terminalProviderKind: CreatableTerminalProviderKind;
     workspacePath?: string;
   }): void;
   onOpenWorkspaceFiles(workspace: WorkspaceDefinition): void;
@@ -106,10 +106,10 @@ export interface SessionListScreenProps {
   ): void;
   onPrefetchGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onReadGitFileContent(relativePath: string): void;
-  onOpenSession(session: CodexSession): void;
-  onCloseSession(session: CodexSession): void;
-  onRenameSession(session: CodexSession, title: string): void;
-  onKillTmuxSession(session: CodexSession): void;
+  onOpenSession(session: TerminalSession): void;
+  onCloseSession(session: TerminalSession): void;
+  onRenameSession(session: TerminalSession, title: string): void;
+  onKillTerminalSession(session: TerminalSession): void;
 }
 
 type ProviderPreferences = {
@@ -166,7 +166,7 @@ export function SessionListScreen({
   onOpenSession,
   onCloseSession,
   onRenameSession,
-  onKillTmuxSession,
+  onKillTerminalSession,
 }: SessionListScreenProps): JSX.Element {
   const { t } = useTranslation();
   const [providerPreferences, setProviderPreferences] =
@@ -186,28 +186,28 @@ export function SessionListScreen({
     [orderedProviders, providerPreferences.hiddenKinds],
   );
   const creatableProviders = useMemo(
-    () => getCreatableAgentProviders(enabledProviders),
+    () => getCreatableTerminalProviders(enabledProviders),
     [enabledProviders],
   );
-  const defaultCreateRuntimeKind = creatableProviders[0]?.kind ?? "other";
-  const preferredCreateRuntimeKind =
+  const defaultCreateTerminalProviderKind = creatableProviders[0]?.kind ?? "other";
+  const preferredCreateTerminalProviderKind =
     creatableProviders.find(
       (provider) => provider.kind === providerPreferences.defaultKind,
-    )?.kind ?? defaultCreateRuntimeKind;
-  const effectiveDefaultKind = preferredCreateRuntimeKind;
+    )?.kind ?? defaultCreateTerminalProviderKind;
+  const effectiveDefaultProviderKind = preferredCreateTerminalProviderKind;
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createCwd, setCreateCwd] = useState(defaultCwd);
   const [createWorkspacePath, setCreateWorkspacePath] = useState<
     string | undefined
   >();
   const [createWorkspaceLocked, setCreateWorkspaceLocked] = useState(false);
-  const [createRuntimeKind, setCreateRuntimeKind] =
-    useState<CreatableRuntimeKind>(preferredCreateRuntimeKind);
-  const [renamingSession, setRenamingSession] = useState<CodexSession | null>(
+  const [createTerminalProviderKind, setCreateTerminalProviderKind] =
+    useState<CreatableTerminalProviderKind>(preferredCreateTerminalProviderKind);
+  const [renamingSession, setRenamingSession] = useState<TerminalSession | null>(
     null,
   );
   const [renameTitle, setRenameTitle] = useState("");
-  const [managingSession, setManagingSession] = useState<CodexSession | null>(
+  const [managingSession, setManagingSession] = useState<TerminalSession | null>(
     null,
   );
   const [selectedWorkspace, setSelectedWorkspace] =
@@ -223,7 +223,7 @@ export function SessionListScreen({
   const [workspacePagerWidth, setWorkspacePagerWidth] = useState(0);
   const [sessionRefreshing, setSessionRefreshing] = useState(false);
 
-  const runtimeGroups = useMemo<RuntimeGroup[]>(
+  const providerGroups = useMemo<TerminalProviderGroup[]>(
     () => [
       ...orderedProviders.map((provider) => ({
         kind: provider.kind,
@@ -232,7 +232,7 @@ export function SessionListScreen({
         capability: provider.capability,
         creatable: provider.creatable,
         hidden: providerPreferences.hiddenKinds.includes(provider.kind),
-        default: provider.kind === effectiveDefaultKind,
+        default: provider.kind === effectiveDefaultProviderKind,
       })),
       {
         kind: "other",
@@ -241,7 +241,7 @@ export function SessionListScreen({
         creatable: true,
       },
     ],
-    [effectiveDefaultKind, orderedProviders, providerPreferences, t],
+    [effectiveDefaultProviderKind, orderedProviders, providerPreferences, t],
   );
 
   useEffect(() => {
@@ -275,15 +275,15 @@ export function SessionListScreen({
 
   useEffect(() => {
     if (
-      !isCreatableRuntimeKind(createRuntimeKind, enabledProviders) ||
-      providerPreferences.hiddenKinds.includes(createRuntimeKind)
+      !isCreatableTerminalProviderKind(createTerminalProviderKind, enabledProviders) ||
+      providerPreferences.hiddenKinds.includes(createTerminalProviderKind)
     ) {
-      setCreateRuntimeKind(preferredCreateRuntimeKind);
+      setCreateTerminalProviderKind(preferredCreateTerminalProviderKind);
     }
   }, [
-    createRuntimeKind,
+    createTerminalProviderKind,
     enabledProviders,
-    preferredCreateRuntimeKind,
+    preferredCreateTerminalProviderKind,
     providerPreferences.hiddenKinds,
   ]);
 
@@ -315,11 +315,11 @@ export function SessionListScreen({
   }
 
   function openCreateModal(
-    runtimeKind: CreatableRuntimeKind,
+    terminalProviderKind: CreatableTerminalProviderKind,
     preferredWorkspace?: WorkspaceDefinition,
     lockedWorkspace = Boolean(preferredWorkspace),
   ): void {
-    setCreateRuntimeKind(runtimeKind);
+    setCreateTerminalProviderKind(terminalProviderKind);
     const workspace = preferredWorkspace ?? workspaces[0];
     setCreateWorkspacePath(workspace?.path);
     setCreateCwd(workspace?.path ?? defaultCwd);
@@ -338,12 +338,12 @@ export function SessionListScreen({
         createWorkspaceLocked && createWorkspacePath
           ? createWorkspacePath
           : cwd,
-      runtimeKind: createRuntimeKind,
+      terminalProviderKind: createTerminalProviderKind,
       workspacePath: createWorkspacePath,
     });
   }
 
-  function openRenameModal(session: CodexSession): void {
+  function openRenameModal(session: TerminalSession): void {
     setRenamingSession(session);
     setRenameTitle(session.title);
   }
@@ -424,7 +424,7 @@ export function SessionListScreen({
     switchWorkspaceTab(workspace, tab);
   }
 
-  function renderSessionRow(session: CodexSession): JSX.Element {
+  function renderSessionRow(session: TerminalSession): JSX.Element {
     const closing = closingSessionIds.includes(session.session_id);
     const killing = killingSessionIds.includes(session.session_id);
     const external = session.origin === "external";
@@ -491,7 +491,7 @@ export function SessionListScreen({
       )
     : [];
   const activeProviderGroups = activeWorkspace
-    ? groupSessionsByProvider(activeWorkspaceSessions, runtimeGroups, providers)
+    ? groupSessionsByProvider(activeWorkspaceSessions, providerGroups, providers)
     : [];
   const workspaceTabs = activeWorkspace ? getWorkspaceTabs(activeWorkspace) : [];
   const activeWorkspaceTabIndex = Math.max(
@@ -631,7 +631,7 @@ export function SessionListScreen({
             }
             style={workspaceTabPaneStyle("sessions")}
           >
-            <View style={styles.runtimeSection}>
+            <View style={styles.providerSection}>
               {activeProviderGroups.length === 0 ? (
                 <View style={styles.sessionsEmptyState}>
                   <Text style={styles.empty}>
@@ -640,8 +640,8 @@ export function SessionListScreen({
                   <Button
                     disabled={
                       creating ||
-                      !isCreatableRuntimeKind(
-                        preferredCreateRuntimeKind,
+                      !isCreatableTerminalProviderKind(
+                        preferredCreateTerminalProviderKind,
                         enabledProviders,
                       )
                     }
@@ -650,7 +650,7 @@ export function SessionListScreen({
                     tone="primary"
                     onPress={() =>
                       openCreateModal(
-                        preferredCreateRuntimeKind,
+                        preferredCreateTerminalProviderKind,
                         activeWorkspace,
                       )
                     }
@@ -677,7 +677,7 @@ export function SessionListScreen({
                           style={styles.sessionGroupAdd}
                           onPress={() =>
                             openCreateModal(
-                              group.kind as CreatableRuntimeKind,
+                              group.kind as CreatableTerminalProviderKind,
                               activeWorkspace,
                             )
                           }
@@ -838,7 +838,7 @@ export function SessionListScreen({
             )}
 
             {unassignedSessions.length > 0 ? (
-              <View style={styles.runtimeSection}>
+              <View style={styles.providerSection}>
                 <Text style={styles.sessionGroupLabel}>
                   {t("workspaces.unassigned")}
                 </Text>
@@ -902,7 +902,7 @@ export function SessionListScreen({
             setCreateWorkspaceLocked(false);
             setCreateWorkspacePath(undefined);
             setCreateCwd("");
-            setCreateRuntimeKind(preferredCreateRuntimeKind);
+            setCreateTerminalProviderKind(preferredCreateTerminalProviderKind);
             setCreateModalVisible(true);
           }}
         >
@@ -940,7 +940,7 @@ export function SessionListScreen({
                   contentContainerStyle={styles.workspacePicker}
                 >
                   {creatableProviders.map((provider) => {
-                    const selected = provider.kind === createRuntimeKind;
+                    const selected = provider.kind === createTerminalProviderKind;
                     return (
                       <Pressable
                         accessibilityRole="button"
@@ -949,7 +949,7 @@ export function SessionListScreen({
                           styles.workspaceChip,
                           selected && styles.workspaceChipSelected,
                         ]}
-                        onPress={() => setCreateRuntimeKind(provider.kind)}
+                        onPress={() => setCreateTerminalProviderKind(provider.kind)}
                       >
                         <Text
                           numberOfLines={1}
@@ -1194,12 +1194,12 @@ export function SessionListScreen({
                             tone="danger"
                             onPress={() => {
                               setManagingSession(null);
-                              onKillTmuxSession(session);
+                              onKillTerminalSession(session);
                             }}
                           >
                             {killing
                               ? t("workspaces.actions.killing")
-                              : t("workspaces.actions.killTmux")}
+                              : t("workspaces.actions.killTerminal")}
                           </Button>
                         </View>
                       </>
@@ -1232,7 +1232,7 @@ export function SessionListScreen({
                   const hidden = providerPreferences.hiddenKinds.includes(
                     provider.kind,
                   );
-                  const isDefault = provider.kind === effectiveDefaultKind;
+                  const isDefault = provider.kind === effectiveDefaultProviderKind;
                   return (
                     <View
                       key={provider.kind}
@@ -1344,7 +1344,7 @@ export function SessionListScreen({
     </View>
   );
 
-  function toggleProviderHidden(kind: RuntimeKind): void {
+  function toggleProviderHidden(kind: TerminalProviderKind): void {
     setProviderPreferences((current) => {
       const hiddenKinds = current.hiddenKinds.includes(kind)
         ? current.hiddenKinds.filter((item) => item !== kind)
@@ -1362,7 +1362,7 @@ export function SessionListScreen({
     });
   }
 
-  function moveProvider(kind: RuntimeKind, direction: -1 | 1): void {
+  function moveProvider(kind: TerminalProviderKind, direction: -1 | 1): void {
     setProviderPreferences((current) => {
       const orderedKinds = orderProviders(providers, current.orderedKinds).map(
         (provider) => provider.kind,
@@ -1383,7 +1383,7 @@ export function SessionListScreen({
     });
   }
 
-  function setDefaultProvider(kind: RuntimeKind): void {
+  function setDefaultProvider(kind: TerminalProviderKind): void {
     setProviderPreferences((current) =>
       normalizeProviderPreferences(
         {
@@ -1466,7 +1466,7 @@ const styles = StyleSheet.create({
   listStretch: {
     flexGrow: 1,
   },
-  runtimeSection: {
+  providerSection: {
     gap: spacing.md,
   },
   sectionHeader: {
@@ -1986,7 +1986,7 @@ function parseProviderPreferences(value: string | null): ProviderPreferences {
 
 function normalizeProviderPreferences(
   preferences: ProviderPreferences,
-  providers: readonly AgentProviderDefinition[],
+  providers: readonly TerminalProviderDefinition[],
 ): ProviderPreferences {
   const providerKinds = new Set(providers.map((provider) => provider.kind));
   const hiddenKinds = preferences.hiddenKinds.filter((kind) =>
@@ -2010,9 +2010,9 @@ function normalizeProviderPreferences(
 }
 
 function orderProviders(
-  providers: readonly AgentProviderDefinition[],
+  providers: readonly TerminalProviderDefinition[],
   orderedKinds: readonly string[],
-): AgentProviderDefinition[] {
+): TerminalProviderDefinition[] {
   const priority = new Map(
     orderedKinds.map((kind, index) => [kind, index] as const),
   );
@@ -2089,22 +2089,22 @@ function formatCompactPath(path: string): string {
   return `${prefix}/.../${parts[parts.length - 1]}`;
 }
 
-function getRuntimeGroupKind(
-  session: CodexSession,
-  providers: readonly AgentProviderDefinition[],
-): RuntimeKind {
-  return getAgentProviderDefinition(session.runtime_kind, providers)
-    ? session.runtime_kind
+function getProviderGroupKind(
+  session: TerminalSession,
+  providers: readonly TerminalProviderDefinition[],
+): TerminalProviderKind {
+  return getTerminalProviderDefinition(session.terminal_provider_kind, providers)
+    ? session.terminal_provider_kind
     : "other";
 }
 
 function groupSessionsByWorkspace(
-  sessions: readonly CodexSession[],
+  sessions: readonly TerminalSession[],
   workspaces: readonly WorkspaceDefinition[],
-): Array<{ workspace: WorkspaceDefinition; sessions: CodexSession[] }> {
+): Array<{ workspace: WorkspaceDefinition; sessions: TerminalSession[] }> {
   const groups = new Map<
     string,
-    { workspace: WorkspaceDefinition; sessions: CodexSession[] }
+    { workspace: WorkspaceDefinition; sessions: TerminalSession[] }
   >();
   for (const session of sessions) {
     const workspace = findSessionWorkspace(session, workspaces);
@@ -2123,23 +2123,23 @@ function groupSessionsByWorkspace(
 }
 
 function groupSessionsByProvider(
-  sessions: readonly CodexSession[],
-  runtimeGroups: readonly RuntimeGroup[],
-  providers: readonly AgentProviderDefinition[],
-): Array<RuntimeGroup & { sessions: CodexSession[] }> {
-  return runtimeGroups
+  sessions: readonly TerminalSession[],
+  providerGroups: readonly TerminalProviderGroup[],
+  providers: readonly TerminalProviderDefinition[],
+): Array<TerminalProviderGroup & { sessions: TerminalSession[] }> {
+  return providerGroups
     .filter((group) => !group.hidden)
     .map((group) => ({
       ...group,
       sessions: sessions.filter(
-        (session) => getRuntimeGroupKind(session, providers) === group.kind,
+        (session) => getProviderGroupKind(session, providers) === group.kind,
       ),
     }))
     .filter((group) => group.sessions.length > 0);
 }
 
 function findSessionWorkspace(
-  session: CodexSession,
+  session: TerminalSession,
   workspaces: readonly WorkspaceDefinition[],
 ): WorkspaceDefinition {
   if (session.workspace_path) {
@@ -2191,7 +2191,7 @@ function basename(path: string): string {
 }
 
 function getCloseActionLabel(
-  session: CodexSession,
+  session: TerminalSession,
   t: (key: string) => string,
 ): string {
   if (session.status === "exited" || session.status === "archived") {

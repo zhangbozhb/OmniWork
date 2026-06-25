@@ -25,9 +25,9 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import type {
-  AgentProviderDefinition,
+  TerminalProviderDefinition,
   AuthFailedPayload,
-  CodexSession,
+  TerminalSession,
   FilesListPayload,
   FilesReadPayload,
   FilesWritePayload,
@@ -35,7 +35,7 @@ import type {
   GitDiffScope,
   GitStatusPayload,
   MessageEnvelope,
-  RuntimeKind,
+  TerminalProviderKind,
   SessionListPayload,
   TerminalErrorPayload,
   TerminalFramePayload,
@@ -52,7 +52,7 @@ import type {
   WorkspaceListPayload,
 } from "@omniwork/protocol-ts";
 import {
-  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+  DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
   createMessage,
   isTransportPreference,
 } from "@omniwork/protocol-ts";
@@ -102,7 +102,7 @@ import {
 import {
   closeSessionRequest,
   renameSessionRequest,
-  killTmuxSessionRequest,
+  killTerminalSessionRequest,
   listSessionsRequest,
   createSessionRequest,
 } from "../features/sessions/sessionMessages";
@@ -206,12 +206,12 @@ type WorkspaceDataCache = {
  */
 const TRANSPORT_PREFERENCE_STORAGE_KEY = "omniwork.transportPreference";
 const TERMINAL_TEXT_SIZE_STORAGE_KEY = "omniwork.terminal.textSize";
-const FALLBACK_AGENT_PROVIDERS = DEFAULT_AGENT_PROVIDER_DEFINITIONS.filter(
+const FALLBACK_TERMINAL_PROVIDERS = DEFAULT_TERMINAL_PROVIDER_DEFINITIONS.filter(
   (provider) => provider.kind === "terminal",
 );
 
-function fallbackAgentProviders(): AgentProviderDefinition[] {
-  return [...FALLBACK_AGENT_PROVIDERS];
+function fallbackTerminalProviders(): TerminalProviderDefinition[] {
+  return [...FALLBACK_TERMINAL_PROVIDERS];
 }
 
 function createWorkspaceFilesCache(): WorkspaceFilesCache {
@@ -256,13 +256,13 @@ function AppContent(): JSX.Element {
   const [editingPairing, setEditingPairing] = useState<
     PairingConfig | undefined
   >();
-  const [selectedSession, setSelectedSession] = useState<CodexSession | null>(
+  const [selectedSession, setSelectedSession] = useState<TerminalSession | null>(
     null,
   );
-  const [sessions, setSessions] = useState<CodexSession[]>([]);
-  const [agentProviders, setAgentProviders] = useState<
-    AgentProviderDefinition[]
-  >(fallbackAgentProviders);
+  const [sessions, setSessions] = useState<TerminalSession[]>([]);
+  const [terminalProviders, setTerminalProviders] = useState<
+    TerminalProviderDefinition[]
+  >(fallbackTerminalProviders);
   const [workspaces, setWorkspaces] = useState<WorkspaceDefinition[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] =
     useState<WorkspaceDefinition | null>(null);
@@ -343,7 +343,7 @@ function AppContent(): JSX.Element {
   const pendingAutoOpenSessionsRef = useRef(false);
   const pairingRef = useRef<PairingConfig | null>(null);
   const pairingsRef = useRef<PairingConfig[]>([]);
-  const selectedSessionRef = useRef<CodexSession | null>(null);
+  const selectedSessionRef = useRef<TerminalSession | null>(null);
   const terminalTextSizeLoadedRef = useRef(false);
   const terminalFrameSeqRef = useRef<Record<string, number>>({});
   const terminalStreamSeqRef = useRef<Record<string, number>>({});
@@ -1301,7 +1301,7 @@ function AppContent(): JSX.Element {
   async function removeDevice(targetPairing: PairingConfig): Promise<void> {
     const nextPairings = await removeSavedPairing(targetPairing);
     setSessions([]);
-    setAgentProviders(fallbackAgentProviders());
+    setTerminalProviders(fallbackTerminalProviders());
     setWorkspaces([]);
     setSelectedSession(null);
     setSelectedWorkspace(null);
@@ -1332,7 +1332,7 @@ function AppContent(): JSX.Element {
     reason: string,
   ): Promise<void> {
     setSessions([]);
-    setAgentProviders(fallbackAgentProviders());
+    setTerminalProviders(fallbackTerminalProviders());
     setWorkspaces([]);
     setSelectedSession(null);
     setSelectedWorkspace(null);
@@ -1376,7 +1376,7 @@ function AppContent(): JSX.Element {
     if (!pairing || !isSamePairing(pairing, nextPairing)) {
       setPairing(nextPairing);
       setSessions([]);
-      setAgentProviders(fallbackAgentProviders());
+      setTerminalProviders(fallbackTerminalProviders());
       setWorkspaces([]);
       setSelectedSession(null);
       setSelectedWorkspace(null);
@@ -1427,7 +1427,7 @@ function AppContent(): JSX.Element {
 
   function handleCreateSession(input: {
     cwd: string;
-    runtimeKind: RuntimeKind;
+    terminalProviderKind: TerminalProviderKind;
     workspacePath?: string;
   }): void {
     if (!pairing || connectionStatus !== "authenticated") {
@@ -1439,7 +1439,7 @@ function AppContent(): JSX.Element {
       createSessionRequest(pairing.deviceId, {
         cwd: input.cwd,
         workspace_path: input.workspacePath,
-        runtime_kind: input.runtimeKind,
+        terminal_provider_kind: input.terminalProviderKind,
         terminal_size: computeInitialTerminalSize(terminalTextSize),
       }),
     );
@@ -1869,7 +1869,7 @@ function AppContent(): JSX.Element {
     );
   }
 
-  async function handleCloseSession(session: CodexSession): Promise<void> {
+  async function handleCloseSession(session: TerminalSession): Promise<void> {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
@@ -1904,7 +1904,7 @@ function AppContent(): JSX.Element {
     sendToRelay(closeSessionRequest(pairing.deviceId, session.session_id));
   }
 
-  function handleRenameSession(session: CodexSession, title: string): void {
+  function handleRenameSession(session: TerminalSession, title: string): void {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
@@ -1931,7 +1931,7 @@ function AppContent(): JSX.Element {
     );
   }
 
-  async function handleKillTmuxSession(session: CodexSession): Promise<void> {
+  async function handleKillTerminalSession(session: TerminalSession): Promise<void> {
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
@@ -1950,10 +1950,10 @@ function AppContent(): JSX.Element {
         ? current
         : [...current, session.session_id],
     );
-    sendToRelay(killTmuxSessionRequest(pairing.deviceId, session.session_id));
+    sendToRelay(killTerminalSessionRequest(pairing.deviceId, session.session_id));
   }
 
-  function handleOpenSession(session: CodexSession): void {
+  function handleOpenSession(session: TerminalSession): void {
     const capabilities = getSessionCapabilities(session);
     if (!capabilities.canOpen) {
       setConnectionMessage(
@@ -1986,7 +1986,7 @@ function AppContent(): JSX.Element {
     }
   }
 
-  function handleOpenTerminalFiles(session: CodexSession): void {
+  function handleOpenTerminalFiles(session: TerminalSession): void {
     const workspace = getSessionFilesWorkspace(session, workspaces);
     setSelectedWorkspace(workspace);
     requestWorkspaceDirectory(
@@ -2092,7 +2092,7 @@ function AppContent(): JSX.Element {
 
   function clearLocalAgentData(): void {
     setSessions([]);
-    setAgentProviders(fallbackAgentProviders());
+    setTerminalProviders(fallbackTerminalProviders());
     setWorkspaces([]);
     setSelectedSession(null);
     setSelectedWorkspace(null);
@@ -2174,10 +2174,10 @@ function AppContent(): JSX.Element {
         if (payload.default_cwd) {
           setDefaultSessionCwd(payload.default_cwd);
         }
-        setAgentProviders(
+        setTerminalProviders(
           payload.providers?.length
             ? payload.providers
-            : fallbackAgentProviders(),
+            : fallbackTerminalProviders(),
         );
         if (payload.workspaces?.length) {
           setWorkspaces(payload.workspaces);
@@ -2235,7 +2235,7 @@ function AppContent(): JSX.Element {
         break;
       }
       case "session.status": {
-        const payload = message.payload as { session: CodexSession };
+        const payload = message.payload as { session: TerminalSession };
         setSessions((current) => upsertSession(current, payload.session));
         setSelectedSession((current) =>
           current?.session_id === payload.session.session_id
@@ -2680,7 +2680,7 @@ function AppContent(): JSX.Element {
             <>
               <SessionListScreen
                 sessions={sessions}
-                providers={agentProviders}
+                providers={terminalProviders}
                 workspaces={workspaces}
                 providerPreferenceScope={pairing?.deviceId ?? "default"}
                 creating={creatingSession}
@@ -2717,7 +2717,7 @@ function AppContent(): JSX.Element {
                 onOpenSession={handleOpenSession}
                 onCloseSession={handleCloseSession}
                 onRenameSession={handleRenameSession}
-                onKillTmuxSession={handleKillTmuxSession}
+                onKillTerminalSession={handleKillTerminalSession}
               />
               {view === "gitReview" && selectedWorkspace ? (
                 <View style={styles.fullScreenPage}>
@@ -3136,7 +3136,7 @@ function toWorkspaceFileKey(
 }
 
 function getSessionFilesWorkspace(
-  session: CodexSession,
+  session: TerminalSession,
   workspaces: readonly WorkspaceDefinition[],
 ): WorkspaceDefinition {
   if (session.workspace_path) {

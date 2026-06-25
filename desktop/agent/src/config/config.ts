@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { DEFAULT_TERMINAL_SIZE } from "@omniwork/terminal-core";
 import {
-  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+  DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
   type BusinessSecurityMode,
-  type AgentProviderDefinition,
+  type TerminalProviderDefinition,
 } from "@omniwork/protocol-ts";
 import type { TerminalSize } from "@omniwork/protocol-ts";
 import { resolveAgentDeviceId } from "./deviceIdentity.ts";
@@ -32,7 +32,7 @@ export interface AgentConfig {
   relayReconnectMaxAttempts: number;
   relayReconnectInitialDelayMs: number;
   relayReconnectMaxDelayMs: number;
-  agentProviders: AgentProviderDefinition[];
+  terminalProviders: TerminalProviderDefinition[];
   defaultCwd: string;
   appSupportDir: string;
   sessionKeyPath: string;
@@ -101,9 +101,9 @@ export function loadAgentConfig(
       env.OMNIWORK_AGENT_RELAY_RECONNECT_MAX_DELAY_MS,
       30000,
     ),
-    agentProviders: resolveAgentProviders(
+    terminalProviders: resolveTerminalProviders(
       env,
-      readDefaultProviderCommandOverrides(env),
+      readDefaultTerminalProviderCommandOverrides(env),
       options.commandExists ?? commandExists,
     ),
     defaultCwd: env.OMNIWORK_DEFAULT_CWD ?? process.cwd(),
@@ -175,7 +175,7 @@ function parseNonNegativeInteger(
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-function readDefaultProviderCommandOverrides(
+function readDefaultTerminalProviderCommandOverrides(
   env: NodeJS.ProcessEnv,
 ): Record<string, string> {
   return {
@@ -185,26 +185,27 @@ function readDefaultProviderCommandOverrides(
   };
 }
 
-function resolveAgentProviders(
+function resolveTerminalProviders(
   env: NodeJS.ProcessEnv,
   commandOverrides: Record<string, string>,
   isCommandAvailable: (command: string) => boolean,
-): AgentProviderDefinition[] {
-  const configuredProviders = parseAgentProviders(env.OMNIWORK_AGENT_PROVIDERS);
+): TerminalProviderDefinition[] {
+  const configuredProviders = parseTerminalProviders(env.OMNIWORK_TERMINAL_PROVIDERS);
   const providers =
     configuredProviders.length > 0
       ? configuredProviders
-      : DEFAULT_AGENT_PROVIDER_DEFINITIONS.map((provider) => ({
+      : DEFAULT_TERMINAL_PROVIDER_DEFINITIONS.map((provider) => ({
           ...provider,
-          defaultCommand: commandOverrides[provider.kind] ?? provider.defaultCommand,
+          defaultCommand:
+            commandOverrides[provider.kind] ?? provider.defaultCommand,
         }));
 
   return withDefaultTerminalProvider(providers).filter((provider) =>
-    isProviderAvailable(provider, isCommandAvailable),
+    isTerminalProviderAvailable(provider, isCommandAvailable),
   );
 }
 
-function parseAgentProviders(value?: string): AgentProviderDefinition[] {
+function parseTerminalProviders(value?: string): TerminalProviderDefinition[] {
   const rawValue = value?.trim();
   if (!rawValue) {
     return [];
@@ -216,7 +217,7 @@ function parseAgentProviders(value?: string): AgentProviderDefinition[] {
       return [];
     }
     return parsed.flatMap((item) => {
-      const provider = normalizeAgentProvider(item);
+      const provider = normalizeTerminalProvider(item);
       return provider ? [provider] : [];
     });
   } catch {
@@ -224,9 +225,9 @@ function parseAgentProviders(value?: string): AgentProviderDefinition[] {
   }
 }
 
-function normalizeAgentProvider(
+function normalizeTerminalProvider(
   value: unknown,
-): AgentProviderDefinition | null {
+): TerminalProviderDefinition | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -255,9 +256,9 @@ function normalizeAgentProvider(
 }
 
 function withDefaultTerminalProvider(
-  providers: readonly AgentProviderDefinition[],
-): AgentProviderDefinition[] {
-  const terminalProvider = DEFAULT_AGENT_PROVIDER_DEFINITIONS.find(
+  providers: readonly TerminalProviderDefinition[],
+): TerminalProviderDefinition[] {
+  const terminalProvider = DEFAULT_TERMINAL_PROVIDER_DEFINITIONS.find(
     (provider) => provider.kind === "terminal",
   );
   if (!terminalProvider) {
@@ -270,8 +271,8 @@ function withDefaultTerminalProvider(
   ];
 }
 
-function isProviderAvailable(
-  provider: AgentProviderDefinition,
+function isTerminalProviderAvailable(
+  provider: TerminalProviderDefinition,
   isCommandAvailable: (command: string) => boolean,
 ): boolean {
   if (!provider.creatable || provider.kind === "terminal") {

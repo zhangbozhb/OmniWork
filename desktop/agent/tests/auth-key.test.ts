@@ -18,7 +18,7 @@ import {
 } from "../src/config/config.ts";
 import { createPairingQrDetails } from "../src/pairing/pairingQr.ts";
 import {
-  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+  DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
   decryptPairingLink,
   parseEncryptedPairingLink,
 } from "@omniwork/protocol-ts";
@@ -76,7 +76,7 @@ const baseConfig: AgentConfig = {
   relayReconnectMaxAttempts: 8,
   relayReconnectInitialDelayMs: 1000,
   relayReconnectMaxDelayMs: 30000,
-  agentProviders: [...DEFAULT_AGENT_PROVIDER_DEFINITIONS],
+  terminalProviders: [...DEFAULT_TERMINAL_PROVIDER_DEFINITIONS],
   defaultCwd: dir,
   appSupportDir: dir,
   sessionKeyPath: path,
@@ -161,7 +161,7 @@ assert.deepEqual(
   loadAgentConfig(
     {
       ...configEnv,
-      OMNIWORK_AGENT_PROVIDERS: JSON.stringify([
+      OMNIWORK_TERMINAL_PROVIDERS: JSON.stringify([
         {
           kind: "opencode",
           displayName: "OpenCode",
@@ -172,7 +172,7 @@ assert.deepEqual(
     {
       commandExists: (command) => command === "opencode",
     },
-  ).agentProviders,
+  ).terminalProviders,
   [
     {
       kind: "opencode",
@@ -196,7 +196,7 @@ assert.deepEqual(
   loadAgentConfig(
     {
       ...configEnv,
-      OMNIWORK_AGENT_PROVIDERS: JSON.stringify([
+      OMNIWORK_TERMINAL_PROVIDERS: JSON.stringify([
         {
           kind: "missing",
           displayName: "Missing",
@@ -207,7 +207,7 @@ assert.deepEqual(
     {
       commandExists: () => false,
     },
-  ).agentProviders,
+  ).terminalProviders,
   [
     {
       kind: "terminal",

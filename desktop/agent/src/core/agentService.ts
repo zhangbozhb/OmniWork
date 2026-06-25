@@ -58,7 +58,7 @@ import {
 } from "../auth-key/authKey.ts";
 import type { SessionKeyRecord } from "../auth-key/authKey.ts";
 import { AgentRelayClient } from "../relay-client/agentRelayClient.ts";
-import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
+import { TerminalProviderRegistry } from "../terminal-provider/terminalProviderRegistry.ts";
 import { SessionManager } from "./sessionManager.ts";
 import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { TerminalBridge } from "../pty-bridge/terminalBridge.ts";
@@ -112,7 +112,7 @@ interface AgentDispatchContext {
 export class AgentService {
   private readonly logger = new Logger("omniwork-agent");
   private readonly tmux = new TmuxManager();
-  private readonly runtimes: RuntimeRegistry;
+  private readonly terminalProviders: TerminalProviderRegistry;
   private readonly workspaces: WorkspaceManager;
   private readonly sessionManager: SessionManager;
   private readonly resourceRequests: ResourceRequestHandler;
@@ -154,8 +154,8 @@ export class AgentService {
       staleTimeoutMs: config.connectionStaleMs,
       disconnectTimeoutMs: config.connectionDisconnectMs,
     });
-    this.runtimes = new RuntimeRegistry({
-      providers: config.agentProviders,
+    this.terminalProviders = new TerminalProviderRegistry({
+      providers: config.terminalProviders,
     });
     this.workspaces = new WorkspaceManager({
       defaultCwd: config.defaultCwd,
@@ -163,7 +163,7 @@ export class AgentService {
     this.sessionManager = new SessionManager(
       new SQLiteSessionStore(config.sessionStorePath),
       this.tmux,
-      this.runtimes,
+      this.terminalProviders,
       this.workspaces,
       {
         cwd: config.defaultCwd,
@@ -209,12 +209,13 @@ export class AgentService {
     this.sessionRequests = new SessionRequestHandler({
       deviceId: this.config.deviceId,
       defaultCwd: this.config.defaultCwd,
-      runtimes: this.runtimes,
+      terminalProviders: this.terminalProviders,
       workspaces: this.workspaces,
       sessionManager: this.sessionManager,
       terminalFramePusher: this.terminalFramePusher,
       sendToApp: (context, message) => this.sendToApp(context, message),
-      prepareRuntime: (runtime) => this.prepareRuntime(runtime),
+      prepareTerminalProvider: (terminalProvider) =>
+        this.prepareTerminalProvider(terminalProvider),
       handleTerminalSnapshot: (message, context) =>
         this.handleTerminalSnapshot(message, context),
     });
@@ -243,11 +244,11 @@ export class AgentService {
       } else {
         printPairingDetailsWithoutRelay(this.config, this.keyRecord);
       }
-      await this.prepareRuntime({
+      await this.prepareTerminalProvider({
         kind: "codex",
         command: process.env.OMNIWORK_CODEX_COMMAND ?? "codex",
       });
-      await this.prepareRuntime({
+      await this.prepareTerminalProvider({
         kind: "claude",
         command: process.env.OMNIWORK_CLAUDE_COMMAND ?? "claude",
       });
@@ -397,7 +398,7 @@ export class AgentService {
           hostname: this.config.hostname,
           platform: "darwin",
           agent_version: this.config.agentVersion,
-          providers: this.runtimes.providers(),
+          providers: this.terminalProviders.providers(),
           workspaces: await this.workspaces.list(),
           capabilities: [
             E2E_NOISE_NNPSK0_CAPABILITY_V1,
@@ -418,7 +419,7 @@ export class AgentService {
             "git.read",
             "agent.message",
             "agent.probe.codex",
-            ...this.runtimes.capabilities(),
+            ...this.terminalProviders.capabilities(),
           ],
         },
         { device_id: this.config.deviceId },
@@ -713,14 +714,14 @@ export class AgentService {
           dispatchContext,
         );
         break;
-      case "session.kill_tmux":
+      case "session.kill_terminal":
         if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
           return;
         }
         if (message.session_id) {
           await this.terminalStreamPusher.stop(message.session_id);
         }
-        await this.sessionRequests.handleKillTmux(message, dispatchContext);
+        await this.sessionRequests.handleKillTerminal(message, dispatchContext);
         break;
       case "workspace.list":
         if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
@@ -1590,23 +1591,23 @@ export class AgentService {
     }
   }
 
-  private async prepareRuntime(runtime: {
+  private async prepareTerminalProvider(terminalProvider: {
     kind: string;
     command: string;
   }): Promise<void> {
     if (!this.config.agentProbeEnabled) {
       return;
     }
-    if (isCodexRuntime(runtime)) {
-      await this.prepareCodexRuntime();
+    if (isCodexTerminalProvider(terminalProvider)) {
+      await this.prepareCodexTerminalProvider();
       return;
     }
-    if (isClaudeRuntime(runtime)) {
-      await this.prepareClaudeRuntime();
+    if (isClaudeTerminalProvider(terminalProvider)) {
+      await this.prepareClaudeTerminalProvider();
     }
   }
 
-  private async prepareCodexRuntime(): Promise<void> {
+  private async prepareCodexTerminalProvider(): Promise<void> {
     try {
       const result = await ensureCodexHooksInstalled({
         receiverUrl: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
@@ -1630,7 +1631,7 @@ export class AgentService {
     }
   }
 
-  private async prepareClaudeRuntime(): Promise<void> {
+  private async prepareClaudeTerminalProvider(): Promise<void> {
     try {
       const result = await ensureClaudeHooksInstalled({
         receiverUrl: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
@@ -1801,18 +1802,24 @@ function appConnectionIdFromMessage(
     : undefined;
 }
 
-function isCodexRuntime(runtime: { kind: string; command: string }): boolean {
-  if (runtime.kind === "codex") {
+function isCodexTerminalProvider(terminalProvider: {
+  kind: string;
+  command: string;
+}): boolean {
+  if (terminalProvider.kind === "codex") {
     return true;
   }
-  return firstShellWord(runtime.command) === "codex";
+  return firstShellWord(terminalProvider.command) === "codex";
 }
 
-function isClaudeRuntime(runtime: { kind: string; command: string }): boolean {
-  if (runtime.kind === "claude") {
+function isClaudeTerminalProvider(terminalProvider: {
+  kind: string;
+  command: string;
+}): boolean {
+  if (terminalProvider.kind === "claude") {
     return true;
   }
-  return firstShellWord(runtime.command) === "claude";
+  return firstShellWord(terminalProvider.command) === "claude";
 }
 
 function firstShellWord(command: string): string | undefined {

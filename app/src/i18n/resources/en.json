@@ -286,13 +286,13 @@
       "remove": "Remove",
       "closeSession": "Close Session",
       "killing": "Killing...",
-      "killTmux": "Kill tmux",
+      "killTerminal": "Kill terminal",
       "moveUp": "Move {{provider}} up",
       "moveDown": "Move {{provider}} down"
     },
     "provider": {
       "other": "Other",
-      "otherSummary": "Existing tmux sessions that do not match a configured Agent CLI"
+      "otherSummary": "Existing tmux sessions that do not match a configured Terminal provider"
     },
     "time": {
       "justNow": "just now",
@@ -438,7 +438,7 @@
     "readOnlyTitle": "Session is read-only",
     "refreshSessions": "Refresh Sessions",
     "sendKey": "Send {{key}} key",
-    "composerPlaceholder": "Ask {{runtime}} to inspect, edit, test, or explain...",
+    "composerPlaceholder": "Ask {{terminalProvider}} to inspect, edit, test, or explain...",
     "hide": "Hide",
     "send": "Send",
     "focus": "Focus",

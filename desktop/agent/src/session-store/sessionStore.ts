@@ -3,8 +3,8 @@ import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 
 import type {
-  CodexSession,
-  RuntimeKind,
+  TerminalSession,
+  TerminalProviderKind,
 } from "@omniwork/protocol-ts";
 import { formatLocalTimestamp } from "../telemetry/logger.ts";
 
@@ -37,7 +37,7 @@ export class SQLiteSessionStore {
       : join(dirname(this.path), "sessions.json");
   }
 
-  async list(): Promise<CodexSession[]> {
+  async list(): Promise<TerminalSession[]> {
     const db = await this.open();
     const rows = db
       .prepare(
@@ -46,14 +46,14 @@ export class SQLiteSessionStore {
       .all() as unknown as SessionRow[];
     return rows.flatMap((row) => {
       try {
-        return [normalizeSession(JSON.parse(row.payload) as CodexSession)];
+        return [normalizeSession(JSON.parse(row.payload) as TerminalSession)];
       } catch {
         return [];
       }
     });
   }
 
-  async saveAll(sessions: CodexSession[]): Promise<void> {
+  async saveAll(sessions: TerminalSession[]): Promise<void> {
     await this.withWriteLock(async () => {
       const db = await this.open();
       this.runTransaction(db, () => {
@@ -73,7 +73,7 @@ export class SQLiteSessionStore {
     });
   }
 
-  async upsert(session: CodexSession): Promise<void> {
+  async upsert(session: TerminalSession): Promise<void> {
     await this.withWriteLock(async () => {
       const db = await this.open();
       db.prepare(
@@ -165,7 +165,7 @@ export class SQLiteSessionStore {
     }
     try {
       const raw = await readFile(legacyPath, "utf8");
-      const parsed = JSON.parse(raw) as { sessions?: CodexSession[] };
+      const parsed = JSON.parse(raw) as { sessions?: TerminalSession[] };
       if (!Array.isArray(parsed.sessions) || parsed.sessions.length === 0) {
         return;
       }
@@ -204,12 +204,14 @@ export class SQLiteSessionStore {
   }
 }
 
-function normalizeSession(session: CodexSession): CodexSession {
-  const runtimeKind = (session.runtime_kind ?? "unknown") as RuntimeKind;
+function normalizeSession(session: TerminalSession): TerminalSession {
+  const terminalProviderKind = (session.terminal_provider_kind ??
+    "unknown") as TerminalProviderKind;
   return {
     ...session,
-    runtime_kind: runtimeKind,
-    runtime_label: session.runtime_label ?? runtimeKind,
+    terminal_provider_kind: terminalProviderKind,
+    terminal_provider_label:
+      session.terminal_provider_label ?? terminalProviderKind,
     origin: session.origin ?? "managed",
     registered: session.registered ?? true,
   };

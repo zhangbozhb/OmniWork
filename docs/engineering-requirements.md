@@ -87,7 +87,7 @@ Relay 安全约束（`relay/server`）：
 - Agent 业务逻辑必须写在 TypeScript 中。
 - PTY 能力统一封装在 `pty-bridge` 模块。
 - tmux 能力统一封装在 `tmux-manager` 模块。
-- runtime 是配置化 CLI Provider；演进 Codex app-server 能力落地时统一封装在 `codex-runtime` 或等价独立模块。
+- 终端启动入口是配置化 Terminal Provider；演进 Codex app-server 能力落地时统一封装在 AgentSurface 后端模块，不能混入 Terminal Provider。
 - Relay 连接统一封装在 `relay-client` 模块。
 - 本地会话状态统一封装在 `session-store` 模块。
 - 临时 key 文件读写统一封装在 `auth-key` 模块。

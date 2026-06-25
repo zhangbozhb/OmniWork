@@ -77,7 +77,7 @@ OmniWork/
 | --- | --- | --- |
 | `app/` | React Native CLI + TypeScript + react-native-web | 同一套代码交付 Android/iOS APK/IPA 和 Web SPA；终端区域以 xterm Web/native WebView 视图为主 |
 | `site/` | Astro 静态站点 | 交付 Public Web：首页、公开文档、下载页、发布记录；通过静态 `downloads.json` 指向 App Store 与 GitHub Releases |
-| `desktop/agent` | Node.js LTS + TypeScript | 管理 Relay 连接、tmux、PTY、Codex/Claude/Gemini runtime、本地状态 |
+| `desktop/agent` | Node.js LTS + TypeScript | 管理 Relay 连接、tmux、PTY、Codex/Claude/Gemini 终端 provider、本地状态 |
 | `relay/server` | Node.js LTS + TypeScript | MVP 实现；可替换为 Go/Rust |
 | `protocol/` | JSON Schema（auth/envelopes/sessions/terminal） | 跨端协议契约的可机读真相 |
 | `packages/protocol-ts` | TypeScript + zod | 协议类型与运行时校验、E2E / 升级链路类型 |
@@ -236,7 +236,7 @@ desktop/
 |   |   |-- core/                # agentService / sessionManager / sessionRequestHandler / resourceRequestHandler / terminalFramePusher
 |   |   |-- relay-client/        # agentRelayClient
 |   |   |-- transport/           # SessionTransport / UpgradeCoordinator / WebRtcPeerAdapter / relayPath
-|   |   |-- runtime/             # runtimeAdapter（Codex/Claude/Gemini provider 抽象）
+|   |   |-- terminal-provider/   # terminalProviderRegistry（Codex/Claude/Gemini 终端 provider 抽象）
 |   |   |-- pty-bridge/          # terminalBridge
 |   |   |-- tmux-manager/        # tmuxManager
 |   |   |-- session-store/       # sessionStore（SQLite sessions.sqlite）
@@ -266,7 +266,7 @@ desktop/
 - 注册设备。
 - 维护心跳。
 - 管理本地会话。
-- 启动和监督 runtime（Codex / Claude / Gemini）。
+- 启动和监督终端 provider（Codex / Claude / Gemini）。
 - 管理 `tmux` session。
 - 管理 PTY 输入输出。
 - 处理 backpressure、snapshot、重连。
@@ -281,7 +281,7 @@ desktop/
 
 `core/`：Agent 领域模型。`agentService` 负责生命周期与协议分发，`sessionManager` 负责 session 持久化与 tmux 生命周期，`sessionRequestHandler` 负责 session list/create/rename/attach/close/kill 请求处理，`resourceRequestHandler` 负责 workspace/files/git 查询处理，`terminalFramePusher` 负责终端帧推流、去重、订阅者与背压队列，`authReplayCache` 负责鉴权 nonce replay 缓存。
 
-`relay-client/`：与 Relay 的出站连接，WebSocket、临时 key proof、重连、心跳。不直接管理 runtime 进程。
+`relay-client/`：与 Relay 的出站连接，WebSocket、临时 key proof、重连、心跳。不直接管理终端 provider 进程。
 
 `transport/`：升级核心。包含
 
@@ -290,7 +290,7 @@ desktop/
 - `webRtcPeerAdapter.ts`：基于 `@roamhq/wrtc` 的 PeerConnection 封装，含 default 解包以兼容 Node ESM。
 - `relayPath.ts`、`index.ts`：通用 path 抽象与导出。
 
-`runtime/`：运行时适配（`runtimeAdapter.ts`），支持 Codex / Claude / Gemini 三种 CLI provider；通过 `OMNIWORK_AGENT_PROVIDERS` 与 `OMNIWORK_{CODEX,CLAUDE,GEMINI}_COMMAND` 选择具体命令。
+`terminal-provider/`：终端 provider 适配（`terminalProviderRegistry.ts`），支持 Codex / Claude / Gemini 三种 CLI provider；通过 `OMNIWORK_TERMINAL_PROVIDERS` 与 `OMNIWORK_{CODEX,CLAUDE,GEMINI}_COMMAND` 选择具体命令。
 
 `pty-bridge/`：PTY 读写、terminal frame 编码、resize、snapshot、慢客户端降级。
 
@@ -456,7 +456,7 @@ packages/
 |   |-- package.json
 |   |-- tsconfig.json
 |   |-- src/
-|   |   |-- index.ts             # MessageType 枚举、Envelope、AgentProvider 等
+|   |   |-- index.ts             # MessageType 枚举、Envelope、TerminalProvider 等
 |   |   |-- constants.ts
 |   |   |-- schemas.ts           # zod 校验 + 与 JSON Schema 对齐
 |   |   |-- transport.ts         # transport.ping/pong 等传输层消息
@@ -719,7 +719,7 @@ tests/security/
 目录重点（待补）：
 
 ```text
-desktop/agent/src/runtime/codex-structured/
+desktop/agent/src/agent-surface/codex/
 app/src/features/codex-structured/
 protocol/codex/
 fixtures/codex/
@@ -806,7 +806,7 @@ remote-control/
 3. 维护 `desktop/agent/src/transport/`，与 App 端 `app/src/lib/transport/` 保持对称（升级状态机、降级路径）。
 4. 业务能力新增按"protocol-ts → desktop/agent → app"依赖顺序落地，避免单端漂移。
 5. 企业化能力补 `desktop/macos/`、`desktop/native/`、`infra/`、`tests/`。
-6. 接入 Codex app-server 时补 `protocol/codex/`、`desktop/agent/src/runtime/codex-structured/`、`app/src/features/codex-structured/`。
+6. 接入 Codex app-server 时补 `protocol/codex/`、`desktop/agent/src/agent-surface/codex/`、`app/src/features/codex-structured/`。
 
 ## 最终建议
 

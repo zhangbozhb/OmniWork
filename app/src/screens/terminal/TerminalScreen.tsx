@@ -17,7 +17,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import type {
-  CodexSession,
+  TerminalSession,
   TerminalInputPayload,
   TerminalResizePayload,
 } from "@omniwork/protocol-ts";
@@ -39,7 +39,7 @@ import { Button } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 
 export interface TerminalScreenProps {
-  session: CodexSession;
+  session: TerminalSession;
   frame: string;
   streamChunk?: {
     sessionId: string;
@@ -170,7 +170,7 @@ export function TerminalScreen({
     height: Math.max(260, Dimensions.get("window").height - 260),
   });
   const agentStatus = getAgentStatusPresentation(connectionStatus);
-  const runtimeLabel = session.runtime_label || session.runtime_kind;
+  const terminalProviderLabel = session.terminal_provider_label || session.terminal_provider_kind;
   const hasDraft = draft.trim().length > 0;
   const canHideKeyboard =
     (keyboardVisible || terminalInputEnabled) && !hasDraft;
@@ -638,7 +638,7 @@ export function TerminalScreen({
                 autoCorrect={false}
                 multiline
                 placeholder={t("terminal.composerPlaceholder", {
-                  runtime: runtimeLabel,
+                  terminalProvider: terminalProviderLabel,
                 })}
                 placeholderTextColor="#66727c"
                 editable={!readOnly}

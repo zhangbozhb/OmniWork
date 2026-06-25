@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type {
-  CodexSession,
-  RuntimeKind,
+  TerminalSession,
+  TerminalProviderKind,
   SessionCreatePayload,
   TerminalSize,
   WorkspaceDefinition,
@@ -12,15 +12,15 @@ import { clampTerminalSize } from "@omniwork/terminal-core";
 import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { formatLocalTimestamp } from "../telemetry/logger.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
-import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
+import { TerminalProviderRegistry } from "../terminal-provider/terminalProviderRegistry.ts";
 import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 
-type SessionStatusListener = (session: CodexSession) => void | Promise<void>;
+type SessionStatusListener = (session: TerminalSession) => void | Promise<void>;
 
 export class SessionManager {
   private readonly store: SQLiteSessionStore;
   private readonly tmux: TmuxManager;
-  private readonly runtimes: RuntimeRegistry;
+  private readonly terminalProviders: TerminalProviderRegistry;
   private readonly workspaces?: WorkspaceManager;
   private readonly defaults: {
     cwd: string;
@@ -30,7 +30,7 @@ export class SessionManager {
   constructor(
     store: SQLiteSessionStore,
     tmux: TmuxManager,
-    runtimes: RuntimeRegistry,
+    terminalProviders: TerminalProviderRegistry,
     workspaces: WorkspaceManager | undefined,
     defaults: {
       cwd: string;
@@ -39,7 +39,7 @@ export class SessionManager {
   ) {
     this.store = store;
     this.tmux = tmux;
-    this.runtimes = runtimes;
+    this.terminalProviders = terminalProviders;
     this.workspaces = workspaces;
     this.defaults = defaults;
   }
@@ -105,7 +105,7 @@ export class SessionManager {
     }
   }
 
-  async list(): Promise<CodexSession[]> {
+  async list(): Promise<TerminalSession[]> {
     const storedSessions = await this.store.list();
     const tmuxSessions = await this.tmux.listSessions();
     // 用 (server_pid, session_uid) 构造强 ID 索引；
@@ -125,9 +125,9 @@ export class SessionManager {
     // session"的可能；为避免 UI 上残留无意义的孤儿条目，直接从持久化 store
     // 中删除。created/starting 仍保留以容忍 create() 与后续 list() 之间
     // tmux ls 尚未感知的瞬时窗口。
-    const reconciledStoredSessions: CodexSession[] = [];
+    const reconciledStoredSessions: TerminalSession[] = [];
     const orphanRemovals: Array<{
-      session: CodexSession;
+      session: TerminalSession;
       reason: OrphanReason;
     }> = [];
     for (const session of storedSessions) {
@@ -166,28 +166,28 @@ export class SessionManager {
   async create(
     payload: SessionCreatePayload = {},
     onStatus?: SessionStatusListener,
-  ): Promise<CodexSession> {
+  ): Promise<TerminalSession> {
     const sessionId = `sess_${randomUUID()}`;
     const tmuxSessionName = toTmuxSessionName(sessionId);
     const now = new Date().toISOString();
-    const runtime = this.runtimes.get(payload.runtime_kind);
+    const terminalProvider = this.terminalProviders.get(payload.terminal_provider_kind);
     const resolvedWorkspace = this.workspaces
       ? await this.workspaces.resolveCreateCwd(payload)
       : { cwd: payload.cwd ?? this.defaults.cwd, workspace: undefined };
     const cwd = resolvedWorkspace.cwd;
-    const command = payload.command ?? runtime.buildTuiCommand();
+    const command = payload.command ?? terminalProvider.buildTuiCommand();
     const size = clampTerminalSize(
       payload.terminal_size ?? this.defaults.terminalSize,
     );
-    const runtimeSessionCount = await this.countSessionsForRuntime(
-      runtime.kind,
+    const providerSessionCount = await this.countSessionsForProvider(
+      terminalProvider.kind,
     );
 
-    const created: CodexSession = {
+    const created: TerminalSession = {
       session_id: sessionId,
-      runtime_kind: runtime.kind,
-      runtime_label: runtime.displayName,
-      title: payload.title ?? runtime.defaultTitle(runtimeSessionCount + 1),
+      terminal_provider_kind: terminalProvider.kind,
+      terminal_provider_label: terminalProvider.displayName,
+      title: payload.title ?? terminalProvider.defaultTitle(providerSessionCount + 1),
       cwd,
       command,
       status: "created",
@@ -240,7 +240,7 @@ export class SessionManager {
     }
   }
 
-  async get(sessionId: string): Promise<CodexSession | undefined> {
+  async get(sessionId: string): Promise<TerminalSession | undefined> {
     return (await this.list()).find(
       (session) => session.session_id === sessionId,
     );
@@ -273,7 +273,7 @@ export class SessionManager {
   async rename(
     sessionId: string,
     title: string,
-  ): Promise<CodexSession | undefined> {
+  ): Promise<TerminalSession | undefined> {
     const session = await this.get(sessionId);
     const nextTitle = title.trim();
     if (!session || !nextTitle) {
@@ -290,7 +290,7 @@ export class SessionManager {
     return renamed;
   }
 
-  async killTmux(sessionId: string): Promise<void> {
+  async killTerminal(sessionId: string): Promise<void> {
     const session = await this.get(sessionId);
     if (!session) {
       return;
@@ -299,11 +299,11 @@ export class SessionManager {
     try {
       await this.tmux.killSession(session.tmux_session_name);
     } finally {
-      await this.store.remove(sessionId, "kill_tmux");
+      await this.store.remove(sessionId, "kill_terminal");
     }
   }
 
-  async attach(sessionId: string): Promise<CodexSession | undefined> {
+  async attach(sessionId: string): Promise<TerminalSession | undefined> {
     const session = await this.get(sessionId);
     if (!session) {
       return undefined;
@@ -326,7 +326,7 @@ export class SessionManager {
   async updateTerminalSize(
     sessionId: string,
     terminalSize: TerminalSize,
-  ): Promise<CodexSession | undefined> {
+  ): Promise<TerminalSession | undefined> {
     const session = await this.get(sessionId);
     if (!session) {
       return undefined;
@@ -341,11 +341,11 @@ export class SessionManager {
     return updated;
   }
 
-  private async countSessionsForRuntime(
-    runtimeKind: RuntimeKind,
+  private async countSessionsForProvider(
+    terminalProviderKind: TerminalProviderKind,
   ): Promise<number> {
     return (await this.store.list()).filter(
-      (session) => session.runtime_kind === runtimeKind,
+      (session) => session.terminal_provider_kind === terminalProviderKind,
     ).length;
   }
 
@@ -356,12 +356,12 @@ export class SessionManager {
     createdAt: string;
     currentPath?: string;
     currentCommand?: string;
-  }): CodexSession {
-    const runtime = this.runtimes.infer(session.currentCommand);
+  }): TerminalSession {
+    const terminalProvider = this.terminalProviders.infer(session.currentCommand);
     return {
       session_id: toExternalSessionId(session.name),
-      runtime_kind: runtime?.kind ?? "other",
-      runtime_label: runtime?.displayName ?? "Other",
+      terminal_provider_kind: terminalProvider?.kind ?? "other",
+      terminal_provider_label: terminalProvider?.displayName ?? "Other",
       title: session.name,
       cwd: session.currentPath || this.defaults.cwd,
       command: session.currentCommand || "tmux",
@@ -378,9 +378,9 @@ export class SessionManager {
   }
 
   private async annotateWorkspace(
-    session: CodexSession,
+    session: TerminalSession,
     workspaces: readonly WorkspaceDefinition[],
-  ): Promise<CodexSession> {
+  ): Promise<TerminalSession> {
     const workspace = this.workspaces
       ? await this.workspaces.resolveSessionWorkspace(session, workspaces)
       : undefined;
@@ -403,13 +403,13 @@ function toExternalSessionId(tmuxSessionName: string): string {
 }
 
 function compareSessionsByRecentTime(
-  left: CodexSession,
-  right: CodexSession,
+  left: TerminalSession,
+  right: TerminalSession,
 ): number {
   return getSessionSortTime(right) - getSessionSortTime(left);
 }
 
-function getSessionSortTime(session: CodexSession): number {
+function getSessionSortTime(session: TerminalSession): number {
   const lastActiveAt = Date.parse(session.last_active_at);
   if (Number.isFinite(lastActiveAt)) {
     return lastActiveAt;
@@ -438,7 +438,7 @@ type OrphanReason =
   | "not_in_tmux_ls";
 
 function classifyOrphanSession(
-  session: CodexSession,
+  session: TerminalSession,
   liveByBinding: Map<string, { serverPid: number; sessionUid: string }>,
   liveByName: Map<string, { serverPid: number; sessionUid: string }>,
 ): OrphanReason | null {

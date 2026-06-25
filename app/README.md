@@ -10,7 +10,7 @@ browser access without introducing a second UI stack.
 - Secure pairing persistence through platform secure storage.
 - Relay-driven device connection and HMAC key proof.
 - Workspace-first session management through the Mac Agent, with a Workspace Detail bottom-tab layout for `Sessions`, `Git`, and `Files`.
-- Sessions are grouped by Agent Provider inside each Workspace, with secondary management actions moved behind a `More` dialog.
+- Sessions are grouped by Terminal Provider inside each Workspace, with secondary management actions moved behind a `More` dialog.
 - Workspace picker for new sessions, using Mac Agent discovered remote project directories instead of requiring users to type common working directories.
 - Workspace file browser and guarded UTF-8 text editor for supported files inside the selected workspace boundary.
 - Read-only Git status and diff views, shown only for workspaces that the Mac Agent reports as Git repositories.
@@ -18,7 +18,7 @@ browser access without introducing a second UI stack.
 - Terminal screen with Native WebView/xterm rendering, local generated xterm assets, and quick keys.
 - Shared SVG icon system through `react-native-svg`, used by icon-first buttons across pairing, devices, sessions, terminal, scanner, and confirmation flows.
 - Shared TypeScript protocol and terminal input helpers.
-- Configured Agent Provider metadata from the Mac Agent for capability display and session creation, with App-local hide, sort, and default-provider preferences.
+- Configured Terminal Provider metadata from the Mac Agent for capability display and session creation, with App-local hide, sort, and default-provider preferences.
 - Shared ConfirmDialog UI for destructive actions across Android, iOS, and Web.
 - Web SPA entry that reuses the React Native screens and disables QR scanning.
 

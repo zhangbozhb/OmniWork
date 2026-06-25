@@ -1,6 +1,6 @@
 # OmniWork 桌面端 Agent
 
-TypeScript/Node.js 桌面端 Agent for managing Agent CLI TUI sessions.
+TypeScript/Node.js 桌面端 Agent for managing Terminal provider TUI sessions.
 
 ## Current MVP
 
@@ -10,7 +10,7 @@ TypeScript/Node.js 桌面端 Agent for managing Agent CLI TUI sessions.
 - Uses `0600` file permissions and `0700` parent directory permissions.
 - Requires `OMNIWORK_RELAY_URL` and fails fast when it is missing.
 - Reconnects to Relay with exponential backoff unless Relay explicitly rejects the Agent.
-- Manages configured Agent CLI TUI sessions through `tmux` once tmux is installed.
+- Manages configured Terminal provider TUI sessions through `tmux` once tmux is installed.
 - Persists user-edited session titles through the `session.rename` protocol message.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.
 - Provides workspace file listing/reading/writing for supported UTF-8 text files, plus read-only Git status/diff messages.
@@ -45,7 +45,7 @@ checks; if the keychain is missing, locked, or otherwise unavailable, it
 silently falls back to the local identity file. On other platforms the agent
 uses `~/.omniwork/agent.json`.
 
-`OMNIWORK_AGENT_PROVIDERS` is the primary way to choose and extend Agent CLI
+`OMNIWORK_TERMINAL_PROVIDERS` is the primary way to choose and extend terminal
 providers. When it is unset, the 桌面端 Agent falls back to the default Codex,
 Claude, and Gemini presets. The `OMNIWORK_CODEX_COMMAND`,
 `OMNIWORK_CLAUDE_COMMAND`, and `OMNIWORK_GEMINI_COMMAND` variables only override
@@ -54,7 +54,7 @@ those fallback preset commands.
 Example custom provider set:
 
 ```sh
-OMNIWORK_AGENT_PROVIDERS='[
+OMNIWORK_TERMINAL_PROVIDERS='[
   {
     "kind": "codex",
     "displayName": "Codex",

@@ -1,6 +1,6 @@
 import {
   createMessage,
-  type CodexSession,
+  type TerminalSession,
   type FilesListRequestPayload,
   type FilesReadRequestPayload,
   type FilesWriteRequestPayload,
@@ -22,7 +22,7 @@ type ResourceRequestHandlerOptions = {
   workspaces: WorkspaceManager;
   files?: FileService;
   git?: GitService;
-  listSessions(): Promise<CodexSession[]>;
+  listSessions(): Promise<TerminalSession[]>;
   sendToApp(
     context: AgentDispatchContext | undefined,
     message: MessageEnvelope,
@@ -34,7 +34,7 @@ export class ResourceRequestHandler {
   private readonly workspaces: WorkspaceManager;
   private readonly files: FileService;
   private readonly git: GitService;
-  private readonly listSessions: () => Promise<CodexSession[]>;
+  private readonly listSessions: () => Promise<TerminalSession[]>;
   private readonly sendToApp: (
     context: AgentDispatchContext | undefined,
     message: MessageEnvelope,

@@ -20,12 +20,12 @@ import {
   SESSION_REQUIRED_FIELDS,
   SUPPORTED_SESSION_STATUSES,
   TRANSPORT_PREFERENCES,
-  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+  DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
   agentHelloPayloadSchema,
   authFailedPayloadSchema,
   authOkPayloadSchema,
   authVerifyPayloadSchema,
-  codexSessionSchema,
+  terminalSessionSchema,
   createEncryptedPairingShare,
   createMessage,
   createPairingLink,
@@ -49,7 +49,7 @@ import {
   sessionClosePayloadSchema,
   sessionCreatePayloadSchema,
   sessionCreatedPayloadSchema,
-  sessionKillTmuxPayloadSchema,
+  sessionKillTerminalPayloadSchema,
   sessionListPayloadSchema,
   sessionRenamePayloadSchema,
   terminalFramePayloadSchema,
@@ -107,9 +107,9 @@ describe("messageEnvelopeSchema", () => {
   });
 });
 
-describe("default agent providers", () => {
+describe("default terminal providers", () => {
   it("includes a plain terminal provider without a startup command", () => {
-    const terminalProvider = DEFAULT_AGENT_PROVIDER_DEFINITIONS.find(
+    const terminalProvider = DEFAULT_TERMINAL_PROVIDER_DEFINITIONS.find(
       (provider) => provider.kind === "terminal",
     );
     assert.ok(terminalProvider);
@@ -569,7 +569,7 @@ describe("transport_preference", () => {
 });
 
 describe("session.schema.json contract alignment", () => {
-  // protocol/sessions/session.schema.json 与 ts CodexSession 的字段集合、
+  // protocol/sessions/session.schema.json 与 ts TerminalSession 的字段集合、
   // 必填集合、status 取值集合必须保持一致。任何一边漂移都会让"协议合同"
   // 失效，本组用例作为最低限度的对账兜底。
   const here = dirname(fileURLToPath(import.meta.url));
@@ -626,8 +626,8 @@ describe("session payload schemas", () => {
   // 三个常量保持运行时一致。任何一边漂移都应被这里的正反例拦住。
   const validSession = {
     session_id: "sess_1",
-    runtime_kind: "codex",
-    runtime_label: "Codex",
+    terminal_provider_kind: "codex",
+    terminal_provider_label: "Codex",
     title: "demo",
     cwd: "/tmp",
     command: "codex",
@@ -638,33 +638,33 @@ describe("session payload schemas", () => {
     tmux_session_name: "omni-1",
   };
 
-  it("codexSessionSchema accepts all SUPPORTED_SESSION_STATUSES", () => {
+  it("terminalSessionSchema accepts all SUPPORTED_SESSION_STATUSES", () => {
     for (const status of SUPPORTED_SESSION_STATUSES) {
-      codexSessionSchema.parse({ ...validSession, status });
+      terminalSessionSchema.parse({ ...validSession, status });
     }
   });
 
-  it("codexSessionSchema rejects status='error'", () => {
-    const result = codexSessionSchema.safeParse({
+  it("terminalSessionSchema rejects status='error'", () => {
+    const result = terminalSessionSchema.safeParse({
       ...validSession,
       status: "error",
     });
     assert.equal(result.success, false);
   });
 
-  it("codexSessionSchema rejects unknown extra fields (strict)", () => {
-    const result = codexSessionSchema.safeParse({
+  it("terminalSessionSchema rejects unknown extra fields (strict)", () => {
+    const result = terminalSessionSchema.safeParse({
       ...validSession,
       foo_bar: "x",
     });
     assert.equal(result.success, false);
   });
 
-  it("codexSessionSchema rejects when any required field is missing", () => {
+  it("terminalSessionSchema rejects when any required field is missing", () => {
     for (const field of SESSION_REQUIRED_FIELDS) {
       const broken: Record<string, unknown> = { ...validSession };
       delete broken[field];
-      const result = codexSessionSchema.safeParse(broken);
+      const result = terminalSessionSchema.safeParse(broken);
       assert.equal(
         result.success,
         false,
@@ -684,7 +684,7 @@ describe("session payload schemas", () => {
   it("sessionCreatePayloadSchema accepts empty payload", () => {
     sessionCreatePayloadSchema.parse({});
     sessionCreatePayloadSchema.parse({
-      runtime_kind: "codex",
+      terminal_provider_kind: "codex",
       cwd: "/tmp",
       terminal_size: { cols: 80, rows: 24 },
     });
@@ -692,7 +692,7 @@ describe("session payload schemas", () => {
 
   it("sessionCreatePayloadSchema rejects extra unknown keys", () => {
     const result = sessionCreatePayloadSchema.safeParse({
-      runtime_kind: "codex",
+      terminal_provider_kind: "codex",
       forced: true,
     });
     assert.equal(result.success, false);
@@ -710,7 +710,7 @@ describe("session payload schemas", () => {
     for (const schema of [
       sessionAttachPayloadSchema,
       sessionClosePayloadSchema,
-      sessionKillTmuxPayloadSchema,
+      sessionKillTerminalPayloadSchema,
     ]) {
       schema.parse({ session_id: "sess_1" });
       assert.equal(schema.safeParse({ session_id: "" }).success, false);

@@ -12,17 +12,17 @@
 
 ## 实装状态
 
-- 主通道（Agent Provider CLI runtime adapter）：已落地基础适配层，见 [desktop/agent/src/runtime/](../desktop/agent/src/runtime/)；provider 配置驱动 + `session.list` 下发已对齐。
+- 终端主通道（Terminal Provider adapter）：已落地基础适配层，见 [desktop/agent/src/terminal-provider/](../desktop/agent/src/terminal-provider/)；provider 配置驱动 + `session.list` 下发已对齐。
 - 兼容通道（tmux + Native WebView/xterm 终端）：已落地，见 [desktop/agent/src/pty-bridge](../desktop/agent/src/pty-bridge)、[desktop/agent/src/tmux-manager](../desktop/agent/src/tmux-manager) 与 [app/src/terminal](../app/src/terminal)。
 - Codex app-server adapter 尚未落地，仍属于结构化 Codex UI 方向。
-- Agent Provider 元数据层：`packages/protocol-ts` 定义 + 桌面端 Agent 配置化 provider 已实现。
+- Terminal Provider 元数据层：`packages/protocol-ts` 定义 + 桌面端 Agent 配置化 provider 已实现。
 - Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex hook receiver、Desktop Agent 启动时 Codex hook 自动安装、Codex hook 归一化、内存消息过滤/去重和在线 App `agent.message` 广播；Codex app-server channel、持久化 pending inbox、系统 Push 尚未落地。
 - Workspace 上下文层：已实现 `workspace.list/status` + `files.list/read/write` + `git.status/diff`，其中文件写入仅支持受控 UTF-8 文本编辑，详见 [desktop/agent/src/workspace](../desktop/agent/src/workspace) / [files](../desktop/agent/src/files) / [git](../desktop/agent/src/git)。
 - Relay + P2P 升级：已落地（终版见 [relay-architecture.md](./relay-architecture.md)），不在本文档继续维护。
 
 ## 结论摘要
 
-推荐采用「公司内网中继 + TypeScript 电脑 本地 Agent + Agent Provider 运行时适配层 + Android/iOS/Web 跨端 App」的方案。
+推荐采用「公司内网中继 + TypeScript 电脑 本地 Agent + Terminal Provider 适配层 + Android/iOS/Web 跨端 App」的方案。
 
 技术判断需要补充一个重要约束：
 
@@ -30,7 +30,7 @@
 - 但 Codex app-server 的 WebSocket 传输目前仍标注为 experimental / unsupported，且官方明确提醒非 loopback WebSocket 监听在 rollout 过程默认不应直接远程暴露，必须配置认证。
 - 因此，正式企业方案不应把 Codex app-server 直接暴露给手机或中继，而应由 桌面端 Agent 在本机 loopback / unix socket / stdio 内部管理，再通过我们自己的企业中继协议对外提供受控能力。
 
-最终推荐是双通道架构，同时保留 Agent Provider 抽象，避免把 Codex、Claude、Gemini、OpenCode 等 CLI 能力写死在 App 页面或 桌面端 Agent 会话管理逻辑中：
+最终推荐是双通道架构，同时保留 Terminal Provider 抽象，避免把 Codex、Claude、Gemini、OpenCode 等 CLI 能力写死在 App 页面或 桌面端 Agent 会话管理逻辑中：
 
 1. **主通道：Codex App Server 结构化通道**
    - 面向产品化体验。
@@ -42,11 +42,11 @@
    - 用于真实显示 Codex CLI TUI。
    - 可满足「手机查看 TUI 结果并交互、多个 TUI 切换」的 MVP 诉求。
 
-3. **Agent Provider 元数据层**
-   - `packages/protocol-ts` 定义 `AgentProviderDefinition`、`runtime_kind`、能力标识等共享协议类型，并提供默认 presets 作为 fallback。
-   - 桌面端 Agent 通过 `OMNIWORK_AGENT_PROVIDERS` 配置实际启用的 provider、展示名、能力标识和命令，例如用户可直接增加 `opencode`。
-   - 桌面端 Agent 的 Runtime Adapter 从配置化 provider 列表创建 runtime，并通过 `agent.hello` / `session.list` 下发给 App。
-   - App 会话列表按 桌面端 Agent 下发的 provider 分组展示，并在创建会话时传递 `runtime_kind`。
+3. **Terminal Provider 元数据层**
+   - `packages/protocol-ts` 定义 `TerminalProviderDefinition`、`terminal_provider_kind`、能力标识等共享协议类型，并提供默认 presets 作为 fallback。
+   - 桌面端 Agent 通过 `OMNIWORK_TERMINAL_PROVIDERS` 配置实际启用的 provider、展示名、能力标识和命令，例如用户可直接增加 `opencode`。
+   - 桌面端 Agent 的 Terminal Provider Registry 从配置化 provider 列表创建终端启动命令，并通过 `agent.hello` / `session.list` 下发给 App。
+   - App 会话列表按 桌面端 Agent 下发的 provider 分组展示，并在创建会话时传递 `terminal_provider_kind`。
    - 未识别的外部 tmux 会话归入 `other`，只展示和附加，不作为可创建 provider。
 
 4. **Workspace 上下文层**
@@ -217,15 +217,15 @@ flowchart LR
   Relay -->|WS/WSS + agent hello + E2E| Agent["桌面端 Agent"]
 
   Agent --> Control["控制面"]
-  Agent --> Runtime["Agent Provider 运行时适配层"]
+  Agent --> TerminalProvider["Terminal Provider 适配层"]
   Agent --> ProbeSink["Agent Probe Sink<br/>消息感知与过滤"]
   Agent --> Tmux["tmux 会话池"]
   Agent --> Store["sessions.sqlite + session-key.json"]
 
-  Runtime --> AppServer["Codex app-server<br/>stdio/unix/127.0.0.1"]
-  Runtime --> PTY["PTY bridge"]
+  TerminalProvider --> PTY["PTY bridge"]
+  Agent --> AppServer["Codex app-server<br/>stdio/unix/127.0.0.1"]
   PTY --> Tmux
-  Tmux --> ProviderTUI["Configured Agent CLI TUI"]
+  Tmux --> ProviderTUI["Configured Terminal Provider CLI TUI"]
 
   AppServer --> CodexHarness["Codex harness"]
   ProviderTUI --> AgentProbe["Agent Probe<br/>Codex / Claude Code / OpenCode"]
@@ -264,7 +264,7 @@ flowchart LR
 - `DeviceListScreen`：选择 电脑。
 - `SessionListScreen`：会话列表。
 - `TerminalScreen`：原始 TUI 快照，Native WebView/xterm 终端视图；RN 文本快照仅作为 fallback。
-- `CodexSessionScreen`：结构化 Codex UI。
+- `CodexAgentSurfaceScreen`：结构化 Codex UI。
 - `SettingsScreen`：安全、通知、键盘偏好。
 
 ### 公司内网 Relay
@@ -455,7 +455,7 @@ session.list
 session.create
 session.rename
 session.close
-session.kill_tmux
+session.kill_terminal
 session.attach
 session.detach
 session.status

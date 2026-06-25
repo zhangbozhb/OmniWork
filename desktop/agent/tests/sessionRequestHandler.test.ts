@@ -3,12 +3,12 @@ import { test } from "node:test";
 
 import {
   createMessage,
-  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
-  type CodexSession,
+  DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+  type TerminalSession,
   type MessageEnvelope,
   type SessionCreatePayload,
 } from "@omniwork/protocol-ts";
-import { RuntimeRegistry } from "../src/runtime/runtimeAdapter.ts";
+import { TerminalProviderRegistry } from "../src/terminal-provider/terminalProviderRegistry.ts";
 import { SessionRequestHandler } from "../src/core/sessionRequestHandler.ts";
 import type { SessionManager } from "../src/core/sessionManager.ts";
 import type { TerminalFramePusher } from "../src/core/terminalFramePusher.ts";
@@ -19,12 +19,12 @@ type TestDispatchContext = {
   trustedE2E: boolean;
 };
 
-function fakeSession(overrides: Partial<CodexSession>): CodexSession {
+function fakeSession(overrides: Partial<TerminalSession>): TerminalSession {
   const now = new Date().toISOString();
   return {
     session_id: "sess_created",
-    runtime_kind: "codex",
-    runtime_label: "Codex",
+    terminal_provider_kind: "codex",
+    terminal_provider_label: "Codex",
     title: "Codex 1",
     cwd: "/tmp/project",
     command: "codex",
@@ -54,7 +54,7 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
     context: TestDispatchContext | undefined;
     message: MessageEnvelope;
   }> = [];
-  const preparedRuntimes: Array<{ kind: string; command: string }> = [];
+  const preparedTerminalProviders: Array<{ kind: string; command: string }> = [];
   const subscribers: Array<{ sessionId: string; appConnectionId: string }> = [];
   const startedSessionIds: string[] = [];
 
@@ -64,8 +64,8 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
   const sessionManager = {
     async create(
       _payload: SessionCreatePayload,
-      onStatus?: (session: CodexSession) => void | Promise<void>,
-    ): Promise<CodexSession> {
+      onStatus?: (session: TerminalSession) => void | Promise<void>,
+    ): Promise<TerminalSession> {
       await onStatus?.(created);
       await onStatus?.(starting);
       return running;
@@ -83,8 +83,8 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
   const handler = new SessionRequestHandler({
     deviceId: "device-1",
     defaultCwd: "/tmp",
-    runtimes: new RuntimeRegistry({
-      providers: DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+    terminalProviders: new TerminalProviderRegistry({
+      providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
     }),
     workspaces: {} as WorkspaceManager,
     sessionManager,
@@ -92,8 +92,8 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
     sendToApp(nextContext, message): void {
       sent.push({ context: nextContext, message });
     },
-    async prepareRuntime(runtime): Promise<void> {
-      preparedRuntimes.push(runtime);
+    async prepareTerminalProvider(terminalProvider): Promise<void> {
+      preparedTerminalProviders.push(terminalProvider);
     },
     async handleTerminalSnapshot(message, nextContext): Promise<void> {
       snapshots.push({ context: nextContext, message });
@@ -102,7 +102,7 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
   const request = createMessage("session.create", {
     cwd: "/tmp/project",
     workspace_path: "/tmp/project",
-    runtime_kind: "codex",
+    terminal_provider_kind: "codex",
   });
 
   await handler.handleCreate(request, context);
@@ -118,11 +118,11 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
   assert.deepEqual(
     statusMessages.map(
       ({ message }) =>
-        (message.payload as { session: CodexSession }).session.status,
+        (message.payload as { session: TerminalSession }).session.status,
     ),
     ["created", "starting", "running"],
   );
-  assert.deepEqual(preparedRuntimes, [{ kind: "codex", command: "codex" }]);
+  assert.deepEqual(preparedTerminalProviders, [{ kind: "codex", command: "codex" }]);
   assert.deepEqual(snapshots, [
     {
       context,

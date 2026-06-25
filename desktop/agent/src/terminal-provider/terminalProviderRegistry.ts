@@ -1,11 +1,11 @@
 import {
   type AgentCapability,
-  type AgentProviderDefinition,
-  type RuntimeKind,
+  type TerminalProviderDefinition,
+  type TerminalProviderKind,
 } from "@omniwork/protocol-ts";
 
-export interface RuntimeAdapter {
-  readonly kind: RuntimeKind;
+export interface TerminalProviderAdapter {
+  readonly kind: TerminalProviderKind;
   readonly displayName: string;
   readonly capability: AgentCapability;
   readonly summary: string;
@@ -13,19 +13,19 @@ export interface RuntimeAdapter {
   defaultTitle(index: number): string;
 }
 
-export interface RuntimeRegistryOptions {
-  providers: readonly AgentProviderDefinition[];
+export interface TerminalProviderRegistryOptions {
+  providers: readonly TerminalProviderDefinition[];
 }
 
-export class RuntimeRegistry {
-  private readonly adapters: Map<RuntimeKind, RuntimeAdapter>;
-  private readonly defaultKind?: RuntimeKind;
+export class TerminalProviderRegistry {
+  private readonly adapters: Map<TerminalProviderKind, TerminalProviderAdapter>;
+  private readonly defaultKind?: TerminalProviderKind;
 
-  constructor(options: RuntimeRegistryOptions) {
+  constructor(options: TerminalProviderRegistryOptions) {
     const adapters = options.providers
       .filter((provider) => provider.creatable)
       .map((provider) =>
-        new CliRuntimeAdapter(
+        new CliTerminalProviderAdapter(
           provider.kind,
           provider.displayName,
           provider.capability,
@@ -37,19 +37,19 @@ export class RuntimeRegistry {
     this.defaultKind = adapters[0]?.kind;
   }
 
-  get(kind?: RuntimeKind): RuntimeAdapter {
+  get(kind?: TerminalProviderKind): TerminalProviderAdapter {
     const resolvedKind = kind ?? this.defaultKind;
     if (!resolvedKind) {
-      throw new Error("No creatable agent providers configured");
+      throw new Error("No creatable terminal providers configured");
     }
     const adapter = this.adapters.get(resolvedKind);
     if (!adapter) {
-      throw new Error(`Unsupported runtime: ${resolvedKind}`);
+      throw new Error(`Unsupported terminal provider: ${resolvedKind}`);
     }
     return adapter;
   }
 
-  list(): RuntimeAdapter[] {
+  list(): TerminalProviderAdapter[] {
     return Array.from(this.adapters.values());
   }
 
@@ -57,7 +57,7 @@ export class RuntimeRegistry {
     return this.list().map((adapter) => adapter.capability);
   }
 
-  providers(): AgentProviderDefinition[] {
+  providers(): TerminalProviderDefinition[] {
     return this.list().map((adapter) => ({
       kind: adapter.kind,
       displayName: adapter.displayName,
@@ -68,7 +68,7 @@ export class RuntimeRegistry {
     }));
   }
 
-  infer(command?: string): RuntimeAdapter | undefined {
+  infer(command?: string): TerminalProviderAdapter | undefined {
     const normalizedCommand = command?.toLowerCase() ?? "";
     if (!normalizedCommand) {
       return undefined;
@@ -84,15 +84,15 @@ export class RuntimeRegistry {
   }
 }
 
-class CliRuntimeAdapter implements RuntimeAdapter {
-  readonly kind: RuntimeKind;
+class CliTerminalProviderAdapter implements TerminalProviderAdapter {
+  readonly kind: TerminalProviderKind;
   readonly displayName: string;
   readonly capability: AgentCapability;
   readonly summary: string;
   private readonly command: string;
 
   constructor(
-    kind: RuntimeKind,
+    kind: TerminalProviderKind,
     displayName: string,
     capability: AgentCapability,
     command: string,

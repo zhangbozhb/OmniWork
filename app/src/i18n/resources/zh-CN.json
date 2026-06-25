@@ -286,13 +286,13 @@
       "remove": "移除",
       "closeSession": "关闭会话",
       "killing": "终止中...",
-      "killTmux": "终止 tmux",
+      "killTerminal": "终止终端",
       "moveUp": "上移 {{provider}}",
       "moveDown": "下移 {{provider}}"
     },
     "provider": {
       "other": "其他",
-      "otherSummary": "未匹配到已配置 Agent CLI 的现有 tmux 会话"
+      "otherSummary": "未匹配到已配置 Terminal provider 的现有 tmux 会话"
     },
     "time": {
       "justNow": "刚刚",
@@ -438,7 +438,7 @@
     "readOnlyTitle": "会话只读",
     "refreshSessions": "刷新会话",
     "sendKey": "发送 {{key}} 键",
-    "composerPlaceholder": "让 {{runtime}} 检查、编辑、测试或解释...",
+    "composerPlaceholder": "让 {{terminalProvider}} 检查、编辑、测试或解释...",
     "hide": "隐藏",
     "send": "发送",
     "focus": "专注",

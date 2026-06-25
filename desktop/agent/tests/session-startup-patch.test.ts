@@ -6,18 +6,18 @@ import { join } from "node:path";
 import { SQLiteSessionStore } from "../src/session-store/sessionStore.ts";
 import { SessionManager } from "../src/core/sessionManager.ts";
 import { TmuxManager } from "../src/tmux-manager/tmuxManager.ts";
-import { RuntimeRegistry } from "../src/runtime/runtimeAdapter.ts";
+import { TerminalProviderRegistry } from "../src/terminal-provider/terminalProviderRegistry.ts";
 import {
-  DEFAULT_AGENT_PROVIDER_DEFINITIONS,
-  type CodexSession,
+  DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+  type TerminalSession,
 } from "@omniwork/protocol-ts";
 
-function fakeSession(overrides: Partial<CodexSession>): CodexSession {
+function fakeSession(overrides: Partial<TerminalSession>): TerminalSession {
   const now = new Date().toISOString();
   return {
     session_id: "sess_default",
-    runtime_kind: "codex",
-    runtime_label: "Codex",
+    terminal_provider_kind: "codex",
+    terminal_provider_label: "Codex",
     title: "T",
     cwd: "/tmp",
     command: "codex",
@@ -44,21 +44,21 @@ function fakeSession(overrides: Partial<CodexSession>): CodexSession {
     fakeSession({
       session_id: "sess_invalid_error",
       // `error` 虽是协议合法值，但不在 store 持久化白名单内，应被清理。
-      status: "error" as CodexSession["status"],
+      status: "error" as TerminalSession["status"],
     }),
     fakeSession({
       session_id: "sess_invalid_recovering",
-      status: "recovering" as CodexSession["status"],
+      status: "recovering" as TerminalSession["status"],
     }),
     fakeSession({
       session_id: "sess_unknown",
-      status: "weird" as CodexSession["status"],
+      status: "weird" as TerminalSession["status"],
     }),
   ]);
   const manager = new SessionManager(
     store,
     new TmuxManager(),
-    new RuntimeRegistry({ providers: DEFAULT_AGENT_PROVIDER_DEFINITIONS }),
+    new TerminalProviderRegistry({ providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS }),
     undefined,
     { cwd: "/tmp", terminalSize: { cols: 80, rows: 24 } },
   );
@@ -85,7 +85,7 @@ function fakeSession(overrides: Partial<CodexSession>): CodexSession {
   const manager = new SessionManager(
     store,
     new TmuxManager(),
-    new RuntimeRegistry({ providers: DEFAULT_AGENT_PROVIDER_DEFINITIONS }),
+    new TerminalProviderRegistry({ providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS }),
     undefined,
     { cwd: "/tmp", terminalSize: { cols: 80, rows: 24 } },
   );

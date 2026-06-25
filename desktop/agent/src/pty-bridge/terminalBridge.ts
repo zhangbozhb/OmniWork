@@ -1,5 +1,5 @@
 import type {
-  CodexSession,
+  TerminalSession,
   TerminalFramePayload,
   TerminalInputPayload,
   TerminalResizePayload,
@@ -21,7 +21,7 @@ export class TerminalBridge {
   }
 
   async writeInput(
-    session: CodexSession,
+    session: TerminalSession,
     input: TerminalInputPayload,
   ): Promise<void> {
     const sessionId = session.session_id;
@@ -42,7 +42,7 @@ export class TerminalBridge {
   }
 
   private async writeInputNow(
-    session: CodexSession,
+    session: TerminalSession,
     input: TerminalInputPayload,
   ): Promise<void> {
     if (input.kind === "key") {
@@ -86,13 +86,13 @@ export class TerminalBridge {
   }
 
   async resize(
-    session: CodexSession,
+    session: TerminalSession,
     size: TerminalResizePayload,
   ): Promise<void> {
     await this.tmux.resize(session.tmux_session_name, size);
   }
 
-  async snapshot(session: CodexSession): Promise<TerminalSnapshotPayload> {
+  async snapshot(session: TerminalSession): Promise<TerminalSnapshotPayload> {
     await this.waitForInputDrain(session.session_id);
     const [data, cursor] = await Promise.all([
       this.tmux.capturePane(session.tmux_session_name),
@@ -105,7 +105,7 @@ export class TerminalBridge {
     };
   }
 
-  async frame(session: CodexSession): Promise<TerminalFramePayload> {
+  async frame(session: TerminalSession): Promise<TerminalFramePayload> {
     await this.waitForInputDrain(session.session_id);
     const [pane, cursor] = await Promise.all([
       this.tmux.capturePane(session.tmux_session_name),

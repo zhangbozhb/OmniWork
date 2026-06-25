@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { SQLiteSessionStore } from "../src/session-store/sessionStore.ts";
-import type { CodexSession } from "@omniwork/protocol-ts";
+import type { TerminalSession } from "@omniwork/protocol-ts";
 
-function fakeSession(overrides: Partial<CodexSession> = {}): CodexSession {
+function fakeSession(overrides: Partial<TerminalSession> = {}): TerminalSession {
   const now = new Date().toISOString();
   return {
     session_id: "sess_test",
-    runtime_kind: "codex",
-    runtime_label: "Codex",
+    terminal_provider_kind: "codex",
+    terminal_provider_label: "Codex",
     title: "Test",
     cwd: "/tmp",
     command: "codex",

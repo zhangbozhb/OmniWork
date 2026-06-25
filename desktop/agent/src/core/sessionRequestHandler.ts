@@ -1,14 +1,14 @@
 import {
   createMessage,
-  type CodexSession,
+  type TerminalSession,
   type MessageEnvelope,
-  type RuntimeKind,
+  type TerminalProviderKind,
   type SessionCreatePayload,
   type SessionListPayload,
   type SessionRenamePayload,
   type TerminalErrorPayload,
 } from "@omniwork/protocol-ts";
-import { RuntimeRegistry } from "../runtime/runtimeAdapter.ts";
+import { TerminalProviderRegistry } from "../terminal-provider/terminalProviderRegistry.ts";
 import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 import type { SessionManager } from "./sessionManager.ts";
 import type { TerminalFramePusher } from "./terminalFramePusher.ts";
@@ -21,13 +21,13 @@ type AgentDispatchContext = {
 type SessionRequestHandlerOptions = {
   deviceId: string;
   defaultCwd: string;
-  runtimes: RuntimeRegistry;
+  terminalProviders: TerminalProviderRegistry;
   workspaces: WorkspaceManager;
   sessionManager: SessionManager;
   terminalFramePusher: TerminalFramePusher;
   sendToApp(context: AgentDispatchContext | undefined, message: MessageEnvelope): void;
-  prepareRuntime?(runtime: {
-    kind: RuntimeKind;
+  prepareTerminalProvider?(terminalProvider: {
+    kind: TerminalProviderKind;
     command: string;
   }): Promise<void>;
   handleTerminalSnapshot(
@@ -50,7 +50,7 @@ export class SessionRequestHandler {
     const sessions = await this.options.sessionManager.list();
     const payload: SessionListPayload = {
       default_cwd: this.options.defaultCwd,
-      providers: this.options.runtimes.providers(),
+      providers: this.options.terminalProviders.providers(),
       workspaces: await this.options.workspaces.list(sessions),
       sessions,
     };
@@ -69,10 +69,10 @@ export class SessionRequestHandler {
   ): Promise<void> {
     let session;
     try {
-      const runtime = this.options.runtimes.get(message.payload?.runtime_kind);
-      await this.options.prepareRuntime?.({
-        kind: runtime.kind,
-        command: message.payload?.command ?? runtime.buildTuiCommand(),
+      const terminalProvider = this.options.terminalProviders.get(message.payload?.terminal_provider_kind);
+      await this.options.prepareTerminalProvider?.({
+        kind: terminalProvider.kind,
+        command: message.payload?.command ?? terminalProvider.buildTuiCommand(),
       });
       session = await this.options.sessionManager.create(
         message.payload ?? {},
@@ -127,7 +127,7 @@ export class SessionRequestHandler {
     await this.handleList(message, context);
   }
 
-  async handleKillTmux(
+  async handleKillTerminal(
     message: MessageEnvelope,
     context?: AgentDispatchContext,
   ): Promise<void> {
@@ -136,7 +136,7 @@ export class SessionRequestHandler {
     }
 
     this.options.terminalFramePusher.stop(message.session_id);
-    await this.options.sessionManager.killTmux(message.session_id);
+    await this.options.sessionManager.killTerminal(message.session_id);
     await this.handleList(message, context);
   }
 
@@ -200,7 +200,7 @@ export class SessionRequestHandler {
   }
 
   private sendSessionStatus(
-    session: CodexSession,
+    session: TerminalSession,
     context?: AgentDispatchContext,
   ): void {
     this.options.sendToApp(

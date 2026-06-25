@@ -1,5 +1,5 @@
 import type {
-  CodexSession,
+  TerminalSession,
   SessionStatus,
 } from "@omniwork/protocol-ts";
 
@@ -23,7 +23,7 @@ export interface SessionCapabilities {
 }
 
 export function getSessionCapabilities(
-  session: CodexSession,
+  session: TerminalSession,
   pending: SessionPendingState = {},
 ): SessionCapabilities {
   const external = session.origin === "external";
@@ -51,7 +51,7 @@ export function getSessionCapabilities(
 }
 
 function getPrimaryActionLabel(
-  session: CodexSession,
+  session: TerminalSession,
   pending: SessionPendingState,
 ): string {
   if (pending.killing) {
@@ -80,7 +80,7 @@ function getPrimaryActionLabel(
   }
 }
 
-function getStatusLabel(session: CodexSession): string {
+function getStatusLabel(session: TerminalSession): string {
   if (session.origin === "external" && session.registered === false) {
     return "Attachable tmux";
   }
@@ -127,7 +127,7 @@ function getStatusTone(
 }
 
 function getUnavailableReason(
-  session: CodexSession,
+  session: TerminalSession,
   pending: SessionPendingState,
 ): string | undefined {
   if (pending.killing) {

@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { CodexSession } from "@omniwork/protocol-ts";
+import type { TerminalSession } from "@omniwork/protocol-ts";
 import {
   formatRelayCloseMessage,
   formatStrictForceCloseMessage,
@@ -11,10 +11,10 @@ import {
   upsertSession,
 } from "../src/app/appModel.ts";
 
-const baseSession: CodexSession = {
+const baseSession: TerminalSession = {
   session_id: "sess-1",
-  runtime_kind: "codex",
-  runtime_label: "Codex",
+  terminal_provider_kind: "codex",
+  terminal_provider_label: "Codex",
   title: "Demo",
   cwd: "/tmp",
   command: "codex",

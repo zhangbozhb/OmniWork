@@ -51,7 +51,7 @@ export const messageTypeSchema = z.enum([
   "session.create",
   "session.rename",
   "session.close",
-  "session.kill_tmux",
+  "session.kill_terminal",
   "session.attach",
   "session.detach",
   "session.status",
@@ -454,8 +454,8 @@ export const terminalAckPayloadSchema = z
 /**
  * 会话相关 schemas。
  *
- * 与 src/index.ts 的 `CodexSession` / `SESSION_FIELDS` / `SESSION_REQUIRED_FIELDS`
- * 严格对齐：`codexSessionSchema` 用 `.strict()` 拒绝额外字段，必填集合通过
+ * 与 src/index.ts 的 `TerminalSession` / `SESSION_FIELDS` / `SESSION_REQUIRED_FIELDS`
+ * 严格对齐：`terminalSessionSchema` 用 `.strict()` 拒绝额外字段，必填集合通过
  * `SESSION_REQUIRED_FIELDS` 强制；contract.test 会在跨端对账中覆盖。
  */
 export const sessionStatusSchema = z.enum([...SUPPORTED_SESSION_STATUSES] as [
@@ -465,11 +465,11 @@ export const sessionStatusSchema = z.enum([...SUPPORTED_SESSION_STATUSES] as [
 
 export const sessionOriginSchema = z.enum(["managed", "external"]);
 
-export const codexSessionSchema = z
+export const terminalSessionSchema = z
   .object({
     session_id: z.string().min(1),
-    runtime_kind: z.string().min(1),
-    runtime_label: z.string().min(1),
+    terminal_provider_kind: z.string().min(1),
+    terminal_provider_label: z.string().min(1),
     title: z.string(),
     cwd: z.string(),
     command: z.string(),
@@ -488,7 +488,7 @@ export const codexSessionSchema = z
   })
   .strict();
 
-const agentProviderDefinitionSchema = z
+const terminalProviderDefinitionSchema = z
   .object({
     kind: z.string().min(1),
     displayName: z.string().min(1),
@@ -512,16 +512,16 @@ export const workspaceDefinitionSchema = z
 
 export const sessionListPayloadSchema = z
   .object({
-    sessions: z.array(codexSessionSchema),
+    sessions: z.array(terminalSessionSchema),
     default_cwd: z.string().optional(),
-    providers: z.array(agentProviderDefinitionSchema).optional(),
+    providers: z.array(terminalProviderDefinitionSchema).optional(),
     workspaces: z.array(workspaceDefinitionSchema).optional(),
   })
   .strict();
 
 export const sessionCreatePayloadSchema = z
   .object({
-    runtime_kind: z.string().min(1).optional(),
+    terminal_provider_kind: z.string().min(1).optional(),
     title: z.string().optional(),
     cwd: z.string().optional(),
     workspace_path: z.string().optional(),
@@ -532,7 +532,7 @@ export const sessionCreatePayloadSchema = z
 
 export const sessionCreatedPayloadSchema = z
   .object({
-    session: codexSessionSchema,
+    session: terminalSessionSchema,
   })
   .strict();
 
@@ -555,7 +555,7 @@ export const sessionRenamePayloadSchema = z
   })
   .strict();
 
-export const sessionKillTmuxPayloadSchema = z
+export const sessionKillTerminalPayloadSchema = z
   .object({
     session_id: z.string().min(1),
   })
@@ -795,7 +795,7 @@ const payloadSchemaByType = {
   "session.create": sessionCreatePayloadSchema,
   "session.rename": sessionRenamePayloadSchema,
   "session.close": sessionClosePayloadSchema,
-  "session.kill_tmux": sessionKillTmuxPayloadSchema,
+  "session.kill_terminal": sessionKillTerminalPayloadSchema,
   "session.attach": sessionAttachPayloadSchema,
   "session.status": sessionCreatedPayloadSchema,
   "workspace.list": z.union([emptyPayloadSchema, workspaceListPayloadSchema]),

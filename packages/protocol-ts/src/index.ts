@@ -57,7 +57,7 @@ export type MessageType =
   | "session.create"
   | "session.rename"
   | "session.close"
-  | "session.kill_tmux"
+  | "session.kill_terminal"
   | "session.attach"
   | "session.detach"
   | "session.status"
@@ -125,7 +125,7 @@ export interface AgentHelloPayload {
   hostname: string;
   platform: "darwin";
   agent_version: string;
-  providers?: AgentProviderDefinition[];
+  providers?: TerminalProviderDefinition[];
   workspaces?: WorkspaceDefinition[];
   capabilities: AgentCapability[];
 }
@@ -423,11 +423,10 @@ export function isSupportedSessionStatus(
   );
 }
 
-export type RuntimeKind = string;
-export type AgentProviderKind = string;
+export type TerminalProviderKind = string;
 
-export interface AgentProviderDefinition {
-  kind: AgentProviderKind;
+export interface TerminalProviderDefinition {
+  kind: TerminalProviderKind;
   displayName: string;
   capability: AgentCapability;
   summary: string;
@@ -435,7 +434,7 @@ export interface AgentProviderDefinition {
   creatable: boolean;
 }
 
-export const DEFAULT_AGENT_PROVIDER_DEFINITIONS: readonly AgentProviderDefinition[] =
+export const DEFAULT_TERMINAL_PROVIDER_DEFINITIONS: readonly TerminalProviderDefinition[] =
   [
     {
       kind: "codex",
@@ -471,39 +470,39 @@ export const DEFAULT_AGENT_PROVIDER_DEFINITIONS: readonly AgentProviderDefinitio
     },
   ] as const;
 
-export function getAgentProviderDefinition(
-  kind: RuntimeKind,
-  providers: readonly AgentProviderDefinition[] = DEFAULT_AGENT_PROVIDER_DEFINITIONS,
-): AgentProviderDefinition | undefined {
+export function getTerminalProviderDefinition(
+  kind: TerminalProviderKind,
+  providers: readonly TerminalProviderDefinition[] = DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+): TerminalProviderDefinition | undefined {
   return providers.find((provider) => provider.kind === kind);
 }
 
-export function getRuntimeLabel(
-  kind: RuntimeKind,
-  providers: readonly AgentProviderDefinition[] = DEFAULT_AGENT_PROVIDER_DEFINITIONS,
+export function getTerminalProviderLabel(
+  kind: TerminalProviderKind,
+  providers: readonly TerminalProviderDefinition[] = DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
 ): string {
-  return getAgentProviderDefinition(kind, providers)?.displayName ?? "Other";
+  return getTerminalProviderDefinition(kind, providers)?.displayName ?? "Other";
 }
 
-export function getCreatableAgentProviders(
-  providers: readonly AgentProviderDefinition[] = DEFAULT_AGENT_PROVIDER_DEFINITIONS,
-): readonly AgentProviderDefinition[] {
+export function getCreatableTerminalProviders(
+  providers: readonly TerminalProviderDefinition[] = DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+): readonly TerminalProviderDefinition[] {
   return providers.filter((provider) => provider.creatable);
 }
 
-export function isCreatableRuntimeKind(
-  kind: RuntimeKind,
-  providers: readonly AgentProviderDefinition[] = DEFAULT_AGENT_PROVIDER_DEFINITIONS,
-): kind is AgentProviderKind {
-  return Boolean(getAgentProviderDefinition(kind, providers)?.creatable);
+export function isCreatableTerminalProviderKind(
+  kind: TerminalProviderKind,
+  providers: readonly TerminalProviderDefinition[] = DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+): kind is TerminalProviderKind {
+  return Boolean(getTerminalProviderDefinition(kind, providers)?.creatable);
 }
 
 export type SessionOrigin = "managed" | "external";
 
-export interface CodexSession {
+export interface TerminalSession {
   session_id: string;
-  runtime_kind: RuntimeKind;
-  runtime_label: string;
+  terminal_provider_kind: TerminalProviderKind;
+  terminal_provider_label: string;
   title: string;
   cwd: string;
   command: string;
@@ -531,7 +530,7 @@ export interface CodexSession {
 }
 
 /**
- * `CodexSession` 的所有合法字段名（运行时清单）。
+ * `TerminalSession` 的所有合法字段名（运行时清单）。
  *
  * 用作与 `protocol/sessions/session.schema.json` 的对账依据：
  * contract.test 会断言 schema `properties` 集合与本数组一致，以保证
@@ -540,8 +539,8 @@ export interface CodexSession {
  */
 export const SESSION_FIELDS = [
   "session_id",
-  "runtime_kind",
-  "runtime_label",
+  "terminal_provider_kind",
+  "terminal_provider_label",
   "title",
   "cwd",
   "command",
@@ -557,15 +556,15 @@ export const SESSION_FIELDS = [
   "git_repository",
   "origin",
   "registered",
-] as const satisfies readonly (keyof CodexSession)[];
+] as const satisfies readonly (keyof TerminalSession)[];
 
 /**
- * `CodexSession` 中的必填字段（与 schema.json#required 对齐）。
+ * `TerminalSession` 中的必填字段（与 schema.json#required 对齐）。
  */
 export const SESSION_REQUIRED_FIELDS = [
   "session_id",
-  "runtime_kind",
-  "runtime_label",
+  "terminal_provider_kind",
+  "terminal_provider_label",
   "title",
   "cwd",
   "command",
@@ -577,14 +576,14 @@ export const SESSION_REQUIRED_FIELDS = [
 ] as const satisfies readonly (typeof SESSION_FIELDS)[number][];
 
 export interface SessionListPayload {
-  sessions: CodexSession[];
+  sessions: TerminalSession[];
   default_cwd?: string;
-  providers?: AgentProviderDefinition[];
+  providers?: TerminalProviderDefinition[];
   workspaces?: WorkspaceDefinition[];
 }
 
 export interface SessionCreatePayload {
-  runtime_kind?: RuntimeKind;
+  terminal_provider_kind?: TerminalProviderKind;
   title?: string;
   cwd?: string;
   workspace_path?: string;
@@ -593,7 +592,7 @@ export interface SessionCreatePayload {
 }
 
 export interface SessionCreatedPayload {
-  session: CodexSession;
+  session: TerminalSession;
 }
 
 export interface SessionAttachPayload {
@@ -609,7 +608,7 @@ export interface SessionRenamePayload {
   title: string;
 }
 
-export interface SessionKillTmuxPayload {
+export interface SessionKillTerminalPayload {
   session_id: string;
 }
 
@@ -877,11 +876,7 @@ export type AgentAppMessageKind =
   | "error"
   | "diff_summary";
 
-export type AgentAppMessagePriority =
-  | "low"
-  | "normal"
-  | "high"
-  | "critical";
+export type AgentAppMessagePriority = "low" | "normal" | "high" | "critical";
 
 export interface AgentAppMessage {
   id: string;

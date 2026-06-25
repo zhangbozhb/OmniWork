@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 
 import type {
-  CodexSession,
+  TerminalSession,
   WorkspaceDefinition,
 } from "@omniwork/protocol-ts";
 
@@ -21,7 +21,7 @@ export class WorkspaceManager {
     this.defaultCwd = options.defaultCwd;
   }
 
-  async list(sessions: readonly CodexSession[] = []): Promise<WorkspaceDefinition[]> {
+  async list(sessions: readonly TerminalSession[] = []): Promise<WorkspaceDefinition[]> {
     const byPath = new Map<string, WorkspaceDefinition>();
 
     for (const session of sessions) {
@@ -57,7 +57,7 @@ export class WorkspaceManager {
   }
 
   async resolveSessionWorkspace(
-    session: Pick<CodexSession, "cwd" | "workspace_path">,
+    session: Pick<TerminalSession, "cwd" | "workspace_path">,
     workspaces?: readonly WorkspaceDefinition[],
   ): Promise<WorkspaceDefinition | undefined> {
     const candidates = workspaces ?? (await this.list());
