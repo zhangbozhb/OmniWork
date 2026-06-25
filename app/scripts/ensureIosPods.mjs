@@ -33,7 +33,69 @@ function podsAreInSync() {
     return false;
   }
 
-  return (
-    readFileSync(podfileLock, "utf8") === readFileSync(manifestLock, "utf8")
+  const lockContent = readFileSync(podfileLock, "utf8");
+  const missingPods = expectedAutolinkedPods().filter(
+    (podName) => !podIsInLockfile(lockContent, podName),
   );
+  if (missingPods.length > 0) {
+    console.log(
+      `[OmniWork] iOS Podfile.lock is missing autolinked pods: ${missingPods.join(
+        ", ",
+      )}`,
+    );
+    return false;
+  }
+
+  return (
+    lockContent === readFileSync(manifestLock, "utf8")
+  );
+}
+
+function expectedAutolinkedPods() {
+  const result = spawnSync(
+    process.execPath,
+    [join(appRoot, "node_modules/react-native/cli.js"), "config"],
+    {
+      cwd: appRoot,
+      encoding: "utf8",
+    },
+  );
+  if (result.status !== 0) {
+    return [];
+  }
+
+  try {
+    const config = JSON.parse(result.stdout);
+    return Object.values(config.dependencies ?? {})
+      .map((dependency) => dependency?.platforms?.ios?.podspecPath)
+      .filter(Boolean)
+      .map((podspecPath) => podNameFromPodspec(podspecPath))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function podNameFromPodspec(podspecPath) {
+  const podspec = readFileSync(podspecPath, "utf8");
+  const explicitName = podspec.match(/s\.name\s*=\s*["']([^"']+)["']/)?.[1];
+  if (explicitName) {
+    return explicitName;
+  }
+  if (/s\.name\s*=\s*package\[['"]name['"]\]/.test(podspec)) {
+    return JSON.parse(
+      readFileSync(join(dirname(podspecPath), "package.json"), "utf8"),
+    ).name;
+  }
+  return undefined;
+}
+
+function podIsInLockfile(lockContent, podName) {
+  return new RegExp(`^  - ${escapeRegExp(podName)}(?: \\(|/)`, "m").test(
+    lockContent,
+  );
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
