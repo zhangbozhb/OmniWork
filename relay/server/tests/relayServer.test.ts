@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -12,10 +12,12 @@ import {
 } from "@omniwork/protocol-ts";
 import { loadRelayServerConfig } from "../src/config.ts";
 import { RelayServer } from "../src/relayServer.ts";
+import { RelayStateStore } from "../src/relayStateStore.ts";
 import {
   renderRelayAdminLoginPage,
   renderRelayAdminPage,
 } from "../src/adminPage.ts";
+import type { RelayConnection } from "../src/relayTypes.ts";
 
 {
   const config = loadRelayServerConfig({
@@ -63,7 +65,12 @@ interface FakeSocket {
 
 // Admin Web 只有一份源码：生产默认 /admin/，relay dev 渲染时注入 /admin/web。
 {
-  const sourceHtml = readFileSync(join(process.cwd(), "web/admin/index.html"), "utf8");
+  const rootAdminHtml = join(process.cwd(), "web/admin/index.html");
+  const packageAdminHtml = join(process.cwd(), "../../web/admin/index.html");
+  const sourceHtml = readFileSync(
+    existsSync(rootAdminHtml) ? rootAdminHtml : packageAdminHtml,
+    "utf8",
+  );
   assert.match(sourceHtml, /data-admin-base="\/admin\/"/);
   assert.match(sourceHtml, /data-admin-login="\/admin\/login\.html"/);
   assert.doesNotMatch(sourceHtml, /\/admin\/web/);
@@ -189,9 +196,38 @@ type TestAgentConnection = TestRelayConnection & {
   });
   const internals = server as unknown as {
     connections: Map<string, unknown>;
-    agentsByDevice: Map<string, unknown>;
+    agentsByDevice: Map<string, Set<unknown>>;
+    primaryAgentByDevice: Map<string, unknown>;
     mobilesByDevice: Map<string, Set<unknown>>;
+    state: {
+      registerConnection(connection: TestRelayConnection): void;
+      registerAgent(connection: TestAgentConnection): void;
+      devicesSnapshot(): {
+        summary: {
+          device_count: number;
+          agent_count: number;
+          app_count: number;
+          link_count: number;
+        };
+      };
+      linksSnapshot(): { summary: { link_count: number } };
+      trafficTop(): { connections: Array<{ connection_id: string }> };
+      authenticateApp(
+        app: TestRelayConnection,
+        agent?: TestAgentConnection,
+      ): void;
+    };
     admin: {
+      statusSnapshot(): {
+        summary: {
+          device_count: number;
+          agent_count: number;
+          app_count: number;
+          link_count: number;
+          connection_count: number;
+        };
+        traffic: { bytes_in: number; bytes_out: number };
+      };
       agentsSnapshot(): {
         summary: { agent_count: number; app_count: number };
         agents: Array<{
@@ -212,12 +248,31 @@ type TestAgentConnection = TestRelayConnection & {
   };
   internals.connections.set(agent.id, agent);
   internals.connections.set(mobile.id, mobile);
-  internals.agentsByDevice.set(agent.deviceId, agent);
+  internals.agentsByDevice.set(agent.deviceId, new Set([agent]));
+  internals.primaryAgentByDevice.set(agent.deviceId, agent);
   internals.mobilesByDevice.set(agent.deviceId, new Set([mobile]));
+  internals.state.registerConnection(agent);
+  internals.state.registerConnection(mobile);
+  internals.state.registerAgent(agent);
+  internals.state.authenticateApp(mobile, agent);
 
   const agents = internals.admin.agentsSnapshot();
   const apps = internals.admin.agentAppsSnapshot(agent.id);
+  const status = internals.admin.statusSnapshot();
+  const devices = internals.state.devicesSnapshot();
+  const links = internals.state.linksSnapshot();
 
+  assert.equal(status.summary.device_count, 1);
+  assert.equal(status.summary.connection_count, 2);
+  assert.equal(status.summary.link_count, 1);
+  assert.equal(status.summary.app_count, 1);
+  assert.equal(status.traffic.bytes_in, 0);
+  assert.equal(status.traffic.bytes_out, 0);
+  assert.equal(devices.summary.device_count, 1);
+  assert.equal(devices.summary.agent_count, 1);
+  assert.equal(devices.summary.app_count, 1);
+  assert.equal(devices.summary.link_count, 1);
+  assert.equal(links.summary.link_count, 1);
   assert.equal(agents.summary.agent_count, 1);
   assert.equal(agents.summary.app_count, 1);
   assert.equal(agents.agents[0]?.device_id, "device_admin");
@@ -240,16 +295,27 @@ type TestAgentConnection = TestRelayConnection & {
   );
   const internals = server as unknown as {
     connections: Map<string, unknown>;
-    agentsByDevice: Map<string, unknown>;
+    agentsByDevice: Map<string, Set<unknown>>;
+    primaryAgentByDevice: Map<string, unknown>;
     mobilesByDevice: Map<string, Set<unknown>>;
+    state: {
+      registerAgent(connection: TestAgentConnection): void;
+      authenticateApp(
+        app: TestRelayConnection,
+        agent?: TestAgentConnection,
+      ): void;
+    };
     admin: {
       disableAgentInstance(agentInstanceId: string, rule: unknown): void;
     };
   };
   internals.connections.set(agent.id, agent);
   internals.connections.set(mobile.id, mobile);
-  internals.agentsByDevice.set(agent.deviceId, agent);
+  internals.agentsByDevice.set(agent.deviceId, new Set([agent]));
+  internals.primaryAgentByDevice.set(agent.deviceId, agent);
   internals.mobilesByDevice.set(agent.deviceId, new Set([mobile]));
+  internals.state.registerAgent(agent);
+  internals.state.authenticateApp(mobile, agent);
 
   internals.admin.disableAgentInstance(agent.agentInstanceId, {
     id: "rule-1",
@@ -289,6 +355,50 @@ type TestAgentConnection = TestRelayConnection & {
     code: 4403,
     reason: "ip_banned",
   });
+}
+
+// Relay 控制面按连接、设备、链接三个层级累计 envelope 流量，不解析业务 payload。
+{
+  const state = new RelayStateStore();
+  const agent = createAgentConnection("conn_agent_traffic", "device_traffic");
+  const mobile = createMobileConnection(
+    "conn_mobile_traffic",
+    "device_traffic",
+  );
+  const relayAgent = agent as unknown as RelayConnection;
+  const relayMobile = mobile as unknown as RelayConnection;
+  state.registerConnection(relayAgent);
+  state.registerConnection(relayMobile);
+  state.registerAgent(relayAgent);
+  state.authenticateApp(relayMobile, relayAgent);
+
+  state.recordIngress(
+    relayMobile,
+    {
+      type: "e2e.message",
+      payload: {},
+      device_id: mobile.deviceId,
+      app_connection_id: mobile.id,
+    } as MessageEnvelope,
+    128,
+  );
+  state.recordEgress(
+    relayAgent,
+    {
+      type: "e2e.message",
+      payload: {},
+      device_id: agent.deviceId,
+      app_connection_id: mobile.id,
+    } as MessageEnvelope,
+    256,
+  );
+
+  const runtime = state.runtimeSnapshot();
+  const links = state.linksSnapshot();
+  assert.equal(runtime.traffic.bytes_in, 128);
+  assert.equal(runtime.traffic.bytes_out, 256);
+  assert.equal(links.links[0]?.counters.bytes_in, 128);
+  assert.equal(links.links[0]?.counters.bytes_out, 256);
 }
 
 function createFakeSocket(): FakeSocket {
@@ -414,12 +524,14 @@ function createServer(): RelayServer {
 
   const internals = server as unknown as {
     connections: Map<string, unknown>;
-    agentsByDevice: Map<string, unknown>;
+    agentsByDevice: Map<string, Set<unknown>>;
+    primaryAgentByDevice: Map<string, unknown>;
     handleRawMessage(connection: unknown, raw: string): void;
   };
   internals.connections.set(agent.id, agent);
   internals.connections.set(mobile.id, mobile);
-  internals.agentsByDevice.set(deviceId, agent);
+  internals.agentsByDevice.set(deviceId, new Set([agent]));
+  internals.primaryAgentByDevice.set(deviceId, agent);
 
   const offer = createMessage<TunnelUpgradeOfferPayload>(
     "tunnel.upgrade.offer",
@@ -449,12 +561,14 @@ function createServer(): RelayServer {
   );
   const internals = server as unknown as {
     connections: Map<string, unknown>;
-    agentsByDevice: Map<string, unknown>;
+    agentsByDevice: Map<string, Set<unknown>>;
+    primaryAgentByDevice: Map<string, unknown>;
     handleRawMessage(connection: unknown, raw: string): void;
   };
   internals.connections.set(agent.id, agent);
   internals.connections.set(mobile.id, mobile);
-  internals.agentsByDevice.set(agent.deviceId, agent);
+  internals.agentsByDevice.set(agent.deviceId, new Set([agent]));
+  internals.primaryAgentByDevice.set(agent.deviceId, agent);
 
   const request = createMessage(
     "terminal.input",
@@ -499,20 +613,19 @@ function createServer(): RelayServer {
 {
   const server = createServer();
   const agent = createAgentConnection("conn_agent_owner", "device_owner");
-  const otherAgent = createAgentConnection(
-    "conn_agent_other",
-    "device_owner",
-  );
+  const otherAgent = createAgentConnection("conn_agent_other", "device_owner");
   const mobile = createMobileConnection("conn_mobile_owner", "device_owner");
   const internals = server as unknown as {
     connections: Map<string, unknown>;
-    agentsByDevice: Map<string, unknown>;
+    agentsByDevice: Map<string, Set<unknown>>;
+    primaryAgentByDevice: Map<string, unknown>;
     handleRawMessage(connection: unknown, raw: string): void;
   };
   internals.connections.set(agent.id, agent);
   internals.connections.set(otherAgent.id, otherAgent);
   internals.connections.set(mobile.id, mobile);
-  internals.agentsByDevice.set(agent.deviceId, agent);
+  internals.agentsByDevice.set(agent.deviceId, new Set([agent, otherAgent]));
+  internals.primaryAgentByDevice.set(agent.deviceId, agent);
 
   const request = createMessage(
     "terminal.input",

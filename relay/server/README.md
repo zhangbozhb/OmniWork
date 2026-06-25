@@ -120,19 +120,28 @@ applies the same backoff policy as `auto`.
 
 Operational endpoints:
 
-- `GET /metrics` — JSON snapshot of `proposed`, `committed`, `failed[reason]`,
-  `downgrade[reason]`, `prefs[preference]`, `skipped_by_pref`, `in_flight`,
-  `active_p2p`, `durations` (p50/p95/max over the last 100 successful
-  upgrades).
+- `GET /metrics` — JSON snapshot with `relay` control-plane counters and
+  `upgrade` orchestrator counters. `relay` includes runtime uptime, device /
+  Agent / App / link / connection totals, traffic bytes/messages, auth failures,
+  routing drops, and protocol errors sent. `upgrade` includes `proposed`,
+  `committed`, `failed[reason]`, `downgrade[reason]`, `prefs[preference]`,
+  `skipped_by_pref`, `in_flight`, `active_p2p`, and `durations`
+  (p50/p95/max over the last 100 successful upgrades).
 - `POST /debug/upgrade?device_id=<id>&app_connection_id=<connection_id>` —
   manually triggers an upgrade for one E2E-ready App connection under a paired
   device; included in metrics and logs.
 - `GET /admin/web` — development-only Relay admin web page for viewing online
   Agents and Apps. Requires HTTPS and a valid admin session.
-- `GET /admin/api/status` — Relay admin status summary.
+- `GET /admin/api/status` — Relay admin status summary with device / Agent /
+  App / link / connection totals and traffic counters.
+- `GET /admin/api/devices` — Relay-visible device summary with per-device
+  Agent, App, link, and traffic counters.
 - `GET /admin/api/agents` — online Agent list with current App counts.
 - `GET /admin/api/agent-connections/:connection_id/apps` — Relay-visible App
   connections under one online Agent connection.
+- `GET /admin/api/links` — current Relay-visible Agent/App links, including E2E
+  and transport path state.
+- `GET /admin/api/traffic` — highest-traffic online Agent/App connections.
 - `GET /admin/api/controls` — active disabled-Agent and IP-ban rules.
 - `POST /admin/api/login` — consumes the current one-time admin token and sets
   a secure 30-minute session cookie.

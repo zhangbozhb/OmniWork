@@ -347,6 +347,7 @@ relay/
 |   |   |-- relayE2EController.ts
 |   |   |-- relayLog.ts
 |   |   |-- relayServer.ts       # WS 路由 + auth + 升级消息分发 + /healthz /readyz /metrics /debug/upgrade
+|   |   |-- relayStateStore.ts   # Relay 控制面状态：设备 / Agent / App / 链接 / 流量计数
 |   |   |-- relayTypes.ts
 |   |   |-- tokenBucket.ts
 |   |   |-- websocket.ts

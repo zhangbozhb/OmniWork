@@ -42,8 +42,13 @@
     <div><button class="secondary" id="refresh">Refresh</button> <button class="secondary" id="logout">Logout</button></div>
   </header>
   <section class="grid">
+    <div class="card"><div class="muted">Devices</div><div class="metric" id="device-count">-</div></div>
     <div class="card"><div class="muted">Agents</div><div class="metric" id="agent-count">-</div></div>
     <div class="card"><div class="muted">Apps</div><div class="metric" id="app-count">-</div></div>
+    <div class="card"><div class="muted">Links</div><div class="metric" id="link-count">-</div></div>
+    <div class="card"><div class="muted">Connections</div><div class="metric" id="connection-count">-</div></div>
+    <div class="card"><div class="muted">Traffic In</div><div class="metric" id="traffic-in">-</div></div>
+    <div class="card"><div class="muted">Traffic Out</div><div class="metric" id="traffic-out">-</div></div>
     <div class="card"><div class="muted">Disabled Agents</div><div class="metric" id="disabled-count">-</div></div>
     <div class="card"><div class="muted">IP Bans</div><div class="metric" id="ban-count">-</div></div>
   </section>
@@ -91,8 +96,13 @@ async function api(path, options = {}) {
 function td(value) { return "<td>" + (value ?? "<span class='muted'>unknown</span>") + "</td>"; }
 async function refresh() {
   const [status, agents] = await Promise.all([api("/admin/api/status"), api("/admin/api/agents")]);
+  qs("device-count").textContent = status.summary.device_count;
   qs("agent-count").textContent = status.summary.agent_count;
   qs("app-count").textContent = status.summary.app_count;
+  qs("link-count").textContent = status.summary.link_count;
+  qs("connection-count").textContent = status.summary.connection_count;
+  qs("traffic-in").textContent = formatBytes(status.traffic.bytes_in);
+  qs("traffic-out").textContent = formatBytes(status.traffic.bytes_out);
   qs("disabled-count").textContent = status.summary.disabled_agent_count;
   qs("ban-count").textContent = status.summary.ip_ban_count;
   qs("agents").innerHTML = agents.agents.map((agent) =>
@@ -152,6 +162,12 @@ qs("unban-ip-btn").onclick = async () => {
 function parseCsv(value) { return value.split(",").map((item) => item.trim()).filter(Boolean); }
 function parseIps(value) { return parseCsv(value); }
 function showError(error) { qs("toast").textContent = error.message; }
+function formatBytes(value) {
+  if (!Number.isFinite(value)) return "-";
+  if (value < 1024) return String(value);
+  if (value < 1024 * 1024) return (value / 1024).toFixed(1) + "K";
+  return (value / 1024 / 1024).toFixed(1) + "M";
+}
 refresh().catch(showError);
 setInterval(() => refresh().catch(() => {}), 5000);
 </script>

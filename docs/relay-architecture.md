@@ -115,29 +115,57 @@ App                       Relay                       Agent
 
 ```json
 {
-  "proposed": 12,
-  "committed": 20,
-  "failed": { "ice_failed": 1 },
-  "downgrade": { "app_background": 3, "pong_timeout": 1 },
-  "prefs": { "auto": 18, "relay_only": 2, "prefer_p2p": 1 },
-  "skipped_by_pref": 2,
-  "in_flight": 0,
-  "active_p2p": 2,
-  "durations": { "count": 10, "p50_ms": 850, "p95_ms": 1820, "max_ms": 2400 }
+  "relay": {
+    "runtime": { "started_at": "2026-06-25T12:00:00.000Z", "uptime_ms": 30000 },
+    "totals": {
+      "device_count": 2,
+      "agent_count": 2,
+      "app_connection_count": 3,
+      "link_count": 3,
+      "connection_count": 5
+    },
+    "traffic": {
+      "bytes_in": 4096,
+      "bytes_out": 8192,
+      "messages_in": 30,
+      "messages_out": 42,
+      "messages_in_by_type": { "e2e.message": 20 },
+      "messages_out_by_type": { "e2e.message": 24 }
+    },
+    "auth": { "failed": 1 },
+    "routing": { "dropped": 0 },
+    "protocol": { "errors_sent": 1 }
+  },
+  "upgrade": {
+    "proposed": 12,
+    "committed": 20,
+    "failed": { "ice_failed": 1 },
+    "downgrade": { "app_background": 3, "pong_timeout": 1 },
+    "prefs": { "auto": 18, "relay_only": 2, "prefer_p2p": 1 },
+    "skipped_by_pref": 2,
+    "in_flight": 0,
+    "active_p2p": 2,
+    "durations": { "count": 10, "p50_ms": 850, "p95_ms": 1820, "max_ms": 2400 }
+  }
 }
 ```
 
 字段语义：
 
-- `proposed`：累计发起 propose 次数。
-- `committed`：累计 `tunnel.upgrade.committed` 收到次数（双端各一次，所以 `committed` 通常约为 `proposed * 2`）。
-- `failed[reason]`：升级失败原因分布（来自 `tunnel.upgrade.downgrade` 的 reason）。
-- `downgrade[reason]`：与 `failed` 同源；保留两份是为演进区分"协商期失败" vs "运行期降级"，目前等价。
-- `prefs[preference]`：按 `transport_preference` 三态统计 mobile 鉴权后落到 orchestrator 的次数；`OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF=false` 时全部计入 `auto`。
-- `skipped_by_pref`：因 `transport_preference=relay_only` 而跳过 propose 的次数（不计入 `failed`，不进入退避）。
-- `in_flight`：已 propose 未双端 committed 的升级数。
-- `active_p2p`：已升级到 P2P 且尚未降级的 App 连接数。
-- `durations`：最近最多 100 次升级耗时（`startedAt → 双端 committed`）的 p50/p95/max（毫秒）。
+- `relay.totals`：Relay 控制面看到的设备、Agent、App 连接、Agent/App 链接、在线连接数。
+- `relay.traffic`：Relay envelope 层流量，不解析业务 payload；按入站/出站累计 bytes、messages 与 message type 分布。
+- `relay.auth.failed`：Relay 可见的鉴权失败计数。
+- `relay.routing.dropped`：无可用路由或目标连接不存在导致的丢弃计数。
+- `relay.protocol.errors_sent`：Relay 主动下发 `protocol.error` 的次数。
+- `upgrade.proposed`：累计发起 propose 次数。
+- `upgrade.committed`：累计 `tunnel.upgrade.committed` 收到次数（双端各一次，所以通常约为 `proposed * 2`）。
+- `upgrade.failed[reason]`：升级失败原因分布（来自 `tunnel.upgrade.downgrade` 的 reason）。
+- `upgrade.downgrade[reason]`：与 `failed` 同源；保留两份是为演进区分"协商期失败" vs "运行期降级"，目前等价。
+- `upgrade.prefs[preference]`：按 `transport_preference` 三态统计 mobile 鉴权后落到 orchestrator 的次数；`OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF=false` 时全部计入 `auto`。
+- `upgrade.skipped_by_pref`：因 `transport_preference=relay_only` 而跳过 propose 的次数（不计入 `failed`，不进入退避）。
+- `upgrade.in_flight`：已 propose 未双端 committed 的升级数。
+- `upgrade.active_p2p`：已升级到 P2P 且尚未降级的 App 连接数。
+- `upgrade.durations`：最近最多 100 次升级耗时（`startedAt → 双端 committed`）的 p50/p95/max（毫秒）。
 
 ## 6.1 传输偏好可控
 

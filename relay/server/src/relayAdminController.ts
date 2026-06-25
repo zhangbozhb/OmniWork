@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import type { AppInfoPayload } from "@omniwork/protocol-ts";
-
 import { RelayAdminAuth } from "./adminAuth.ts";
 import {
   renderRelayAdminLoginPage,
@@ -10,7 +8,8 @@ import {
 } from "./adminPage.ts";
 import { AdminControlStore } from "./adminControlStore.ts";
 import type { RelayServerConfig } from "./config.ts";
-import type { ControlRule, RelayConnection, RelayAppInfo } from "./relayTypes.ts";
+import type { RelayStateStore } from "./relayStateStore.ts";
+import type { ControlRule, RelayConnection } from "./relayTypes.ts";
 
 const ADMIN_WEB_PATHS = new Set([
   "/admin/web",
@@ -22,7 +21,7 @@ const ADMIN_API_PREFIX = "/admin/api";
 export interface RelayAdminControllerOptions {
   config: RelayServerConfig;
   connections: Map<string, RelayConnection>;
-  agentsByDevice: Map<string, RelayConnection>;
+  state: RelayStateStore;
   mobilesByDevice: Map<string, Set<RelayConnection>>;
   unregister(connection: RelayConnection): void;
 }
@@ -30,7 +29,7 @@ export interface RelayAdminControllerOptions {
 export class RelayAdminController {
   private readonly config: RelayServerConfig;
   private readonly connections: Map<string, RelayConnection>;
-  private readonly agentsByDevice: Map<string, RelayConnection>;
+  private readonly state: RelayStateStore;
   private readonly mobilesByDevice: Map<string, Set<RelayConnection>>;
   private readonly disabledAgentInstances = new Map<string, ControlRule>();
   private readonly ipBans = new Map<string, ControlRule>();
@@ -41,7 +40,7 @@ export class RelayAdminController {
   constructor(options: RelayAdminControllerOptions) {
     this.config = options.config;
     this.connections = options.connections;
-    this.agentsByDevice = options.agentsByDevice;
+    this.state = options.state;
     this.mobilesByDevice = options.mobilesByDevice;
     this.unregister = options.unregister;
     this.auth = new RelayAdminAuth(options.config.admin);
@@ -199,6 +198,18 @@ export class RelayAdminController {
       this.writeJson(response, 200, this.agentsSnapshot());
       return;
     }
+    if (method === "GET" && url.pathname === "/api/devices") {
+      this.writeJson(response, 200, this.state.devicesSnapshot());
+      return;
+    }
+    if (method === "GET" && url.pathname === "/api/links") {
+      this.writeJson(response, 200, this.state.linksSnapshot());
+      return;
+    }
+    if (method === "GET" && url.pathname === "/api/traffic") {
+      this.writeJson(response, 200, this.state.trafficTop());
+      return;
+    }
     const agentAppsMatch = url.pathname.match(
       /^\/api\/agent-connections\/([^/]+)\/apps$/,
     );
@@ -278,11 +289,7 @@ export class RelayAdminController {
   }
 
   private statusSnapshot() {
-    const agents = this.agents();
-    const appCount = agents.reduce(
-      (total, agent) => total + agent.app_count,
-      0,
-    );
+    const runtime = this.state.runtimeSnapshot();
     return {
       ok: true,
       generated_at: new Date().toISOString(),
@@ -292,50 +299,24 @@ export class RelayAdminController {
         protocol_version: this.config.protocolVersion,
       },
       summary: {
-        agent_count: agents.length,
-        app_count: appCount,
+        ...runtime.totals,
+        app_count: runtime.totals.app_connection_count,
         disabled_agent_count: this.activeDisabledAgentInstances().length,
         ip_ban_count: this.activeIpBans().length,
       },
+      traffic: runtime.traffic,
+      auth: runtime.auth,
+      routing: runtime.routing,
+      protocol: runtime.protocol,
     };
   }
 
   private agentsSnapshot() {
-    const agents = this.agents();
-    return {
-      agents,
-      summary: {
-        agent_count: agents.length,
-        app_count: agents.reduce((total, agent) => total + agent.app_count, 0),
-      },
-    };
+    return this.state.agentsSnapshot();
   }
 
   private agentAppsSnapshot(connectionId: string) {
-    const agent = this.connections.get(connectionId);
-    if (!agent || agent.role !== "agent") {
-      return {
-        connection_id: connectionId,
-        device_id: undefined,
-        agent_instance_id: undefined,
-        apps: [],
-        summary: {
-          app_count: 0,
-        },
-      };
-    }
-
-    const deviceId = agent.deviceId ?? "";
-    const apps = this.appsForDevice(deviceId);
-    return {
-      connection_id: connectionId,
-      device_id: deviceId,
-      agent_instance_id: agent.agentInstanceId,
-      apps,
-      summary: {
-        app_count: apps.length,
-      },
-    };
+    return this.state.agentAppsSnapshot(connectionId);
   }
 
   private controlsSnapshot() {
@@ -353,56 +334,6 @@ export class RelayAdminController {
         controls_db: this.config.admin.controlsDbPath,
       },
     };
-  }
-
-  private agents() {
-    this.pruneExpiredRules();
-    return [...this.agentsByDevice.values()]
-      .sort((a, b) => (a.deviceId ?? "").localeCompare(b.deviceId ?? ""))
-      .map((agent) => {
-        const deviceId = agent.deviceId ?? "";
-        const apps = this.appsForDevice(deviceId);
-        return {
-          device_id: deviceId,
-          connection_id: agent.id,
-          agent_instance_id: agent.agentInstanceId,
-          key_id: agent.keyId,
-          state: agent.state,
-          remote_ip: agent.remoteIp,
-          connected_at: toIso(agent.connectedAt),
-          last_seen_at: toIso(agent.lastSeenAt),
-          business_security_mode: agent.businessSecurityMode ?? "e2e_required",
-          app_count: apps.length,
-          disabled: Boolean(
-            this.activeDisabledAgentInstance(agent.agentInstanceId),
-          ),
-        };
-      });
-  }
-
-  private appsForDevice(deviceId: string) {
-    const mobiles = [...(this.mobilesByDevice.get(deviceId) ?? new Set())];
-    for (const connection of this.connections.values()) {
-      if (
-        connection.role === "mobile" &&
-        connection.deviceId === deviceId &&
-        !mobiles.includes(connection)
-      ) {
-        mobiles.push(connection);
-      }
-    }
-    return mobiles
-      .sort((a, b) => a.connectedAt - b.connectedAt)
-      .map((mobile) => ({
-        connection_id: mobile.id,
-        app_info: mobile.appInfo ? appInfoToPayload(mobile.appInfo) : undefined,
-        remote_ip: mobile.remoteIp,
-        state: mobile.state,
-        auth_state: mobile.authState,
-        connected_at: toIso(mobile.connectedAt),
-        last_seen_at: toIso(mobile.lastSeenAt),
-        transport_path: mobile.transportPath,
-      }));
   }
 
   private disableAgentInstance(
@@ -684,16 +615,4 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   }
   const raw = Buffer.concat(chunks).toString("utf8").trim();
   return raw ? (JSON.parse(raw) as unknown) : {};
-}
-
-function appInfoToPayload(appInfo: RelayAppInfo): AppInfoPayload {
-  return {
-    instance_id: appInfo.instanceId,
-    runtime_id: appInfo.runtimeId,
-    name: appInfo.name,
-    device_name: appInfo.deviceName,
-    platform: appInfo.platform,
-    version: appInfo.version,
-    capabilities: appInfo.capabilities,
-  };
 }

@@ -32,6 +32,7 @@ import type { RelayServerConfig } from "./config.ts";
 import { RelayAdminController } from "./relayAdminController.ts";
 import { RelayE2EController } from "./relayE2EController.ts";
 import { logRelayEvent, logUpgradeEvent } from "./relayLog.ts";
+import { RelayStateStore } from "./relayStateStore.ts";
 import { TokenBucketLimiter } from "./tokenBucket.ts";
 import { RelayUpgradeOrchestrator } from "./upgrade/orchestrator.ts";
 import { acceptWebSocket } from "./websocket.ts";
@@ -58,10 +59,12 @@ interface AppDeliveryContext {
 export class RelayServer {
   private readonly config: RelayServerConfig;
   private readonly connections = new Map<string, RelayConnection>();
-  private readonly agentsByDevice = new Map<string, RelayConnection>();
+  private readonly agentsByDevice = new Map<string, Set<RelayConnection>>();
+  private readonly primaryAgentByDevice = new Map<string, RelayConnection>();
   private readonly pendingAuth = new Map<string, PendingAuth>();
   private readonly mobilesByDevice = new Map<string, Set<RelayConnection>>();
   private readonly appDeliveryContexts = new Map<string, AppDeliveryContext>();
+  private readonly state = new RelayStateStore();
   private readonly admin: RelayAdminController;
   private readonly e2e: RelayE2EController;
   private readonly authLimiter: TokenBucketLimiter;
@@ -77,14 +80,14 @@ export class RelayServer {
     this.admin = new RelayAdminController({
       config,
       connections: this.connections,
-      agentsByDevice: this.agentsByDevice,
       mobilesByDevice: this.mobilesByDevice,
+      state: this.state,
       unregister: (connection) => this.unregister(connection),
     });
     this.e2e = new RelayE2EController({
       protocolVersion: config.protocolVersion,
       connections: this.connections,
-      agentsByDevice: this.agentsByDevice,
+      agentsByDevice: this.primaryAgentByDevice,
       send: (connection, message) => this.send(connection, message),
       routeMessage: (connection, message) =>
         this.routeMessage(connection, message),
@@ -94,7 +97,7 @@ export class RelayServer {
     this.orchestrator = new RelayUpgradeOrchestrator({
       config: config.upgrade,
       send: (conn, msg) => this.send(conn as RelayConnection, msg),
-      getAgent: (deviceId) => this.agentsByDevice.get(deviceId),
+      getAgent: (deviceId) => this.primaryAgentByDevice.get(deviceId),
     });
   }
 
@@ -163,7 +166,10 @@ export class RelayServer {
     }
 
     if (request.url === "/metrics") {
-      this.writeJson(response, 200, this.orchestrator.getMetrics());
+      this.writeJson(response, 200, {
+        relay: this.state.runtimeSnapshot(),
+        upgrade: this.orchestrator.getMetrics(),
+      });
       return;
     }
 
@@ -197,7 +203,7 @@ export class RelayServer {
       return;
     }
 
-    const agent = this.agentsByDevice.get(deviceId);
+    const agent = this.getPrimaryAgent(deviceId);
     const mobile = this.connections.get(appConnectionId);
     if (
       !agent ||
@@ -242,6 +248,7 @@ export class RelayServer {
       transportPath: "relay",
     };
     this.connections.set(connection.id, connection);
+    this.state.registerConnection(connection);
 
     socket.onMessage((raw) => this.handleRawMessage(connection, raw));
     socket.onClose(() => this.unregister(connection));
@@ -252,11 +259,20 @@ export class RelayServer {
     this.connections.delete(connection.id);
     this.pendingAuth.delete(connection.id);
     if (connection.role === "agent" && connection.deviceId) {
-      const current = this.agentsByDevice.get(connection.deviceId);
-      if (current === connection) {
+      const agents = this.agentsByDevice.get(connection.deviceId);
+      agents?.delete(connection);
+      if (agents && agents.size === 0) {
         this.agentsByDevice.delete(connection.deviceId);
       }
-      this.orchestrator.notifyAgentDisconnected(connection.deviceId);
+      if (this.primaryAgentByDevice.get(connection.deviceId) === connection) {
+        const next = agents?.values().next().value;
+        if (next) {
+          this.primaryAgentByDevice.set(connection.deviceId, next);
+        } else {
+          this.primaryAgentByDevice.delete(connection.deviceId);
+          this.orchestrator.notifyAgentDisconnected(connection.deviceId);
+        }
+      }
     }
     if (connection.role === "mobile" && connection.deviceId) {
       this.mobilesByDevice.get(connection.deviceId)?.delete(connection);
@@ -265,6 +281,7 @@ export class RelayServer {
         connection,
       );
     }
+    this.state.closeConnection(connection);
   }
 
   private handleRawMessage(connection: RelayConnection, raw: string): void {
@@ -281,6 +298,7 @@ export class RelayServer {
       connection.socket.close(1003, "invalid protocol message");
       return;
     }
+    this.state.recordIngress(connection, message, Buffer.byteLength(raw));
 
     switch (message.type) {
       case "agent.hello":
@@ -328,30 +346,35 @@ export class RelayServer {
           connection,
           message as MessageEnvelope<E2EHandshakeInitPayload>,
         );
+        this.updateLinkForConnection(connection);
         break;
       case "e2e.handshake.reply":
-        this.e2e.handleHandshakeReply(
-          connection,
-          message as MessageEnvelope<E2EHandshakeReplyPayload>,
-        );
+        {
+          const typed = message as MessageEnvelope<E2EHandshakeReplyPayload>;
+          this.e2e.handleHandshakeReply(connection, typed);
+          this.updateLinkForAppConnectionId(typed.payload.app_connection_id);
+        }
         break;
       case "e2e.ready":
-        this.e2e.handleReady(
-          connection,
-          message as MessageEnvelope<E2EReadyPayload>,
-        );
+        {
+          const typed = message as MessageEnvelope<E2EReadyPayload>;
+          this.e2e.handleReady(connection, typed);
+          this.updateLinkForAppConnectionId(typed.payload.app_connection_id);
+        }
         break;
       case "e2e.message":
-        this.e2e.handleMessage(
-          connection,
-          message as MessageEnvelope<E2EMessagePayload>,
-        );
+        {
+          const typed = message as MessageEnvelope<E2EMessagePayload>;
+          this.e2e.handleMessage(connection, typed);
+          this.updateLinkForAppConnectionId(typed.payload.app_connection_id);
+        }
         break;
       case "e2e.failed":
-        this.e2e.handleFailed(
-          connection,
-          message as MessageEnvelope<E2EFailedPayload>,
-        );
+        {
+          const typed = message as MessageEnvelope<E2EFailedPayload>;
+          this.e2e.handleFailed(connection, typed);
+          this.updateLinkForAppConnectionId(typed.payload.app_connection_id);
+        }
         break;
       case "e2e.rekey.init":
       case "e2e.rekey.reply":
@@ -381,6 +404,10 @@ export class RelayServer {
           } else {
             connection.transportPath = "relay";
           }
+          this.updateLinkForAppConnectionId(
+            (message.payload as { app_connection_id?: string })
+              ?.app_connection_id,
+          );
           this.orchestrator.handleControlMessage(message);
         }
         this.routeMessage(connection, message);
@@ -411,7 +438,8 @@ export class RelayServer {
     connection.e2e = message.payload.e2e;
     connection.authenticated = true;
     connection.authState = "verified";
-    this.agentsByDevice.set(message.payload.device_id, connection);
+    this.addAgentToDevice(message.payload.device_id, connection);
+    this.state.registerAgent(connection);
   }
 
   private handleMobileConnect(
@@ -419,7 +447,7 @@ export class RelayServer {
     message: MessageEnvelope<MobileConnectPayload>,
   ): void {
     const deviceId = message.payload.device_id;
-    const agent = this.agentsByDevice.get(deviceId);
+    const agent = this.getPrimaryAgent(deviceId);
     connection.role = "mobile";
     connection.state = "mobile_connected";
     connection.deviceId = deviceId;
@@ -431,6 +459,7 @@ export class RelayServer {
     if (isTransportPreference(rawPreference)) {
       connection.transportPreference = rawPreference;
     }
+    this.state.registerApp(connection);
 
     if (!agent?.keyId) {
       connection.authState = "failed";
@@ -502,6 +531,7 @@ export class RelayServer {
         ),
       );
       connection.authState = "failed";
+      this.state.recordAuthFailed();
       connection.socket.close(1008, "auth rate limit");
       return;
     }
@@ -530,10 +560,11 @@ export class RelayServer {
         ),
       );
       connection.authState = "failed";
+      this.state.recordAuthFailed();
       return;
     }
 
-    const agent = this.agentsByDevice.get(pending.deviceId);
+    const agent = this.getPrimaryAgent(pending.deviceId);
     if (!agent) {
       this.send(
         connection,
@@ -548,6 +579,7 @@ export class RelayServer {
         ),
       );
       connection.authState = "failed";
+      this.state.recordAuthFailed();
       return;
     }
 
@@ -627,6 +659,7 @@ export class RelayServer {
       mobile.authenticated = true;
       mobile.authState = "verified";
       mobile.state = "relay_pairing_verified";
+      this.state.authenticateApp(mobile, connection);
       // 鉴权成功后释放限流计数，避免合法重连被旧失败拖累。
       this.authLimiter.reset(
         buildAuthRateLimitKey(pending?.keyId, mobile.deviceId, mobile.remoteIp),
@@ -643,6 +676,7 @@ export class RelayServer {
       }
     } else if (message.type === "auth.failed") {
       mobile.authState = "failed";
+      this.state.recordAuthFailed();
       // agent 端确认 key 不匹配 → 这才是真实的鉴权失败，计入限流；
       // 避免合法 proof 被一并消耗 token 触发 60s 误封禁。
       this.authLimiter.consume(
@@ -674,7 +708,7 @@ export class RelayServer {
         return;
       }
 
-      const agent = this.agentsByDevice.get(connection.deviceId);
+      const agent = this.getPrimaryAgent(connection.deviceId);
       if (agent) {
         const relayContextId = this.rememberAppDeliveryContext({
           deviceId: connection.deviceId,
@@ -688,6 +722,8 @@ export class RelayServer {
           relay_context_id: relayContextId,
         };
         this.send(agent, routedMessage);
+      } else {
+        this.state.recordRouteDropped();
       }
       return;
     }
@@ -697,11 +733,14 @@ export class RelayServer {
         const mobile = this.connections.get(message.app_connection_id);
         if (mobile) {
           this.send(mobile, message);
+        } else {
+          this.state.recordRouteDropped();
         }
         return;
       }
       const mobiles = this.mobilesByDevice.get(connection.deviceId);
       if (!mobiles) {
+        this.state.recordRouteDropped();
         return;
       }
       for (const mobile of mobiles) {
@@ -816,6 +855,7 @@ export class RelayServer {
     detail: string,
     retryable: boolean,
   ): void {
+    this.state.recordProtocolErrorSent();
     this.send(
       connection,
       createMessage<ProtocolErrorPayload>(
@@ -846,7 +886,65 @@ export class RelayServer {
 
   private send(connection: RelayConnection, message: MessageEnvelope): void {
     connection.lastSeenAt = Date.now();
-    connection.socket.sendText(JSON.stringify(message));
+    const raw = JSON.stringify(message);
+    this.state.recordEgress(connection, message, Buffer.byteLength(raw));
+    connection.socket.sendText(raw);
+  }
+
+  private getPrimaryAgent(
+    deviceId: string | undefined,
+  ): RelayConnection | undefined {
+    return deviceId ? this.primaryAgentByDevice.get(deviceId) : undefined;
+  }
+
+  private addAgentToDevice(
+    deviceId: string,
+    connection: RelayConnection,
+  ): void {
+    const agents =
+      this.agentsByDevice.get(deviceId) ?? new Set<RelayConnection>();
+    agents.add(connection);
+    this.agentsByDevice.set(deviceId, agents);
+    if (!this.primaryAgentByDevice.has(deviceId)) {
+      this.primaryAgentByDevice.set(deviceId, connection);
+    }
+  }
+
+  private updateLinkForConnection(connection: RelayConnection): void {
+    if (connection.role !== "mobile" || !connection.deviceId) {
+      return;
+    }
+    const agent = this.getPrimaryAgent(connection.deviceId);
+    if (!agent) {
+      return;
+    }
+    this.state.createOrUpdateLink({
+      deviceId: connection.deviceId,
+      agentConnectionId: agent.id,
+      appConnectionId: connection.id,
+      state:
+        connection.transportPath === "p2p"
+          ? "p2p"
+          : connection.state === "e2e_ready"
+            ? "e2e_ready"
+            : connection.state === "e2e_handshaking"
+              ? "e2e_handshaking"
+              : "authenticated",
+      transportPath: connection.transportPath,
+      e2eSessionId: connection.e2eSessionId,
+    });
+  }
+
+  private updateLinkForAppConnectionId(
+    appConnectionId: string | undefined,
+  ): void {
+    if (!appConnectionId) {
+      return;
+    }
+    const mobile = this.connections.get(appConnectionId);
+    if (mobile) {
+      this.updateLinkForConnection(mobile);
+    }
   }
 
   private ensureEndpoint(
