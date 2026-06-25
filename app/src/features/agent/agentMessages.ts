@@ -1,5 +1,6 @@
 import {
   createMessage,
+  type AgentMessageDeliveredPayload,
   type AgentNotificationSettingsPayload,
 } from "@omniwork/protocol-ts";
 
@@ -14,6 +15,15 @@ export function setAgentNotificationSettingsRequest(
   payload: AgentNotificationSettingsPayload,
 ) {
   return createMessage("agent.notification.settings.set", payload, {
+    device_id: deviceId,
+  });
+}
+
+export function agentMessageDeliveredRequest(
+  deviceId: string,
+  payload: AgentMessageDeliveredPayload,
+) {
+  return createMessage("agent.message.delivered", payload, {
     device_id: deviceId,
   });
 }

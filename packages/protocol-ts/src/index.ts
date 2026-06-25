@@ -91,6 +91,7 @@ export type MessageType =
   | "agent.message.list"
   | "agent.message.read"
   | "agent.message.ack"
+  | "agent.message.delivered"
   | "agent.notification.settings.get"
   | "agent.notification.settings.set"
   | "tunnel.upgrade.propose"
@@ -976,6 +977,12 @@ export interface AgentMessageAckPayload {
 
 export interface AgentMessageAckResultPayload {
   message?: AgentAppMessage;
+}
+
+export interface AgentMessageDeliveredPayload {
+  message_id: string;
+  app_connection_id?: string;
+  delivered_at: string;
 }
 
 export interface AgentNotificationSettingsPayload {

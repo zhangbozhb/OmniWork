@@ -50,6 +50,7 @@ import type {
   WorkspaceFileEntry,
   WorkspaceGitStatus,
   WorkspaceListPayload,
+  AgentAppMessage,
   AgentNotificationSettingsPayload,
 } from "@omniwork/protocol-ts";
 import {
@@ -94,6 +95,7 @@ import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import { FileBrowserScreen } from "../screens/workspaces/FileBrowserScreen";
 import { GitStatusScreen } from "../screens/workspaces/GitStatusScreen";
 import { FileEditorScreen } from "../screens/workspaces/FileEditorScreen";
+import { AgentMessageInboxScreen } from "../screens/messages/AgentMessageInboxScreen";
 import type { PairingConfig } from "../features/auth/types";
 import {
   decryptPairingConfig,
@@ -124,9 +126,14 @@ import {
   writeFileRequest,
 } from "../features/workspaces/workspaceMessages";
 import {
+  agentMessageDeliveredRequest,
   getAgentNotificationSettingsRequest,
   setAgentNotificationSettingsRequest,
 } from "../features/agent/agentMessages";
+import {
+  createAgentMessageStore,
+  type LocalAgentMessageRecord,
+} from "../features/agent/agentMessageStore";
 import {
   computeInitialTerminalSize,
   getDefaultTerminalTextSize,
@@ -330,6 +337,12 @@ function AppContent(): JSX.Element {
     useState<AgentNotificationSettingsPayload>(
       DEFAULT_AGENT_NOTIFICATION_SETTINGS,
     );
+  const [agentMessages, setAgentMessages] = useState<
+    LocalAgentMessageRecord[]
+  >([]);
+  const [agentUnreadCount, setAgentUnreadCount] = useState(0);
+  const [agentMessageBanner, setAgentMessageBanner] =
+    useState<LocalAgentMessageRecord | null>(null);
   const appLockAvailable = Platform.OS !== "web";
   const [appLockConfig, setAppLockConfig] = useState<AppLockConfig>(
     DEFAULT_APP_LOCK_CONFIG,
@@ -348,6 +361,10 @@ function AppContent(): JSX.Element {
     useState<AutoLockOption>(DEFAULT_AUTO_LOCK_OPTION);
   const [appLockLoadRetry, setAppLockLoadRetry] = useState(0);
   const relayRef = useRef<AppSessionTransport | null>(null);
+  const agentMessageStoreRef = useRef(createAgentMessageStore());
+  const agentMessageBannerTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const appLockConfigRef = useRef<AppLockConfig>(DEFAULT_APP_LOCK_CONFIG);
   const appLockModeRef = useRef<AppLockMode>(
@@ -358,6 +375,11 @@ function AppContent(): JSX.Element {
   const pendingAutoOpenSessionsRef = useRef(false);
   const pairingRef = useRef<PairingConfig | null>(null);
   const pairingsRef = useRef<PairingConfig[]>([]);
+  const viewRef = useRef<AppView>("pairing");
+  const agentNotificationSettingsRef =
+    useRef<AgentNotificationSettingsPayload>(
+      DEFAULT_AGENT_NOTIFICATION_SETTINGS,
+    );
   const selectedSessionRef = useRef<TerminalSession | null>(null);
   const terminalTextSizeLoadedRef = useRef(false);
   const terminalFrameSeqRef = useRef<Record<string, number>>({});
@@ -436,6 +458,7 @@ function AppContent(): JSX.Element {
     if (view === "sessions") return t("app.titles.workspaces");
     if (view === "connectionPreference") return t("app.titles.connectionMode");
     if (view === "securitySettings") return t("appLock.settings.title");
+    if (view === "messages") return t("app.titles.messages");
     if (view === "settings") return t("app.titles.settings");
     return t("app.titles.devices");
   }, [editingPairing, selectedSession?.title, t, view]);
@@ -495,6 +518,14 @@ function AppContent(): JSX.Element {
   useEffect(() => {
     selectedSessionRef.current = selectedSession;
   }, [selectedSession]);
+
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+
+  useEffect(() => {
+    agentNotificationSettingsRef.current = agentNotificationSettings;
+  }, [agentNotificationSettings]);
 
   useEffect(() => {
     pairingRef.current = pairing;
@@ -949,6 +980,16 @@ function AppContent(): JSX.Element {
     },
     [confirm],
   );
+
+  useEffect(() => {
+    loadAgentMessages();
+    return () => {
+      if (agentMessageBannerTimerRef.current) {
+        clearTimeout(agentMessageBannerTimerRef.current);
+        agentMessageBannerTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!pairing) {
@@ -1456,6 +1497,135 @@ function AppContent(): JSX.Element {
     sendToRelay(
       setAgentNotificationSettingsRequest(pairing.deviceId, nextSettings),
     );
+  }
+
+  function loadAgentMessages(): void {
+    const store = agentMessageStoreRef.current;
+    store
+      .initialize()
+      .then(() => Promise.all([store.listMessages(), store.unreadCount()]))
+      .then(([records, unreadCount]) => {
+        setAgentMessages(records);
+        setAgentUnreadCount(unreadCount);
+      })
+      .catch((error: unknown) => {
+        setConnectionMessage(
+          `Agent messages unavailable: ${formatErrorMessage(error)}`,
+        );
+      });
+  }
+
+  function handleAgentMessage(message: AgentAppMessage): void {
+    const store = agentMessageStoreRef.current;
+    store
+      .saveMessage(message)
+      .then((record) => {
+        return Promise.all([store.listMessages(), store.unreadCount()]).then(
+          ([records, unreadCount]) => ({ record, records, unreadCount }),
+        );
+      })
+      .then(({ record, records, unreadCount }) => {
+        setAgentMessages(records);
+        setAgentUnreadCount(unreadCount);
+        sendAgentMessageDelivered(message.id);
+        maybeShowAgentMessageBanner(record);
+      })
+      .catch((error: unknown) => {
+        setConnectionMessage(
+          `Agent message save failed: ${formatErrorMessage(error)}`,
+        );
+      });
+  }
+
+  function sendAgentMessageDelivered(messageId: string): void {
+    if (!pairingRef.current) {
+      return;
+    }
+    const appConnectionId = relayRef.current?.getAppConnectionId();
+    sendToRelay(
+      agentMessageDeliveredRequest(pairingRef.current.deviceId, {
+        message_id: messageId,
+        app_connection_id: appConnectionId ?? undefined,
+        delivered_at: new Date().toISOString(),
+      }),
+    );
+  }
+
+  function maybeShowAgentMessageBanner(record: LocalAgentMessageRecord): void {
+    if (!agentNotificationSettingsRef.current.enabled) {
+      return;
+    }
+    const message = record.message;
+    if (message.priority === "low") {
+      return;
+    }
+    if (
+      selectedSessionRef.current?.session_id === message.session_id &&
+      viewRef.current === "terminal"
+    ) {
+      return;
+    }
+    setAgentMessageBanner(record);
+    if (agentMessageBannerTimerRef.current) {
+      clearTimeout(agentMessageBannerTimerRef.current);
+    }
+    agentMessageBannerTimerRef.current = setTimeout(() => {
+      setAgentMessageBanner(null);
+      agentMessageBannerTimerRef.current = null;
+    }, message.priority === "normal" ? 4000 : 8000);
+  }
+
+  function handleRefreshAgentMessages(): void {
+    loadAgentMessages();
+  }
+
+  function handleMarkAgentMessageRead(messageId: string): void {
+    const store = agentMessageStoreRef.current;
+    store
+      .markRead(messageId)
+      .then(() => Promise.all([store.listMessages(), store.unreadCount()]))
+      .then(([records, unreadCount]) => {
+        setAgentMessages(records);
+        setAgentUnreadCount(unreadCount);
+      })
+      .catch(() => undefined);
+  }
+
+  function handleMarkAgentMessageHandled(messageId: string): void {
+    const store = agentMessageStoreRef.current;
+    store
+      .markHandled(messageId)
+      .then(() => Promise.all([store.listMessages(), store.unreadCount()]))
+      .then(([records, unreadCount]) => {
+        setAgentMessages(records);
+        setAgentUnreadCount(unreadCount);
+      })
+      .catch(() => undefined);
+  }
+
+  function handleOpenAgentMessage(record: LocalAgentMessageRecord): void {
+    handleMarkAgentMessageRead(record.message.id);
+    openAgentMessageTarget(record.message);
+  }
+
+  function openAgentMessageTarget(message: AgentAppMessage): void {
+    const session = sessions.find(
+      (candidate) => candidate.session_id === message.session_id,
+    );
+    if (session) {
+      setSelectedSession(session);
+      const workspace = getSessionFilesWorkspace(session, workspaces);
+      setSelectedWorkspace(workspace);
+      setView("terminal");
+      if (connectionStatus === "authenticated" && pairing) {
+        requestTerminalSnapshot(pairing.deviceId, session);
+      }
+      if (message.action) {
+        handleMarkAgentMessageHandled(message.id);
+      }
+      return;
+    }
+    setView("messages");
   }
 
   function handleCreateSession(input: {
@@ -2483,6 +2653,10 @@ function AppContent(): JSX.Element {
         }));
         break;
       }
+      case "agent.message": {
+        handleAgentMessage(message.payload as AgentAppMessage);
+        break;
+      }
       case "agent.notification.settings.get":
       case "agent.notification.settings.set": {
         setAgentNotificationSettings(
@@ -2710,6 +2884,14 @@ function AppContent(): JSX.Element {
               onOpenDevice={handleOpenDevice}
               onRefreshSessions={handleRefreshSessions}
             />
+          ) : view === "messages" ? (
+            <AgentMessageInboxScreen
+              messages={agentMessages}
+              onRefresh={handleRefreshAgentMessages}
+              onOpenMessage={handleOpenAgentMessage}
+              onMarkRead={handleMarkAgentMessageRead}
+              onMarkHandled={handleMarkAgentMessageHandled}
+            />
           ) : view === "settings" ? (
             <SettingsScreen
               terminalTextSize={terminalTextSize}
@@ -2905,7 +3087,24 @@ function AppContent(): JSX.Element {
           ) : null}
         </View>
         {!appLockScreen && showPrimaryTabs ? (
-          <PrimaryTabBar activeView={view} onChange={setView} />
+          <PrimaryTabBar
+            activeView={view}
+            unreadMessages={agentUnreadCount}
+            onChange={setView}
+          />
+        ) : null}
+        {!appLockScreen && agentMessageBanner ? (
+          <AgentMessageBanner
+            record={agentMessageBanner}
+            onDismiss={() => setAgentMessageBanner(null)}
+            onOpen={() => {
+              const record = agentMessageBanner;
+              setAgentMessageBanner(null);
+              if (record) {
+                handleOpenAgentMessage(record);
+              }
+            }}
+          />
         ) : null}
         <Modal
           animationType="fade"
@@ -3121,6 +3320,26 @@ const styles = StyleSheet.create({
   tabButtonPressed: {
     opacity: 0.85,
   },
+  tabIconWrap: {
+    position: "relative",
+  },
+  tabBadge: {
+    position: "absolute",
+    top: -7,
+    right: -11,
+    minWidth: 17,
+    height: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: "#f4c95d",
+  },
+  tabBadgeText: {
+    color: "#1b1300",
+    fontSize: 10,
+    fontWeight: "900",
+  },
   tabLabel: {
     color: "#94a3ad",
     fontSize: 11,
@@ -3129,6 +3348,65 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: "#30c48d",
   },
+  messageBanner: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 76,
+    gap: 8,
+    padding: 14,
+    borderRadius: 18,
+    borderColor: "#34424c",
+    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: "#11181d",
+    shadowColor: "#000",
+    shadowOpacity: 0.32,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  messageBannerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  messageBannerProvider: {
+    color: "#30c48d",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  messageBannerTitle: {
+    color: "#f5f7f8",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  messageBannerSummary: {
+    color: "#94a3ad",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  messageBannerActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  messageBannerAction: {
+    flex: 1,
+    alignItems: "center",
+    borderRadius: 12,
+    paddingVertical: 10,
+    backgroundColor: "rgba(48, 196, 141, 0.16)",
+  },
+  messageBannerActionText: {
+    color: "#30c48d",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  messageBannerGhost: {
+    backgroundColor: "rgba(148, 163, 173, 0.16)",
+  },
+  messageBannerGhostText: {
+    color: "#d7dde2",
+  },
 });
 
 const PRIMARY_TABS: ReadonlyArray<{
@@ -3136,14 +3414,17 @@ const PRIMARY_TABS: ReadonlyArray<{
   value: PrimaryTabView;
 }> = [
   { icon: "device", value: "devices" },
+  { icon: "message", value: "messages" },
   { icon: "settings", value: "settings" },
 ];
 
 function PrimaryTabBar({
   activeView,
+  unreadMessages,
   onChange,
 }: {
   activeView: PrimaryTabView;
+  unreadMessages: number;
   onChange(view: PrimaryTabView): void;
 }): JSX.Element {
   const { t } = useTranslation();
@@ -3166,13 +3447,78 @@ function PrimaryTabBar({
             ]}
             onPress={() => onChange(tab.value)}
           >
-            <Icon name={tab.icon} color={tintColor} size={20} />
+            <View style={styles.tabIconWrap}>
+              <Icon name={tab.icon} color={tintColor} size={20} />
+              {tab.value === "messages" && unreadMessages > 0 ? (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>
+                    {unreadMessages > 99 ? "99+" : unreadMessages}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={[styles.tabLabel, selected && styles.tabLabelActive]}>
               {label}
             </Text>
           </Pressable>
         );
       })}
+    </View>
+  );
+}
+
+function AgentMessageBanner({
+  record,
+  onDismiss,
+  onOpen,
+}: {
+  record: LocalAgentMessageRecord;
+  onDismiss(): void;
+  onOpen(): void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const message = record.message;
+  return (
+    <View style={styles.messageBanner} accessibilityRole="alert">
+      <View style={styles.messageBannerHeader}>
+        <Text style={styles.messageBannerProvider}>
+          {message.provider.toUpperCase()}
+        </Text>
+        <Pressable accessibilityRole="button" onPress={onDismiss}>
+          <Icon name="close" color="#94a3ad" size={18} />
+        </Pressable>
+      </View>
+      <Text style={styles.messageBannerTitle}>{message.title}</Text>
+      {message.summary ? (
+        <Text numberOfLines={2} style={styles.messageBannerSummary}>
+          {message.summary}
+        </Text>
+      ) : null}
+      <View style={styles.messageBannerActions}>
+        <Pressable
+          accessibilityRole="button"
+          style={styles.messageBannerAction}
+          onPress={onOpen}
+        >
+          <Text style={styles.messageBannerActionText}>
+            {t("messages.open")}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          style={[styles.messageBannerAction, styles.messageBannerGhost]}
+          onPress={onDismiss}
+        >
+          <Text
+            style={[
+              styles.messageBannerActionText,
+              styles.messageBannerGhostText,
+            ]}
+          >
+            {t("messages.later")}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }

@@ -1,8 +1,8 @@
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { StyleSheet, View } from "react-native";
+import WebView from "react-native-webview";
 import type { WebViewMessageEvent } from "react-native-webview";
-import { WebView } from "react-native-webview";
 
 import type {
   TerminalInputPayload,
@@ -17,6 +17,8 @@ import {
   XTERM_CSS,
   XTERM_JS,
 } from "./xtermWebViewAssets";
+
+const NativeWebView = WebView as any;
 
 export interface NativeTerminalViewProps {
   frame: string;
@@ -174,7 +176,7 @@ export function NativeTerminalView({
 
   return (
     <View style={styles.container}>
-      <WebView
+      <NativeWebView
         ref={webViewRef}
         source={{ html }}
         originWhitelist={["*"]}

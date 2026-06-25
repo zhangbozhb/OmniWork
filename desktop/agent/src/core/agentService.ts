@@ -14,6 +14,7 @@ import {
   type AppConnectionHeartbeatPayload,
   type AgentAppMessage,
   type AgentMessageAckPayload,
+  type AgentMessageDeliveredPayload,
   type AgentMessageListRequestPayload,
   type AgentMessageReadRequestPayload,
   type AgentNotificationSettingsPayload,
@@ -873,6 +874,15 @@ export class AgentService {
           dispatchContext,
         );
         break;
+      case "agent.message.delivered":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.handleAgentMessageDelivered(
+          message as MessageEnvelope<AgentMessageDeliveredPayload>,
+          dispatchContext,
+        );
+        break;
       case "agent.notification.settings.get":
         if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
           return;
@@ -1480,6 +1490,19 @@ export class AgentService {
         },
       ),
     );
+  }
+
+  private handleAgentMessageDelivered(
+    message: MessageEnvelope<AgentMessageDeliveredPayload>,
+    context?: AgentDispatchContext,
+  ): void {
+    const appConnectionId =
+      message.payload.app_connection_id ?? context?.appConnectionId;
+    this.logger.info("agent message delivered", {
+      message_id: message.payload.message_id,
+      app_connection_id: appConnectionId,
+      delivered_at: message.payload.delivered_at,
+    });
   }
 
   private handleAgentNotificationSettingsGet(

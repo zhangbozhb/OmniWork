@@ -9,6 +9,7 @@ import type { RelayCloseEvent } from "@omniwork/relay-client";
 export type AppView =
   | "pairing"
   | "devices"
+  | "messages"
   | "settings"
   | "securitySettings"
   | "connectionPreference"
@@ -18,7 +19,7 @@ export type AppView =
   | "fileEditor"
   | "terminal";
 
-export type PrimaryTabView = "devices" | "settings";
+export type PrimaryTabView = "devices" | "messages" | "settings";
 
 export type ConnectionStatus =
   | "idle"
@@ -38,6 +39,7 @@ export type AppSessionTransport = Omit<SessionTransport, "close"> & {
   onClose(handler: (event: RelayCloseEvent) => void): () => void;
   close(reason?: string): void;
   getCurrentPath(): TransportPath;
+  getAppConnectionId(): string | null;
   onPathChange(handler: (path: TransportPath) => void): () => void;
   forceDowngrade(reason: string): void;
   forceClose(reason: string): void;

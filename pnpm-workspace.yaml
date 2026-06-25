@@ -7,4 +7,5 @@ packages:
 allowBuilds:
   dtrace-provider: true
   esbuild: true
+  react-native-quick-sqlite: true
   sharp: true

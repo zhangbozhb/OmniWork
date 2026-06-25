@@ -85,6 +85,7 @@ export const messageTypeSchema = z.enum([
   "agent.message.list",
   "agent.message.read",
   "agent.message.ack",
+  "agent.message.delivered",
   "agent.notification.settings.get",
   "agent.notification.settings.set",
   "tunnel.upgrade.propose",
@@ -874,6 +875,14 @@ export const agentMessageAckPayloadSchema = z
 
 export const agentMessageAckResultPayloadSchema = agentMessageReadPayloadSchema;
 
+export const agentMessageDeliveredPayloadSchema = z
+  .object({
+    message_id: z.string().min(1),
+    app_connection_id: z.string().min(1).optional(),
+    delivered_at: isoDateTime,
+  })
+  .strict();
+
 export const agentNotificationSettingsPayloadSchema = z
   .object({
     enabled: z.boolean(),
@@ -953,6 +962,7 @@ const payloadSchemaByType = {
     agentMessageAckPayloadSchema,
     agentMessageAckResultPayloadSchema,
   ]),
+  "agent.message.delivered": agentMessageDeliveredPayloadSchema,
   "agent.notification.settings.get": z.union([
     emptyPayloadSchema,
     agentNotificationSettingsPayloadSchema,

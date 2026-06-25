@@ -8,8 +8,8 @@ import {
   useRef,
 } from "react";
 import { StyleSheet, View } from "react-native";
+import WebView from "react-native-webview";
 import type { WebViewMessageEvent } from "react-native-webview";
-import { WebView } from "react-native-webview";
 
 import { CODE_MIRROR_EDITOR_JS } from "./codeMirrorWebViewAssets";
 import type {
@@ -19,6 +19,8 @@ import type {
 } from "./codeEditorTypes";
 
 export type { CodeEditorViewHandle, CodeEditorViewProps } from "./codeEditorTypes";
+
+const NativeWebView = WebView as any;
 
 type BridgeMessage =
   | { type: "ready" }
@@ -169,7 +171,7 @@ export const CodeEditorView = forwardRef<CodeEditorViewHandle, CodeEditorViewPro
 
     return (
       <View style={styles.container}>
-        <WebView
+        <NativeWebView
           ref={webViewRef}
           source={{ html }}
           originWhitelist={["*"]}

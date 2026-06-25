@@ -336,6 +336,15 @@ describe("agent message payload schemas", () => {
     );
     assert.ok(
       parseMessageEnvelope(
+        createMessage("agent.message.delivered", {
+          message_id: "msg_1",
+          app_connection_id: "app_1",
+          delivered_at: new Date().toISOString(),
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
         createMessage("agent.notification.settings.set", {
           enabled: true,
           min_priority: "critical",

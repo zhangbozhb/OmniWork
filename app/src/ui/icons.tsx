@@ -18,6 +18,7 @@ export type IconName =
   | "git"
   | "keyboard"
   | "maximize"
+  | "message"
   | "minimize"
   | "more"
   | "plug"
@@ -156,6 +157,14 @@ function renderIcon(name: IconName, color: string): JSX.Element {
           <Path d="M16 3h5v5" />
           <Path d="M21 16v5h-5" />
           <Path d="M8 21H3v-5" />
+        </>
+      );
+    case "message":
+      return (
+        <>
+          <Path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
+          <Path d="M8 9h8" />
+          <Path d="M8 13h5" />
         </>
       );
     case "minimize":

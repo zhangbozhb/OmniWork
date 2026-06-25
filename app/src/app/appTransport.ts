@@ -34,9 +34,12 @@ export function createAppSessionTransport(
       name: appConfig.appName,
       platform: currentAppPlatform(),
       version: appConfig.appVersion,
-      capabilities: appConfig.terminal.streamEnabled
-        ? [TERMINAL_STREAM_CAPABILITY_V1]
-        : undefined,
+      capabilities: [
+        ...(appConfig.terminal.streamEnabled
+          ? [TERMINAL_STREAM_CAPABILITY_V1]
+          : []),
+        "agent.message.inbox.sqlite",
+      ],
     },
   });
   const relayPath = new MobileRelayPath(session);
@@ -168,6 +171,7 @@ export function createAppSessionTransport(
       session.close();
     },
     getCurrentPath: () => transport.getCurrentPath(),
+    getAppConnectionId: () => session.getAppConnectionId(),
     onPathChange: (handler) => transport.onPathChange(handler),
     forceDowngrade: (reason) => {
       transport.forceDowngrade(reason);

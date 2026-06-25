@@ -57,6 +57,9 @@ export function getHeaderSubtitle(
   if (view === "settings") {
     return t("app.subtitle.globalPreferences");
   }
+  if (view === "messages") {
+    return t("app.subtitle.agentMessages");
+  }
   if (view === "connectionPreference") {
     return t("app.subtitle.connectionSettings");
   }
@@ -65,7 +68,7 @@ export function getHeaderSubtitle(
 }
 
 export function isPrimaryTabView(view: AppView): view is PrimaryTabView {
-  return view === "devices" || view === "settings";
+  return view === "devices" || view === "messages" || view === "settings";
 }
 
 export function formatErrorMessage(

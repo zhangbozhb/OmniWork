@@ -6,16 +6,19 @@
       "terminal": "Terminal",
       "workspaces": "Workspaces",
       "connectionMode": "Connection Mode",
+      "messages": "Messages",
       "settings": "Settings",
       "devices": "Devices"
     },
     "tabs": {
       "devices": "Devices",
+      "messages": "Messages",
       "settings": "Settings"
     },
     "subtitle": {
       "linkedDevices": "{{count}} linked device",
       "linkedDevices_plural": "{{count}} linked devices",
+      "agentMessages": "Agent messages",
       "globalPreferences": "Global preferences",
       "connectionSettings": "Connection settings"
     },
@@ -55,6 +58,24 @@
     "up": "Up",
     "down": "Down",
     "unknown": "unknown"
+  },
+  "messages": {
+    "eyebrow": "Agent Inbox",
+    "title": "Agent Messages",
+    "pending": "Pending",
+    "recent": "Recent",
+    "emptyTitle": "No Agent messages",
+    "emptyText": "Approval, failure, and completion messages from Codex, Claude Code, and other Agents will appear here.",
+    "markRead": "Read",
+    "markHandled": "Handled",
+    "open": "Open",
+    "later": "Later",
+    "priority": {
+      "low": "Low",
+      "normal": "Normal",
+      "high": "Important",
+      "critical": "Critical"
+    }
   },
   "devices": {
     "refreshing": "Refreshing...",
