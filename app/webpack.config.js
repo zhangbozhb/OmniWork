@@ -38,6 +38,7 @@ module.exports = {
     ],
     alias: {
       "react-native$": "react-native-web",
+      "react-native-webrtc$": false,
     },
     symlinks: true,
   },
