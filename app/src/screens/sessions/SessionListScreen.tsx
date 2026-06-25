@@ -189,7 +189,8 @@ export function SessionListScreen({
     () => getCreatableTerminalProviders(enabledProviders),
     [enabledProviders],
   );
-  const defaultCreateTerminalProviderKind = creatableProviders[0]?.kind ?? "other";
+  const defaultCreateTerminalProviderKind =
+    creatableProviders[0]?.kind ?? "other";
   const preferredCreateTerminalProviderKind =
     creatableProviders.find(
       (provider) => provider.kind === providerPreferences.defaultKind,
@@ -202,23 +203,28 @@ export function SessionListScreen({
   >();
   const [createWorkspaceLocked, setCreateWorkspaceLocked] = useState(false);
   const [createTerminalProviderKind, setCreateTerminalProviderKind] =
-    useState<CreatableTerminalProviderKind>(preferredCreateTerminalProviderKind);
-  const [renamingSession, setRenamingSession] = useState<TerminalSession | null>(
-    null,
-  );
+    useState<CreatableTerminalProviderKind>(
+      preferredCreateTerminalProviderKind,
+    );
+  const [renamingSession, setRenamingSession] =
+    useState<TerminalSession | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
-  const [managingSession, setManagingSession] = useState<TerminalSession | null>(
-    null,
-  );
+  const [managingSession, setManagingSession] =
+    useState<TerminalSession | null>(null);
   const [selectedWorkspace, setSelectedWorkspace] =
     useState<WorkspaceDefinition | null>(null);
   const [activeWorkspaceTab, setActiveWorkspaceTab] =
     useState<WorkspaceTab>("sessions");
-  const { width: windowWidth } = useWindowDimensions();
-  const workspacePagerRef = useRef<ScrollView | null>(null);
-  const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const providerPreferencesModalMaxHeight = Math.max(320, windowHeight - 44);
+  const providerPreferencesListMaxHeight = Math.max(
+    180,
+    Math.min(420, windowHeight - 220),
   );
+  const workspacePagerRef = useRef<ScrollView | null>(null);
+  const sessionRefreshTimerRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
   const enteredWorkspacePathsRef = useRef<Set<string>>(new Set());
   const [workspacePagerWidth, setWorkspacePagerWidth] = useState(0);
   const [sessionRefreshing, setSessionRefreshing] = useState(false);
@@ -275,7 +281,10 @@ export function SessionListScreen({
 
   useEffect(() => {
     if (
-      !isCreatableTerminalProviderKind(createTerminalProviderKind, enabledProviders) ||
+      !isCreatableTerminalProviderKind(
+        createTerminalProviderKind,
+        enabledProviders,
+      ) ||
       providerPreferences.hiddenKinds.includes(createTerminalProviderKind)
     ) {
       setCreateTerminalProviderKind(preferredCreateTerminalProviderKind);
@@ -491,9 +500,15 @@ export function SessionListScreen({
       )
     : [];
   const activeProviderGroups = activeWorkspace
-    ? groupSessionsByProvider(activeWorkspaceSessions, providerGroups, providers)
+    ? groupSessionsByProvider(
+        activeWorkspaceSessions,
+        providerGroups,
+        providers,
+      )
     : [];
-  const workspaceTabs = activeWorkspace ? getWorkspaceTabs(activeWorkspace) : [];
+  const workspaceTabs = activeWorkspace
+    ? getWorkspaceTabs(activeWorkspace)
+    : [];
   const activeWorkspaceTabIndex = Math.max(
     0,
     workspaceTabs.indexOf(activeWorkspaceTab),
@@ -608,6 +623,7 @@ export function SessionListScreen({
           directionalLockEnabled
           horizontal
           pagingEnabled
+          contentContainerStyle={styles.workspacePagerContent}
           scrollEventThrottle={16}
           scrollEnabled={effectiveWorkspacePagerWidth > 0}
           showsHorizontalScrollIndicator={false}
@@ -634,9 +650,7 @@ export function SessionListScreen({
             <View style={styles.providerSection}>
               {activeProviderGroups.length === 0 ? (
                 <View style={styles.sessionsEmptyState}>
-                  <Text style={styles.empty}>
-                    {t("workspaces.noSessions")}
-                  </Text>
+                  <Text style={styles.empty}>{t("workspaces.noSessions")}</Text>
                   <Button
                     disabled={
                       creating ||
@@ -787,9 +801,7 @@ export function SessionListScreen({
         >
           <>
             {realWorkspaceGroups.length === 0 ? (
-              <Text style={styles.empty}>
-                {t("workspaces.empty")}
-              </Text>
+              <Text style={styles.empty}>{t("workspaces.empty")}</Text>
             ) : (
               <View style={styles.workspaceList}>
                 {realWorkspaceGroups.map(
@@ -940,7 +952,8 @@ export function SessionListScreen({
                   contentContainerStyle={styles.workspacePicker}
                 >
                   {creatableProviders.map((provider) => {
-                    const selected = provider.kind === createTerminalProviderKind;
+                    const selected =
+                      provider.kind === createTerminalProviderKind;
                     return (
                       <Pressable
                         accessibilityRole="button"
@@ -949,7 +962,9 @@ export function SessionListScreen({
                           styles.workspaceChip,
                           selected && styles.workspaceChipSelected,
                         ]}
-                        onPress={() => setCreateTerminalProviderKind(provider.kind)}
+                        onPress={() =>
+                          setCreateTerminalProviderKind(provider.kind)
+                        }
                       >
                         <Text
                           numberOfLines={1}
@@ -1218,128 +1233,141 @@ export function SessionListScreen({
         visible={providersModalVisible}
         onRequestClose={() => setProvidersModalVisible(false)}
       >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setProvidersModalVisible(false)}
-        >
-          <Pressable onPress={() => {}}>
-            <Card style={styles.modalCard}>
-              <Text style={styles.modalTitle}>
-                {t("workspaces.modal.providerPreferences")}
-              </Text>
-              <ScrollView contentContainerStyle={styles.providerStack}>
-                {orderedProviders.map((provider, index) => {
-                  const hidden = providerPreferences.hiddenKinds.includes(
-                    provider.kind,
-                  );
-                  const isDefault = provider.kind === effectiveDefaultProviderKind;
-                  return (
-                    <View
-                      key={provider.kind}
-                      style={[
-                        styles.providerRow,
-                        hidden && styles.providerRowHidden,
-                      ]}
-                    >
-                      <View style={styles.providerInfo}>
-                        <View style={styles.providerTitleRow}>
-                          <Text style={styles.providerTitle}>
-                            {provider.displayName}
-                          </Text>
-                          {isDefault ? (
-                            <Badge
-                              backgroundColor={colors.successSoft}
-                              color={colors.success}
-                              style={styles.defaultBadge}
-                            >
-                              {t("common.default")}
-                            </Badge>
-                          ) : null}
-                          {hidden ? (
-                            <Badge
-                              backgroundColor={colors.neutralSoft}
-                              color={colors.textMuted}
-                              style={styles.defaultBadge}
-                            >
-                              {t("common.hidden")}
-                            </Badge>
-                          ) : null}
-                        </View>
-                        <Text numberOfLines={1} style={styles.providerSummary}>
-                          {provider.summary}
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            style={styles.modalDismissLayer}
+            onPress={() => setProvidersModalVisible(false)}
+          />
+          <Card
+            style={[
+              styles.modalCard,
+              { maxHeight: providerPreferencesModalMaxHeight },
+            ]}
+          >
+            <Text style={styles.modalTitle}>
+              {t("workspaces.modal.providerPreferences")}
+            </Text>
+            <ScrollView
+              contentContainerStyle={styles.providerStack}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
+              style={[
+                styles.providerPreferencesList,
+                { maxHeight: providerPreferencesListMaxHeight },
+              ]}
+            >
+              {orderedProviders.map((provider, index) => {
+                const hidden = providerPreferences.hiddenKinds.includes(
+                  provider.kind,
+                );
+                const isDefault =
+                  provider.kind === effectiveDefaultProviderKind;
+                return (
+                  <View
+                    key={provider.kind}
+                    style={[
+                      styles.providerRow,
+                      hidden && styles.providerRowHidden,
+                    ]}
+                  >
+                    <View style={styles.providerInfo}>
+                      <View style={styles.providerTitleRow}>
+                        <Text style={styles.providerTitle}>
+                          {provider.displayName}
                         </Text>
+                        {isDefault ? (
+                          <Badge
+                            backgroundColor={colors.successSoft}
+                            color={colors.success}
+                            style={styles.defaultBadge}
+                          >
+                            {t("common.default")}
+                          </Badge>
+                        ) : null}
+                        {hidden ? (
+                          <Badge
+                            backgroundColor={colors.neutralSoft}
+                            color={colors.textMuted}
+                            style={styles.defaultBadge}
+                          >
+                            {t("common.hidden")}
+                          </Badge>
+                        ) : null}
                       </View>
-                      <View style={styles.providerActions}>
-                        <Button
-                          accessibilityLabel={t("workspaces.actions.moveUp", {
-                            provider: provider.displayName,
-                          })}
-                          disabled={index === 0}
-                          icon="chevronUp"
-                          iconOnly
-                          style={styles.providerActionButton}
-                          onPress={() => moveProvider(provider.kind, -1)}
-                        >
-                          {t("common.up")}
-                        </Button>
-                        <Button
-                          accessibilityLabel={t("workspaces.actions.moveDown", {
-                            provider: provider.displayName,
-                          })}
-                          disabled={index === orderedProviders.length - 1}
-                          icon="chevronDown"
-                          iconOnly
-                          style={styles.providerActionButton}
-                          onPress={() => moveProvider(provider.kind, 1)}
-                        >
-                          {t("common.down")}
-                        </Button>
-                        <Button
-                          icon={hidden ? "eye" : "eyeOff"}
-                          iconOnly
-                          style={styles.providerActionButton}
-                          onPress={() => toggleProviderHidden(provider.kind)}
-                        >
-                          {hidden ? t("common.show") : t("common.hide")}
-                        </Button>
-                        <Button
-                          disabled={hidden || isDefault || !provider.creatable}
-                          icon="check"
-                          iconOnly
-                          style={[
-                            styles.providerActionButton,
-                            isDefault && styles.providerDefaultActive,
-                          ]}
-                          tone={isDefault ? "primary" : "secondary"}
-                          onPress={() => setDefaultProvider(provider.kind)}
-                        >
-                          {t("common.default")}
-                        </Button>
-                      </View>
+                      <Text numberOfLines={1} style={styles.providerSummary}>
+                        {provider.summary}
+                      </Text>
                     </View>
-                  );
-                })}
-              </ScrollView>
-              <View style={styles.modalActions}>
-                <Button
-                  icon="refresh"
-                  style={styles.modalSecondaryButton}
-                  onPress={resetProviderPreferences}
-                >
-                  {t("common.reset")}
-                </Button>
-                <Button
-                  icon="check"
-                  style={styles.modalPrimaryButton}
-                  tone="primary"
-                  onPress={() => setProvidersModalVisible(false)}
-                >
-                  {t("common.done")}
-                </Button>
-              </View>
-            </Card>
-          </Pressable>
-        </Pressable>
+                    <View style={styles.providerActions}>
+                      <Button
+                        accessibilityLabel={t("workspaces.actions.moveUp", {
+                          provider: provider.displayName,
+                        })}
+                        disabled={index === 0}
+                        icon="chevronUp"
+                        iconOnly
+                        style={styles.providerActionButton}
+                        onPress={() => moveProvider(provider.kind, -1)}
+                      >
+                        {t("common.up")}
+                      </Button>
+                      <Button
+                        accessibilityLabel={t("workspaces.actions.moveDown", {
+                          provider: provider.displayName,
+                        })}
+                        disabled={index === orderedProviders.length - 1}
+                        icon="chevronDown"
+                        iconOnly
+                        style={styles.providerActionButton}
+                        onPress={() => moveProvider(provider.kind, 1)}
+                      >
+                        {t("common.down")}
+                      </Button>
+                      <Button
+                        icon={hidden ? "eye" : "eyeOff"}
+                        iconOnly
+                        style={styles.providerActionButton}
+                        onPress={() => toggleProviderHidden(provider.kind)}
+                      >
+                        {hidden ? t("common.show") : t("common.hide")}
+                      </Button>
+                      <Button
+                        disabled={hidden || isDefault || !provider.creatable}
+                        icon="check"
+                        iconOnly
+                        style={[
+                          styles.providerActionButton,
+                          isDefault && styles.providerDefaultActive,
+                        ]}
+                        tone={isDefault ? "primary" : "secondary"}
+                        onPress={() => setDefaultProvider(provider.kind)}
+                      >
+                        {t("common.default")}
+                      </Button>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <Button
+                icon="refresh"
+                style={styles.modalSecondaryButton}
+                onPress={resetProviderPreferences}
+              >
+                {t("common.reset")}
+              </Button>
+              <Button
+                icon="check"
+                style={styles.modalPrimaryButton}
+                tone="primary"
+                onPress={() => setProvidersModalVisible(false)}
+              >
+                {t("common.done")}
+              </Button>
+            </View>
+          </Card>
+        </View>
       </Modal>
     </View>
   );
@@ -1578,15 +1606,21 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   workspacePager: {
+    flex: 1,
     width: "100%",
   },
+  workspacePagerContent: {
+    flexGrow: 1,
+  },
   workspaceTabPane: {
+    flex: 1,
     gap: spacing.lg,
   },
   webHiddenWorkspaceTabPane: {
     display: "none",
   },
   workspaceTabScrollContent: {
+    flexGrow: 1,
     gap: spacing.lg,
     paddingBottom: 84,
   },
@@ -1810,6 +1844,9 @@ const styles = StyleSheet.create({
     padding: 22,
     backgroundColor: "rgba(0, 0, 0, 0.58)",
   },
+  modalDismissLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
   modalCard: {
     padding: spacing.xl,
     gap: spacing.md,
@@ -1890,7 +1927,9 @@ const styles = StyleSheet.create({
   },
   providerStack: {
     gap: spacing.md,
-    maxHeight: 420,
+  },
+  providerPreferencesList: {
+    flexGrow: 0,
   },
   providerRow: {
     borderColor: colors.borderSubtle,
@@ -2093,7 +2132,10 @@ function getProviderGroupKind(
   session: TerminalSession,
   providers: readonly TerminalProviderDefinition[],
 ): TerminalProviderKind {
-  return getTerminalProviderDefinition(session.terminal_provider_kind, providers)
+  return getTerminalProviderDefinition(
+    session.terminal_provider_kind,
+    providers,
+  )
     ? session.terminal_provider_kind
     : "other";
 }
@@ -2157,7 +2199,8 @@ function findSessionWorkspace(
     return matched;
   }
   return {
-    name: session.workspace_name ?? i18n.t("workspaces.fallback.otherWorkspace"),
+    name:
+      session.workspace_name ?? i18n.t("workspaces.fallback.otherWorkspace"),
     path: UNASSIGNED_WORKSPACE_PATH,
     isGitRepository: Boolean(session.git_repository),
     status: "available",
