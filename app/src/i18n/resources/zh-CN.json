@@ -152,6 +152,15 @@
       "hint": "控制何时使用 Direct 或 Relay 链路。",
       "accessibility": "打开连接模式设置"
     },
+    "agentNotifications": {
+      "title": "Agent 通知",
+      "enabled": "重要 Agent 消息已开启",
+      "disabled": "重要 Agent 消息已关闭",
+      "hint": "用于审批、失败、等待输入等重要消息；默认无需额外配置。",
+      "accessibility": "切换 Agent 通知",
+      "onLabel": "开",
+      "offLabel": "关"
+    },
     "security": {
       "title": "安全",
       "appLock": "APP 端安全设置",

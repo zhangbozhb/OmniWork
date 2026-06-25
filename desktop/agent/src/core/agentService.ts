@@ -16,6 +16,7 @@ import {
   type AgentMessageAckPayload,
   type AgentMessageListRequestPayload,
   type AgentMessageReadRequestPayload,
+  type AgentNotificationSettingsPayload,
   type AgentProbeEvent,
   type MessageEnvelope,
   type P2pChannelKind,
@@ -86,6 +87,7 @@ import { TerminalStreamPusher } from "./terminalStreamPusher.ts";
 import { AppConnectionRegistry } from "./appConnectionRegistry.ts";
 import { AgentAdminServer } from "./adminServer.ts";
 import { AgentMessageService } from "../probes/agentMessageService.ts";
+import { AgentMessageStore } from "../probes/agentMessageStore.ts";
 import { AgentHookReceiver } from "../probes/agentHookReceiver.ts";
 import { enrichProbeEventWithSessions } from "../probes/agentProbeEnrichment.ts";
 import { ensureClaudeHooksInstalled } from "../probes/claudeHookInstaller.ts";
@@ -150,7 +152,15 @@ export class AgentService {
   constructor(config: AgentConfig) {
     this.config = config;
     this.agentMessages = new AgentMessageService({
+      store: new AgentMessageStore(config.sessionStorePath),
       onMessage: (message) => this.broadcastAgentMessage(message),
+      onNotification: (notification) => {
+        this.logger.info("agent notification candidate ready", {
+          message_id: notification.message_id,
+          priority: notification.priority,
+          action: notification.action,
+        });
+      },
     });
     this.appConnections = new AppConnectionRegistry({
       heartbeatIntervalMs: config.connectionHeartbeatMs,
@@ -421,7 +431,11 @@ export class AgentService {
             "files.write",
             "git.read",
             "agent.message",
+            "agent.message.inbox.sqlite",
+            "agent.notification.settings",
             "agent.probe.codex",
+            "agent.probe.codex.app_server",
+            "agent.probe.tmux",
             ...this.terminalProviders.capabilities(),
           ],
         },
@@ -850,6 +864,21 @@ export class AgentService {
         }
         this.handleAgentMessageAck(
           message as MessageEnvelope<AgentMessageAckPayload>,
+          dispatchContext,
+        );
+        break;
+      case "agent.notification.settings.get":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.handleAgentNotificationSettingsGet(message, dispatchContext);
+        break;
+      case "agent.notification.settings.set":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.handleAgentNotificationSettingsSet(
+          message as MessageEnvelope<AgentNotificationSettingsPayload>,
           dispatchContext,
         );
         break;
@@ -1447,6 +1476,40 @@ export class AgentService {
     );
   }
 
+  private handleAgentNotificationSettingsGet(
+    message: MessageEnvelope,
+    context?: AgentDispatchContext,
+  ): void {
+    this.sendToApp(
+      context,
+      createMessage(
+        "agent.notification.settings.get",
+        this.agentMessages.getNotificationSettings(),
+        {
+          device_id: this.config.deviceId,
+          id: message.id,
+        },
+      ),
+    );
+  }
+
+  private handleAgentNotificationSettingsSet(
+    message: MessageEnvelope<AgentNotificationSettingsPayload>,
+    context?: AgentDispatchContext,
+  ): void {
+    this.sendToApp(
+      context,
+      createMessage(
+        "agent.notification.settings.set",
+        this.agentMessages.setNotificationSettings(message.payload),
+        {
+          device_id: this.config.deviceId,
+          id: message.id,
+        },
+      ),
+    );
+  }
+
   private async handleTerminalSnapshot(
     message: MessageEnvelope,
     context?: AgentDispatchContext,
@@ -1501,11 +1564,29 @@ export class AgentService {
     sessionId: string,
     error: TmuxTargetMissingError,
   ): Promise<void> {
+    const session = await this.sessionManager.get(sessionId);
     this.terminalFramePusher.stop(sessionId);
     await this.terminalStreamPusher.stop(sessionId);
     this.logger.warn("tmux target no longer exists; removing stale session", {
       session_id: sessionId,
       tmux_target: error.tmuxTarget,
+    });
+    this.publishLocalProbeEvent({
+      id: `tmux-exited:${sessionId}:${error.tmuxTarget}`,
+      provider: session?.terminal_provider_kind ?? "unknown",
+      probe_id: "tmux-probe",
+      session_id: sessionId,
+      surface_id: session?.primary_surface_id,
+      workspace_path: session?.workspace_path ?? session?.cwd,
+      event_type: "agent.exited",
+      severity: "warning",
+      title: "Terminal runtime exited",
+      summary: "The tmux pane no longer exists.",
+      source: {
+        kind: "tmux",
+        raw_event_id: error.tmuxTarget,
+      },
+      created_at: new Date().toISOString(),
     });
     await this.sessionManager.remove(sessionId);
     this.send(
@@ -1727,6 +1808,19 @@ export class AgentService {
         surface_id: message.surface_id,
       }),
     );
+  }
+
+  private publishLocalProbeEvent(event: AgentProbeEvent): void {
+    const message = this.agentMessages.publishProbeEvent(event);
+    if (message) {
+      this.logger.info("local probe event accepted", {
+        provider: event.provider,
+        event_type: event.event_type,
+        session_id: event.session_id,
+        surface_id: event.surface_id,
+        message_kind: message.message_kind,
+      });
+    }
   }
 
   private async enrichProbeEvent(

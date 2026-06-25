@@ -4,17 +4,30 @@ import {
   type AgentAppMessageKind,
   type AgentAppMessagePriority,
   type AgentMessageListRequestPayload,
+  type AgentNotificationSettingsPayload,
   type AgentProbeEvent,
   type AgentProbeEventType,
 } from "@omniwork/protocol-ts";
+import type { AgentMessageStore } from "./agentMessageStore.ts";
 
 export interface AgentMessageServiceOptions {
   maxMessages?: number;
+  store?: AgentMessageStore;
   onMessage?(message: AgentAppMessage): void;
+  onNotification?(notification: AgentSystemNotificationPayload): void;
 }
 
 const DEFAULT_MAX_MESSAGES = 500;
 type AgentAppMessageActionType = NonNullable<AgentAppMessage["action"]>["type"];
+
+export interface AgentSystemNotificationPayload {
+  message_id: string;
+  title: string;
+  body?: string;
+  action?: AgentAppMessageActionType;
+  priority: AgentAppMessagePriority;
+  created_at: string;
+}
 
 const EVENT_TO_MESSAGE: Partial<
   Record<
@@ -97,13 +110,25 @@ const EVENT_TO_MESSAGE: Partial<
 
 export class AgentMessageService {
   private readonly maxMessages: number;
+  private readonly store?: AgentMessageStore;
   private readonly onMessage?: (message: AgentAppMessage) => void;
+  private readonly onNotification?: (
+    notification: AgentSystemNotificationPayload,
+  ) => void;
   private readonly seenProbeEventKeys = new Set<string>();
   private readonly messages: AgentAppMessage[] = [];
+  private notificationSettings: AgentNotificationSettingsPayload = {
+    enabled: true,
+    min_priority: "high",
+    muted_providers: [],
+    muted_message_kinds: [],
+  };
 
   constructor(options: AgentMessageServiceOptions = {}) {
     this.maxMessages = options.maxMessages ?? DEFAULT_MAX_MESSAGES;
+    this.store = options.store;
     this.onMessage = options.onMessage;
+    this.onNotification = options.onNotification;
   }
 
   publishProbeEvent(event: AgentProbeEvent): AgentAppMessage | null {
@@ -117,15 +142,25 @@ export class AgentMessageService {
     if (!message) {
       return null;
     }
+    const storedMessage = this.store?.insertMessage(eventKey, message);
+    if (this.store && !storedMessage) {
+      return null;
+    }
     this.messages.push(message);
     while (this.messages.length > this.maxMessages) {
       this.messages.shift();
     }
     this.onMessage?.(message);
+    if (this.shouldNotify(message)) {
+      this.onNotification?.(toSystemNotification(message));
+    }
     return message;
   }
 
   list(filter: AgentMessageListRequestPayload = {}): AgentAppMessage[] {
+    if (this.store) {
+      return this.store.list(filter);
+    }
     const limit = normalizeLimit(filter.limit);
     return this.messages
       .filter((message) => {
@@ -148,10 +183,16 @@ export class AgentMessageService {
   }
 
   read(messageId: string): AgentAppMessage | undefined {
+    if (this.store) {
+      return this.store.read(messageId);
+    }
     return this.messages.find((message) => message.id === messageId);
   }
 
   ack(messageId: string, read: boolean): AgentAppMessage | undefined {
+    if (this.store) {
+      return this.store.ack(messageId, read);
+    }
     const message = this.read(messageId);
     if (!message) {
       return undefined;
@@ -160,6 +201,35 @@ export class AgentMessageService {
       message.read_at = new Date().toISOString();
     }
     return message;
+  }
+
+  getNotificationSettings(): AgentNotificationSettingsPayload {
+    return this.store?.getNotificationSettings() ?? this.notificationSettings;
+  }
+
+  setNotificationSettings(
+    settings: AgentNotificationSettingsPayload,
+  ): AgentNotificationSettingsPayload {
+    const normalized = normalizeNotificationSettings(settings);
+    this.notificationSettings = normalized;
+    return this.store?.setNotificationSettings(normalized) ?? normalized;
+  }
+
+  shouldNotify(message: AgentAppMessage): boolean {
+    const settings = this.getNotificationSettings();
+    if (!settings.enabled) {
+      return false;
+    }
+    if (settings.muted_providers?.includes(message.provider)) {
+      return false;
+    }
+    if (settings.muted_message_kinds?.includes(message.message_kind)) {
+      return false;
+    }
+    return (
+      priorityRank(message.priority) >=
+      priorityRank(settings.min_priority ?? "high")
+    );
   }
 
   private toAppMessage(event: AgentProbeEvent): AgentAppMessage | null {
@@ -196,4 +266,41 @@ function normalizeLimit(limit: number | undefined): number {
     return 50;
   }
   return Math.min(limit, 100);
+}
+
+function normalizeNotificationSettings(
+  settings: AgentNotificationSettingsPayload,
+): AgentNotificationSettingsPayload {
+  return {
+    enabled: settings.enabled !== false,
+    min_priority: settings.min_priority ?? "high",
+    muted_providers: settings.muted_providers ?? [],
+    muted_message_kinds: settings.muted_message_kinds ?? [],
+  };
+}
+
+function priorityRank(priority: AgentAppMessagePriority): number {
+  switch (priority) {
+    case "low":
+      return 0;
+    case "normal":
+      return 1;
+    case "high":
+      return 2;
+    case "critical":
+      return 3;
+  }
+}
+
+function toSystemNotification(
+  message: AgentAppMessage,
+): AgentSystemNotificationPayload {
+  return {
+    message_id: message.id,
+    title: message.title,
+    body: message.summary,
+    action: message.action?.type,
+    priority: message.priority,
+    created_at: message.created_at,
+  };
 }

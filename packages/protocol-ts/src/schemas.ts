@@ -752,8 +752,7 @@ export const tunnelUpgradeOfferPayloadSchema = z
   })
   .strict();
 
-export const tunnelUpgradeAnswerPayloadSchema =
-  tunnelUpgradeOfferPayloadSchema;
+export const tunnelUpgradeAnswerPayloadSchema = tunnelUpgradeOfferPayloadSchema;
 
 export const tunnelUpgradeCandidatePayloadSchema = z
   .object({
@@ -789,6 +788,101 @@ export const transportPongPayloadSchema = transportPingPayloadSchema.extend({
   received_at: isoDateTime,
 });
 
+export const agentAppMessageKindSchema = z.enum([
+  "status",
+  "plan",
+  "approval",
+  "input_required",
+  "result",
+  "error",
+  "diff_summary",
+]);
+
+export const agentAppMessagePrioritySchema = z.enum([
+  "low",
+  "normal",
+  "high",
+  "critical",
+]);
+
+export const agentAppMessageSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.literal("agent.message"),
+    provider: z.string().min(1),
+    session_id: z.string().min(1),
+    surface_id: z.string().min(1).optional(),
+    workspace_id: z.string().min(1).optional(),
+    message_kind: agentAppMessageKindSchema,
+    title: z.string().min(1),
+    summary: z.string().optional(),
+    priority: agentAppMessagePrioritySchema,
+    action: z
+      .object({
+        type: z.enum([
+          "open_session",
+          "open_approval",
+          "open_diff",
+          "open_workspace",
+        ]),
+        session_id: z.string().min(1).optional(),
+        surface_id: z.string().min(1).optional(),
+        workspace_id: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    created_at: isoDateTime,
+    delivered_at: isoDateTime.optional(),
+    read_at: isoDateTime.optional(),
+  })
+  .strict();
+
+export const agentMessageListRequestPayloadSchema = z
+  .object({
+    session_id: z.string().min(1).optional(),
+    surface_id: z.string().min(1).optional(),
+    provider: z.string().min(1).optional(),
+    unread_only: z.boolean().optional(),
+    limit: z.number().int().positive().optional(),
+  })
+  .strict();
+
+export const agentMessageListPayloadSchema = z
+  .object({
+    messages: z.array(agentAppMessageSchema),
+  })
+  .strict();
+
+export const agentMessageReadRequestPayloadSchema = z
+  .object({
+    message_id: z.string().min(1),
+  })
+  .strict();
+
+export const agentMessageReadPayloadSchema = z
+  .object({
+    message: agentAppMessageSchema.optional(),
+  })
+  .strict();
+
+export const agentMessageAckPayloadSchema = z
+  .object({
+    message_id: z.string().min(1),
+    read: z.boolean().optional(),
+  })
+  .strict();
+
+export const agentMessageAckResultPayloadSchema = agentMessageReadPayloadSchema;
+
+export const agentNotificationSettingsPayloadSchema = z
+  .object({
+    enabled: z.boolean(),
+    min_priority: agentAppMessagePrioritySchema.optional(),
+    muted_providers: z.array(z.string().min(1)).optional(),
+    muted_message_kinds: z.array(agentAppMessageKindSchema).optional(),
+  })
+  .strict();
+
 const payloadSchemaByType = {
   "agent.hello": agentHelloPayloadSchema,
   "mobile.connect": mobileConnectPayloadSchema,
@@ -815,18 +909,30 @@ const payloadSchemaByType = {
   "session.status": sessionCreatedPayloadSchema,
   "workspace.list": z.union([emptyPayloadSchema, workspaceListPayloadSchema]),
   "workspace.status": workspaceStatusPayloadSchema,
-  "files.list": z.union([filesListRequestPayloadSchema, filesListPayloadSchema]),
-  "files.read": z.union([filesReadRequestPayloadSchema, filesReadPayloadSchema]),
+  "files.list": z.union([
+    filesListRequestPayloadSchema,
+    filesListPayloadSchema,
+  ]),
+  "files.read": z.union([
+    filesReadRequestPayloadSchema,
+    filesReadPayloadSchema,
+  ]),
   "files.write": z.union([
     filesWriteRequestPayloadSchema,
     filesWritePayloadSchema,
   ]),
-  "git.status": z.union([gitStatusRequestPayloadSchema, gitStatusPayloadSchema]),
+  "git.status": z.union([
+    gitStatusRequestPayloadSchema,
+    gitStatusPayloadSchema,
+  ]),
   "git.diff": z.union([gitDiffRequestPayloadSchema, gitDiffPayloadSchema]),
   "terminal.frame": terminalFramePayloadSchema,
   "terminal.input": terminalInputPayloadSchema,
   "terminal.resize": terminalResizePayloadSchema,
-  "terminal.snapshot": z.union([emptyPayloadSchema, terminalSnapshotPayloadSchema]),
+  "terminal.snapshot": z.union([
+    emptyPayloadSchema,
+    terminalSnapshotPayloadSchema,
+  ]),
   "terminal.stream.start": terminalStreamStartPayloadSchema,
   "terminal.stream.ready": terminalStreamReadyPayloadSchema,
   "terminal.stream.data": terminalStreamDataPayloadSchema,
@@ -834,6 +940,24 @@ const payloadSchemaByType = {
   "terminal.stream.error": terminalStreamErrorPayloadSchema,
   "terminal.ack": terminalAckPayloadSchema,
   "terminal.error": terminalErrorPayloadSchema,
+  "agent.message": agentAppMessageSchema,
+  "agent.message.list": z.union([
+    agentMessageListRequestPayloadSchema,
+    agentMessageListPayloadSchema,
+  ]),
+  "agent.message.read": z.union([
+    agentMessageReadRequestPayloadSchema,
+    agentMessageReadPayloadSchema,
+  ]),
+  "agent.message.ack": z.union([
+    agentMessageAckPayloadSchema,
+    agentMessageAckResultPayloadSchema,
+  ]),
+  "agent.notification.settings.get": z.union([
+    emptyPayloadSchema,
+    agentNotificationSettingsPayloadSchema,
+  ]),
+  "agent.notification.settings.set": agentNotificationSettingsPayloadSchema,
   "tunnel.upgrade.propose": tunnelUpgradeProposePayloadSchema,
   "tunnel.upgrade.offer": tunnelUpgradeOfferPayloadSchema,
   "tunnel.upgrade.answer": tunnelUpgradeAnswerPayloadSchema,

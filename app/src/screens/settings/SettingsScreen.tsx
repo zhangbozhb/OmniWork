@@ -17,8 +17,10 @@ import { colors, radii, spacing, typography } from "../../ui/theme";
 export interface SettingsScreenProps {
   terminalTextSize: TerminalTextSize;
   language: AppLanguage;
+  agentNotificationsEnabled: boolean;
   onChangeTerminalTextSize(textSize: TerminalTextSize): void;
   onChangeLanguage(language: AppLanguage): void;
+  onChangeAgentNotifications(enabled: boolean): void;
   onOpenConnectionPreference(): void;
   onOpenSecuritySettings?: () => void;
 }
@@ -26,8 +28,10 @@ export interface SettingsScreenProps {
 export function SettingsScreen({
   terminalTextSize,
   language,
+  agentNotificationsEnabled,
   onChangeTerminalTextSize,
   onChangeLanguage,
+  onChangeAgentNotifications,
   onOpenConnectionPreference,
   onOpenSecuritySettings,
 }: SettingsScreenProps): JSX.Element {
@@ -134,6 +138,47 @@ export function SettingsScreen({
             );
           })}
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          {t("settings.agentNotifications.title")}
+        </Text>
+        <Pressable
+          accessibilityLabel={t("settings.agentNotifications.accessibility")}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: agentNotificationsEnabled }}
+          style={({ pressed }) => [
+            styles.navigationRow,
+            pressed && styles.pressed,
+          ]}
+          onPress={() =>
+            onChangeAgentNotifications(!agentNotificationsEnabled)
+          }
+        >
+          <View style={styles.navigationIcon}>
+            <Icon
+              name="settings"
+              color={agentNotificationsEnabled ? colors.success : colors.textDim}
+              size={18}
+            />
+          </View>
+          <View style={styles.navigationText}>
+            <Text style={styles.navigationTitle}>
+              {agentNotificationsEnabled
+                ? t("settings.agentNotifications.enabled")
+                : t("settings.agentNotifications.disabled")}
+            </Text>
+            <Text style={styles.navigationHint}>
+              {t("settings.agentNotifications.hint")}
+            </Text>
+          </View>
+          <Text style={styles.navigationChevron}>
+            {agentNotificationsEnabled
+              ? t("settings.agentNotifications.onLabel")
+              : t("settings.agentNotifications.offLabel")}
+          </Text>
+        </Pressable>
       </View>
 
       <View style={styles.section}>

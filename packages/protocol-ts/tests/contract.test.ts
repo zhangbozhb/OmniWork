@@ -284,6 +284,7 @@ describe("e2e business message helpers", () => {
     assert.equal(isE2EBusinessMessage("tunnel.upgrade.offer"), true);
     assert.equal(isE2EBusinessMessage("agent.message"), true);
     assert.equal(isE2EBusinessMessage("agent.message.list"), true);
+    assert.equal(isE2EBusinessMessage("agent.notification.settings.set"), true);
     assert.equal(isE2EBusinessMessage("auth.ok"), false);
     assert.equal(isE2EBusinessMessage("e2e.message"), false);
   });
@@ -300,6 +301,58 @@ describe("e2e business message helpers", () => {
     assert.equal(restored.session_id, message.session_id);
     assert.equal(restored.seq, message.seq);
     assert.deepEqual(restored.payload, message.payload);
+  });
+});
+
+describe("agent message payload schemas", () => {
+  it("validates inbox messages, list requests, and notification settings", () => {
+    const agentMessage = {
+      id: "msg_1",
+      type: "agent.message",
+      provider: "codex",
+      session_id: "sess_1",
+      surface_id: "surface_sess_1_terminal",
+      message_kind: "approval",
+      title: "Codex needs approval",
+      summary: "npm test",
+      priority: "high",
+      action: {
+        type: "open_approval",
+        session_id: "sess_1",
+        surface_id: "surface_sess_1_terminal",
+      },
+      created_at: new Date().toISOString(),
+    };
+
+    assert.ok(parseMessageEnvelope(createMessage("agent.message", agentMessage)));
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.message.list", {
+          unread_only: true,
+          provider: "codex",
+          limit: 20,
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.notification.settings.set", {
+          enabled: true,
+          min_priority: "critical",
+          muted_providers: ["claude-code"],
+          muted_message_kinds: ["status"],
+        }),
+      ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("agent.notification.settings.set", {
+          enabled: true,
+          min_priority: "urgent",
+        }),
+      ),
+      null,
+    );
   });
 });
 

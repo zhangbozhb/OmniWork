@@ -4,7 +4,10 @@ import {
   type ServerResponse,
 } from "node:http";
 
-import type { AgentProbeEvent, AgentProbeProvider } from "@omniwork/protocol-ts";
+import type {
+  AgentProbeEvent,
+  AgentProbeProvider,
+} from "@omniwork/protocol-ts";
 import {
   normalizeClaudeHookPayload,
   type ClaudeHookPayload,
@@ -13,6 +16,10 @@ import {
   normalizeCodexHookPayload,
   type CodexHookPayload,
 } from "./codexHookNormalizer.ts";
+import {
+  normalizeCodexAppServerEvent,
+  type CodexAppServerEventPayload,
+} from "./codexAppServerNormalizer.ts";
 
 export interface AgentHookReceiverOptions {
   host: string;
@@ -72,13 +79,11 @@ export class AgentHookReceiver {
       return;
     }
 
-    const provider = resolveProvider(url, body as Record<string, unknown>);
-    if (!provider) {
+    const event = normalizeProbePayload(url, body as Record<string, unknown>);
+    if (event === "not_found") {
       this.writeJson(response, 404, { error: "not_found" });
       return;
     }
-
-    const event = normalizeHookPayload(provider, body as Record<string, unknown>);
     if (!event) {
       this.writeJson(response, 400, { error: "invalid_hook_payload" });
       return;
@@ -127,6 +132,21 @@ export class AgentHookReceiver {
     });
     response.end(`${JSON.stringify(body)}\n`);
   }
+}
+
+function normalizeProbePayload(
+  url: URL,
+  payload: Record<string, unknown>,
+): AgentProbeEvent | "not_found" | null {
+  if (url.pathname === "/api/probes/codex/app-server") {
+    return normalizeCodexAppServerEvent(payload as CodexAppServerEventPayload);
+  }
+
+  const provider = resolveProvider(url, payload);
+  if (!provider) {
+    return "not_found";
+  }
+  return normalizeHookPayload(provider, payload);
 }
 
 function resolveProvider(

@@ -2,7 +2,10 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import type { AgentProbeEvent } from "@omniwork/protocol-ts";
-import { AgentMessageService } from "../src/probes/agentMessageService.ts";
+import {
+  AgentMessageService,
+  type AgentSystemNotificationPayload,
+} from "../src/probes/agentMessageService.ts";
 
 function probeEvent(overrides: Partial<AgentProbeEvent>): AgentProbeEvent {
   return {
@@ -81,4 +84,52 @@ test("AgentMessageService supports read ack and filtered list", () => {
   );
   assert.equal(service.ack(first.id, true)?.read_at !== undefined, true);
   assert.equal(service.list({ unread_only: true }).length, 1);
+});
+
+test("AgentMessageService emits sanitized notification candidates by preference", () => {
+  const notifications: AgentSystemNotificationPayload[] = [];
+  const service = new AgentMessageService({
+    onNotification(notification) {
+      notifications.push(notification);
+    },
+  });
+
+  service.publishProbeEvent(probeEvent({ id: "approval" }));
+
+  assert.equal(notifications.length, 1);
+  assert.deepEqual(notifications[0], {
+    message_id: service.list()[0].id,
+    title: "Codex needs approval",
+    body: "npm test",
+    action: "open_approval",
+    priority: "high",
+    created_at: "2026-06-24T00:00:00.000Z",
+  });
+
+  service.setNotificationSettings({
+    enabled: true,
+    min_priority: "critical",
+    muted_providers: [],
+    muted_message_kinds: [],
+  });
+  service.publishProbeEvent(probeEvent({ id: "muted-by-priority" }));
+  assert.equal(notifications.length, 1);
+
+  service.setNotificationSettings({
+    enabled: true,
+    min_priority: "high",
+    muted_providers: ["codex"],
+    muted_message_kinds: [],
+  });
+  service.publishProbeEvent(probeEvent({ id: "muted-by-provider" }));
+  assert.equal(notifications.length, 1);
+
+  service.setNotificationSettings({
+    enabled: false,
+    min_priority: "high",
+    muted_providers: [],
+    muted_message_kinds: [],
+  });
+  service.publishProbeEvent(probeEvent({ id: "disabled" }));
+  assert.equal(notifications.length, 1);
 });

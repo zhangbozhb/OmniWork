@@ -39,12 +39,15 @@ Android / iOS / Web App
 ## 实装状态
 
 - 已落地：`packages/protocol-ts` 中的 `AgentProbeEvent`、`AgentAppMessage` 与 `agent.message*` 协议类型。
-- 已落地：桌面端 Agent 内部 `AgentMessageService`，支持 Probe Event 幂等去重、基础过滤、内存消息列表、已读回执和在线 App 广播。
+- 已落地：桌面端 Agent 内部 `AgentMessageService`，支持 Probe Event 幂等去重、基础过滤、SQLite pending inbox、已读回执和在线 App 广播。
 - 已落地：Codex / Claude Code Hooks Channel 的本机 HTTP receiver，默认监听 `127.0.0.1:17669/api/probes/hooks`，通过 `Authorization: Bearer <token>` 校验，并按 `omniwork_hook_source` 分发到对应 Probe。
 - 已落地：`desktop/agent/bin/omniwork-agent-hook.mjs`，用于 Codex / Claude Code command hook 将 stdin JSON 转交给本机 receiver。
 - 已落地：Codex hooks 自动安装。Desktop Agent 启动生成 session key 后会立即检测并合并写入 `~/.codex/hooks.json`，该步骤发生在 admin server / hook receiver 监听端口之前；启动 Codex runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Codex 会话启动。
 - 已落地：Claude Code hooks 自动安装。Desktop Agent 启动生成 session key 后会检测并合并写入 `~/.claude/settings.json`；启动 Claude runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Claude 会话启动。
-- 尚未落地：Codex App Server Channel、PTY/tmux Probe Channel、SQLite pending inbox、系统 Push、通知偏好 UI。
+- 已落地：Codex app-server event normalizer 和本机 HTTP ingest endpoint（`/api/probes/codex/app-server`），可把 thread / turn / approval / diff / completion 等结构化事件归一化为 `AgentProbeEvent`。当前尚未接入 app-server 进程管理和主动订阅。
+- 已落地：tmux Probe 的最小事件路径，tmux target 消失时会产生 `agent.exited` 并进入消息流。
+- 已落地：通知偏好持久化协议、App 设置页开关、服务端通知资格判断和脱敏系统通知 payload 生成。当前仅形成可接入 Push gateway 的候选通知，尚未接入平台原生 Push。
+- 尚未落地：Codex app-server 进程管理和主动订阅、完整 PTY 输出解析、平台原生系统 Push。
 
 ## 术语定义
 
@@ -646,7 +649,7 @@ agent_notification_settings
 
 `agent_message_deliveries` 保存不同 App 连接的投递状态。
 
-`agent_notification_settings` 保存用户对 provider、session、message kind 的通知偏好。
+`agent_notification_settings` 保存用户的通知开关、最低优先级、muted provider 和 muted message kind。
 
 ## 阶段执行约束
 

@@ -15,9 +15,9 @@
 - 终端主通道（Terminal Provider adapter）：已落地基础适配层，见 [desktop/agent/src/terminal-provider/](../desktop/agent/src/terminal-provider/)；provider 配置驱动 + `session.list` 下发已对齐。
 - Surface 协议层：`TerminalSession` 已下发 `primary_surface_id` 与 `surfaces`；终端输入、resize、snapshot、stream 和 frame 消息保留 `session_id` 作为归属信息，并以 `surface_id` 作为具体交互入口和缓存路由键。
 - 兼容通道（tmux + Native WebView/xterm 终端）：已落地，见 [desktop/agent/src/pty-bridge](../desktop/agent/src/pty-bridge)、[desktop/agent/src/tmux-manager](../desktop/agent/src/tmux-manager) 与 [app/src/terminal](../app/src/terminal)。
-- Codex app-server adapter 尚未落地，仍属于结构化 Codex UI 方向。
+- Codex app-server adapter 尚未完成进程管理和主动订阅；当前已落地 `codexAppServerNormalizer` 与本机 HTTP ingest endpoint，可把 app-server 的 thread / turn / approval / diff / completion 事件归一化为 `AgentProbeEvent`，供消息、通知和后续 AgentSurface timeline 复用。
 - Terminal Provider 元数据层：`packages/protocol-ts` 定义 + 桌面端 Agent 配置化 provider 已实现。
-- Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex / Claude hook receiver、Desktop Agent 启动时 hook 自动安装、hook 归一化、接收端按现有 session/workspace/provider 自动关联 `surface_id`、内存消息过滤/去重和在线 App `agent.message` 广播；Codex app-server channel、持久化 pending inbox、系统 Push 尚未落地。
+- Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex / Claude hook receiver、Desktop Agent 启动时 hook 自动安装、hook 归一化、Codex app-server event HTTP ingest、tmux target missing Probe、接收端按现有 session/workspace/provider 自动关联 `surface_id`、SQLite pending inbox、已读回执、通知偏好持久化、脱敏系统通知候选 payload 和在线 App `agent.message` 广播；平台原生系统 Push gateway 尚未落地。
 - Workspace 上下文层：已实现 `workspace.list/status` + `files.list/read/write` + `git.status/diff`，其中文件写入仅支持受控 UTF-8 文本编辑，详见 [desktop/agent/src/workspace](../desktop/agent/src/workspace) / [files](../desktop/agent/src/files) / [git](../desktop/agent/src/git)。
 - Relay + P2P 升级：已落地（终版见 [relay-architecture.md](./relay-architecture.md)），不在本文档继续维护。
 
@@ -914,7 +914,7 @@ agent.*
 1. 稳定 `TerminalSurface`：继续打牢 tmux / PTY、重连、输入、快照和多会话。
 2. 引入 `Surface` 概念：App 与 Desktop Agent 按 `surface_id` 打开和订阅交互入口。
 3. Probe 先增强感知：Hooks / app-server event 进入 Probe Sink，用于状态卡片、通知和审批提醒。
-4. Codex `AgentSurface` MVP：支持 thread timeline、turn 状态、approval、diff、completion。
+4. Codex `AgentSurface` MVP：先落地 app-server 事件归一化和本机 ingest，支持 thread / turn / approval / diff / completion 进入统一 Probe Sink；再接入 app-server 进程管理、主动订阅与 App timeline。
 5. 多 Agent 抽象：Codex 跑通后，再把 Claude Code、OpenCode、Gemini CLI 等接入统一 AgentSurface 语义。
 
 ### 移动体验与通知

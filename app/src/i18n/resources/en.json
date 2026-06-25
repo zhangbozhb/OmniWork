@@ -152,6 +152,15 @@
       "hint": "Control when Direct or Relay paths are used.",
       "accessibility": "Open connection mode settings"
     },
+    "agentNotifications": {
+      "title": "Agent notifications",
+      "enabled": "Important agent messages are on",
+      "disabled": "Important agent messages are off",
+      "hint": "Covers approvals, failures, and waiting-for-input messages. No extra setup is required.",
+      "accessibility": "Toggle agent notifications",
+      "onLabel": "On",
+      "offLabel": "Off"
+    },
     "security": {
       "title": "Security",
       "appLock": "App security",

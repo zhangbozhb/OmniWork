@@ -50,6 +50,7 @@ import type {
   WorkspaceFileEntry,
   WorkspaceGitStatus,
   WorkspaceListPayload,
+  AgentNotificationSettingsPayload,
 } from "@omniwork/protocol-ts";
 import {
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
@@ -122,6 +123,10 @@ import {
   readFileRequest,
   writeFileRequest,
 } from "../features/workspaces/workspaceMessages";
+import {
+  getAgentNotificationSettingsRequest,
+  setAgentNotificationSettingsRequest,
+} from "../features/agent/agentMessages";
 import {
   computeInitialTerminalSize,
   getDefaultTerminalTextSize,
@@ -206,6 +211,12 @@ type WorkspaceDataCache = {
  */
 const TRANSPORT_PREFERENCE_STORAGE_KEY = "omniwork.transportPreference";
 const TERMINAL_TEXT_SIZE_STORAGE_KEY = "omniwork.terminal.textSize";
+const DEFAULT_AGENT_NOTIFICATION_SETTINGS: AgentNotificationSettingsPayload = {
+  enabled: true,
+  min_priority: "high",
+  muted_providers: [],
+  muted_message_kinds: [],
+};
 const FALLBACK_TERMINAL_PROVIDERS = DEFAULT_TERMINAL_PROVIDER_DEFINITIONS.filter(
   (provider) => provider.kind === "terminal",
 );
@@ -314,6 +325,10 @@ function AppContent(): JSX.Element {
   const [terminalTextSize, setTerminalTextSizeState] =
     useState<TerminalTextSize>(() =>
       getDefaultTerminalTextSize(Dimensions.get("window")),
+    );
+  const [agentNotificationSettings, setAgentNotificationSettings] =
+    useState<AgentNotificationSettingsPayload>(
+      DEFAULT_AGENT_NOTIFICATION_SETTINGS,
     );
   const appLockAvailable = Platform.OS !== "web";
   const [appLockConfig, setAppLockConfig] = useState<AppLockConfig>(
@@ -1429,6 +1444,20 @@ function AppContent(): JSX.Element {
     sendToRelay(listWorkspacesRequest(pairing.deviceId));
   }
 
+  function handleChangeAgentNotifications(enabled: boolean): void {
+    const nextSettings = {
+      ...agentNotificationSettings,
+      enabled,
+    };
+    setAgentNotificationSettings(nextSettings);
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+    sendToRelay(
+      setAgentNotificationSettingsRequest(pairing.deviceId, nextSettings),
+    );
+  }
+
   function handleCreateSession(input: {
     cwd: string;
     terminalProviderKind: TerminalProviderKind;
@@ -2172,6 +2201,9 @@ function AppContent(): JSX.Element {
           setConnectionMessage("Connected to Mac Agent.");
           relay.send(listSessionsRequest(activePairing.deviceId));
           relay.send(listWorkspacesRequest(activePairing.deviceId));
+          relay.send(
+            getAgentNotificationSettingsRequest(activePairing.deviceId),
+          );
           if (pendingAutoOpenSessionsRef.current) {
             pendingAutoOpenSessionsRef.current = false;
             setView("sessions");
@@ -2451,6 +2483,13 @@ function AppContent(): JSX.Element {
         }));
         break;
       }
+      case "agent.notification.settings.get":
+      case "agent.notification.settings.set": {
+        setAgentNotificationSettings(
+          message.payload as AgentNotificationSettingsPayload,
+        );
+        break;
+      }
       case "terminal.snapshot": {
         const payload = message.payload as TerminalSnapshotPayload;
         if (message.surface_id) {
@@ -2675,8 +2714,10 @@ function AppContent(): JSX.Element {
             <SettingsScreen
               terminalTextSize={terminalTextSize}
               language={language}
+              agentNotificationsEnabled={agentNotificationSettings.enabled}
               onChangeLanguage={handleChangeLanguage}
               onChangeTerminalTextSize={handleChangeTerminalTextSize}
+              onChangeAgentNotifications={handleChangeAgentNotifications}
               onOpenConnectionPreference={() => setView("connectionPreference")}
               onOpenSecuritySettings={
                 appLockAvailable ? () => setView("securitySettings") : undefined

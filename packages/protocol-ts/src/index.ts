@@ -149,7 +149,11 @@ export type KnownAgentCapability =
   | "codex.cli"
   | "codex.app_server"
   | "agent.message"
+  | "agent.message.inbox.sqlite"
+  | "agent.notification.settings"
   | "agent.probe.codex"
+  | "agent.probe.codex.app_server"
+  | "agent.probe.tmux"
   | "claude.cli"
   | "gemini.cli";
 export type AgentCapability = KnownAgentCapability | (string & {});
@@ -947,6 +951,13 @@ export interface AgentMessageAckPayload {
 
 export interface AgentMessageAckResultPayload {
   message?: AgentAppMessage;
+}
+
+export interface AgentNotificationSettingsPayload {
+  enabled: boolean;
+  min_priority?: AgentAppMessagePriority;
+  muted_providers?: string[];
+  muted_message_kinds?: AgentAppMessageKind[];
 }
 
 export function createMessage<TPayload>(
