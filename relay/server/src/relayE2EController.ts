@@ -1,7 +1,6 @@
 import {
   createMessage,
   PROTOCOL_SUPPORT_V1,
-  type BusinessSecurityMode,
   type E2EFailedPayload,
   type E2EHandshakeInitPayload,
   type E2EHandshakeReplyPayload,
@@ -11,10 +10,7 @@ import {
   type ProtocolErrorPayload,
 } from "@omniwork/protocol-ts";
 
-import type {
-  AgentE2EPeerState,
-  RelayConnection,
-} from "./relayTypes.ts";
+import type { AgentE2EPeerState, RelayConnection } from "./relayTypes.ts";
 
 export interface RelayE2EControllerOptions {
   protocolVersion: typeof PROTOCOL_SUPPORT_V1.current;
@@ -22,10 +18,7 @@ export interface RelayE2EControllerOptions {
   agentsByDevice: Map<string, RelayConnection>;
   send(connection: RelayConnection, message: MessageEnvelope): void;
   routeMessage(connection: RelayConnection, message: MessageEnvelope): void;
-  notifyMobileAuthenticated(
-    deviceId: string,
-    mobile: RelayConnection,
-  ): void;
+  notifyMobileAuthenticated(deviceId: string, mobile: RelayConnection): void;
 }
 
 export class RelayE2EController {
@@ -246,32 +239,6 @@ export class RelayE2EController {
     return this.isPairReadyForApp(appConnectionId, deviceId);
   }
 
-  shouldRejectPlaintextBusiness(connection: RelayConnection): boolean {
-    return this.businessSecurityModeFor(connection) === "e2e_required";
-  }
-
-  businessSecurityModeFor(connection: RelayConnection): BusinessSecurityMode {
-    if (connection.role === "agent") {
-      return connection.businessSecurityMode ?? "e2e_required";
-    }
-    if (connection.deviceId) {
-      return (
-        this.options.agentsByDevice.get(connection.deviceId)
-          ?.businessSecurityMode ?? "e2e_required"
-      );
-    }
-    return "e2e_required";
-  }
-
-  rejectPlaintextBusiness(connection: RelayConnection, type: string): void {
-    this.sendProtocolError(
-      connection,
-      "plaintext_business_rejected",
-      `Message type "${type}" must be sent inside e2e.message.`,
-      false,
-    );
-  }
-
   private getMobileByAppConnectionId(
     agent: RelayConnection,
     appConnectionId: string,
@@ -331,10 +298,7 @@ export class RelayE2EController {
     );
   }
 
-  private rejectInvalidState(
-    connection: RelayConnection,
-    type: string,
-  ): void {
+  private rejectInvalidState(connection: RelayConnection, type: string): void {
     this.sendProtocolError(
       connection,
       "invalid_state",

@@ -1,14 +1,14 @@
 # OmniWork Relay Server
 
-Minimal company-network relay for the native OmniWork App and Mac Agent.
+Minimal company-network relay for the native OmniWork App and Desktop Agent.
 
 The server does not store the temporary key. It brokers the challenge flow:
 
-1. Mac Agent registers with `agent.hello` and its `key_id`.
-2. App sends `mobile.connect` for a Mac `device_id`.
+1. Desktop Agent registers with `agent.hello` and its `key_id`.
+2. App sends `mobile.connect` for a Desktop Agent `device_id`.
 3. Relay sends `auth.challenge` to the App.
-4. App sends `auth.proof`; Relay forwards `auth.verify` to the Mac Agent.
-5. Mac Agent verifies the proof with the local startup key and returns `auth.ok` or `auth.failed`.
+4. App sends `auth.proof`; Relay forwards `auth.verify` to the Desktop Agent.
+5. Desktop Agent verifies the proof with the local startup key and returns `auth.ok` or `auth.failed`.
 
 Run locally:
 
@@ -84,7 +84,7 @@ attempts are not affected by past failures.
 ### P2P upgrade orchestrator
 
 The relay coordinates optional WebRTC DataChannel upgrades between the App and
-Mac Agent. Configuration:
+Desktop Agent. Configuration:
 
 ```text
 OMNIWORK_UPGRADE_ENABLED=true
@@ -193,9 +193,14 @@ out of `src/relayServer.ts`.
 Admin HTTP routing, auth checks, snapshots, and control-rule mutations live in
 `src/relayAdminController.ts`; keep `src/relayServer.ts` focused on Relay
 connections and protocol routing.
-E2E handshake, ready-state validation, encrypted message routing, and plaintext
-business-channel policy live in `src/relayE2EController.ts`. Relay logging
-helpers live in `src/relayLog.ts`.
+E2E handshake, ready-state validation, and encrypted message routing live in
+`src/relayE2EController.ts`. Business payload encryption policy is owned by App
+and Agent. Relay logging helpers live in `src/relayLog.ts`.
+When Agent needs Relay to return an App-scoped protocol error, it sends
+`relay.app.deliver` with the Relay-issued `relay_context_id` plus the
+`protocol.error` content. Relay resolves the target App from its own delivery
+context, binds the handle to the Agent connection that received the original
+request, and rejects content that tries to carry an App target.
 
 Full architecture, downgrade triggers, and a troubleshooting runbook live in
 [docs/relay-architecture.md](../../docs/relay-architecture.md).

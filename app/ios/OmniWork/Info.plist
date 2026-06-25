@@ -47,7 +47,7 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>OmniWork uses the camera to scan the Mac Agent pairing QR code.</string>
+	<string>OmniWork uses the camera to scan the Desktop pairing QR code.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OmniWork uses the local network to connect to your relay or development services.</string>
 	<key>RCTNewArchEnabled</key>

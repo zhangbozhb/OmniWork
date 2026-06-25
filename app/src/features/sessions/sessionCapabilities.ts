@@ -131,12 +131,12 @@ function getUnavailableReason(
   pending: SessionPendingState,
 ): string | undefined {
   if (pending.killing) {
-    return "Killing the tmux session on the Mac.";
+    return "Killing the tmux session on the connected computer.";
   }
   if (pending.closing) {
-    return session.origin === "external"
-      ? "Forgetting the tmux session from OmniWork."
-      : "Closing the session on the Mac Agent.";
+      return session.origin === "external"
+        ? "Forgetting the tmux session from OmniWork."
+        : "Closing the session on the connected computer.";
   }
 
   switch (session.status) {

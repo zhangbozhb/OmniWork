@@ -21,6 +21,9 @@ import {
   type AgentProbeEvent,
   type MessageEnvelope,
   type P2pChannelKind,
+  type ProtocolErrorPayload,
+  type RelayAppDeliverPayload,
+  type RelayAppDeliveryMessage,
 } from "@omniwork/protocol-ts";
 import type {
   AgentHelloPayload,
@@ -394,7 +397,7 @@ export class AgentService {
       throw new Error(
         [
           `Unable to connect to OMNIWORK_RELAY_URL: ${url}`,
-          "Start the relay first with `pnpm dev:relay`, then restart the Mac Agent.",
+          "Start the relay first with `pnpm dev:relay`, then restart the Desktop Agent.",
           `Original error: ${formatRelayConnectionError(error)}`,
         ].join("\n"),
       );
@@ -1246,7 +1249,43 @@ export class AgentService {
     this.logger.warn("rejected plaintext business message", {
       message_type: message.type,
     });
+    if (message.relay_context_id) {
+      this.requestRelayAppDelivery(message.relay_context_id, {
+        type: "protocol.error",
+        session_id: message.session_id,
+        surface_id: message.surface_id,
+        payload: {
+          v: PROTOCOL_SUPPORT_V1.current,
+          code: "plaintext_business_rejected",
+          detail: `Message type "${message.type}" must be sent inside e2e.message.`,
+          retryable: false,
+        } satisfies ProtocolErrorPayload,
+      });
+    }
     return true;
+  }
+
+  private requestRelayAppDelivery(
+    relayContextId: string,
+    message: RelayAppDeliveryMessage,
+  ): void {
+    if (!this.transport) {
+      this.logger.warn("cannot request relay app delivery without transport", {
+        relay_context_id: relayContextId,
+        message_type: message.type,
+      });
+      return;
+    }
+    this.transport.send(
+      createMessage<RelayAppDeliverPayload>(
+        "relay.app.deliver",
+        {
+          relay_context_id: relayContextId,
+          message,
+        },
+        { device_id: this.config.deviceId },
+      ),
+    );
   }
 
   private recordInboundBusiness(

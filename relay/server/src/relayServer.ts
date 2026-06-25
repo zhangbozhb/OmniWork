@@ -25,6 +25,7 @@ import {
   type MessageEnvelope,
   type MobileConnectPayload,
   type ProtocolErrorPayload,
+  type RelayAppDeliverPayload,
 } from "@omniwork/protocol-ts";
 
 import type { RelayServerConfig } from "./config.ts";
@@ -39,8 +40,20 @@ import type {
   RelayAppInfo,
   RelayConnection,
   RelayEndpoint,
+  RelayRoutedAppMessage,
   RelaySocket,
 } from "./relayTypes.ts";
+
+// Relay keeps App request routing context only for immediate Agent control
+// responses, not as a request queue. Keep the relay-issued handle short-lived.
+const APP_DELIVERY_CONTEXT_TTL_MS = 16_000;
+
+interface AppDeliveryContext {
+  deviceId: string;
+  agentConnectionId: string;
+  appConnectionId: string;
+  expiresAt: number;
+}
 
 export class RelayServer {
   private readonly config: RelayServerConfig;
@@ -48,6 +61,7 @@ export class RelayServer {
   private readonly agentsByDevice = new Map<string, RelayConnection>();
   private readonly pendingAuth = new Map<string, PendingAuth>();
   private readonly mobilesByDevice = new Map<string, Set<RelayConnection>>();
+  private readonly appDeliveryContexts = new Map<string, AppDeliveryContext>();
   private readonly admin: RelayAdminController;
   private readonly e2e: RelayE2EController;
   private readonly authLimiter: TokenBucketLimiter;
@@ -303,6 +317,12 @@ export class RelayServer {
           message as MessageEnvelope<AppNetworkChangedPayload>,
         );
         break;
+      case "relay.app.deliver":
+        this.handleRelayAppDeliver(
+          connection,
+          message as MessageEnvelope<RelayAppDeliverPayload>,
+        );
+        break;
       case "e2e.handshake.init":
         this.e2e.handleHandshakeInit(
           connection,
@@ -345,15 +365,6 @@ export class RelayServer {
       case "tunnel.upgrade.candidate":
       case "tunnel.upgrade.committed":
       case "tunnel.upgrade.downgrade":
-        // P2P upgrade 信令是 Relay 控制面消息，不是业务明文 payload。E2E
-        // required 模式下只要求 App-Agent E2E pair 已就绪，然后允许 Relay 透传。
-        if (
-          this.e2e.businessSecurityModeFor(connection) === "e2e_required" &&
-          !this.e2e.isPairReady(connection)
-        ) {
-          this.rejectInvalidState(connection, message.type);
-          return;
-        }
         logUpgradeEvent({
           event: message.type,
           device_id: connection.deviceId,
@@ -375,13 +386,6 @@ export class RelayServer {
         this.routeMessage(connection, message);
         break;
       default:
-        if (
-          isPlaintextBusinessMessage(message.type) &&
-          this.e2e.shouldRejectPlaintextBusiness(connection)
-        ) {
-          this.e2e.rejectPlaintextBusiness(connection, message.type);
-          return;
-        }
         this.routeMessage(connection, message);
         break;
     }
@@ -653,14 +657,6 @@ export class RelayServer {
     connection: RelayConnection,
     message: MessageEnvelope,
   ): void {
-    if (
-      isPlaintextBusinessMessage(message.type) &&
-      this.e2e.shouldRejectPlaintextBusiness(connection)
-    ) {
-      this.e2e.rejectPlaintextBusiness(connection, message.type);
-      return;
-    }
-
     if (connection.role === "mobile") {
       if (!connection.authenticated || !connection.deviceId) {
         this.send(
@@ -680,10 +676,18 @@ export class RelayServer {
 
       const agent = this.agentsByDevice.get(connection.deviceId);
       if (agent) {
-        this.send(agent, {
-          ...message,
-          app_connection_id: connection.id,
+        const relayContextId = this.rememberAppDeliveryContext({
+          deviceId: connection.deviceId,
+          agentConnectionId: agent.id,
+          appConnectionId: connection.id,
         });
+        const routedMessage: RelayRoutedAppMessage = {
+          ...message,
+          device_id: connection.deviceId,
+          app_connection_id: connection.id,
+          relay_context_id: relayContextId,
+        };
+        this.send(agent, routedMessage);
       }
       return;
     }
@@ -702,6 +706,97 @@ export class RelayServer {
       }
       for (const mobile of mobiles) {
         this.send(mobile, message);
+      }
+    }
+  }
+
+  private handleRelayAppDeliver(
+    connection: RelayConnection,
+    message: MessageEnvelope<RelayAppDeliverPayload>,
+  ): void {
+    if (connection.role !== "agent" || !connection.deviceId) {
+      this.rejectInvalidState(connection, message.type);
+      return;
+    }
+
+    const context = this.takeAppDeliveryContext(
+      message.payload.relay_context_id,
+    );
+    if (
+      !context ||
+      context.deviceId !== connection.deviceId ||
+      context.agentConnectionId !== connection.id
+    ) {
+      this.sendProtocolError(
+        connection,
+        "route_not_found",
+        `No active App delivery context for "${message.payload.relay_context_id}".`,
+        false,
+      );
+      return;
+    }
+
+    const mobile = this.connections.get(context.appConnectionId);
+    if (
+      mobile?.role !== "mobile" ||
+      mobile.deviceId !== connection.deviceId ||
+      !mobile.authenticated
+    ) {
+      this.sendProtocolError(
+        connection,
+        "route_not_found",
+        `App delivery context "${message.payload.relay_context_id}" is no longer routable.`,
+        false,
+      );
+      return;
+    }
+
+    const delivery = message.payload.message;
+    this.send(
+      mobile,
+      createMessage(delivery.type, delivery.payload, {
+        id: delivery.id,
+        device_id: connection.deviceId,
+        session_id: delivery.session_id,
+        surface_id: delivery.surface_id,
+        seq: delivery.seq,
+        app_connection_id: mobile.id,
+      }),
+    );
+  }
+
+  private rememberAppDeliveryContext(input: {
+    deviceId: string;
+    agentConnectionId: string;
+    appConnectionId: string;
+  }): string {
+    this.cleanupExpiredAppDeliveryContexts();
+    const relayContextId = `relay_ctx_${randomUUID()}`;
+    this.appDeliveryContexts.set(relayContextId, {
+      deviceId: input.deviceId,
+      agentConnectionId: input.agentConnectionId,
+      appConnectionId: input.appConnectionId,
+      expiresAt: Date.now() + APP_DELIVERY_CONTEXT_TTL_MS,
+    });
+    return relayContextId;
+  }
+
+  private takeAppDeliveryContext(
+    relayContextId: string,
+  ): AppDeliveryContext | null {
+    this.cleanupExpiredAppDeliveryContexts();
+    const context = this.appDeliveryContexts.get(relayContextId);
+    if (!context) {
+      return null;
+    }
+    this.appDeliveryContexts.delete(relayContextId);
+    return context;
+  }
+
+  private cleanupExpiredAppDeliveryContexts(now = Date.now()): void {
+    for (const [relayContextId, context] of this.appDeliveryContexts) {
+      if (context.expiresAt <= now) {
+        this.appDeliveryContexts.delete(relayContextId);
       }
     }
   }
@@ -804,17 +899,6 @@ function appInfoToPayload(appInfo: RelayAppInfo): AppInfoPayload {
     version: appInfo.version,
     capabilities: appInfo.capabilities,
   };
-}
-
-function isPlaintextBusinessMessage(type: string): boolean {
-  return (
-    type.startsWith("session.") ||
-    type.startsWith("terminal.") ||
-    type.startsWith("workspace.") ||
-    type.startsWith("files.") ||
-    type.startsWith("git.") ||
-    type.startsWith("codex.")
-  );
 }
 
 /**

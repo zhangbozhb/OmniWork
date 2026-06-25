@@ -2,6 +2,7 @@ import type {
   AppInfoPayload,
   BusinessSecurityMode,
   E2ESupport,
+  MessageEnvelope,
   TransportPreference,
 } from "@omniwork/protocol-ts";
 
@@ -23,7 +24,7 @@ export interface RelaySocket {
   close(code?: number, reason?: string): void;
 }
 
-export interface RelayConnection {
+export interface RelayConnectionBase {
   id: string;
   endpoint: RelayEndpoint;
   role: RelayRole;
@@ -52,6 +53,61 @@ export interface RelayConnection {
   e2eSessionId?: string;
   agentE2EPeers?: Map<string, AgentE2EPeerState>;
 }
+
+export interface UnboundRelayConnection extends RelayConnectionBase {
+  role: "unknown";
+  state: "socket_connected" | "closed";
+}
+
+export interface RegisteredAgentRelayConnection extends RelayConnectionBase {
+  endpoint: "agent";
+  role: "agent";
+  state: "registered_agent" | "closed";
+  deviceId: string;
+  agentInstanceId: string;
+  keyId: string;
+  businessSecurityMode: BusinessSecurityMode;
+  e2e: E2ESupport;
+  authenticated: true;
+  authState: "verified";
+  agentE2EPeers?: Map<string, AgentE2EPeerState>;
+}
+
+export interface MobileRelayConnection extends RelayConnectionBase {
+  endpoint: "mobile";
+  role: "mobile";
+  state:
+    | "mobile_connected"
+    | "relay_pairing_verified"
+    | "e2e_handshaking"
+    | "e2e_ready"
+    | "closed";
+  deviceId?: string;
+  keyId?: string;
+  appInfo?: RelayAppInfo;
+  transportPreference?: TransportPreference;
+}
+
+export interface AuthenticatedMobileRelayConnection extends MobileRelayConnection {
+  state: "relay_pairing_verified" | "e2e_handshaking" | "e2e_ready";
+  deviceId: string;
+  keyId: string;
+  appInfo: RelayAppInfo;
+  authenticated: true;
+  authState: "verified";
+}
+
+export type RelayConnection =
+  | UnboundRelayConnection
+  | RegisteredAgentRelayConnection
+  | MobileRelayConnection;
+
+export type RelayRoutedAppMessage<TPayload = unknown> =
+  MessageEnvelope<TPayload> & {
+    device_id: string;
+    app_connection_id: string;
+    relay_context_id: string;
+  };
 
 export interface AgentE2EPeerState {
   handshakeId: string;

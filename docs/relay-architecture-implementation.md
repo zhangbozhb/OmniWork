@@ -53,7 +53,8 @@ App <-- ws/wss --> Relay <-- ws/wss --> Agent
 - App 通过 `mobile.connect` 进入 Relay 接入流程。
 - Agent 通过 `agent.hello` 注册 `device_id`、`agent_instance_id`、`key_id`、协议版本和能力。
 - `auth.proof` 只用于 Relay 接入校验和限流，不代表业务通道可用。
-- 业务消息必须在 App-Agent E2E ready 后通过 `e2e.message` 传输。
+- 默认业务消息由 App/Agent 在 E2E ready 后通过 `e2e.message` 传输；
+  Relay 不解析业务 payload，也不维护业务明文策略。
 - 同一个 Agent 支持多个 App 同时连接；每个 App 连接使用 Relay 分配的
   `app_connection_id` 建立独立 E2E session。
 
@@ -114,7 +115,11 @@ closed
 - `e2e.message` 只允许在 `e2e_ready` 状态转发。
 - E2E 握手、ready、message 都按 `app_connection_id` 绑定和定向路由。
 - Agent 侧同一 WebSocket 连接上可以维护多个 App 的 E2E peer state。
-- 外层明文业务消息会被拒绝，并返回 `protocol.error/plaintext_business_rejected`。
+- 外层业务 envelope 的加密策略由 App/Agent 负责；Relay 仅按认证连接与
+  `app_connection_id` 路由。
+- Agent 如需让 Relay 回源投递错误，使用 `relay.app.deliver` 提交 Relay
+  颁发的 `relay_context_id` 与 `protocol.error` 内容；Relay 根据此前转发 App
+  请求时保存的上下文决定目标 App，并绑定到接收原请求的 Agent 连接。
 - P2P 自动 propose 已恢复为 per App connection 触发；Relay 只对已 E2E ready 的 App 连接下发 propose。
 
 ### 3.4 文档清理

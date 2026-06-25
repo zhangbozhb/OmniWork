@@ -119,7 +119,7 @@ export function formatStrictForceCloseMessage(reason: string): string {
   }
   switch (reason) {
     case "peer_unavailable":
-      return "Direct connection unavailable. Check that the App and Mac Agent are reachable and try again.";
+      return "Direct connection unavailable. Check that the App and computer are reachable and try again.";
     case "create_offer_failed":
     case "handle_offer_failed":
     case "handle_answer_failed":

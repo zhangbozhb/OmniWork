@@ -438,3 +438,113 @@ function createServer(): RelayServer {
   assert.equal(agentSocket.sent[0]?.type, "tunnel.upgrade.offer");
   assert.equal(agentSocket.sent[0]?.app_connection_id, appConnectionId);
 }
+
+// Agent 请求 Relay 回源投递时只能提供内容；目标 App 由 Relay 根据此前转发的请求决定。
+{
+  const server = createServer();
+  const agent = createAgentConnection("conn_agent_delivery", "device_delivery");
+  const mobile = createMobileConnection(
+    "conn_mobile_delivery",
+    "device_delivery",
+  );
+  const internals = server as unknown as {
+    connections: Map<string, unknown>;
+    agentsByDevice: Map<string, unknown>;
+    handleRawMessage(connection: unknown, raw: string): void;
+  };
+  internals.connections.set(agent.id, agent);
+  internals.connections.set(mobile.id, mobile);
+  internals.agentsByDevice.set(agent.deviceId, agent);
+
+  const request = createMessage(
+    "terminal.input",
+    { kind: "text", data: "pwd\n" },
+    { id: "msg_plaintext_request", device_id: agent.deviceId },
+  );
+  internals.handleRawMessage(mobile, JSON.stringify(request));
+
+  assert.equal(agent.socket.sent[0]?.type, "terminal.input");
+  assert.equal(agent.socket.sent[0]?.app_connection_id, mobile.id);
+  const relayContextId = agent.socket.sent[0]?.relay_context_id;
+  assert.equal(typeof relayContextId, "string");
+
+  const deliver = createMessage(
+    "relay.app.deliver",
+    {
+      relay_context_id: relayContextId,
+      message: {
+        type: "protocol.error",
+        payload: {
+          v: PROTOCOL_SUPPORT_V1.current,
+          code: "plaintext_business_rejected",
+          detail: "plaintext rejected",
+          retryable: false,
+        },
+      },
+    },
+    { device_id: agent.deviceId },
+  );
+  internals.handleRawMessage(agent, JSON.stringify(deliver));
+
+  assert.equal(mobile.socket.sent.length, 1);
+  assert.equal(mobile.socket.sent[0]?.type, "protocol.error");
+  assert.equal(mobile.socket.sent[0]?.app_connection_id, mobile.id);
+  assert.equal(
+    (mobile.socket.sent[0]?.payload as { code?: string }).code,
+    "plaintext_business_rejected",
+  );
+}
+
+// Relay 回源句柄绑定到接收原始 App 请求的 Agent 连接，其他 Agent 不能消费。
+{
+  const server = createServer();
+  const agent = createAgentConnection("conn_agent_owner", "device_owner");
+  const otherAgent = createAgentConnection(
+    "conn_agent_other",
+    "device_owner",
+  );
+  const mobile = createMobileConnection("conn_mobile_owner", "device_owner");
+  const internals = server as unknown as {
+    connections: Map<string, unknown>;
+    agentsByDevice: Map<string, unknown>;
+    handleRawMessage(connection: unknown, raw: string): void;
+  };
+  internals.connections.set(agent.id, agent);
+  internals.connections.set(otherAgent.id, otherAgent);
+  internals.connections.set(mobile.id, mobile);
+  internals.agentsByDevice.set(agent.deviceId, agent);
+
+  const request = createMessage(
+    "terminal.input",
+    { kind: "text", data: "pwd\n" },
+    { id: "msg_plaintext_owner", device_id: agent.deviceId },
+  );
+  internals.handleRawMessage(mobile, JSON.stringify(request));
+  const relayContextId = agent.socket.sent[0]?.relay_context_id;
+  assert.equal(typeof relayContextId, "string");
+
+  const deliver = createMessage(
+    "relay.app.deliver",
+    {
+      relay_context_id: relayContextId,
+      message: {
+        type: "protocol.error",
+        payload: {
+          v: PROTOCOL_SUPPORT_V1.current,
+          code: "plaintext_business_rejected",
+          retryable: false,
+        },
+      },
+    },
+    { device_id: otherAgent.deviceId },
+  );
+  internals.handleRawMessage(otherAgent, JSON.stringify(deliver));
+
+  assert.equal(mobile.socket.sent.length, 0);
+  assert.equal(otherAgent.socket.sent.length, 1);
+  assert.equal(otherAgent.socket.sent[0]?.type, "protocol.error");
+  assert.equal(
+    (otherAgent.socket.sent[0]?.payload as { code?: string }).code,
+    "route_not_found",
+  );
+}

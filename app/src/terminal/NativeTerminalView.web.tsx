@@ -341,7 +341,7 @@ export function NativeTerminalView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 接收新 frame：mac agent 下发的是整屏快照，先 reset 再 write 覆盖，避免历史残留。
+  // 接收新 frame：电脑端下发的是整屏快照，先 reset 再 write 覆盖，避免历史残留。
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) {

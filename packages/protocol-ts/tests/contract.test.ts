@@ -105,6 +105,44 @@ describe("messageEnvelopeSchema", () => {
     });
     assert.equal(parseMessageEnvelope(envelope), null);
   });
+
+  it("validates relay app delivery without app target in content", () => {
+    const envelope = createMessage("relay.app.deliver", {
+      relay_context_id: "relay_ctx_1",
+      message: {
+        type: "protocol.error",
+        payload: {
+          v: PROTOCOL_VERSION,
+          code: "plaintext_business_rejected",
+          retryable: false,
+        },
+      },
+    });
+    assert.equal(parseMessageEnvelope(envelope)?.type, "relay.app.deliver");
+
+    const targeted = createMessage("relay.app.deliver", {
+      relay_context_id: "relay_ctx_1",
+      message: {
+        type: "protocol.error",
+        app_connection_id: "conn_app_1",
+        payload: {
+          v: PROTOCOL_VERSION,
+          code: "plaintext_business_rejected",
+          retryable: false,
+        },
+      },
+    });
+    assert.equal(parseMessageEnvelope(targeted), null);
+
+      const nonErrorDelivery = createMessage("relay.app.deliver", {
+        relay_context_id: "relay_ctx_1",
+        message: {
+          type: "terminal.frame",
+          payload: { data: "not allowed" },
+        },
+      });
+      assert.equal(parseMessageEnvelope(nonErrorDelivery), null);
+  });
 });
 
 describe("default terminal providers", () => {
@@ -324,7 +362,9 @@ describe("agent message payload schemas", () => {
       created_at: new Date().toISOString(),
     };
 
-    assert.ok(parseMessageEnvelope(createMessage("agent.message", agentMessage)));
+    assert.ok(
+      parseMessageEnvelope(createMessage("agent.message", agentMessage)),
+    );
     assert.ok(
       parseMessageEnvelope(
         createMessage("agent.message.list", {
@@ -367,19 +407,21 @@ describe("agent message payload schemas", () => {
 
 describe("app client metadata payload schemas", () => {
   it("accepts mobile connect and connection heartbeat payloads", () => {
-    parseMessageEnvelope(createMessage("mobile.connect", {
-      v: PROTOCOL_VERSION,
-      device_id: "device-1",
-      key_id: "key-1",
-      app_info: {
-        instance_id: "app-1",
-        runtime_id: "runtime-1",
-        name: "OmniWork",
-        platform: "ios",
-      },
-      protocol: PROTOCOL_SUPPORT_V1,
-      e2e: E2E_SUPPORT_V1,
-    }));
+    parseMessageEnvelope(
+      createMessage("mobile.connect", {
+        v: PROTOCOL_VERSION,
+        device_id: "device-1",
+        key_id: "key-1",
+        app_info: {
+          instance_id: "app-1",
+          runtime_id: "runtime-1",
+          name: "OmniWork",
+          platform: "ios",
+        },
+        protocol: PROTOCOL_SUPPORT_V1,
+        e2e: E2E_SUPPORT_V1,
+      }),
+    );
     appConnectionHeartbeatPayloadSchema.parse({
       sent_at: new Date().toISOString(),
       seq: 1,
@@ -466,8 +508,11 @@ describe("pairing link round-trip", () => {
   });
 
   it("decodes payload without optional display_name and key_id", () => {
-    const { display_name: _displayName, key_id: _keyId, ...minimal } =
-      samplePayload;
+    const {
+      display_name: _displayName,
+      key_id: _keyId,
+      ...minimal
+    } = samplePayload;
     const link = createPairingLink(minimal);
     const parsed = parsePairingLink(link);
     assert.equal(parsed?.display_name, undefined);
@@ -614,17 +659,7 @@ describe("transport_preference", () => {
   });
 
   it("rejects unknown / non-string values", () => {
-    for (const value of [
-      "AUTO",
-      "p2p",
-      "",
-      undefined,
-      null,
-      0,
-      true,
-      {},
-      [],
-    ]) {
+    for (const value of ["AUTO", "p2p", "", undefined, null, 0, true, {}, []]) {
       assert.equal(isTransportPreference(value), false);
     }
   });

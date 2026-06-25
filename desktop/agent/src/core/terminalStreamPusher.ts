@@ -69,7 +69,7 @@ export class TerminalStreamPusher {
     if (!this.options.enabled) {
       this.sendError(appConnectionId, sessionId, surfaceId, {
         code: "TERMINAL_STREAM_DISABLED",
-        message: "Terminal byte stream is disabled on this Mac Agent.",
+        message: "Terminal byte stream is disabled on this Desktop Agent.",
       });
       return;
     }
@@ -237,16 +237,23 @@ export class TerminalStreamPusher {
   ): void {
     this.options.sendToAppByConnectionId(
       appConnectionId,
-      createMessage<TerminalStreamErrorPayload>("terminal.stream.error", payload, {
-        device_id: this.options.deviceId,
-        session_id: sessionId,
-        surface_id: surfaceId,
-      }),
+      createMessage<TerminalStreamErrorPayload>(
+        "terminal.stream.error",
+        payload,
+        {
+          device_id: this.options.deviceId,
+          session_id: sessionId,
+          surface_id: surfaceId,
+        },
+      ),
       "control",
     );
   }
 
-  private async cleanupState(state: StreamState, reason: string): Promise<void> {
+  private async cleanupState(
+    state: StreamState,
+    reason: string,
+  ): Promise<void> {
     if (this.streams.get(state.sessionId) === state) {
       this.streams.delete(state.sessionId);
     }

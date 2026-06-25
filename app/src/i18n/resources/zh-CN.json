@@ -2,7 +2,7 @@
   "app": {
     "titles": {
       "editDevice": "编辑设备",
-      "pairMac": "配对 Mac",
+      "pairDesktop": "配置主机",
       "terminal": "终端",
       "workspaces": "工作区",
       "connectionMode": "连接模式",
@@ -28,10 +28,11 @@
     },
     "errors": {
       "unknown": "未知错误",
-      "terminalError": "Mac Agent 返回终端错误。",
+      "terminalError": "连接电脑返回终端错误。",
       "failedCreateSession": "创建会话失败",
       "sessionUnavailable": "会话已不可用",
-      "macAgentError": "Mac Agent 错误",
+      "hostError": "电脑端错误",
+      "protocolError": "连接电脑返回协议错误。",
       "readOnlySession": "此会话当前不可交互。"
     }
   },
@@ -85,13 +86,13 @@
     "linkedDevices": "已连接 {{count}} 台设备",
     "linkedDevices_plural": "已连接 {{count}} 台设备",
     "emptyTitle": "暂无连接设备",
-    "emptyText": "添加一个 Mac Agent 连接即可开始使用 OmniWork。",
+    "emptyText": "添加一个主机连接即可开始使用 OmniWork。",
     "addLink": "添加连接",
     "moreActions": "更多操作",
     "share": {
       "action": "分享二维码",
       "title": "分享 {{deviceName}}",
-      "description": "在另一台 OmniWork App 上扫描此二维码，即可导入同一个 Mac Agent 连接。",
+      "description": "在另一台 OmniWork App 上扫描此二维码，即可导入同一个主机连接。",
       "warning": "任何获得此二维码的人都可以导入配对密钥。请只分享给可信设备。",
       "systemShare": "分享链接"
     },
@@ -106,12 +107,12 @@
   },
   "pairing": {
     "submit": {
-      "pairMac": "配对 Mac",
+      "pairDesktop": "配置主机",
       "saving": "保存中..."
     },
     "validation": {
       "invalidKeyTitle": "密钥无效",
-      "invalidKeyMessage": "请输入 Mac Agent 生成的 32 位字符密钥。",
+      "invalidKeyMessage": "请输入电脑端生成的 32 位字符密钥。",
       "missingDetailsTitle": "连接信息缺失",
       "missingDetailsMessage": "Relay URL 和设备 ID 必填。",
       "invalidQrTitle": "二维码无效",
@@ -119,15 +120,15 @@
     },
     "scan": {
       "recommended": "推荐",
-      "title": "扫描 Mac Agent 二维码",
-      "text": "扫描 Mac Agent 终端中打印的二维码。OmniWork 会自动导入 Relay URL、设备 ID 和临时密钥。",
-      "accessibility": "扫描 Mac Agent 二维码",
+      "title": "扫描主机二维码",
+      "text": "扫描电脑端显示的二维码。OmniWork 会自动导入 Relay URL、设备 ID 和临时密钥。",
+      "accessibility": "扫描主机二维码",
       "button": "在 App 中扫描"
     },
     "web": {
       "eyebrow": "Web 配对",
-      "title": "粘贴 Mac Agent 信息",
-      "text": "Web 以单页应用运行，不使用摄像头扫码。请粘贴 Mac Agent 信息，或打开加密分享链接并输入 4 位密码。"
+      "title": "粘贴主机连接信息",
+      "text": "Web 以单页应用运行，不使用摄像头扫码。请粘贴主机连接信息，或打开加密分享链接并输入 4 位密码。"
     },
     "encrypted": {
       "title": "加密配对链接",
@@ -226,15 +227,15 @@
       "confirm": "清除并重置",
       "authTitle": "验证设备所有者",
       "authSubtitle": "重置 OmniWork 手势密码",
-      "authDescription": "验证通过后会清除已保存的 Mac 配对信息。",
+      "authDescription": "验证通过后会清除已保存的主机配对信息。",
       "unavailableTitle": "无法验证设备所有者",
       "unavailableDescription": "当前设备不支持系统认证。为保护已保存的连接密钥，请卸载并重新安装 App 后重新配对。",
       "cancelledTitle": "未重置",
       "cancelledDescription": "未完成设备认证，手势密码和配对信息已保留。",
       "failedTitle": "重置失败",
       "successTitle": "已重置",
-      "successDescription": "请重新配对 Mac，并按需重新设置手势密码。",
-      "pairingMessage": "请重新扫码或输入 Mac Agent 配对信息。"
+      "successDescription": "请重新配置主机，并按需重新设置手势密码。",
+      "pairingMessage": "请重新扫码或输入主机配对信息。"
     },
     "unavailable": {
       "title": "安全配置暂不可用",
@@ -263,7 +264,7 @@
   },
   "connectionPreference": {
     "title": "连接模式",
-    "description": "选择 OmniWork 连接 Mac Agent 的方式。Direct 表示直连建立后，会话载荷数据不再经过 Relay。网络阻止直连时 Relay 可辅助连接；该设置会保存在当前设备，并立即重连生效。",
+    "description": "选择 OmniWork 连接电脑的方式。Direct 表示直连建立后，会话载荷数据不再经过 Relay。网络阻止直连时 Relay 可辅助连接；该设置会保存在当前设备，并立即重连生效。",
     "options": {
       "auto": {
         "label": "自动",
@@ -282,7 +283,7 @@
   "workspaces": {
     "title": "工作区",
     "meta": "{{workspaceCount}} 个工作区 · {{sessionCount}} 个会话",
-    "empty": "这个 Mac Agent 暂无工作区。",
+    "empty": "这台电脑暂无工作区。",
     "backToWorkspaces": "返回工作区",
     "backToDevices": "返回设备",
     "refreshSessions": "刷新会话",
@@ -483,10 +484,10 @@
     "enterTerminalInput": "进入终端输入模式",
     "exitTerminalInput": "退出终端输入模式",
     "agentStatus": {
-      "connected": "Agent 已连接",
-      "connecting": "Agent 连接中",
-      "disconnected": "Agent 已断开",
-      "idle": "Agent 空闲"
+      "connected": "电脑已连接",
+      "connecting": "电脑连接中",
+      "disconnected": "电脑已断开",
+      "idle": "电脑空闲"
     }
   }
 }

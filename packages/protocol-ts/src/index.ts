@@ -52,6 +52,7 @@ export type MessageType =
   | "e2e.rekey.ready"
   | "e2e.close"
   | "protocol.error"
+  | "relay.app.deliver"
   | "device.list"
   | "session.list"
   | "session.create"
@@ -111,6 +112,7 @@ export interface MessageEnvelope<TPayload = unknown> {
   session_id?: string;
   surface_id?: string;
   app_connection_id?: string;
+  relay_context_id?: string;
   seq?: number;
   ts: string;
   payload: TPayload;
@@ -339,6 +341,22 @@ export interface ProtocolErrorPayload {
   code: ProtocolErrorCode;
   detail?: string;
   retryable: boolean;
+}
+
+export type RelayAppDeliveryMessageType = "protocol.error";
+
+export interface RelayAppDeliveryMessage {
+  id?: string;
+  type: RelayAppDeliveryMessageType;
+  session_id?: string;
+  surface_id?: string;
+  seq?: number;
+  payload: ProtocolErrorPayload;
+}
+
+export interface RelayAppDeliverPayload {
+  relay_context_id: string;
+  message: RelayAppDeliveryMessage;
 }
 
 export interface InnerEnvelope<TPayload = unknown> {

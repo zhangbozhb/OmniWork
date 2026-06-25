@@ -13,10 +13,7 @@ import {
 } from "react-native";
 import { parseEncryptedPairingLink } from "@omniwork/protocol-ts";
 import { Camera as CameraKitCamera, CameraType } from "react-native-camera-kit";
-import {
-  SafeAreaProvider,
-  SafeAreaView,
-} from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { type PairingConfig } from "../../features/auth/types";
 import { decryptPairingConfig } from "../../features/auth/pairingConfig";
@@ -46,7 +43,7 @@ export function PairingQrScannerModal({
   const [cameraPermissionGranted, setCameraPermissionGranted] = useState(false);
   const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
   const [scanMessage, setScanMessage] = useState(
-    "Point the camera at the Mac Agent QR code.",
+    "Point the camera at the Desktop QR code.",
   );
   const [pendingEncryptedLink, setPendingEncryptedLink] = useState<
     string | null
@@ -62,7 +59,7 @@ export function PairingQrScannerModal({
       setPassword("");
       setPasswordError(null);
       setDecrypting(false);
-      setScanMessage("Point the camera at the Mac Agent QR code.");
+      setScanMessage("Point the camera at the Desktop QR code.");
       return;
     }
 
@@ -91,32 +88,29 @@ export function PairingQrScannerModal({
     return () => clearTimeout(focusTimer);
   }, [pendingEncryptedLink]);
 
-  const handleCodeRead = useCallback(
-    (event: CameraKitReadCodeEvent) => {
-      if (scanLockedRef.current) {
-        return;
-      }
+  const handleCodeRead = useCallback((event: CameraKitReadCodeEvent) => {
+    if (scanLockedRef.current) {
+      return;
+    }
 
-      const scannedValue = event.nativeEvent.codeStringValue?.trim();
-      if (!scannedValue) {
-        return;
-      }
+    const scannedValue = event.nativeEvent.codeStringValue?.trim();
+    if (!scannedValue) {
+      return;
+    }
 
-      const encrypted = parseEncryptedPairingLink(scannedValue);
-      if (!encrypted) {
-        setScanMessage("This is not an encrypted OmniWork pairing QR code.");
-        return;
-      }
+    const encrypted = parseEncryptedPairingLink(scannedValue);
+    if (!encrypted) {
+      setScanMessage("This is not an encrypted OmniWork pairing QR code.");
+      return;
+    }
 
-      scanLockedRef.current = true;
-      setPendingEncryptedLink(scannedValue);
-      setPassword("");
-      setPasswordError(null);
-      setDecrypting(false);
-      setScanMessage("Encrypted QR code detected. Enter its 4-digit password.");
-    },
-    [],
-  );
+    scanLockedRef.current = true;
+    setPendingEncryptedLink(scannedValue);
+    setPassword("");
+    setPasswordError(null);
+    setDecrypting(false);
+    setScanMessage("Encrypted QR code detected. Enter its 4-digit password.");
+  }, []);
 
   const handleDecrypt = useCallback(() => {
     if (decrypting) {
@@ -183,141 +177,141 @@ export function PairingQrScannerModal({
             behavior={Platform.OS === "ios" ? "padding" : undefined}
             style={styles.scannerScreen}
           >
-          <View style={styles.scannerHeader}>
-            <View style={styles.scannerHeaderText}>
-              <Text style={styles.scannerTitle}>
-                {pendingEncryptedLink
-                  ? "Enter QR Password"
-                  : "Scan Mac Agent QR"}
-              </Text>
-              <Text style={styles.scannerSubtitle}>
-                {pendingEncryptedLink
-                  ? "Use the 4-digit password shown with the QR code."
-                  : "Use the QR code printed in the Agent terminal."}
-              </Text>
-            </View>
-            <Button
-              accessibilityLabel="Close QR scanner"
-              icon="close"
-              iconOnly
-              style={styles.scannerCloseButton}
-              onPress={onClose}
-            >
-              Close
-            </Button>
-          </View>
-
-          {pendingEncryptedLink ? (
-            <View style={styles.passwordStage}>
-              <Pressable
-                accessibilityLabel="Dismiss keyboard"
-                style={styles.passwordDismissArea}
-                onPress={Keyboard.dismiss}
-              />
-              <View style={styles.passwordPanel}>
-                <Text style={styles.passwordTitle}>Enter QR password</Text>
-                <TextInput
-                  ref={passwordInputRef}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  placeholder="0000"
-                  placeholderTextColor="#66727c"
-                  secureTextEntry
-                  style={styles.passwordInput}
-                  value={password}
-                  onChangeText={(value) => {
-                    setPassword(value.replace(/\D/gu, "").slice(0, 4));
-                    setPasswordError(null);
-                  }}
-                />
-                {passwordError ? (
-                  <Text style={styles.passwordError}>{passwordError}</Text>
-                ) : null}
-                <View style={styles.passwordActions}>
-                  <Button
-                    style={styles.passwordActionButton}
-                    onPress={() => {
-                      scanLockedRef.current = false;
-                      Keyboard.dismiss();
-                      setPendingEncryptedLink(null);
-                      setPassword("");
-                      setPasswordError(null);
-                      setDecrypting(false);
-                      setScanMessage(
-                        "Point the camera at the Mac Agent QR code.",
-                      );
-                    }}
-                  >
-                    Scan Again
-                  </Button>
-                  <Button
-                    disabled={decrypting || password.length !== 4}
-                    style={styles.passwordActionButton}
-                    tone="primary"
-                    onPress={handleDecrypt}
-                  >
-                    {decrypting ? "Decrypting..." : "Decrypt"}
-                  </Button>
-                </View>
+            <View style={styles.scannerHeader}>
+              <View style={styles.scannerHeaderText}>
+                <Text style={styles.scannerTitle}>
+                  {pendingEncryptedLink
+                    ? "Enter QR Password"
+                    : "Scan Desktop QR"}
+                </Text>
+                <Text style={styles.scannerSubtitle}>
+                  {pendingEncryptedLink
+                    ? "Use the 4-digit password shown with the QR code."
+                    : "Use the QR code shown on your computer."}
+                </Text>
               </View>
-              <Pressable
-                accessibilityLabel="Dismiss keyboard"
-                style={styles.passwordDismissArea}
-                onPress={Keyboard.dismiss}
-              />
+              <Button
+                accessibilityLabel="Close QR scanner"
+                icon="close"
+                iconOnly
+                style={styles.scannerCloseButton}
+                onPress={onClose}
+              >
+                Close
+              </Button>
             </View>
-          ) : (
-            <View style={styles.cameraPanel}>
-              {cameraPermissionGranted ? (
-                <>
-                  <CameraKitCamera
-                    allowedBarcodeTypes={["qr"]}
-                    cameraType={CameraType.Back}
-                    onReadCode={handleCodeRead}
-                    resizeMode="cover"
-                    scanBarcode
-                    scanThrottleDelay={1500}
-                    showFrame={false}
-                    style={StyleSheet.absoluteFill}
-                    torchMode="off"
-                  />
-                  <View pointerEvents="none" style={styles.scanFrame} />
-                </>
-              ) : (
-                <View style={styles.cameraFallback}>
-                  <Text style={styles.cameraFallbackTitle}>
-                    {cameraPermissionDenied
-                      ? "Camera permission needed"
-                      : "Preparing camera"}
-                  </Text>
-                  <Text style={styles.cameraFallbackText}>
-                    {cameraPermissionDenied
-                      ? "Allow camera access so OmniWork can scan the pairing QR code."
-                      : "Initializing the camera scanner..."}
-                  </Text>
-                  <Button
-                    icon={cameraPermissionDenied ? "qr" : "refresh"}
-                    tone="primary"
-                    onPress={() => {
-                      void requestCameraPermission().then(
-                        ({ granted, blocked }) => {
-                          setCameraPermissionGranted(granted);
-                          setCameraPermissionDenied(blocked || !granted);
-                          if (!granted && blocked) {
-                            void openSystemSettings();
-                          }
-                        },
-                      );
-                    }}
-                  >
-                    {cameraPermissionDenied ? "Allow Camera" : "Retry"}
-                  </Button>
-                </View>
-              )}
-            </View>
-          )}
 
-          <Text style={styles.scannerHint}>{scanMessage}</Text>
+            {pendingEncryptedLink ? (
+              <View style={styles.passwordStage}>
+                <Pressable
+                  accessibilityLabel="Dismiss keyboard"
+                  style={styles.passwordDismissArea}
+                  onPress={Keyboard.dismiss}
+                />
+                <View style={styles.passwordPanel}>
+                  <Text style={styles.passwordTitle}>Enter QR password</Text>
+                  <TextInput
+                    ref={passwordInputRef}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    placeholder="0000"
+                    placeholderTextColor="#66727c"
+                    secureTextEntry
+                    style={styles.passwordInput}
+                    value={password}
+                    onChangeText={(value) => {
+                      setPassword(value.replace(/\D/gu, "").slice(0, 4));
+                      setPasswordError(null);
+                    }}
+                  />
+                  {passwordError ? (
+                    <Text style={styles.passwordError}>{passwordError}</Text>
+                  ) : null}
+                  <View style={styles.passwordActions}>
+                    <Button
+                      style={styles.passwordActionButton}
+                      onPress={() => {
+                        scanLockedRef.current = false;
+                        Keyboard.dismiss();
+                        setPendingEncryptedLink(null);
+                        setPassword("");
+                        setPasswordError(null);
+                        setDecrypting(false);
+                        setScanMessage(
+                          "Point the camera at the Desktop QR code.",
+                        );
+                      }}
+                    >
+                      Scan Again
+                    </Button>
+                    <Button
+                      disabled={decrypting || password.length !== 4}
+                      style={styles.passwordActionButton}
+                      tone="primary"
+                      onPress={handleDecrypt}
+                    >
+                      {decrypting ? "Decrypting..." : "Decrypt"}
+                    </Button>
+                  </View>
+                </View>
+                <Pressable
+                  accessibilityLabel="Dismiss keyboard"
+                  style={styles.passwordDismissArea}
+                  onPress={Keyboard.dismiss}
+                />
+              </View>
+            ) : (
+              <View style={styles.cameraPanel}>
+                {cameraPermissionGranted ? (
+                  <>
+                    <CameraKitCamera
+                      allowedBarcodeTypes={["qr"]}
+                      cameraType={CameraType.Back}
+                      onReadCode={handleCodeRead}
+                      resizeMode="cover"
+                      scanBarcode
+                      scanThrottleDelay={1500}
+                      showFrame={false}
+                      style={StyleSheet.absoluteFill}
+                      torchMode="off"
+                    />
+                    <View pointerEvents="none" style={styles.scanFrame} />
+                  </>
+                ) : (
+                  <View style={styles.cameraFallback}>
+                    <Text style={styles.cameraFallbackTitle}>
+                      {cameraPermissionDenied
+                        ? "Camera permission needed"
+                        : "Preparing camera"}
+                    </Text>
+                    <Text style={styles.cameraFallbackText}>
+                      {cameraPermissionDenied
+                        ? "Allow camera access so OmniWork can scan the pairing QR code."
+                        : "Initializing the camera scanner..."}
+                    </Text>
+                    <Button
+                      icon={cameraPermissionDenied ? "qr" : "refresh"}
+                      tone="primary"
+                      onPress={() => {
+                        void requestCameraPermission().then(
+                          ({ granted, blocked }) => {
+                            setCameraPermissionGranted(granted);
+                            setCameraPermissionDenied(blocked || !granted);
+                            if (!granted && blocked) {
+                              void openSystemSettings();
+                            }
+                          },
+                        );
+                      }}
+                    >
+                      {cameraPermissionDenied ? "Allow Camera" : "Retry"}
+                    </Button>
+                  </View>
+                )}
+              </View>
+            )}
+
+            <Text style={styles.scannerHint}>{scanMessage}</Text>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </SafeAreaProvider>

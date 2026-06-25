@@ -129,11 +129,11 @@ export function PairingScreen({
     <KeyboardAwareScrollView contentContainerStyle={styles.screen}>
       {PAIRING_SCANNER_SUPPORTED ? (
         <Card success style={styles.scanCard}>
-          <Text style={styles.scanEyebrow}>{t("pairing.scan.recommended")}</Text>
-          <Text style={styles.scanTitle}>{t("pairing.scan.title")}</Text>
-          <Text style={styles.scanText}>
-            {t("pairing.scan.text")}
+          <Text style={styles.scanEyebrow}>
+            {t("pairing.scan.recommended")}
           </Text>
+          <Text style={styles.scanTitle}>{t("pairing.scan.title")}</Text>
+          <Text style={styles.scanText}>{t("pairing.scan.text")}</Text>
           <Button
             accessibilityLabel={t("pairing.scan.accessibility")}
             disabled={submitting}
@@ -149,9 +149,7 @@ export function PairingScreen({
         <Card success style={styles.scanCard}>
           <Text style={styles.scanEyebrow}>{t("pairing.web.eyebrow")}</Text>
           <Text style={styles.scanTitle}>{t("pairing.web.title")}</Text>
-          <Text style={styles.scanText}>
-            {t("pairing.web.text")}
-          </Text>
+          <Text style={styles.scanText}>{t("pairing.web.text")}</Text>
         </Card>
       )}
 
@@ -224,7 +222,7 @@ export function PairingScreen({
       >
         {submitting
           ? t("pairing.submit.saving")
-          : (submitLabel ?? t("pairing.submit.pairMac"))}
+          : (submitLabel ?? t("pairing.submit.pairDesktop"))}
       </Button>
       {onCancel ? (
         <Button icon="close" onPress={onCancel}>

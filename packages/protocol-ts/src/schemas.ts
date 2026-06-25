@@ -46,6 +46,7 @@ export const messageTypeSchema = z.enum([
   "e2e.rekey.ready",
   "e2e.close",
   "protocol.error",
+  "relay.app.deliver",
   "device.list",
   "session.list",
   "session.create",
@@ -109,6 +110,7 @@ export const messageEnvelopeSchema = z.object({
   session_id: z.string().min(1).optional(),
   surface_id: z.string().min(1).optional(),
   app_connection_id: z.string().min(1).optional(),
+  relay_context_id: z.string().min(1).optional(),
   seq: z.number().int().nonnegative().optional(),
   ts: isoDateTime,
   payload: z.unknown(),
@@ -362,6 +364,24 @@ export const protocolErrorPayloadSchema = z
     code: protocolErrorCodeSchema,
     detail: z.string().optional(),
     retryable: z.boolean(),
+  })
+  .strict();
+
+export const relayAppDeliveryMessageSchema = z
+  .object({
+    id: messageId.optional(),
+    type: z.literal("protocol.error"),
+    session_id: z.string().min(1).optional(),
+    surface_id: z.string().min(1).optional(),
+    seq: z.number().int().nonnegative().optional(),
+    payload: protocolErrorPayloadSchema,
+  })
+  .strict();
+
+export const relayAppDeliverPayloadSchema = z
+  .object({
+    relay_context_id: messageId,
+    message: relayAppDeliveryMessageSchema,
   })
   .strict();
 
@@ -909,6 +929,7 @@ const payloadSchemaByType = {
   "e2e.message": e2eMessagePayloadSchema,
   "e2e.failed": e2eFailedPayloadSchema,
   "protocol.error": protocolErrorPayloadSchema,
+  "relay.app.deliver": relayAppDeliverPayloadSchema,
   "session.list": z.union([emptyPayloadSchema, sessionListPayloadSchema]),
   "session.create": sessionCreatePayloadSchema,
   "session.rename": sessionRenamePayloadSchema,

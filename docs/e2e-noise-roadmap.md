@@ -53,8 +53,8 @@ MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密
   `plaintext_allowed` Agent。
 - Relay 已新增连接状态：`relay_pairing_verified`、`e2e_handshaking`、
   `e2e_ready`。
-- Relay 对 `e2e_required` Agent 拒绝外层明文业务消息，并返回
-  `protocol.error/plaintext_business_rejected`。
+- Relay 不再按业务消息类型拒绝外层明文 envelope；`e2e_required` 的封装与
+  解封装由 App/Agent 维护。
 - Relay path 已按 `app_connection_id` 定向转发多 App E2E 消息，Agent 响应不再广播给所有 App。
 
 ### Noise 基础库
