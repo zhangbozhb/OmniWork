@@ -142,3 +142,30 @@ test("onBusinessReady fires when E2E peer becomes ready", () => {
 
   assert.equal(readyCount, 1);
 });
+
+test("relay_only does not probe WebRTC for private network hash", async () => {
+  const previous = (
+    globalThis as unknown as { RTCPeerConnection?: unknown }
+  ).RTCPeerConnection;
+  (
+    globalThis as unknown as { RTCPeerConnection?: unknown }
+  ).RTCPeerConnection = class {
+    constructor() {
+      throw new Error("should not probe WebRTC in relay_only mode");
+    }
+  };
+  try {
+    const relaySession = new MobileRelaySession(pairing, {
+      transportPreference: "relay_only",
+    });
+    const internals = relaySession as unknown as {
+      resolvePrivateNetworkHash: () => Promise<string | undefined>;
+    };
+
+    assert.equal(await internals.resolvePrivateNetworkHash(), undefined);
+  } finally {
+    (
+      globalThis as unknown as { RTCPeerConnection?: unknown }
+    ).RTCPeerConnection = previous;
+  }
+});

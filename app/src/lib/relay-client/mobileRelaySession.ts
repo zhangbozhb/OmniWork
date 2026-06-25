@@ -425,7 +425,7 @@ export class MobileRelaySession {
       return this.appInfoCache;
     }
     if (!this.appInfoPromise) {
-      this.appInfoPromise = collectAppPrivateNetworkHash().then(
+      this.appInfoPromise = this.resolvePrivateNetworkHash().then(
         (privateNetworkHash) =>
           createAppInfo(this.appInstanceId, this.appRuntimeId, {
             ...this.options.appMetadata,
@@ -437,6 +437,16 @@ export class MobileRelaySession {
     }
     this.appInfoCache = await this.appInfoPromise;
     return this.appInfoCache;
+  }
+
+  private async resolvePrivateNetworkHash(): Promise<string | undefined> {
+    if (this.options.appMetadata?.privateNetworkHash) {
+      return this.options.appMetadata.privateNetworkHash;
+    }
+    if (this.options.transportPreference === "relay_only") {
+      return undefined;
+    }
+    return collectAppPrivateNetworkHash();
   }
 }
 
@@ -485,13 +495,24 @@ async function collectAppPrivateIps(timeoutMs = 700): Promise<string[]> {
 }
 
 async function collectAppPrivateNetworkHash(): Promise<string | undefined> {
-  const ips = await collectAppPrivateIps();
+  const ips = await collectAppPrivateIpsWithTimeout();
   return createPrivateNetworkHash(ips);
 }
 
 export function createPrivateNetworkHash(ips: string[]): string | undefined {
   const input = ips.sort().join(",");
   return input ? createSha256Hex(input) : undefined;
+}
+
+async function collectAppPrivateIpsWithTimeout(
+  timeoutMs = 500,
+): Promise<string[]> {
+  return Promise.race([
+    collectAppPrivateIps(),
+    new Promise<string[]>((resolve) => {
+      setTimeout(() => resolve([]), timeoutMs);
+    }),
+  ]);
 }
 
 function loadRTCPeerConnection(): any | null {
