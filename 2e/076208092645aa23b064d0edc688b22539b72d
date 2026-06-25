@@ -1,0 +1,37 @@
+app/webpack.config.js
+  s_e4ffb984d9dad0::t_d34e997c95d181 11-13,96-101,116-123,127-131
+  s_f16a7bf368b149::t_314fae4ccc497d 44
+docs/app-installation.md
+  s_e4ffb984d9dad0::t_a5a4ac9cd43a2e 168-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2e076208092645aa23b064d0edc688b22539b72d",
+  "prompts": {},
+  "humans": {
+    "h_f833b9c201e94e": {
+      "author": "zhangbozhb <zhangbozhb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_e4ffb984d9dad0": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a3d335d03f2901c2b76325d",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": null
+    },
+    "s_f16a7bf368b149": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a3d698403f2901c2b76512d",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": null
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
