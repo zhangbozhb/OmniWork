@@ -11,6 +11,7 @@ import {
   isTransportPreference,
   parseMessageEnvelope,
   type AgentHelloPayload,
+  type AppConnectionObservation,
   type AppInfoPayload,
   type AppNetworkChangedPayload,
   type AuthFailedPayload,
@@ -109,7 +110,7 @@ export class RelayServer {
     server.on("upgrade", (request, socket) => {
       const endpoint = parseRelayEndpoint(request);
       const remoteIp = resolveRemoteIp(request, socket as Socket);
-      const activeBan = this.admin.activeIpBan(remoteIp);
+      const activeBan = this.admin.activeIpBan(remoteIp.ip);
       if (activeBan) {
         rejectWebSocketUpgrade(socket as Socket, "ip_banned", 403);
         return;
@@ -124,7 +125,10 @@ export class RelayServer {
 
       const connection = acceptWebSocket(request, socket as Socket);
       if (connection) {
-        this.register(connection, endpoint, remoteIp);
+        this.register(connection, endpoint, {
+          remoteIp: remoteIp.ip,
+          observations: [createRelayObservation(request, remoteIp)],
+        });
       }
     });
 
@@ -231,7 +235,10 @@ export class RelayServer {
   private register(
     socket: RelaySocket,
     endpoint: RelayEndpoint,
-    remoteIp = "unknown",
+    options: {
+      remoteIp?: string;
+      observations?: AppConnectionObservation[];
+    } = {},
   ): void {
     const now = Date.now();
     const connection: RelayConnection = {
@@ -241,7 +248,8 @@ export class RelayServer {
       state: "socket_connected",
       socket,
       authenticated: false,
-      remoteIp,
+      remoteIp: options.remoteIp ?? "unknown",
+      observations: options.observations ?? [],
       connectedAt: now,
       lastSeenAt: now,
       authState: "none",
@@ -593,6 +601,7 @@ export class RelayServer {
           app_info: appInfoToPayload(pending.appInfo),
           proof: message.payload.proof,
           connection_id: connection.id,
+          observations: connection.observations,
         },
         { device_id: pending.deviceId },
       ),
@@ -979,11 +988,8 @@ function appInfoFromMobileConnect(payload: MobileConnectPayload): RelayAppInfo {
   return {
     instanceId: payload.app_info.instance_id,
     runtimeId: payload.app_info.runtime_id,
-    name: payload.app_info.name,
-    deviceName: payload.app_info.device_name,
-    platform: payload.app_info.platform,
-    version: payload.app_info.version,
-    capabilities: payload.app_info.capabilities,
+    device: payload.app_info.device,
+    app: payload.app_info.app,
   };
 }
 
@@ -991,33 +997,65 @@ function appInfoToPayload(appInfo: RelayAppInfo): AppInfoPayload {
   return {
     instance_id: appInfo.instanceId,
     runtime_id: appInfo.runtimeId,
-    name: appInfo.name,
-    device_name: appInfo.deviceName,
-    platform: appInfo.platform,
-    version: appInfo.version,
-    capabilities: appInfo.capabilities,
+    device: appInfo.device,
+    app: appInfo.app,
   };
+}
+
+type RelayIpSource = NonNullable<
+  NonNullable<AppConnectionObservation["network"]>["ip_source"]
+>;
+
+interface ResolvedRemoteIp {
+  ip: string;
+  source: Extract<RelayIpSource, "x_forwarded_for" | "socket_remote_address">;
 }
 
 /**
  * 优先从 X-Forwarded-For 获取真实客户端 IP（在前置 reverse proxy / TLS 终端时），
  * 退化到底层 socket.remoteAddress；空值返回 "unknown" 以保证限流键稳定。
  */
-function resolveRemoteIp(request: IncomingMessage, socket: Socket): string {
+function resolveRemoteIp(
+  request: IncomingMessage,
+  socket: Socket,
+): ResolvedRemoteIp {
   const forwarded = request.headers["x-forwarded-for"];
   if (typeof forwarded === "string" && forwarded.length > 0) {
     const first = forwarded.split(",")[0]?.trim();
     if (first) {
-      return first;
+      return { ip: first, source: "x_forwarded_for" };
     }
   }
   if (Array.isArray(forwarded) && forwarded.length > 0) {
     const first = forwarded[0]?.split(",")[0]?.trim();
     if (first) {
-      return first;
+      return { ip: first, source: "x_forwarded_for" };
     }
   }
-  return socket.remoteAddress ?? "unknown";
+  return {
+    ip: socket.remoteAddress ?? "unknown",
+    source: "socket_remote_address",
+  };
+}
+
+function createRelayObservation(
+  request: IncomingMessage,
+  remoteIp: ResolvedRemoteIp,
+): AppConnectionObservation {
+  const userAgent = request.headers["user-agent"];
+  const normalizedUserAgent =
+    typeof userAgent === "string" ? userAgent.trim() || undefined : undefined;
+  return {
+    source: "relay",
+    observed_at: new Date().toISOString(),
+    network: {
+      remote_ip: remoteIp.ip,
+      ip_source: remoteIp.source,
+    },
+    ...(normalizedUserAgent
+      ? { http: { user_agent: normalizedUserAgent } }
+      : {}),
+  };
 }
 
 function parseRelayEndpoint(request: IncomingMessage): RelayEndpoint | null {

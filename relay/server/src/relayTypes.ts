@@ -1,4 +1,5 @@
 import type {
+  AppConnectionObservation,
   AppInfoPayload,
   BusinessSecurityMode,
   E2ESupport,
@@ -39,6 +40,7 @@ export interface RelayConnectionBase {
   authenticated: boolean;
   /** Remote address used as the secondary key for auth.proof rate limiting. */
   remoteIp: string;
+  observations: AppConnectionObservation[];
   connectedAt: number;
   lastSeenAt: number;
   authState: "none" | "pending" | "verified" | "failed";
@@ -119,11 +121,8 @@ export interface AgentE2EPeerState {
 export interface RelayAppInfo {
   instanceId: AppInfoPayload["instance_id"];
   runtimeId: AppInfoPayload["runtime_id"];
-  name?: string;
-  deviceName?: string;
-  platform?: AppInfoPayload["platform"];
-  version?: string;
-  capabilities?: string[];
+  device?: AppInfoPayload["device"];
+  app?: AppInfoPayload["app"];
 }
 
 export interface PendingAuth {

@@ -7,6 +7,9 @@ export interface AppMetadataOptions {
   platform?: AppClientPlatform;
   version?: string;
   deviceName?: string;
+  os?: string;
+  osVersion?: string;
+  privateNetworkHash?: string;
   capabilities?: string[];
 }
 
@@ -18,11 +21,18 @@ export function createAppInfo(
   return {
     instance_id: instanceId,
     runtime_id: runtimeId,
-    name: options.name ?? appConfig.appName,
-    device_name: options.deviceName,
-    platform: options.platform ?? defaultAppPlatform(),
-    version: options.version ?? appConfig.appVersion,
-    capabilities: options.capabilities,
+    device: {
+      name: options.deviceName,
+      platform: options.platform ?? defaultAppPlatform(),
+      os: options.os,
+      os_version: options.osVersion,
+      private_network_hash: options.privateNetworkHash,
+    },
+    app: {
+      name: options.name ?? appConfig.appName,
+      version: options.version ?? appConfig.appVersion,
+      capabilities: options.capabilities,
+    },
   };
 }
 

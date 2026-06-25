@@ -133,9 +133,8 @@ type TestRelayConnection = {
   appInfo?: {
     instanceId: AppInfoPayload["instance_id"];
     runtimeId: AppInfoPayload["runtime_id"];
-    name?: string;
-    platform?: AppInfoPayload["platform"];
-    version?: string;
+    device?: AppInfoPayload["device"];
+    app?: AppInfoPayload["app"];
   };
   agentE2EPeers?: Map<
     string,
@@ -190,9 +189,13 @@ type TestAgentConnection = TestRelayConnection & {
   const mobile = createMobileConnection("conn_mobile_admin", "device_admin", {
     instanceId: "app-1",
     runtimeId: "runtime-1",
-    name: "OmniWork",
-    platform: "ios",
-    version: "0.1.0",
+    device: {
+      platform: "ios",
+    },
+    app: {
+      name: "OmniWork",
+      version: "0.1.0",
+    },
   });
   const internals = server as unknown as {
     connections: Map<string, unknown>;
@@ -281,7 +284,7 @@ type TestAgentConnection = TestRelayConnection & {
   assert.equal(apps.connection_id, "conn_agent_admin");
   assert.equal(apps.device_id, "device_admin");
   assert.equal(apps.summary.app_count, 1);
-  assert.equal(apps.apps[0]?.app_info?.platform, "ios");
+  assert.equal(apps.apps[0]?.app_info?.device?.platform, "ios");
   assert.equal(apps.apps[0]?.auth_state, "verified");
 }
 

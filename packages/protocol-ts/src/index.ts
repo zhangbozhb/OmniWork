@@ -169,14 +169,25 @@ export type AgentCapability = KnownAgentCapability | (string & {});
 
 export type AppClientPlatform = "ios" | "android" | "web" | "desktop";
 
+export interface AppDeviceInfoPayload {
+  name?: string;
+  platform?: AppClientPlatform;
+  os?: string;
+  os_version?: string;
+  private_network_hash?: string;
+}
+
+export interface AppClientInfoPayload {
+  name?: string;
+  version?: string;
+  capabilities?: string[];
+}
+
 export interface AppInfoPayload {
   instance_id: string;
   runtime_id: string;
-  name?: string;
-  device_name?: string;
-  platform?: AppClientPlatform;
-  version?: string;
-  capabilities?: string[];
+  device?: AppDeviceInfoPayload;
+  app?: AppClientInfoPayload;
 }
 
 export interface MobileConnectPayload {
@@ -384,8 +395,44 @@ export interface AuthProofPayload {
   proof: string;
 }
 
+export type AppConnectionObservationSource = "relay" | "app" | "agent" | "p2p";
+
+export interface AppConnectionObservation {
+  source: AppConnectionObservationSource;
+  observed_at: string;
+  network?: {
+    remote_ip?: string;
+    public_ip?: string;
+    private_network_hash?: string;
+    ip_source?:
+      | "socket_remote_address"
+      | "x_forwarded_for"
+      | "app_reported"
+      | "agent_observed"
+      | "p2p_observed";
+  };
+  http?: {
+    user_agent?: string;
+  };
+  device?: {
+    name?: string;
+    platform?: AppClientPlatform;
+    os?: string;
+    os_version?: string;
+  };
+  app?: {
+    name?: string;
+    version?: string;
+    runtime_id?: string;
+  };
+  transport?: {
+    path?: "relay" | "p2p" | "unknown";
+  };
+}
+
 export interface AuthVerifyPayload extends AuthProofPayload {
   connection_id?: string;
+  observations?: AppConnectionObservation[];
 }
 
 export interface AuthOkPayload {

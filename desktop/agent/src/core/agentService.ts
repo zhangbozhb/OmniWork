@@ -1328,7 +1328,12 @@ export class AgentService {
       );
       return false;
     }
-    this.appConnections.recordMessage(appConnectionId, "in", trustedE2E);
+    this.appConnections.recordMessage(
+      appConnectionId,
+      "in",
+      trustedE2E,
+      estimateEnvelopeBytes(message),
+    );
     return true;
   }
 
@@ -1366,11 +1371,16 @@ export class AgentService {
       this.authReplayCache.remember(authNonceKey);
       if (message.payload.connection_id) {
         this.authenticatedAppConnectionIds.add(message.payload.connection_id);
-        this.appConnections.acceptAuthenticatedConnection({
-          relayConnectionId: message.payload.connection_id,
-          keyId: keyRecord.key_id,
-          appInfo: message.payload.app_info,
-        });
+        const result =
+          this.appConnections.acceptAuthenticatedConnectionDetailed({
+            relayConnectionId: message.payload.connection_id,
+            keyId: keyRecord.key_id,
+            appInfo: message.payload.app_info,
+            observations: message.payload.observations,
+          });
+        if (result.previousRelayConnectionId) {
+          this.detachSupersededAppConnection(result.previousRelayConnectionId);
+        }
       }
       this.send(
         createMessage(
@@ -1397,6 +1407,17 @@ export class AgentService {
         ),
       );
     }
+  }
+
+  private detachSupersededAppConnection(appConnectionId: string): void {
+    this.authenticatedAppConnectionIds.delete(appConnectionId);
+    this.e2ePeers.delete(appConnectionId);
+    this.upgradeCoordinators.get(appConnectionId)?.close();
+    this.upgradeCoordinators.delete(appConnectionId);
+    this.transport?.detachP2pPeer(appConnectionId);
+    this.logger.info("superseded app connection detached", {
+      app_connection_id: appConnectionId,
+    });
   }
 
   private async handleTerminalInput(
@@ -1708,6 +1729,7 @@ export class AgentService {
       getConnections: () => ({
         agent: this.agentInfo(),
         summary: this.appConnections.summary(),
+        devices: this.appConnections.devices(),
         connections: this.appConnections.list(),
       }),
     });
@@ -1936,7 +1958,12 @@ export class AgentService {
     }
     const peer = this.e2ePeers.get(appConnectionId);
     if (this.config.businessSecurityMode === "plaintext_allowed") {
-      this.appConnections.recordMessage(appConnectionId, "out", false);
+      this.appConnections.recordMessage(
+        appConnectionId,
+        "out",
+        false,
+        estimateEnvelopeBytes(message),
+      );
       this.transport.send(
         {
           ...message,
@@ -1954,7 +1981,12 @@ export class AgentService {
       return;
     }
     const encrypted = peer.session.encrypt(messageToInner(message));
-    this.appConnections.recordMessage(appConnectionId, "out", true);
+    this.appConnections.recordMessage(
+      appConnectionId,
+      "out",
+      true,
+      estimateEnvelopeBytes(message),
+    );
     this.transport.send(
       createMessage("e2e.message", encrypted.payload, {
         device_id: this.config.deviceId,
@@ -2000,6 +2032,10 @@ function appConnectionIdFromMessage(
   return typeof payload.app_connection_id === "string"
     ? payload.app_connection_id
     : undefined;
+}
+
+function estimateEnvelopeBytes(message: MessageEnvelope): number {
+  return Buffer.byteLength(JSON.stringify(message), "utf8");
 }
 
 function isCodexTerminalProvider(terminalProvider: {

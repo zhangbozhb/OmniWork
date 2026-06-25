@@ -607,11 +607,8 @@ function appInfoToPayload(info: RelayAppInfo): AppInfoPayload {
   return {
     instance_id: info.instanceId,
     runtime_id: info.runtimeId,
-    name: info.name,
-    device_name: info.deviceName,
-    platform: info.platform,
-    version: info.version,
-    capabilities: info.capabilities,
+    device: info.device,
+    app: info.app,
   };
 }
 

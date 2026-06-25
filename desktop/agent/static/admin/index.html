@@ -152,6 +152,7 @@
 
     .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 18px; align-items: start; }
     .table-card, .detail-panel { border-radius: 24px; overflow: hidden; }
+    .devices-card { margin: 18px 0; }
     .table-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px; border-bottom: 1px solid var(--border); }
     .section-title { font-size: 16px; }
     .muted { color: var(--muted); }
@@ -256,6 +257,22 @@
 
     <section class="metrics" id="metrics" aria-label="Connection summary"></section>
 
+    <section class="table-card glass devices-card">
+      <div class="table-head">
+        <div>
+          <h2 class="section-title">Devices</h2>
+          <div class="muted" id="devices-caption">Waiting for device data...</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Device</th><th>Platform</th><th>Path</th><th>IP</th><th>Connections</th><th>Attempts</th><th>Traffic</th><th>Messages</th><th>Last Seen</th></tr></thead>
+          <tbody id="device-rows"></tbody>
+        </table>
+        <div class="empty hidden" id="devices-empty"><strong>No devices observed</strong>Devices appear after an authenticated App link is verified by the Agent.</div>
+      </div>
+    </section>
+
     <section class="content-grid">
       <div class="table-card glass">
         <div class="table-head">
@@ -273,7 +290,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>App</th><th>State</th><th>Security</th><th>Path</th><th>IP</th><th>Connected</th><th>Last Message</th></tr></thead>
+            <thead><tr><th>App</th><th>State</th><th>Security</th><th>Path</th><th>IP</th><th>Attempts</th><th>Traffic</th><th>Connected</th><th>Last Message</th></tr></thead>
             <tbody id="rows"></tbody>
           </table>
           <div class="empty hidden" id="empty-state"><strong>No app connections observed</strong>Agent is running and waiting for authenticated App traffic. E2E and plaintext connections will appear here.</div>
@@ -325,6 +342,7 @@
       renderTopbar();
       renderHero();
       renderMetrics();
+      renderDevices();
       renderRows();
       renderDetail();
     }
@@ -361,6 +379,7 @@
         badge("e2e", summary.encrypted + " encrypted"),
         badge("relay", summary.relay + " relay"),
         badge("p2p", summary.p2p + " p2p"),
+        badge("mixed", formatBytes(summary.bytes_in + summary.bytes_out) + " traffic"),
       ].join("");
     }
 
@@ -368,10 +387,10 @@
       const summary = connectionSnapshot.summary;
       const items = [
         ["Total", summary.total, "Observed connections", ""],
+        ["Attempts", summary.connection_attempts || 0, "logical reconnects", "trusted"],
         ["Trusted", summary.trusted, summary.untrusted + " untrusted", "trusted"],
-        ["Encrypted", summary.encrypted, summary.plaintext + " plaintext", "e2e"],
-        ["Plaintext", summary.plaintext, "authenticated traffic", "plaintext"],
         ["P2P", summary.p2p, summary.relay + " relay", "p2p"],
+        ["Traffic", formatBytes((summary.bytes_in || 0) + (summary.bytes_out || 0)), formatBytes(summary.bytes_in || 0) + " in · " + formatBytes(summary.bytes_out || 0) + " out", "mixed"],
         ["Stale", summary.stale, summary.active + " active", summary.stale > 0 ? "stale" : "trusted"],
       ];
       document.getElementById("metrics").innerHTML = items.map(([label, value, note, tone]) =>
@@ -392,6 +411,8 @@
           '<td>' + badge(item.security.mode, item.security.encrypted ? "E2E" : item.security.mode) + '</td>' +
           '<td>' + badge(item.transport.current_path, item.transport.current_path) + '</td>' +
           '<td><div class="primary-text">' + escapeHtml(item.network.ip || "unknown") + '</div><div class="subtext">' + escapeHtml(item.network.ip_source) + '</div></td>' +
+          '<td>' + escapeHtml(item.counters.connection_attempts || 0) + '</td>' +
+          '<td><div class="primary-text">' + escapeHtml(formatBytes((item.counters.bytes_in || 0) + (item.counters.bytes_out || 0))) + '</div><div class="subtext">' + escapeHtml(formatBytes(item.counters.bytes_in || 0)) + ' in · ' + escapeHtml(formatBytes(item.counters.bytes_out || 0)) + ' out</div></td>' +
           '<td>' + formatDate(item.timing.connected_at) + '</td>' +
           '<td>' + timeAgo(item.timing.last_message_at || item.timing.last_seen_at) + '</td>' +
           '</tr>';
@@ -403,6 +424,26 @@
           renderDetail();
         });
       });
+    }
+
+    function renderDevices() {
+      const devices = connectionSnapshot.devices || [];
+      const rowsEl = document.getElementById("device-rows");
+      document.getElementById("devices-caption").textContent = devices.length + " logical devices observed";
+      document.getElementById("devices-empty").classList.toggle("hidden", devices.length !== 0);
+      rowsEl.innerHTML = devices.map((device) =>
+        '<tr>' +
+          '<td><div class="app-cell"><div class="avatar">' + escapeHtml(deviceInitials(device)) + '</div><div><div class="primary-text">' + escapeHtml(deviceName(device)) + '</div><div class="subtext">' + escapeHtml(device.device_id) + '</div></div></div></td>' +
+          '<td>' + escapeHtml(device.platform || "unknown") + '</td>' +
+          '<td>' + badge(device.current_path, device.current_path) + '</td>' +
+          '<td><div class="primary-text">' + escapeHtml(device.ip || "unknown") + '</div><div class="subtext">' + escapeHtml(device.ip_source || "unknown") + privateNetworkHashSummary(device) + '</div></td>' +
+          '<td><div class="primary-text">' + escapeHtml(device.connection_count || 0) + '</div><div class="subtext">' + escapeHtml(device.active_connections || 0) + ' active · ' + escapeHtml(device.encrypted_connections || 0) + ' e2e</div></td>' +
+          '<td>' + escapeHtml(device.connection_attempts || 0) + '</td>' +
+          '<td><div class="primary-text">' + escapeHtml(formatBytes((device.bytes_in || 0) + (device.bytes_out || 0))) + '</div><div class="subtext">' + escapeHtml(formatBytes(device.bytes_in || 0)) + ' in · ' + escapeHtml(formatBytes(device.bytes_out || 0)) + ' out</div></td>' +
+          '<td><div class="primary-text">' + escapeHtml((device.messages_in || 0) + (device.messages_out || 0)) + '</div><div class="subtext">' + escapeHtml(device.messages_in || 0) + ' in · ' + escapeHtml(device.messages_out || 0) + ' out</div></td>' +
+          '<td>' + timeAgo(device.last_seen_at) + '</td>' +
+        '</tr>'
+      ).join("");
     }
 
     function renderDetail() {
@@ -417,10 +458,11 @@
       body.innerHTML = [
         detailGroup("Basic", [["Connection", item.connection_id], ["App Instance", item.app_instance_id], ["Runtime", item.app_runtime_id], ["Platform", item.app_platform || "unknown"], ["Version", item.app_version || "unknown"]]),
         detailGroup("Security", [["Trusted", bool(item.trusted)], ["Encrypted", bool(item.security.encrypted)], ["Mode", item.security.mode], ["Key ID", item.security.key_id || "unknown"], ["E2E Ready", bool(item.security.e2e_ready)], ["Last Verified", formatDate(item.security.last_verified_at)]]),
-        detailGroup("Network", [["Method", item.network.connection_method], ["IP", item.network.ip || "unknown"], ["IP Source", item.network.ip_source], ["Relay ID", item.network.relay_connection_id || item.relay_connection_id || "unknown"]]),
+        detailGroup("Network", [["Method", item.network.connection_method], ["IP", item.network.ip || "unknown"], ["IP Source", item.network.ip_source], ["IP History", (item.network.ip_history || []).join(", ") || "unknown"], ["Private Network Hash", item.network.private_network_hash || "unknown"], ["Relay ID", item.network.relay_connection_id || item.relay_connection_id || "unknown"]]),
         detailGroup("Timing", [["Connected", formatDate(item.timing.connected_at)], ["First Seen", formatDate(item.timing.first_seen_at)], ["Last Seen", timeAgo(item.timing.last_seen_at)], ["Last Heartbeat", formatDate(item.timing.last_heartbeat_at)], ["Last Message", formatDate(item.timing.last_message_at)], ["Stale After", formatDate(item.timing.stale_after)]]),
         detailGroup("Transport", [["Current Path", item.transport.current_path], ["Available", item.transport.available_paths.join(", ") || "unknown"], ["P2P State", item.transport.p2p_state || "unknown"], ["Relay State", item.transport.relay_state || "unknown"], ["Path Changed", formatDate(item.transport.last_path_change_at)]]),
-        detailGroup("Counters", [["Messages In", item.counters.messages_in], ["Messages Out", item.counters.messages_out], ["Heartbeats", item.counters.heartbeats], ["Replay Rejected", item.counters.replay_rejected], ["Auth Failures", item.counters.auth_failures]]),
+        detailGroup("Counters", [["Connection Attempts", item.counters.connection_attempts || 0], ["Bytes In", formatBytes(item.counters.bytes_in || 0)], ["Bytes Out", formatBytes(item.counters.bytes_out || 0)], ["Messages In", item.counters.messages_in], ["Messages Out", item.counters.messages_out], ["Heartbeats", item.counters.heartbeats], ["Replay Rejected", item.counters.replay_rejected], ["Auth Failures", item.counters.auth_failures]]),
+        detailGroup("Observations", observationRows(item)),
       ].join("");
     }
 
@@ -450,6 +492,21 @@
     function detailGroup(title, rows) {
       return '<section class="detail-group"><h3 class="group-title">' + escapeHtml(title) + '</h3><dl class="kv">' + rows.map(([key, value]) => '<dt>' + escapeHtml(key) + '</dt><dd>' + escapeHtml(value == null ? "-" : value) + '</dd>').join("") + '</dl></section>';
     }
+    function observationRows(item) {
+      const observations = item.observations || [];
+      if (observations.length === 0) return [["Observed", "none"]];
+      return observations.slice(-8).map((observation) => [
+        observation.source + " · " + formatDate(observation.observed_at),
+        [
+          observation.network && (observation.network.remote_ip || observation.network.public_ip || privateNetworkHashSummary(observation.network)),
+          observation.network && observation.network.ip_source,
+          observation.http && observation.http.user_agent,
+          observation.device && [observation.device.name, observation.device.platform, observation.device.os, observation.device.os_version].filter(Boolean).join(" "),
+          observation.app && [observation.app.name, observation.app.version, observation.app.runtime_id].filter(Boolean).join(" "),
+          observation.transport && observation.transport.path,
+        ].filter(Boolean).join(" · ") || "recorded"
+      ]);
+    }
     function statusPill(label, tone) { return '<span class="pill"><span class="dot ' + tone + '"></span>' + escapeHtml(label) + '</span>'; }
     function tinyDot(tone) { return '<span class="dot ' + (tone === "stale" || tone === "plaintext" ? "warn" : tone ? "ok" : "") + '"></span>'; }
     function badge(tone, label) { return '<span class="badge ' + escapeAttr(tone || "unknown") + '">' + escapeHtml(label) + '</span>'; }
@@ -469,8 +526,25 @@
     }
     function appName(item) { return item.app_name || item.app_device_name || item.app_instance_id || "Unknown App"; }
     function initials(item) { return escapeHtml(appName(item).split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "OW"); }
+    function deviceName(device) { return device.device_name || device.app_name || device.device_id || "Unknown Device"; }
+    function deviceInitials(device) { return deviceName(device).split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "OW"; }
+    function privateNetworkHashSummary(value) {
+      return value.private_network_hash ? " · private hash " + value.private_network_hash.slice(0, 12) : "";
+    }
     function formatTime(value) { return value ? new Date(value).toLocaleTimeString() : "-"; }
     function formatDate(value) { return value ? new Date(value).toLocaleString() : "-"; }
+    function formatBytes(value) {
+      const bytes = Number(value) || 0;
+      if (bytes < 1024) return bytes + " B";
+      const units = ["KB", "MB", "GB"];
+      let size = bytes / 1024;
+      let index = 0;
+      while (size >= 1024 && index < units.length - 1) {
+        size /= 1024;
+        index += 1;
+      }
+      return size.toFixed(size >= 10 ? 1 : 2) + " " + units[index];
+    }
     function timeAgo(value) {
       if (!value) return "-";
       const seconds = Math.max(0, Math.floor((Date.now() - value) / 1000));

@@ -129,11 +129,24 @@ export const appInfoPayloadSchema = z
   .object({
     instance_id: z.string().min(1),
     runtime_id: z.string().min(1),
-    name: z.string().min(1).optional(),
-    device_name: z.string().min(1).optional(),
-    platform: appClientPlatformSchema.optional(),
-    version: z.string().min(1).optional(),
-    capabilities: z.array(z.string().min(1)).optional(),
+    device: z
+      .object({
+        name: z.string().min(1).optional(),
+        platform: appClientPlatformSchema.optional(),
+        os: z.string().min(1).optional(),
+        os_version: z.string().min(1).optional(),
+        private_network_hash: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    app: z
+      .object({
+        name: z.string().min(1).optional(),
+        version: z.string().min(1).optional(),
+        capabilities: z.array(z.string().min(1)).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -144,8 +157,62 @@ export const authProofPayloadSchema = z.object({
   proof: z.string().min(1),
 });
 
+const appConnectionObservationSchema = z
+  .object({
+    source: z.enum(["relay", "app", "agent", "p2p"]),
+    observed_at: isoDateTime,
+    network: z
+      .object({
+        remote_ip: z.string().min(1).optional(),
+        public_ip: z.string().min(1).optional(),
+        private_network_hash: z.string().min(1).optional(),
+        ip_source: z
+          .enum([
+            "socket_remote_address",
+            "x_forwarded_for",
+            "app_reported",
+            "agent_observed",
+            "p2p_observed",
+          ])
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    http: z
+      .object({
+        user_agent: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    device: z
+      .object({
+        name: z.string().min(1).optional(),
+        platform: appClientPlatformSchema.optional(),
+        os: z.string().min(1).optional(),
+        os_version: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    app: z
+      .object({
+        name: z.string().min(1).optional(),
+        version: z.string().min(1).optional(),
+        runtime_id: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    transport: z
+      .object({
+        path: z.enum(["relay", "p2p", "unknown"]).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 export const authVerifyPayloadSchema = authProofPayloadSchema.extend({
   connection_id: z.string().min(1).optional(),
+  observations: z.array(appConnectionObservationSchema).optional(),
 });
 
 export const authOkPayloadSchema = z.object({

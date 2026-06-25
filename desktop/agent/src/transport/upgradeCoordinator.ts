@@ -119,6 +119,11 @@ export class UpgradeCoordinator {
     };
   }
 
+  close(): void {
+    this.cleanupPeer();
+    this.resetToIdle();
+  }
+
   async propose(payload: TunnelUpgradeProposePayload): Promise<void> {
     if (this.state !== "idle") {
       console.warn(

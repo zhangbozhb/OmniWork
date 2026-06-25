@@ -29,6 +29,7 @@ import {
 } from "@omniwork/e2e-noise";
 import type { PairingConfig } from "../../features/auth/types";
 import { createKeyProof } from "../../features/auth/keyProof.ts";
+import { createSha256Hex } from "../../features/auth/hmacSha256.ts";
 import { createAppInfo } from "../../app/appMetadata.ts";
 
 export interface MobileRelaySessionOptions {
@@ -42,6 +43,9 @@ export interface MobileRelaySessionOptions {
     platform?: AppClientPlatform;
     version?: string;
     deviceName?: string;
+    os?: string;
+    osVersion?: string;
+    privateNetworkHash?: string;
     capabilities?: string[];
   };
 }
@@ -67,6 +71,8 @@ export class MobileRelaySession {
     null;
   private currentPath: TransportPath | "unknown" = "relay";
   private pendingBusinessMessages: MessageEnvelope[] = [];
+  private appInfoCache: AppInfoPayload | null = null;
+  private appInfoPromise: Promise<AppInfoPayload> | null = null;
 
   constructor(pairing: PairingConfig, options: MobileRelaySessionOptions = {}) {
     this.pairing = pairing;
@@ -82,6 +88,7 @@ export class MobileRelaySession {
       });
     });
     await this.client.connect();
+    const appInfo = await this.appInfo();
     this.client.send(
       createMessage(
         "mobile.connect",
@@ -89,7 +96,7 @@ export class MobileRelaySession {
           v: PROTOCOL_SUPPORT_V1.current,
           device_id: this.pairing.deviceId,
           key_id: this.pairing.keyId ?? "unknown",
-          app_info: this.appInfo(),
+          app_info: appInfo,
           protocol: PROTOCOL_SUPPORT_V1,
           e2e: E2E_SUPPORT_V1,
           ...(this.options.transportPreference
@@ -221,10 +228,11 @@ export class MobileRelaySession {
     challenge: AuthChallengePayload,
   ): Promise<void> {
     this.pendingKeyId = challenge.key_id;
+    const appInfo = await this.appInfo();
     const proof = await createKeyProof(
       this.pairing.key,
       challenge.nonce,
-      this.appInfo(),
+      appInfo,
     );
     this.client.send(
       createMessage(
@@ -232,7 +240,7 @@ export class MobileRelaySession {
         {
           key_id: challenge.key_id,
           nonce: challenge.nonce,
-          app_info: this.appInfo(),
+          app_info: appInfo,
           proof,
         },
         { device_id: this.pairing.deviceId },
@@ -412,16 +420,159 @@ export class MobileRelaySession {
     return this.connectionHeartbeatSeq;
   }
 
-  private appInfo(): AppInfoPayload {
-    return createAppInfo(
-      this.appInstanceId,
-      this.appRuntimeId,
-      this.options.appMetadata,
-    );
+  private async appInfo(): Promise<AppInfoPayload> {
+    if (this.appInfoCache) {
+      return this.appInfoCache;
+    }
+    if (!this.appInfoPromise) {
+      this.appInfoPromise = collectAppPrivateNetworkHash().then(
+        (privateNetworkHash) =>
+          createAppInfo(this.appInstanceId, this.appRuntimeId, {
+            ...this.options.appMetadata,
+            privateNetworkHash:
+              this.options.appMetadata?.privateNetworkHash ??
+              privateNetworkHash,
+          }),
+      );
+    }
+    this.appInfoCache = await this.appInfoPromise;
+    return this.appInfoCache;
   }
 }
 
 function createRuntimeId(prefix: string): string {
   const random = Math.random().toString(36).slice(2, 12);
   return `${prefix}_${Date.now().toString(36)}_${random}`;
+}
+
+async function collectAppPrivateIps(timeoutMs = 700): Promise<string[]> {
+  const RTCPeerConnectionCtor = loadRTCPeerConnection();
+  if (!RTCPeerConnectionCtor) {
+    return [];
+  }
+  const ips = new Set<string>();
+  let pc: any;
+  try {
+    pc = new RTCPeerConnectionCtor({ iceServers: [] });
+    pc.createDataChannel?.("omniwork-ip-probe");
+    pc.onicecandidate = (event: { candidate?: { candidate?: string } }) => {
+      addCandidatePrivateIp(ips, event.candidate?.candidate);
+    };
+    const offer = await pc.createOffer();
+    addCandidatePrivateIp(ips, offer?.sdp);
+    await pc.setLocalDescription(offer);
+    addCandidatePrivateIp(ips, pc.localDescription?.sdp);
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, timeoutMs);
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === "complete") {
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+    });
+    addCandidatePrivateIp(ips, pc.localDescription?.sdp);
+  } catch {
+    return [];
+  } finally {
+    try {
+      pc?.close?.();
+    } catch {
+      /* ignore */
+    }
+  }
+  return [...ips];
+}
+
+async function collectAppPrivateNetworkHash(): Promise<string | undefined> {
+  const ips = await collectAppPrivateIps();
+  return createPrivateNetworkHash(ips);
+}
+
+export function createPrivateNetworkHash(ips: string[]): string | undefined {
+  const input = ips.sort().join(",");
+  return input ? createSha256Hex(input) : undefined;
+}
+
+function loadRTCPeerConnection(): any | null {
+  const globalPeerConnection = (
+    globalThis as unknown as { RTCPeerConnection?: unknown }
+  ).RTCPeerConnection;
+  if (globalPeerConnection) {
+    return globalPeerConnection;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require("react-native-webrtc") as {
+      RTCPeerConnection?: unknown;
+    };
+    return mod.RTCPeerConnection ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function addCandidatePrivateIp(ips: Set<string>, value: string | undefined) {
+  if (!value) {
+    return;
+  }
+  for (const line of value.split(/\r?\n/)) {
+    const parts = line.trim().split(/\s+/);
+    const typIndex = parts.indexOf("typ");
+    if (typIndex === -1 || parts[typIndex + 1] !== "host") {
+      continue;
+    }
+    const candidateIndex = parts.findIndex((part) =>
+      part.startsWith("candidate:"),
+    );
+    const address = candidateIndex >= 0 ? parts[candidateIndex + 4] : undefined;
+    if (address && isPrivateIp(address)) {
+      ips.add(address);
+    }
+  }
+}
+
+function isPrivateIp(value: string): boolean {
+  if (value.endsWith(".local")) {
+    return false;
+  }
+  if (isIpv6Address(value)) {
+    return isPrivateIpv6(value);
+  }
+  if (!isIpv4Address(value)) {
+    return false;
+  }
+  const [a = 0, b = 0] = value.split(".").map((part) => Number(part));
+  return (
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
+}
+
+function isIpv4Address(value: string): boolean {
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) {
+    return false;
+  }
+  return value.split(".").every((part) => {
+    const octet = Number(part);
+    return Number.isInteger(octet) && octet >= 0 && octet <= 255;
+  });
+}
+
+function isIpv6Address(value: string): boolean {
+  return value.includes(":");
+}
+
+function isPrivateIpv6(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return (
+    normalized.startsWith("fe8") ||
+    normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") ||
+    normalized.startsWith("feb") ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd")
+  );
 }

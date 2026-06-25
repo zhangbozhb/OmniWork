@@ -5,6 +5,7 @@ import { renderAgentAdminPage } from "../adminPage.ts";
 import type {
   AgentObservedAppConnection,
   ConnectionSummary,
+  DeviceConnectionStats,
 } from "./appConnectionRegistry.ts";
 import type { RelayConnectionStatus } from "./relayReconnectPolicy.ts";
 
@@ -16,6 +17,7 @@ export interface AgentAdminServerOptions {
   getConnections(): {
     agent: AgentAdminStatus["agent"];
     summary: ConnectionSummary;
+    devices: DeviceConnectionStats[];
     connections: AgentObservedAppConnection[];
   };
 }

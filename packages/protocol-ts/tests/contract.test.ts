@@ -169,6 +169,19 @@ describe("auth payload schemas", () => {
       },
       proof: "p1",
       connection_id: "c1",
+      observations: [
+        {
+          source: "relay",
+          observed_at: "2026-01-01T00:00:00.000Z",
+          network: {
+            remote_ip: "203.0.113.10",
+            ip_source: "x_forwarded_for",
+          },
+          http: {
+            user_agent: "OmniWork App",
+          },
+        },
+      ],
     });
     authOkPayloadSchema.parse({
       agent_instance_id: "agent-1",
@@ -415,8 +428,15 @@ describe("app client metadata payload schemas", () => {
         app_info: {
           instance_id: "app-1",
           runtime_id: "runtime-1",
-          name: "OmniWork",
-          platform: "ios",
+          device: {
+            name: "Alice iPhone",
+            platform: "ios",
+            private_network_hash: "private-network-hash",
+          },
+          app: {
+            name: "OmniWork",
+            version: "0.1.0",
+          },
         },
         protocol: PROTOCOL_SUPPORT_V1,
         e2e: E2E_SUPPORT_V1,

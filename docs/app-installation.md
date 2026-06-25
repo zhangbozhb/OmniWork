@@ -365,7 +365,7 @@ sequenceDiagram
     Agent-->>Admin: relay_status + last_error + next_retry_at
 ```
 
-Agent Web 后台的连接统计以 Agent 关键链路为准：新版 App 必须在 `mobile.connect` 和 `auth.proof` 中携带 `app_info.instance_id` / `app_info.runtime_id`，且 `auth.proof` 会把这两个字段绑定进签名输入；Relay 只负责转发，Agent 在 `auth.verify` 校验成功后创建连接记录。业务入站/出站、E2E ready、成功解密消息和传输路径切换会继续刷新连接状态。`app.connection.heartbeat` / `app.connection.goodbye` 仅补充心跳和主动断开状态，不作为连接创建入口。
+Agent Web 后台的连接统计以 Agent 关键链路为准：新版 App 必须在 `mobile.connect` 和 `auth.proof` 中携带 `app_info.instance_id` / `app_info.runtime_id`，且 `auth.proof` 会把这两个字段绑定进签名输入；Relay 只负责转发，Agent 在 `auth.verify` 校验成功后创建连接记录。Admin 侧以持久的 `app_info.instance_id` 作为逻辑 App 身份；同一个 App 刷新或重连产生新的 `runtime_id` / `app_connection_id` 时，只替换当前传输实例并清理旧 E2E/P2P 状态，不新增一条逻辑连接。Agent 会按逻辑 App 连接累计连接次数、消息数、估算流量和当前连接方式，并在 Admin 中按 `app_info.instance_id` 聚合设备级统计。App 自报信息集中在 `app_info.device` 与 `app_info.app`：设备名、平台、系统类型、系统版本使用 `app_info.device`，App 名称、版本和能力使用 `app_info.app`。内网 IP 不直接进入协议；App 仅上报 `app_info.device.private_network_hash`，计算方式是所有内网 IP 字符串排序后用 `,` 拼接，再做裸 SHA-256。连接环境信息统一记录为 `observations[]`：Relay 可以记录接入层看到的 remote IP / `X-Forwarded-For`，App 自报的设备信息与内网 IP hash 会作为 `source="app"` 的观察值进入 Agent，Agent 或 P2P 层也只能追加内网 IP hash。Admin 只展示这些控制面观察值，不从业务 payload 中推断连接环境。业务入站/出站、E2E ready、成功解密消息和传输路径切换会继续刷新连接状态。`app.connection.heartbeat` / `app.connection.goodbye` 仅补充心跳和主动断开状态，不作为连接创建入口。
 
 连接状态超时可通过以下变量调整：
 

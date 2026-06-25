@@ -33,6 +33,8 @@ export function createAppSessionTransport(
     appMetadata: {
       name: appConfig.appName,
       platform: currentAppPlatform(),
+      os: Platform.OS,
+      osVersion: String(Platform.Version),
       version: appConfig.appVersion,
       capabilities: [
         ...(appConfig.terminal.streamEnabled
