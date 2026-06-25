@@ -106,6 +106,7 @@ export const messageEnvelopeSchema = z.object({
   type: messageTypeSchema,
   device_id: z.string().min(1).optional(),
   session_id: z.string().min(1).optional(),
+  surface_id: z.string().min(1).optional(),
   app_connection_id: z.string().min(1).optional(),
   seq: z.number().int().nonnegative().optional(),
   ts: isoDateTime,
@@ -372,6 +373,7 @@ export const innerEnvelopeSchema = z
     seq: z.number().int().nonnegative().optional(),
     request_id: z.string().min(1).optional(),
     session_id: z.string().min(1).optional(),
+    surface_id: z.string().min(1).optional(),
     payload: z.unknown(),
   })
   .strict();
@@ -465,9 +467,22 @@ export const sessionStatusSchema = z.enum([...SUPPORTED_SESSION_STATUSES] as [
 
 export const sessionOriginSchema = z.enum(["managed", "external"]);
 
+const surfaceDefinitionSchema = z
+  .object({
+    surface_id: z.string().min(1),
+    session_id: z.string().min(1),
+    kind: z.enum(["terminal", "agent", "file", "diff"]),
+    title: z.string(),
+    status: z.enum(["active", "detached", "ended"]),
+    provider: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const terminalSessionSchema = z
   .object({
     session_id: z.string().min(1),
+    primary_surface_id: z.string().min(1),
+    surfaces: z.array(surfaceDefinitionSchema).min(1),
     terminal_provider_kind: z.string().min(1),
     terminal_provider_label: z.string().min(1),
     title: z.string(),

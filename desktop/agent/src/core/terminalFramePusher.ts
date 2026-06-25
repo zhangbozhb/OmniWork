@@ -145,6 +145,7 @@ export class TerminalFramePusher {
       {
         device_id: this.options.deviceId,
         session_id: sessionId,
+        surface_id: session.primary_surface_id,
         seq: frameSeq,
       },
     );

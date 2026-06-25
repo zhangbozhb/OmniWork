@@ -4,6 +4,7 @@ import type {
   TerminalSession,
   TerminalProviderKind,
   SessionCreatePayload,
+  SurfaceDefinition,
   TerminalSize,
   WorkspaceDefinition,
 } from "@omniwork/protocol-ts";
@@ -182,12 +183,23 @@ export class SessionManager {
     const providerSessionCount = await this.countSessionsForProvider(
       terminalProvider.kind,
     );
+    const title =
+      payload.title ?? terminalProvider.defaultTitle(providerSessionCount + 1);
 
     const created: TerminalSession = {
       session_id: sessionId,
+      primary_surface_id: toTerminalSurfaceId(sessionId),
+      surfaces: [
+        createTerminalSurface({
+          sessionId,
+          title,
+          status: "created",
+          provider: terminalProvider.kind,
+        }),
+      ],
       terminal_provider_kind: terminalProvider.kind,
       terminal_provider_label: terminalProvider.displayName,
-      title: payload.title ?? terminalProvider.defaultTitle(providerSessionCount + 1),
+      title,
       cwd,
       command,
       status: "created",
@@ -206,7 +218,7 @@ export class SessionManager {
     await onStatus?.(created);
 
     const starting = {
-      ...created,
+      ...withTerminalSurfaceStatus(created, "starting"),
       status: "starting" as const,
       last_active_at: new Date().toISOString(),
     };
@@ -222,7 +234,7 @@ export class SessionManager {
       });
 
       const running = {
-        ...starting,
+        ...withTerminalSurfaceStatus(starting, "running"),
         status: "running" as const,
         last_active_at: new Date().toISOString(),
         // 用 tmux 真实分配的强 ID 绑定，让后续 reconcile 能识别
@@ -243,6 +255,14 @@ export class SessionManager {
   async get(sessionId: string): Promise<TerminalSession | undefined> {
     return (await this.list()).find(
       (session) => session.session_id === sessionId,
+    );
+  }
+
+  async getBySurfaceId(
+    surfaceId: string,
+  ): Promise<TerminalSession | undefined> {
+    return (await this.list()).find((session) =>
+      session.surfaces.some((surface) => surface.surface_id === surfaceId),
     );
   }
 
@@ -283,6 +303,11 @@ export class SessionManager {
     const renamed = {
       ...session,
       title: nextTitle,
+      surfaces: session.surfaces.map((surface) =>
+        surface.surface_id === session.primary_surface_id
+          ? { ...surface, title: nextTitle }
+          : surface,
+      ),
       last_active_at: new Date().toISOString(),
       registered: session.registered ?? true,
     };
@@ -311,7 +336,7 @@ export class SessionManager {
 
     if (session.origin === "external" && !session.registered) {
       const attached = {
-        ...session,
+        ...withTerminalSurfaceStatus(session, "running"),
         status: "running" as const,
         last_active_at: new Date().toISOString(),
         registered: true,
@@ -358,8 +383,18 @@ export class SessionManager {
     currentCommand?: string;
   }): TerminalSession {
     const terminalProvider = this.terminalProviders.infer(session.currentCommand);
+    const sessionId = toExternalSessionId(session.name);
     return {
-      session_id: toExternalSessionId(session.name),
+      session_id: sessionId,
+      primary_surface_id: toTerminalSurfaceId(sessionId),
+      surfaces: [
+        createTerminalSurface({
+          sessionId,
+          title: session.name,
+          status: "detached",
+          provider: terminalProvider?.kind ?? "other",
+        }),
+      ],
       terminal_provider_kind: terminalProvider?.kind ?? "other",
       terminal_provider_label: terminalProvider?.displayName ?? "Other",
       title: session.name,
@@ -400,6 +435,52 @@ function toTmuxSessionName(sessionId: string): string {
 function toExternalSessionId(tmuxSessionName: string): string {
   const digest = createHash("sha1").update(tmuxSessionName).digest("hex");
   return `tmux_${digest.slice(0, 16)}`;
+}
+
+export function toTerminalSurfaceId(sessionId: string): string {
+  return `surface_${sessionId}_terminal`;
+}
+
+function createTerminalSurface(input: {
+  sessionId: string;
+  title: string;
+  status: TerminalSession["status"];
+  provider: string;
+}): SurfaceDefinition {
+  return {
+    surface_id: toTerminalSurfaceId(input.sessionId),
+    session_id: input.sessionId,
+    kind: "terminal",
+    title: input.title,
+    status: toSurfaceStatus(input.status),
+    provider: input.provider,
+  };
+}
+
+function withTerminalSurfaceStatus(
+  session: TerminalSession,
+  status: TerminalSession["status"],
+): TerminalSession {
+  return {
+    ...session,
+    surfaces: session.surfaces.map((surface) =>
+      surface.surface_id === session.primary_surface_id
+        ? { ...surface, status: toSurfaceStatus(status) }
+        : surface,
+    ),
+  };
+}
+
+function toSurfaceStatus(
+  status: TerminalSession["status"],
+): SurfaceDefinition["status"] {
+  if (status === "exited" || status === "archived") {
+    return "ended";
+  }
+  if (status === "detached") {
+    return "detached";
+  }
+  return "active";
 }
 
 function compareSessionsByRecentTime(

@@ -35,6 +35,7 @@ import type {
   TerminalErrorPayload,
   TerminalInputPayload,
   TerminalResizePayload,
+  TerminalSession,
   TerminalStreamStartPayload,
   TerminalStreamStopPayload,
   TunnelUpgradeAnswerPayload,
@@ -1315,9 +1316,7 @@ export class AgentService {
   private async handleTerminalInput(
     message: MessageEnvelope<TerminalInputPayload>,
   ): Promise<void> {
-    const session = message.session_id
-      ? await this.sessionManager.get(message.session_id)
-      : undefined;
+    const session = await this.resolveTerminalSession(message);
     if (!session) {
       return;
     }
@@ -1337,9 +1336,7 @@ export class AgentService {
   private async handleTerminalResize(
     message: MessageEnvelope<TerminalResizePayload>,
   ): Promise<void> {
-    const session = message.session_id
-      ? await this.sessionManager.get(message.session_id)
-      : undefined;
+    const session = await this.resolveTerminalSession(message);
     if (!session) {
       return;
     }
@@ -1364,11 +1361,16 @@ export class AgentService {
     message: MessageEnvelope<TerminalStreamStartPayload>,
     context?: AgentDispatchContext,
   ): Promise<void> {
-    if (!message.session_id || !context) {
+    if (!message.surface_id || !context) {
+      return;
+    }
+    const session = await this.resolveTerminalSession(message);
+    if (!session) {
       return;
     }
     await this.terminalStreamPusher.start(
-      message.session_id,
+      session.session_id,
+      message.surface_id,
       context.appConnectionId,
     );
   }
@@ -1377,11 +1379,12 @@ export class AgentService {
     message: MessageEnvelope<TerminalStreamStopPayload>,
     context?: AgentDispatchContext,
   ): Promise<void> {
-    if (!message.session_id) {
+    const session = await this.resolveTerminalSession(message);
+    if (!session) {
       return;
     }
     await this.terminalStreamPusher.stop(
-      message.session_id,
+      session.session_id,
       context?.appConnectionId,
     );
   }
@@ -1446,9 +1449,10 @@ export class AgentService {
     message: MessageEnvelope,
     context?: AgentDispatchContext,
   ): Promise<void> {
-    const session = message.session_id
-      ? await this.sessionManager.get(message.session_id)
-      : undefined;
+    if (!message.surface_id) {
+      return;
+    }
+    const session = await this.resolveTerminalSession(message);
     if (!session) {
       return;
     }
@@ -1472,6 +1476,7 @@ export class AgentService {
       createMessage("terminal.snapshot", snapshot, {
         device_id: this.config.deviceId,
         session_id: session.session_id,
+        surface_id: message.surface_id,
         seq: snapshotSeq,
       }),
     );
@@ -1479,6 +1484,15 @@ export class AgentService {
       session.session_id,
       snapshot.data,
     );
+  }
+
+  private async resolveTerminalSession(
+    message: Pick<MessageEnvelope, "surface_id">,
+  ): Promise<TerminalSession | undefined> {
+    if (!message.surface_id) {
+      return undefined;
+    }
+    return this.sessionManager.getBySurfaceId(message.surface_id);
   }
 
   private async handleMissingTmuxTarget(

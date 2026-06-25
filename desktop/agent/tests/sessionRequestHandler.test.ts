@@ -23,6 +23,17 @@ function fakeSession(overrides: Partial<TerminalSession>): TerminalSession {
   const now = new Date().toISOString();
   return {
     session_id: "sess_created",
+    primary_surface_id: "surface_sess_created_terminal",
+    surfaces: [
+      {
+        surface_id: "surface_sess_created_terminal",
+        session_id: "sess_created",
+        kind: "terminal",
+        title: "Codex 1",
+        status: "active",
+        provider: "codex",
+      },
+    ],
     terminal_provider_kind: "codex",
     terminal_provider_label: "Codex",
     title: "Codex 1",
@@ -129,6 +140,7 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
       message: {
         ...request,
         session_id: running.session_id,
+        surface_id: running.primary_surface_id,
       },
     },
   ]);

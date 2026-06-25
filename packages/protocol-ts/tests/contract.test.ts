@@ -626,6 +626,17 @@ describe("session payload schemas", () => {
   // 三个常量保持运行时一致。任何一边漂移都应被这里的正反例拦住。
   const validSession = {
     session_id: "sess_1",
+    primary_surface_id: "surface_sess_1_terminal",
+    surfaces: [
+      {
+        surface_id: "surface_sess_1_terminal",
+        session_id: "sess_1",
+        kind: "terminal",
+        title: "demo",
+        status: "active",
+        provider: "codex",
+      },
+    ],
     terminal_provider_kind: "codex",
     terminal_provider_label: "Codex",
     title: "demo",

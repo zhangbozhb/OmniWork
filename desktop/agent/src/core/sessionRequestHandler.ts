@@ -102,6 +102,7 @@ export class SessionRequestHandler {
       {
         ...message,
         session_id: session.session_id,
+        surface_id: session.primary_surface_id,
       },
       context,
     );
@@ -180,6 +181,7 @@ export class SessionRequestHandler {
         {
           device_id: this.options.deviceId,
           session_id: session.session_id,
+          surface_id: session.primary_surface_id,
         },
       ),
     );
@@ -193,6 +195,7 @@ export class SessionRequestHandler {
       {
         ...message,
         session_id: session.session_id,
+        surface_id: session.primary_surface_id,
       },
       context,
     );
@@ -211,6 +214,7 @@ export class SessionRequestHandler {
         {
           device_id: this.options.deviceId,
           session_id: session.session_id,
+          surface_id: session.primary_surface_id,
         },
       ),
     );

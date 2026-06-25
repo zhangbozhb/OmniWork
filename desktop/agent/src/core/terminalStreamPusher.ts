@@ -43,6 +43,7 @@ type TerminalStreamPusherOptions = {
 
 type StreamState = {
   sessionId: string;
+  surfaceId: string;
   tmuxSessionName: string;
   streamId: string;
   directory: string;
@@ -60,9 +61,13 @@ export class TerminalStreamPusher {
     this.options = options;
   }
 
-  async start(sessionId: string, appConnectionId: string): Promise<void> {
+  async start(
+    sessionId: string,
+    surfaceId: string,
+    appConnectionId: string,
+  ): Promise<void> {
     if (!this.options.enabled) {
-      this.sendError(appConnectionId, sessionId, {
+      this.sendError(appConnectionId, sessionId, surfaceId, {
         code: "TERMINAL_STREAM_DISABLED",
         message: "Terminal byte stream is disabled on this Mac Agent.",
       });
@@ -74,7 +79,7 @@ export class TerminalStreamPusher {
       return;
     }
     if (session.status !== "running" && session.status !== "detached") {
-      this.sendError(appConnectionId, sessionId, {
+      this.sendError(appConnectionId, sessionId, session.primary_surface_id, {
         code: "TERMINAL_STREAM_UNAVAILABLE",
         message: "Terminal byte stream requires a running tmux session.",
       });
@@ -90,7 +95,11 @@ export class TerminalStreamPusher {
 
     let state: StreamState | null = null;
     try {
-      state = await this.createStream(sessionId, session.tmux_session_name);
+      state = await this.createStream(
+        sessionId,
+        surfaceId,
+        session.tmux_session_name,
+      );
       this.streams.set(sessionId, state);
       state.subscribers.add(appConnectionId);
       this.sendReady(appConnectionId, state);
@@ -106,7 +115,7 @@ export class TerminalStreamPusher {
         session_id: sessionId,
         error: String(error),
       });
-      this.sendError(appConnectionId, sessionId, {
+      this.sendError(appConnectionId, sessionId, session.primary_surface_id, {
         code: "TERMINAL_STREAM_START_FAILED",
         message: "Terminal byte stream could not be started.",
       });
@@ -136,6 +145,7 @@ export class TerminalStreamPusher {
 
   private async createStream(
     sessionId: string,
+    surfaceId: string,
     tmuxSessionName: string,
   ): Promise<StreamState> {
     const directory = await mkdtemp(join(tmpdir(), "omniwork-terminal-"));
@@ -144,6 +154,7 @@ export class TerminalStreamPusher {
 
     const state: StreamState = {
       sessionId,
+      surfaceId,
       tmuxSessionName,
       streamId: `term_stream_${randomUUID()}`,
       directory,
@@ -189,6 +200,7 @@ export class TerminalStreamPusher {
       {
         device_id: this.options.deviceId,
         session_id: state.sessionId,
+        surface_id: state.surfaceId,
         seq: state.seq,
       },
     );
@@ -210,6 +222,7 @@ export class TerminalStreamPusher {
         {
           device_id: this.options.deviceId,
           session_id: state.sessionId,
+          surface_id: state.surfaceId,
         },
       ),
       "control",
@@ -219,6 +232,7 @@ export class TerminalStreamPusher {
   private sendError(
     appConnectionId: string,
     sessionId: string,
+    surfaceId: string | undefined,
     payload: TerminalStreamErrorPayload,
   ): void {
     this.options.sendToAppByConnectionId(
@@ -226,6 +240,7 @@ export class TerminalStreamPusher {
       createMessage<TerminalStreamErrorPayload>("terminal.stream.error", payload, {
         device_id: this.options.deviceId,
         session_id: sessionId,
+        surface_id: surfaceId,
       }),
       "control",
     );

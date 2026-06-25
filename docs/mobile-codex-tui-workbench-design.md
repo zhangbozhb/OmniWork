@@ -131,6 +131,8 @@ RuntimeBinding
 - `WorkSession` 不等同于 tmux session，也不等同于 Codex thread。
 - `Surface` 是 App 面向用户展示和操作的入口。
 - `RuntimeBinding` 是本机实现细节，不应直接暴露给 App 作为产品概念。
+- 当前已落地阶段先在 `TerminalSession` 内携带 `primary_surface_id` 与 `surfaces`，尚未拆出独立 `WorkSession` / `RuntimeBinding` 存储表。
+- 终端类消息以 `surface_id` 定位具体 `TerminalSurface`；`session_id` 仅表达该 surface 归属的会话。
 
 ### TerminalSurface
 

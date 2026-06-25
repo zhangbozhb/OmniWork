@@ -5,6 +5,8 @@
   "type": "object",
   "required": [
     "session_id",
+    "primary_surface_id",
+    "surfaces",
     "terminal_provider_kind",
     "terminal_provider_label",
     "title",
@@ -17,36 +19,135 @@
     "tmux_session_name"
   ],
   "properties": {
-    "session_id": { "type": "string" },
-    "terminal_provider_kind": { "type": "string" },
-    "terminal_provider_label": { "type": "string" },
-    "title": { "type": "string" },
-    "cwd": { "type": "string" },
-    "command": { "type": "string" },
-    "status": {
-      "enum": ["created", "starting", "running", "detached", "exited", "archived"]
+    "session_id": {
+      "type": "string"
     },
-    "created_at": { "type": "string", "format": "date-time" },
-    "last_active_at": { "type": "string", "format": "date-time" },
+    "primary_surface_id": {
+      "type": "string"
+    },
+    "surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "surface_id",
+          "session_id",
+          "kind",
+          "title",
+          "status"
+        ],
+        "properties": {
+          "surface_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "terminal",
+              "agent",
+              "file",
+              "diff"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "detached",
+              "ended"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "terminal_provider_kind": {
+      "type": "string"
+    },
+    "terminal_provider_label": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "command": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "created",
+        "starting",
+        "running",
+        "detached",
+        "exited",
+        "archived"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_active_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "terminal_size": {
       "type": "object",
-      "required": ["cols", "rows"],
+      "required": [
+        "cols",
+        "rows"
+      ],
       "properties": {
-        "cols": { "type": "integer", "minimum": 20 },
-        "rows": { "type": "integer", "minimum": 5 }
+        "cols": {
+          "type": "integer",
+          "minimum": 20
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 5
+        }
       },
       "additionalProperties": false
     },
-    "tmux_session_name": { "type": "string" },
-    "tmux_server_pid": { "type": "integer", "minimum": 1 },
-    "tmux_session_uid": { "type": "string" },
-    "workspace_path": { "type": "string" },
-    "workspace_name": { "type": "string" },
-    "git_repository": { "type": "boolean" },
-    "origin": {
-      "enum": ["managed", "external"]
+    "tmux_session_name": {
+      "type": "string"
     },
-    "registered": { "type": "boolean" }
+    "tmux_server_pid": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "tmux_session_uid": {
+      "type": "string"
+    },
+    "workspace_path": {
+      "type": "string"
+    },
+    "workspace_name": {
+      "type": "string"
+    },
+    "git_repository": {
+      "type": "boolean"
+    },
+    "origin": {
+      "enum": [
+        "managed",
+        "external"
+      ]
+    },
+    "registered": {
+      "type": "boolean"
+    }
   },
   "additionalProperties": false
 }

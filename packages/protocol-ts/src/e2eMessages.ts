@@ -28,6 +28,7 @@ export function messageToInner(message: MessageEnvelope): InnerEnvelope {
     created_at: message.ts,
     seq: message.seq,
     session_id: message.session_id,
+    surface_id: message.surface_id,
     payload: message.payload,
   };
 }
@@ -42,6 +43,7 @@ export function innerToMessage(
     type: inner.type,
     device_id: deviceId,
     session_id: inner.session_id,
+    surface_id: inner.surface_id,
     seq: inner.seq,
     ts: inner.created_at,
     payload: inner.payload,

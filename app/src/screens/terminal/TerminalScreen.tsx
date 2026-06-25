@@ -42,7 +42,7 @@ export interface TerminalScreenProps {
   session: TerminalSession;
   frame: string;
   streamChunk?: {
-    sessionId: string;
+    surfaceId: string;
     data: string;
     seq?: number;
     streamId: string;

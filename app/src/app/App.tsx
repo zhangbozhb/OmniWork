@@ -170,7 +170,7 @@ import { Icon, type IconName } from "../ui/icons";
 const EMPTY_TERMINAL_FRAME = "Waiting for the Mac Agent terminal snapshot...";
 
 type TerminalStreamChunk = {
-  sessionId: string;
+  surfaceId: string;
   data: string;
   seq?: number;
   streamId: string;
@@ -439,18 +439,18 @@ function AppContent(): JSX.Element {
   }, []);
 
   const queueTerminalFrame = useCallback(
-    (sessionId: string, payload: TerminalFramePayload, seq?: number) => {
+    (surfaceId: string, payload: TerminalFramePayload, seq?: number) => {
       if (typeof seq === "number") {
-        const lastSeq = terminalFrameSeqRef.current[sessionId] ?? 0;
+        const lastSeq = terminalFrameSeqRef.current[surfaceId] ?? 0;
         if (seq <= lastSeq) {
           return;
         }
-        terminalFrameSeqRef.current[sessionId] = seq;
+        terminalFrameSeqRef.current[surfaceId] = seq;
       }
-      terminalLastFrameAtRef.current[sessionId] = Date.now();
+      terminalLastFrameAtRef.current[surfaceId] = Date.now();
       pendingTerminalFramesRef.current = {
         ...pendingTerminalFramesRef.current,
-        [sessionId]: payload.data,
+        [surfaceId]: payload.data,
       };
       if (terminalFrameFlushTimerRef.current) {
         return;
@@ -464,7 +464,8 @@ function AppContent(): JSX.Element {
   );
 
   const selectedFrame = selectedSession
-    ? (terminalFrames[selectedSession.session_id] ?? EMPTY_TERMINAL_FRAME)
+    ? (terminalFrames[selectedSession.primary_surface_id] ??
+      EMPTY_TERMINAL_FRAME)
     : EMPTY_TERMINAL_FRAME;
   const showingAppLockScreen =
     appLockAvailable &&
@@ -1088,6 +1089,7 @@ function AppContent(): JSX.Element {
     connectionPath,
     connectionStatus,
     selectedSession?.session_id,
+    selectedSession?.primary_surface_id,
     transportPreference,
   ]);
 
@@ -1101,7 +1103,7 @@ function AppContent(): JSX.Element {
         return;
       }
       const lastFrameAt =
-        terminalLastFrameAtRef.current[session.session_id] ?? 0;
+        terminalLastFrameAtRef.current[session.primary_surface_id] ?? 0;
       if (Date.now() - lastFrameAt >= 3_000) {
         requestTerminalSnapshotForCurrentSession();
       }
@@ -1120,12 +1122,13 @@ function AppContent(): JSX.Element {
     }
 
     // 进入终端页时主动拉取一次 snapshot；stream 模式只作为可选增量通道。
-    requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
+    requestTerminalSnapshot(pairing.deviceId, selectedSession);
     if (appConfig.terminal.streamEnabled) {
       sendToRelay(
         terminalStreamStartRequest(
           pairing.deviceId,
           selectedSession.session_id,
+          selectedSession.primary_surface_id,
         ),
       );
     }
@@ -1135,6 +1138,7 @@ function AppContent(): JSX.Element {
           terminalStreamStopRequest(
             pairing.deviceId,
             selectedSession.session_id,
+            selectedSession.primary_surface_id,
           ),
         );
       }
@@ -1979,10 +1983,11 @@ function AppContent(): JSX.Element {
           {
             device_id: pairing.deviceId,
             session_id: session.session_id,
+            surface_id: session.primary_surface_id,
           },
         ),
       );
-      requestTerminalSnapshot(pairing.deviceId, session.session_id);
+      requestTerminalSnapshot(pairing.deviceId, session);
     }
   }
 
@@ -2014,7 +2019,12 @@ function AppContent(): JSX.Element {
     }
 
     sendToRelay(
-      terminalInputRequest(pairing.deviceId, selectedSession.session_id, input),
+      terminalInputRequest(
+        pairing.deviceId,
+        selectedSession.session_id,
+        selectedSession.primary_surface_id,
+        input,
+      ),
     );
     // Mac Agent 会基于 PTY 内容哈希自动 push terminal.frame，App 不再做事后多次轮询。
   }
@@ -2044,13 +2054,27 @@ function AppContent(): JSX.Element {
       ),
     );
     sendToRelay(
-      terminalResizeRequest(pairing.deviceId, selectedSession.session_id, size),
+      terminalResizeRequest(
+        pairing.deviceId,
+        selectedSession.session_id,
+        selectedSession.primary_surface_id,
+        size,
+      ),
     );
-    requestTerminalSnapshot(pairing.deviceId, selectedSession.session_id);
+    requestTerminalSnapshot(pairing.deviceId, selectedSession);
   }
 
-  function requestTerminalSnapshot(deviceId: string, sessionId: string): void {
-    sendToRelay(terminalSnapshotRequest(deviceId, sessionId));
+  function requestTerminalSnapshot(
+    deviceId: string,
+    session: TerminalSession,
+  ): void {
+    sendToRelay(
+      terminalSnapshotRequest(
+        deviceId,
+        session.session_id,
+        session.primary_surface_id,
+      ),
+    );
   }
 
   function requestTerminalSnapshotForCurrentSession(): void {
@@ -2061,13 +2085,17 @@ function AppContent(): JSX.Element {
     }
     const now = Date.now();
     const lastRequest =
-      terminalLastSnapshotRequestAtRef.current[session.session_id] ?? 0;
+      terminalLastSnapshotRequestAtRef.current[session.primary_surface_id] ?? 0;
     if (now - lastRequest < 2_000) {
       return;
     }
-    terminalLastSnapshotRequestAtRef.current[session.session_id] = now;
+    terminalLastSnapshotRequestAtRef.current[session.primary_surface_id] = now;
     sendToRelay(
-      terminalSnapshotRequest(activePairing.deviceId, session.session_id),
+      terminalSnapshotRequest(
+        activePairing.deviceId,
+        session.session_id,
+        session.primary_surface_id,
+      ),
     );
   }
 
@@ -2166,6 +2194,11 @@ function AppContent(): JSX.Element {
         const remoteSessionIds = new Set(
           payload.sessions.map((session) => session.session_id),
         );
+        const remoteSurfaceIds = new Set(
+          payload.sessions.flatMap((session) =>
+            session.surfaces.map((surface) => surface.surface_id),
+          ),
+        );
         const closableSessionIds = new Set(
           payload.sessions
             .filter((session) => session.registered !== false)
@@ -2208,21 +2241,21 @@ function AppContent(): JSX.Element {
         );
         setTerminalFrames((current) => {
           const nextFrames = { ...current };
-          for (const sessionId of Object.keys(nextFrames)) {
-            if (!remoteSessionIds.has(sessionId)) {
-              delete nextFrames[sessionId];
-              delete terminalFrameSeqRef.current[sessionId];
-              delete terminalStreamSeqRef.current[sessionId];
-              delete terminalStreamActiveRef.current[sessionId];
-              delete terminalLastFrameAtRef.current[sessionId];
-              delete terminalLastSnapshotRequestAtRef.current[sessionId];
-              delete pendingTerminalFramesRef.current[sessionId];
+          for (const surfaceId of Object.keys(nextFrames)) {
+            if (!remoteSurfaceIds.has(surfaceId)) {
+              delete nextFrames[surfaceId];
+              delete terminalFrameSeqRef.current[surfaceId];
+              delete terminalStreamSeqRef.current[surfaceId];
+              delete terminalStreamActiveRef.current[surfaceId];
+              delete terminalLastFrameAtRef.current[surfaceId];
+              delete terminalLastSnapshotRequestAtRef.current[surfaceId];
+              delete pendingTerminalFramesRef.current[surfaceId];
             }
           }
           return nextFrames;
         });
         setTerminalStreamChunk((current) =>
-          current && !remoteSessionIds.has(current.sessionId) ? null : current,
+          current && !remoteSurfaceIds.has(current.surfaceId) ? null : current,
         );
         if (
           selectedSessionRef.current &&
@@ -2420,64 +2453,64 @@ function AppContent(): JSX.Element {
       }
       case "terminal.snapshot": {
         const payload = message.payload as TerminalSnapshotPayload;
-        if (message.session_id) {
+        if (message.surface_id) {
           const nextWatermark = terminalFrameWatermarkAfterSnapshot(
-            terminalFrameSeqRef.current[message.session_id],
+            terminalFrameSeqRef.current[message.surface_id],
             message.seq,
           );
           if (typeof nextWatermark === "number") {
-            terminalFrameSeqRef.current[message.session_id] = nextWatermark;
+            terminalFrameSeqRef.current[message.surface_id] = nextWatermark;
           } else {
-            delete terminalFrameSeqRef.current[message.session_id];
+            delete terminalFrameSeqRef.current[message.surface_id];
           }
-          delete pendingTerminalFramesRef.current[message.session_id];
-          terminalLastFrameAtRef.current[message.session_id] = Date.now();
+          delete pendingTerminalFramesRef.current[message.surface_id];
+          terminalLastFrameAtRef.current[message.surface_id] = Date.now();
           setTerminalFrames((current) => ({
             ...current,
-            [message.session_id as string]: payload.data,
+            [message.surface_id as string]: payload.data,
           }));
         }
         break;
       }
       case "terminal.frame": {
         const payload = message.payload as TerminalFramePayload;
-        if (message.session_id) {
-          if (terminalStreamActiveRef.current[message.session_id]) {
+        if (message.surface_id) {
+          if (terminalStreamActiveRef.current[message.surface_id]) {
             break;
           }
-          queueTerminalFrame(message.session_id, payload, message.seq);
+          queueTerminalFrame(message.surface_id, payload, message.seq);
         }
         break;
       }
       case "terminal.stream.ready": {
         const payload = message.payload as { stream_id?: string };
-        if (message.session_id && payload.stream_id) {
-          terminalStreamActiveRef.current[message.session_id] =
+        if (message.surface_id && payload.stream_id) {
+          terminalStreamActiveRef.current[message.surface_id] =
             payload.stream_id;
-          terminalStreamSeqRef.current[message.session_id] = 0;
+          terminalStreamSeqRef.current[message.surface_id] = 0;
         }
         break;
       }
       case "terminal.stream.data": {
         const payload = message.payload as TerminalStreamDataPayload;
-        if (!message.session_id) {
+        if (!message.surface_id) {
           break;
         }
         const activeStreamId =
-          terminalStreamActiveRef.current[message.session_id];
+          terminalStreamActiveRef.current[message.surface_id];
         if (activeStreamId && activeStreamId !== payload.stream_id) {
           break;
         }
         if (typeof message.seq === "number") {
-          const lastSeq = terminalStreamSeqRef.current[message.session_id] ?? 0;
+          const lastSeq = terminalStreamSeqRef.current[message.surface_id] ?? 0;
           if (message.seq <= lastSeq) {
             break;
           }
-          terminalStreamSeqRef.current[message.session_id] = message.seq;
+          terminalStreamSeqRef.current[message.surface_id] = message.seq;
         }
-        terminalLastFrameAtRef.current[message.session_id] = Date.now();
+        terminalLastFrameAtRef.current[message.surface_id] = Date.now();
         setTerminalStreamChunk({
-          sessionId: message.session_id,
+          surfaceId: message.surface_id,
           data: payload.data,
           seq: message.seq,
           streamId: payload.stream_id,
@@ -2486,9 +2519,9 @@ function AppContent(): JSX.Element {
       }
       case "terminal.stream.error": {
         const payload = message.payload as TerminalStreamErrorPayload;
-        if (message.session_id) {
-          delete terminalStreamActiveRef.current[message.session_id];
-          delete terminalStreamSeqRef.current[message.session_id];
+        if (message.surface_id) {
+          delete terminalStreamActiveRef.current[message.surface_id];
+          delete terminalStreamSeqRef.current[message.surface_id];
         }
         if (payload.code !== "TERMINAL_STREAM_DISABLED") {
           setConnectionMessage(payload.message);
@@ -2752,8 +2785,8 @@ function AppContent(): JSX.Element {
                     session={selectedSession}
                     frame={selectedFrame}
                     streamChunk={
-                      terminalStreamChunk?.sessionId ===
-                      selectedSession.session_id
+                      terminalStreamChunk?.surfaceId ===
+                      selectedSession.primary_surface_id
                         ? terminalStreamChunk
                         : undefined
                     }

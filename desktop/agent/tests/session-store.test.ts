@@ -10,6 +10,17 @@ function fakeSession(overrides: Partial<TerminalSession> = {}): TerminalSession 
   const now = new Date().toISOString();
   return {
     session_id: "sess_test",
+    primary_surface_id: "surface_sess_test_terminal",
+    surfaces: [
+      {
+        surface_id: "surface_sess_test_terminal",
+        session_id: "sess_test",
+        kind: "terminal",
+        title: "Test",
+        status: "active",
+        provider: "codex",
+      },
+    ],
     terminal_provider_kind: "codex",
     terminal_provider_label: "Codex",
     title: "Test",

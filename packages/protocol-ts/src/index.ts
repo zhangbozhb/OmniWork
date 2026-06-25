@@ -108,6 +108,7 @@ export interface MessageEnvelope<TPayload = unknown> {
   type: MessageType;
   device_id?: string;
   session_id?: string;
+  surface_id?: string;
   app_connection_id?: string;
   seq?: number;
   ts: string;
@@ -337,6 +338,7 @@ export interface InnerEnvelope<TPayload = unknown> {
   seq?: number;
   request_id?: string;
   session_id?: string;
+  surface_id?: string;
   payload: TPayload;
 }
 
@@ -498,9 +500,22 @@ export function isCreatableTerminalProviderKind(
 }
 
 export type SessionOrigin = "managed" | "external";
+export type SurfaceKind = "terminal" | "agent" | "file" | "diff";
+export type SurfaceStatus = "active" | "detached" | "ended";
+
+export interface SurfaceDefinition {
+  surface_id: string;
+  session_id: string;
+  kind: SurfaceKind;
+  title: string;
+  status: SurfaceStatus;
+  provider?: string;
+}
 
 export interface TerminalSession {
   session_id: string;
+  primary_surface_id: string;
+  surfaces: SurfaceDefinition[];
   terminal_provider_kind: TerminalProviderKind;
   terminal_provider_label: string;
   title: string;
@@ -539,6 +554,8 @@ export interface TerminalSession {
  */
 export const SESSION_FIELDS = [
   "session_id",
+  "primary_surface_id",
+  "surfaces",
   "terminal_provider_kind",
   "terminal_provider_label",
   "title",
@@ -563,6 +580,8 @@ export const SESSION_FIELDS = [
  */
 export const SESSION_REQUIRED_FIELDS = [
   "session_id",
+  "primary_surface_id",
+  "surfaces",
   "terminal_provider_kind",
   "terminal_provider_label",
   "title",
@@ -933,6 +952,7 @@ export function createMessage<TPayload>(
     id?: string;
     device_id?: string;
     session_id?: string;
+    surface_id?: string;
     app_connection_id?: string;
     seq?: number;
     ts?: string;
@@ -944,6 +964,7 @@ export function createMessage<TPayload>(
     type,
     device_id: options.device_id,
     session_id: options.session_id,
+    surface_id: options.surface_id,
     app_connection_id: options.app_connection_id,
     seq: options.seq,
     ts: options.ts ?? new Date().toISOString(),

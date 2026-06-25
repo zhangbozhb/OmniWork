@@ -13,6 +13,17 @@ import {
 
 const baseSession: TerminalSession = {
   session_id: "sess-1",
+  primary_surface_id: "surface_sess-1_terminal",
+  surfaces: [
+    {
+      surface_id: "surface_sess-1_terminal",
+      session_id: "sess-1",
+      kind: "terminal",
+      title: "Demo",
+      status: "active",
+      provider: "codex",
+    },
+  ],
   terminal_provider_kind: "codex",
   terminal_provider_label: "Codex",
   title: "Demo",
