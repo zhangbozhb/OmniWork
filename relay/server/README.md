@@ -194,7 +194,8 @@ routes. The Node-served admin web page under `/admin/web` is a development
 convenience and is disabled by default with
 `OMNIWORK_RELAY_ADMIN_WEB_ENABLED=false`. Use `pnpm dev:relay` or set
 `OMNIWORK_RELAY_ADMIN_WEB_ENABLED=true` explicitly when you want the relay
-process to serve `web/admin/*.html` on the admin listener.
+process to serve Admin Web on the admin listener. When enabled, startup logs
+include an `admin.web.ready` record with the local `/admin/web` access URL.
 
 On startup the server writes runtime artifacts under
 `OMNIWORK_RELAY_RUNTIME_DIR` (default `.omniwork-relay` in the current working
@@ -216,14 +217,14 @@ Permanent Agent disable and IP-ban rules are stored in
 Temporary rules with
 `ttl_ms`, `expires_in_ms`, `expires_at`, or the default TTL stay in memory only.
 
-The admin web source lives in `web/admin`. Production deployments should serve
-that source through the web build output and Nginx at `/admin/`, while relay
-development mode may read the same source and inject `/admin/web` as the local
-base path. Production keeps `/admin/login.html` as the static login route; relay
-dev uses `/admin/web` for both the page and login fallback. Keep UI HTML/CSS/JS
-out of `src/relayServer.ts`. The traffic board world map uses
-`web/admin/world-land-110m.geojson`, derived from Natural Earth 110m land data,
-as a local static asset rather than a runtime CDN dependency.
+The admin web source lives in `relay/server/admin-web`. Production deployments
+should serve that source through the web build output and Nginx at `/admin/`,
+while relay development mode may read the same source and inject `/admin/web`
+as the local base path. Production keeps `/admin/login.html` as the static
+login route; relay dev uses `/admin/web` for both the page and login fallback.
+Keep UI HTML/CSS/JS out of `src/relayServer.ts`. The traffic board world map
+uses `admin-web/world-land-110m.geojson`, derived from Natural Earth 110m land
+data, as a local static asset rather than a runtime CDN dependency.
 Admin HTTP routing, auth checks, snapshots, and control-rule mutations live in
 `src/relayAdminController.ts`; keep `src/relayServer.ts` focused on Relay
 connections and protocol routing.

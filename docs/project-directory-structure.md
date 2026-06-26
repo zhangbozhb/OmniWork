@@ -337,6 +337,10 @@ relay/
 |   |-- README.md
 |   |-- package.json
 |   |-- tsconfig.json
+|   |-- admin-web/
+|   |   |-- index.html
+|   |   |-- login.html
+|   |   |-- world-land-110m.geojson
 |   |-- src/
 |   |   |-- main.ts
 |   |   |-- adminAuth.ts

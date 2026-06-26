@@ -2,13 +2,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "..",
-);
-const adminWebRoot = join(repoRoot, "web", "admin");
+const relayServerRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const adminWebRoot = join(relayServerRoot, "admin-web");
 const adminPagePath = join(adminWebRoot, "index.html");
 const adminLoginPagePath = join(adminWebRoot, "login.html");
 const adminAssetPaths = new Map([

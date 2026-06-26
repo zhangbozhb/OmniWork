@@ -1,580 +1,1422 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OmniWork Agent Admin</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #020617;
-      --surface: rgba(15, 23, 42, 0.78);
-      --surface-strong: rgba(30, 41, 59, 0.88);
-      --border: rgba(148, 163, 184, 0.18);
-      --border-strong: rgba(148, 163, 184, 0.3);
-      --text: #f8fafc;
-      --text-soft: #cbd5e1;
-      --muted: #94a3b8;
-      --primary: #3b82f6;
-      --success: #22c55e;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      --cyan: #06b6d4;
-      --violet: #8b5cf6;
-      --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-variant-numeric: tabular-nums;
-    }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OmniWork Agent Admin</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #020617;
+        --surface: rgba(15, 23, 42, 0.78);
+        --surface-strong: rgba(30, 41, 59, 0.88);
+        --border: rgba(148, 163, 184, 0.18);
+        --border-strong: rgba(148, 163, 184, 0.3);
+        --text: #f8fafc;
+        --text-soft: #cbd5e1;
+        --muted: #94a3b8;
+        --primary: #3b82f6;
+        --success: #22c55e;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --cyan: #06b6d4;
+        --violet: #8b5cf6;
+        --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        font-variant-numeric: tabular-nums;
+      }
 
-    * { box-sizing: border-box; }
-    body {
-      min-height: 100vh;
-      margin: 0;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 18% 0%, rgba(59, 130, 246, 0.24), transparent 34%),
-        radial-gradient(circle at 88% 5%, rgba(139, 92, 246, 0.18), transparent 30%),
-        radial-gradient(circle at 50% 100%, rgba(6, 182, 212, 0.10), transparent 34%),
-        var(--bg);
-    }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--text);
+        background:
+          radial-gradient(
+            circle at 18% 0%,
+            rgba(59, 130, 246, 0.24),
+            transparent 34%
+          ),
+          radial-gradient(
+            circle at 88% 5%,
+            rgba(139, 92, 246, 0.18),
+            transparent 30%
+          ),
+          radial-gradient(
+            circle at 50% 100%,
+            rgba(6, 182, 212, 0.1),
+            transparent 34%
+          ),
+          var(--bg);
+      }
 
-    button, input, select { font: inherit; }
-    button { cursor: pointer; }
-    .shell { max-width: 1480px; margin: 0 auto; padding: 24px; }
-    .glass {
-      border: 1px solid var(--border);
-      background: var(--surface);
-      backdrop-filter: blur(18px);
-      box-shadow: var(--shadow);
-    }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      .shell {
+        max-width: 1480px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .glass {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        backdrop-filter: blur(18px);
+        box-shadow: var(--shadow);
+      }
 
-    .topbar {
-      position: sticky;
-      top: 16px;
-      z-index: 20;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 18px;
-      padding: 16px 18px;
-      border-radius: 24px;
-      background: rgba(2, 6, 23, 0.74);
-    }
-    .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
-    .brand-mark {
-      width: 44px;
-      height: 44px;
-      display: grid;
-      place-items: center;
-      border-radius: 16px;
-      background: linear-gradient(135deg, rgba(59,130,246,.96), rgba(139,92,246,.86));
-      box-shadow: 0 18px 40px rgba(59, 130, 246, 0.28);
-    }
-    .brand-mark svg { width: 24px; height: 24px; }
-    h1, h2, h3 { margin: 0; letter-spacing: -0.03em; }
-    h1 { font-size: 18px; }
-    .subtitle { margin-top: 4px; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
-    .button {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      min-height: 38px;
-      padding: 9px 13px;
-      border: 1px solid var(--border-strong);
-      border-radius: 12px;
-      color: var(--text);
-      background: rgba(15, 23, 42, 0.76);
-      transition: border-color .2s ease, background .2s ease;
-    }
-    .button:hover { border-color: rgba(59,130,246,.72); background: rgba(30,41,59,.9); }
-    .button svg { width: 16px; height: 16px; }
-    .status-pills { display: flex; gap: 8px; flex-wrap: wrap; }
-    .pill, .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      min-height: 28px;
-      padding: 5px 9px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      color: var(--text-soft);
-      background: rgba(15, 23, 42, 0.62);
-      font-size: 12px;
-      font-weight: 650;
-      white-space: nowrap;
-    }
-    .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--muted); box-shadow: 0 0 0 3px rgba(148,163,184,.12); }
-    .dot.ok { background: var(--success); box-shadow: 0 0 0 3px rgba(34,197,94,.13); }
-    .dot.warn { background: var(--warning); box-shadow: 0 0 0 3px rgba(245,158,11,.13); }
-    .dot.bad { background: var(--danger); box-shadow: 0 0 0 3px rgba(239,68,68,.13); }
+      .topbar {
+        position: sticky;
+        top: 16px;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 16px 18px;
+        border-radius: 24px;
+        background: rgba(2, 6, 23, 0.74);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+      }
+      .brand-mark {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        background: linear-gradient(
+          135deg,
+          rgba(59, 130, 246, 0.96),
+          rgba(139, 92, 246, 0.86)
+        );
+        box-shadow: 0 18px 40px rgba(59, 130, 246, 0.28);
+      }
+      .brand-mark svg {
+        width: 24px;
+        height: 24px;
+      }
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        letter-spacing: -0.03em;
+      }
+      h1 {
+        font-size: 18px;
+      }
+      .subtitle {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .top-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 38px;
+        padding: 9px 13px;
+        border: 1px solid var(--border-strong);
+        border-radius: 12px;
+        color: var(--text);
+        background: rgba(15, 23, 42, 0.76);
+        transition:
+          border-color 0.2s ease,
+          background 0.2s ease;
+      }
+      .button:hover {
+        border-color: rgba(59, 130, 246, 0.72);
+        background: rgba(30, 41, 59, 0.9);
+      }
+      .button svg {
+        width: 16px;
+        height: 16px;
+      }
+      .status-pills {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .pill,
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 28px;
+        padding: 5px 9px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--text-soft);
+        background: rgba(15, 23, 42, 0.62);
+        font-size: 12px;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--muted);
+        box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.12);
+      }
+      .dot.ok {
+        background: var(--success);
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.13);
+      }
+      .dot.warn {
+        background: var(--warning);
+        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.13);
+      }
+      .dot.bad {
+        background: var(--danger);
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.13);
+      }
 
-    .hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr); gap: 18px; margin: 24px 0 18px; }
-    .overview { position: relative; overflow: hidden; padding: 24px; border-radius: 24px; }
-    .overview:after {
-      content: "";
-      position: absolute;
-      right: -80px;
-      bottom: -120px;
-      width: 260px;
-      height: 260px;
-      border-radius: 999px;
-      background: rgba(59,130,246,.16);
-      filter: blur(22px);
-      pointer-events: none;
-    }
-    .eyebrow { color: var(--cyan); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-    .headline { margin: 12px 0 10px; font-size: clamp(32px, 5vw, 56px); line-height: .96; letter-spacing: -0.06em; }
-    .description { max-width: 760px; margin: 0; color: var(--text-soft); font-size: 15px; line-height: 1.7; }
-    .hero-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
+        gap: 18px;
+        margin: 24px 0 18px;
+      }
+      .overview {
+        position: relative;
+        overflow: hidden;
+        padding: 24px;
+        border-radius: 24px;
+      }
+      .overview:after {
+        content: "";
+        position: absolute;
+        right: -80px;
+        bottom: -120px;
+        width: 260px;
+        height: 260px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.16);
+        filter: blur(22px);
+        pointer-events: none;
+      }
+      .eyebrow {
+        color: var(--cyan);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .headline {
+        margin: 12px 0 10px;
+        font-size: clamp(32px, 5vw, 56px);
+        line-height: 0.96;
+        letter-spacing: -0.06em;
+      }
+      .description {
+        max-width: 760px;
+        margin: 0;
+        color: var(--text-soft);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+      .hero-meta {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 22px;
+      }
 
-    .runtime { display: grid; align-content: space-between; gap: 18px; padding: 20px; border-radius: 24px; }
-    .runtime-title, .metric-label, .group-title { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-    .runtime-value { margin-top: 8px; font-size: 30px; font-weight: 850; letter-spacing: -0.05em; }
-    .runtime-list { display: grid; gap: 10px; }
-    .runtime-row { display: flex; justify-content: space-between; gap: 12px; color: var(--text-soft); font-size: 13px; }
-    .runtime-row span:last-child { color: var(--text); text-align: right; }
+      .runtime {
+        display: grid;
+        align-content: space-between;
+        gap: 18px;
+        padding: 20px;
+        border-radius: 24px;
+      }
+      .runtime-title,
+      .metric-label,
+      .group-title {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .runtime-value {
+        margin-top: 8px;
+        font-size: 30px;
+        font-weight: 850;
+        letter-spacing: -0.05em;
+      }
+      .runtime-list {
+        display: grid;
+        gap: 10px;
+      }
+      .runtime-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--text-soft);
+        font-size: 13px;
+      }
+      .runtime-row span:last-child {
+        color: var(--text);
+        text-align: right;
+      }
 
-    .metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
-    .metric-card { position: relative; overflow: hidden; padding: 18px; border-radius: 22px; }
-    .metric-card:before {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,.32), transparent);
-    }
-    .metric-label { display: flex; align-items: center; justify-content: space-between; }
-    .metric-value { margin-top: 14px; font-size: 34px; font-weight: 850; letter-spacing: -0.06em; }
-    .metric-note { margin-top: 8px; color: var(--muted); font-size: 12px; }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 14px;
+        margin: 18px 0;
+      }
+      .metric-card {
+        position: relative;
+        overflow: hidden;
+        padding: 18px;
+        border-radius: 22px;
+      }
+      .metric-card:before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.32),
+          transparent
+        );
+      }
+      .metric-label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .metric-value {
+        margin-top: 14px;
+        font-size: 34px;
+        font-weight: 850;
+        letter-spacing: -0.06em;
+      }
+      .metric-note {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
 
-    .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 18px; align-items: start; }
-    .table-card, .detail-panel { border-radius: 24px; overflow: hidden; }
-    .devices-card { margin: 18px 0; }
-    .table-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px; border-bottom: 1px solid var(--border); }
-    .section-title { font-size: 16px; }
-    .muted { color: var(--muted); }
-    .filters { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(130px, auto)); gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: rgba(2,6,23,.22); }
-    .field {
-      min-height: 42px;
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: 13px;
-      background: rgba(2, 6, 23, 0.42);
-      color: var(--text);
-      padding: 0 12px;
-      outline: none;
-      transition: border-color .2s ease, box-shadow .2s ease;
-    }
-    .field:focus { border-color: rgba(59,130,246,.75); box-shadow: 0 0 0 3px rgba(59,130,246,.14); }
-    .table-wrap { overflow: auto; }
-    table { width: 100%; min-width: 920px; border-collapse: collapse; }
-    th, td { padding: 14px 16px; border-bottom: 1px solid rgba(148,163,184,.12); text-align: left; vertical-align: middle; }
-    th { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; background: rgba(15,23,42,.7); }
-    td { color: var(--text-soft); font-size: 13px; }
-    tbody tr { cursor: pointer; transition: background .18s ease; }
-    tbody tr:hover { background: rgba(59,130,246,.08); }
-    tbody tr.selected { background: rgba(59,130,246,.14); box-shadow: inset 3px 0 0 var(--primary); }
-    .app-cell { display: flex; align-items: center; gap: 12px; min-width: 240px; }
-    .avatar { width: 36px; height: 36px; border-radius: 13px; display: grid; place-items: center; color: white; background: linear-gradient(135deg, rgba(59,130,246,.95), rgba(6,182,212,.72)); font-weight: 800; }
-    .primary-text { color: var(--text); font-weight: 700; }
-    .subtext { margin-top: 3px; color: var(--muted); font-size: 12px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .badge.active, .badge.e2e, .badge.p2p, .badge.trusted { color: #86efac; border-color: rgba(34,197,94,.36); background: rgba(34,197,94,.08); }
-    .badge.idle, .badge.relay { color: #93c5fd; border-color: rgba(59,130,246,.36); background: rgba(59,130,246,.08); }
-    .badge.stale, .badge.plaintext, .badge.mixed { color: #fde68a; border-color: rgba(245,158,11,.36); background: rgba(245,158,11,.08); }
-    .badge.disconnected, .badge.unauthenticated, .badge.untrusted { color: #fca5a5; border-color: rgba(239,68,68,.36); background: rgba(239,68,68,.08); }
-    .badge.unknown { color: var(--text-soft); }
+      .content-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 420px;
+        gap: 18px;
+        align-items: start;
+      }
+      .table-card,
+      .detail-panel {
+        border-radius: 24px;
+        overflow: hidden;
+      }
+      .devices-card {
+        margin: 18px 0;
+      }
+      .table-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 18px;
+        border-bottom: 1px solid var(--border);
+      }
+      .section-title {
+        font-size: 16px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .filters {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(130px, auto));
+        gap: 10px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(2, 6, 23, 0.22);
+      }
+      .field {
+        min-height: 42px;
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 13px;
+        background: rgba(2, 6, 23, 0.42);
+        color: var(--text);
+        padding: 0 12px;
+        outline: none;
+        transition:
+          border-color 0.2s ease,
+          box-shadow 0.2s ease;
+      }
+      .field:focus {
+        border-color: rgba(59, 130, 246, 0.75);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      table {
+        width: 100%;
+        min-width: 920px;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 14px 16px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        text-align: left;
+        vertical-align: middle;
+      }
+      th {
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: rgba(15, 23, 42, 0.7);
+      }
+      td {
+        color: var(--text-soft);
+        font-size: 13px;
+      }
+      tbody tr {
+        cursor: pointer;
+        transition: background 0.18s ease;
+      }
+      tbody tr:hover {
+        background: rgba(59, 130, 246, 0.08);
+      }
+      tbody tr.selected {
+        background: rgba(59, 130, 246, 0.14);
+        box-shadow: inset 3px 0 0 var(--primary);
+      }
+      .app-cell {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 240px;
+      }
+      .avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 13px;
+        display: grid;
+        place-items: center;
+        color: white;
+        background: linear-gradient(
+          135deg,
+          rgba(59, 130, 246, 0.95),
+          rgba(6, 182, 212, 0.72)
+        );
+        font-weight: 800;
+      }
+      .primary-text {
+        color: var(--text);
+        font-weight: 700;
+      }
+      .subtext {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .badge.active,
+      .badge.e2e,
+      .badge.p2p,
+      .badge.trusted {
+        color: #86efac;
+        border-color: rgba(34, 197, 94, 0.36);
+        background: rgba(34, 197, 94, 0.08);
+      }
+      .badge.idle,
+      .badge.relay {
+        color: #93c5fd;
+        border-color: rgba(59, 130, 246, 0.36);
+        background: rgba(59, 130, 246, 0.08);
+      }
+      .badge.stale,
+      .badge.plaintext,
+      .badge.mixed {
+        color: #fde68a;
+        border-color: rgba(245, 158, 11, 0.36);
+        background: rgba(245, 158, 11, 0.08);
+      }
+      .badge.disconnected,
+      .badge.unauthenticated,
+      .badge.untrusted {
+        color: #fca5a5;
+        border-color: rgba(239, 68, 68, 0.36);
+        background: rgba(239, 68, 68, 0.08);
+      }
+      .badge.unknown {
+        color: var(--text-soft);
+      }
 
-    .detail-panel { position: sticky; top: 106px; }
-    .detail-head { padding: 18px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, rgba(30,41,59,.7), rgba(15,23,42,.2)); }
-    .detail-body { padding: 18px; display: grid; gap: 14px; max-height: calc(100vh - 180px); overflow: auto; }
-    .detail-group { border: 1px solid rgba(148,163,184,.14); border-radius: 18px; padding: 14px; background: rgba(2,6,23,.28); }
-    .group-title { margin: 0 0 12px; }
-    .kv { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 8px 12px; font-size: 13px; }
-    .kv dt { color: var(--muted); }
-    .kv dd { margin: 0; color: var(--text-soft); overflow-wrap: anywhere; }
-    .empty, .error { padding: 44px 18px; text-align: center; color: var(--muted); }
-    .empty strong, .error strong { display: block; margin-bottom: 8px; color: var(--text); font-size: 16px; }
-    .error { color: #fecaca; }
-    .hidden { display: none !important; }
+      .detail-panel {
+        position: sticky;
+        top: 106px;
+      }
+      .detail-head {
+        padding: 18px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(
+          180deg,
+          rgba(30, 41, 59, 0.7),
+          rgba(15, 23, 42, 0.2)
+        );
+      }
+      .detail-body {
+        padding: 18px;
+        display: grid;
+        gap: 14px;
+        max-height: calc(100vh - 180px);
+        overflow: auto;
+      }
+      .detail-group {
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        border-radius: 18px;
+        padding: 14px;
+        background: rgba(2, 6, 23, 0.28);
+      }
+      .group-title {
+        margin: 0 0 12px;
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: 130px minmax(0, 1fr);
+        gap: 8px 12px;
+        font-size: 13px;
+      }
+      .kv dt {
+        color: var(--muted);
+      }
+      .kv dd {
+        margin: 0;
+        color: var(--text-soft);
+        overflow-wrap: anywhere;
+      }
+      .empty,
+      .error {
+        padding: 44px 18px;
+        text-align: center;
+        color: var(--muted);
+      }
+      .empty strong,
+      .error strong {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--text);
+        font-size: 16px;
+      }
+      .error {
+        color: #fecaca;
+      }
+      .hidden {
+        display: none !important;
+      }
 
-    @media (max-width: 1180px) {
-      .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .content-grid { grid-template-columns: 1fr; }
-      .detail-panel { position: static; }
-      .detail-body { max-height: none; }
-    }
-    @media (max-width: 760px) {
-      .shell { padding: 14px; }
-      .topbar { position: static; align-items: flex-start; flex-direction: column; border-radius: 20px; }
-      .top-actions { justify-content: flex-start; }
-      .hero { grid-template-columns: 1fr; }
-      .metrics { grid-template-columns: 1fr; }
-      .filters { grid-template-columns: 1fr; }
-      .table-head { align-items: flex-start; flex-direction: column; }
-      .headline { font-size: 34px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="shell">
-    <header class="topbar glass">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 7v6c0 5 3.4 7.8 8 9 4.6-1.2 8-4 8-9V7l-8-4Z"/><path d="M9 12l2 2 4-5"/></svg>
+      @media (max-width: 1180px) {
+        .metrics {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .content-grid {
+          grid-template-columns: 1fr;
+        }
+        .detail-panel {
+          position: static;
+        }
+        .detail-body {
+          max-height: none;
+        }
+      }
+      @media (max-width: 760px) {
+        .shell {
+          padding: 14px;
+        }
+        .topbar {
+          position: static;
+          align-items: flex-start;
+          flex-direction: column;
+          border-radius: 20px;
+        }
+        .top-actions {
+          justify-content: flex-start;
+        }
+        .hero {
+          grid-template-columns: 1fr;
+        }
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+        .filters {
+          grid-template-columns: 1fr;
+        }
+        .table-head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .headline {
+          font-size: 34px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar glass">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 3 4 7v6c0 5 3.4 7.8 8 9 4.6-1.2 8-4 8-9V7l-8-4Z" />
+              <path d="M9 12l2 2 4-5" />
+            </svg>
+          </div>
+          <div>
+            <h1>OmniWork Agent Admin</h1>
+            <div class="subtitle" id="agent-line">Loading local agent...</div>
+          </div>
         </div>
-        <div>
-          <h1>OmniWork Agent Admin</h1>
-          <div class="subtitle" id="agent-line">Loading local agent...</div>
+        <div class="top-actions">
+          <div class="status-pills" id="status-pills"></div>
+          <button
+            class="button"
+            id="refresh"
+            type="button"
+            aria-label="Refresh dashboard"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16" />
+              <path d="M3 21v-5h5" />
+              <path d="M3 12A9 9 0 0 1 18.5 5.7L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
+            Refresh
+          </button>
         </div>
-      </div>
-      <div class="top-actions">
-        <div class="status-pills" id="status-pills"></div>
-        <button class="button" id="refresh" type="button" aria-label="Refresh dashboard">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.5 5.7L21 8"/><path d="M21 3v5h-5"/></svg>
-          Refresh
-        </button>
-      </div>
-    </header>
+      </header>
 
-    <section class="hero">
-      <div class="overview glass">
-        <div class="eyebrow">Local Control Plane</div>
-        <div class="headline">Trusted app connections at a glance.</div>
-        <p class="description">This dashboard shows only connections observed and verified by the Agent itself. Relay-provided connection state is treated as transport metadata, not as trusted identity.</p>
-        <div class="hero-meta" id="hero-meta"></div>
-      </div>
-      <aside class="runtime glass">
-        <div>
-          <div class="runtime-title">Runtime</div>
-          <div class="runtime-value" id="runtime-age">-</div>
+      <section class="hero">
+        <div class="overview glass">
+          <div class="eyebrow">Local Control Plane</div>
+          <div class="headline">Trusted app connections at a glance.</div>
+          <p class="description">
+            This dashboard shows only connections observed and verified by the
+            Agent itself. Relay-provided connection state is treated as
+            transport metadata, not as trusted identity.
+          </p>
+          <div class="hero-meta" id="hero-meta"></div>
         </div>
-        <div class="runtime-list" id="runtime-list"></div>
-      </aside>
-    </section>
+        <aside class="runtime glass">
+          <div>
+            <div class="runtime-title">Runtime</div>
+            <div class="runtime-value" id="runtime-age">-</div>
+          </div>
+          <div class="runtime-list" id="runtime-list"></div>
+        </aside>
+      </section>
 
-    <section class="metrics" id="metrics" aria-label="Connection summary"></section>
+      <section
+        class="metrics"
+        id="metrics"
+        aria-label="Connection summary"
+      ></section>
 
-    <section class="table-card glass devices-card">
-      <div class="table-head">
-        <div>
-          <h2 class="section-title">Devices</h2>
-          <div class="muted" id="devices-caption">Waiting for device data...</div>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Device</th><th>Platform</th><th>Path</th><th>IP</th><th>Connections</th><th>Attempts</th><th>Traffic</th><th>Messages</th><th>Last Seen</th></tr></thead>
-          <tbody id="device-rows"></tbody>
-        </table>
-        <div class="empty hidden" id="devices-empty"><strong>No devices observed</strong>Devices appear after an authenticated App link is verified by the Agent.</div>
-      </div>
-    </section>
-
-    <section class="content-grid">
-      <div class="table-card glass">
+      <section class="table-card glass devices-card">
         <div class="table-head">
           <div>
-            <h2 class="section-title">Connections</h2>
-            <div class="muted" id="table-caption">Waiting for connection data...</div>
+            <h2 class="section-title">Devices</h2>
+            <div class="muted" id="devices-caption">
+              Waiting for device data...
+            </div>
           </div>
-          <div class="pill" id="updated-at"><span class="dot"></span>Not updated</div>
-        </div>
-        <div class="filters" aria-label="Connection filters">
-          <input class="field" id="search" placeholder="Search app, device, connection id, IP" />
-          <select class="field" id="state"><option value="">All states</option><option>active</option><option>idle</option><option>stale</option><option>disconnected</option></select>
-          <select class="field" id="security"><option value="">All security</option><option value="encrypted">Encrypted</option><option value="plaintext">Plaintext</option><option value="trusted">Trusted</option><option value="untrusted">Untrusted</option></select>
-          <select class="field" id="path"><option value="">All paths</option><option>relay</option><option>p2p</option><option>unknown</option></select>
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>App</th><th>State</th><th>Security</th><th>Path</th><th>IP</th><th>Attempts</th><th>Traffic</th><th>Connected</th><th>Last Message</th></tr></thead>
-            <tbody id="rows"></tbody>
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>Platform</th>
+                <th>Path</th>
+                <th>IP</th>
+                <th>Connections</th>
+                <th>Attempts</th>
+                <th>Traffic</th>
+                <th>Messages</th>
+                <th>Last Seen</th>
+              </tr>
+            </thead>
+            <tbody id="device-rows"></tbody>
           </table>
-          <div class="empty hidden" id="empty-state"><strong>No app connections observed</strong>Agent is running and waiting for authenticated App traffic. E2E and plaintext connections will appear here.</div>
-          <div class="error hidden" id="error-state"><strong>Unable to load Agent status</strong><span id="error-message">Check whether the admin server is running.</span></div>
+          <div class="empty hidden" id="devices-empty">
+            <strong>No devices observed</strong>Devices appear after an
+            authenticated App link is verified by the Agent.
+          </div>
         </div>
-      </div>
+      </section>
 
-      <aside class="detail-panel glass" aria-label="Connection detail">
-        <div class="detail-head">
-          <h2 class="section-title">Connection Detail</h2>
-          <div class="muted" id="detail-subtitle">Select a connection to inspect</div>
+      <section class="content-grid">
+        <div class="table-card glass">
+          <div class="table-head">
+            <div>
+              <h2 class="section-title">Connections</h2>
+              <div class="muted" id="table-caption">
+                Waiting for connection data...
+              </div>
+            </div>
+            <div class="pill" id="updated-at">
+              <span class="dot"></span>Not updated
+            </div>
+          </div>
+          <div class="filters" aria-label="Connection filters">
+            <input
+              class="field"
+              id="search"
+              placeholder="Search app, device, connection id, IP"
+            />
+            <select class="field" id="state">
+              <option value="">All states</option>
+              <option>active</option>
+              <option>idle</option>
+              <option>stale</option>
+              <option>disconnected</option>
+            </select>
+            <select class="field" id="security">
+              <option value="">All security</option>
+              <option value="encrypted">Encrypted</option>
+              <option value="plaintext">Plaintext</option>
+              <option value="trusted">Trusted</option>
+              <option value="untrusted">Untrusted</option>
+            </select>
+            <select class="field" id="path">
+              <option value="">All paths</option>
+              <option>relay</option>
+              <option>p2p</option>
+              <option>unknown</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>App</th>
+                  <th>State</th>
+                  <th>Security</th>
+                  <th>Path</th>
+                  <th>IP</th>
+                  <th>Attempts</th>
+                  <th>Traffic</th>
+                  <th>Connected</th>
+                  <th>Last Message</th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+            <div class="empty hidden" id="empty-state">
+              <strong>No app connections observed</strong>Agent is running and
+              waiting for authenticated App traffic. E2E and plaintext
+              connections will appear here.
+            </div>
+            <div class="error hidden" id="error-state">
+              <strong>Unable to load Agent status</strong
+              ><span id="error-message"
+                >Check whether the admin server is running.</span
+              >
+            </div>
+          </div>
         </div>
-        <div class="detail-body" id="detail-body">
-          <div class="empty"><strong>No connection selected</strong>Click any table row to inspect security, transport, timing, and counters.</div>
-        </div>
-      </aside>
-    </section>
-  </div>
 
-  <script>
-    let statusSnapshot = null;
-    let connectionSnapshot = null;
-    let selectedId = null;
-    let lastLoadedAt = null;
-    const token = new URLSearchParams(location.search).get("token") || "";
-    const headers = token ? { Authorization: "Bearer " + token } : {};
+        <aside class="detail-panel glass" aria-label="Connection detail">
+          <div class="detail-head">
+            <h2 class="section-title">Connection Detail</h2>
+            <div class="muted" id="detail-subtitle">
+              Select a connection to inspect
+            </div>
+          </div>
+          <div class="detail-body" id="detail-body">
+            <div class="empty">
+              <strong>No connection selected</strong>Click any table row to
+              inspect security, transport, timing, and counters.
+            </div>
+          </div>
+        </aside>
+      </section>
+    </div>
 
-    async function load() {
-      try {
-        const responses = await Promise.all([
-          fetch("/api/status", { headers }),
-          fetch("/api/connections", { headers }),
-        ]);
-        if (!responses[0].ok || !responses[1].ok) {
-          throw new Error("API request failed with status " + responses[0].status + "/" + responses[1].status);
+    <script>
+      let statusSnapshot = null;
+      let connectionSnapshot = null;
+      let selectedId = null;
+      let lastLoadedAt = null;
+      const token = new URLSearchParams(location.search).get("token") || "";
+      const headers = token ? { Authorization: "Bearer " + token } : {};
+
+      async function load() {
+        try {
+          const responses = await Promise.all([
+            fetch("/api/status", { headers }),
+            fetch("/api/connections", { headers }),
+          ]);
+          if (!responses[0].ok || !responses[1].ok) {
+            throw new Error(
+              "API request failed with status " +
+                responses[0].status +
+                "/" +
+                responses[1].status,
+            );
+          }
+          statusSnapshot = await responses[0].json();
+          connectionSnapshot = await responses[1].json();
+          lastLoadedAt = Date.now();
+          hideError();
+          render();
+        } catch (error) {
+          showError(error && error.message ? error.message : String(error));
         }
-        statusSnapshot = await responses[0].json();
-        connectionSnapshot = await responses[1].json();
-        lastLoadedAt = Date.now();
-        hideError();
-        render();
-      } catch (error) {
-        showError(error && error.message ? error.message : String(error));
       }
-    }
 
-    function render() {
-      if (!statusSnapshot || !connectionSnapshot) return;
-      renderTopbar();
-      renderHero();
-      renderMetrics();
-      renderDevices();
-      renderRows();
-      renderDetail();
-    }
+      function render() {
+        if (!statusSnapshot || !connectionSnapshot) return;
+        renderTopbar();
+        renderHero();
+        renderMetrics();
+        renderDevices();
+        renderRows();
+        renderDetail();
+      }
 
-    function renderTopbar() {
-      const agent = statusSnapshot.agent;
-      const runtime = statusSnapshot.runtime;
-      document.getElementById("agent-line").textContent = agent.device_id + " · " + agent.hostname + " · " + agent.agent_instance_id;
-      document.getElementById("status-pills").innerHTML = [
-        statusPill("Relay " + relayStatusLabel(runtime), relayStatusTone(runtime)),
-        statusPill(runtime.admin_enabled ? "Admin Local" : "Admin Off", runtime.admin_enabled ? "ok" : "bad"),
-        statusPill(runtime.e2e_required ? "E2E Required" : "Plaintext Allowed", runtime.e2e_required ? "ok" : "warn"),
-      ].join("");
-      document.getElementById("updated-at").innerHTML = '<span class="dot ok"></span>Updated ' + formatTime(lastLoadedAt);
-    }
+      function renderTopbar() {
+        const agent = statusSnapshot.agent;
+        const runtime = statusSnapshot.runtime;
+        document.getElementById("agent-line").textContent =
+          agent.device_id +
+          " · " +
+          agent.hostname +
+          " · " +
+          agent.agent_instance_id;
+        document.getElementById("status-pills").innerHTML = [
+          statusPill(
+            "Relay " + relayStatusLabel(runtime),
+            relayStatusTone(runtime),
+          ),
+          statusPill(
+            runtime.admin_enabled ? "Admin Local" : "Admin Off",
+            runtime.admin_enabled ? "ok" : "bad",
+          ),
+          statusPill(
+            runtime.e2e_required ? "E2E Required" : "Plaintext Allowed",
+            runtime.e2e_required ? "ok" : "warn",
+          ),
+        ].join("");
+        document.getElementById("updated-at").innerHTML =
+          '<span class="dot ok"></span>Updated ' + formatTime(lastLoadedAt);
+      }
 
-    function renderHero() {
-      const agent = statusSnapshot.agent;
-      const runtime = statusSnapshot.runtime;
-      const summary = connectionSnapshot.summary;
-      document.getElementById("runtime-age").textContent = relativeDuration(Date.now() - agent.started_at);
-      document.getElementById("runtime-list").innerHTML = [
-        ["Version", agent.version],
-        ["Platform", agent.platform],
-        ["Relay", runtime.relay_configured ? relayStatusLabel(runtime) : "not configured"],
-        ["Retry Attempts", runtime.relay_reconnect_attempts || 0],
-        ["Next Retry", formatDate(runtime.relay_next_retry_at)],
-        ["Relay Last Error", runtime.relay_last_error || "-"],
-        ["Relay Last Close", formatClose(runtime.relay_last_close)],
-        ["Started", formatDate(agent.started_at)],
-      ].map(([label, value]) => '<div class="runtime-row"><span>' + escapeHtml(label) + '</span><span>' + escapeHtml(value) + '</span></div>').join("");
-      document.getElementById("hero-meta").innerHTML = [
-        badge("trusted", summary.trusted + " trusted"),
-        badge("e2e", summary.encrypted + " encrypted"),
-        badge("relay", summary.relay + " relay"),
-        badge("p2p", summary.p2p + " p2p"),
-        badge("mixed", formatBytes(summary.bytes_in + summary.bytes_out) + " traffic"),
-      ].join("");
-    }
+      function renderHero() {
+        const agent = statusSnapshot.agent;
+        const runtime = statusSnapshot.runtime;
+        const summary = connectionSnapshot.summary;
+        document.getElementById("runtime-age").textContent = relativeDuration(
+          Date.now() - agent.started_at,
+        );
+        document.getElementById("runtime-list").innerHTML = [
+          ["Version", agent.version],
+          ["Platform", agent.platform],
+          [
+            "Relay",
+            runtime.relay_configured
+              ? relayStatusLabel(runtime)
+              : "not configured",
+          ],
+          ["Retry Attempts", runtime.relay_reconnect_attempts || 0],
+          ["Next Retry", formatDate(runtime.relay_next_retry_at)],
+          ["Relay Last Error", runtime.relay_last_error || "-"],
+          ["Relay Last Close", formatClose(runtime.relay_last_close)],
+          ["Started", formatDate(agent.started_at)],
+        ]
+          .map(
+            ([label, value]) =>
+              '<div class="runtime-row"><span>' +
+              escapeHtml(label) +
+              "</span><span>" +
+              escapeHtml(value) +
+              "</span></div>",
+          )
+          .join("");
+        document.getElementById("hero-meta").innerHTML = [
+          badge("trusted", summary.trusted + " trusted"),
+          badge("e2e", summary.encrypted + " encrypted"),
+          badge("relay", summary.relay + " relay"),
+          badge("p2p", summary.p2p + " p2p"),
+          badge(
+            "mixed",
+            formatBytes(summary.bytes_in + summary.bytes_out) + " traffic",
+          ),
+        ].join("");
+      }
 
-    function renderMetrics() {
-      const summary = connectionSnapshot.summary;
-      const items = [
-        ["Total", summary.total, "Observed connections", ""],
-        ["Attempts", summary.connection_attempts || 0, "logical reconnects", "trusted"],
-        ["Trusted", summary.trusted, summary.untrusted + " untrusted", "trusted"],
-        ["P2P", summary.p2p, summary.relay + " relay", "p2p"],
-        ["Traffic", formatBytes((summary.bytes_in || 0) + (summary.bytes_out || 0)), formatBytes(summary.bytes_in || 0) + " in · " + formatBytes(summary.bytes_out || 0) + " out", "mixed"],
-        ["Stale", summary.stale, summary.active + " active", summary.stale > 0 ? "stale" : "trusted"],
-      ];
-      document.getElementById("metrics").innerHTML = items.map(([label, value, note, tone]) =>
-        '<article class="metric-card glass"><div class="metric-label"><span>' + label + '</span>' + tinyDot(tone) + '</div><div class="metric-value">' + value + '</div><div class="metric-note">' + note + '</div></article>'
-      ).join("");
-    }
+      function renderMetrics() {
+        const summary = connectionSnapshot.summary;
+        const items = [
+          ["Total", summary.total, "Observed connections", ""],
+          [
+            "Attempts",
+            summary.connection_attempts || 0,
+            "logical reconnects",
+            "trusted",
+          ],
+          [
+            "Trusted",
+            summary.trusted,
+            summary.untrusted + " untrusted",
+            "trusted",
+          ],
+          ["P2P", summary.p2p, summary.relay + " relay", "p2p"],
+          [
+            "Traffic",
+            formatBytes((summary.bytes_in || 0) + (summary.bytes_out || 0)),
+            formatBytes(summary.bytes_in || 0) +
+              " in · " +
+              formatBytes(summary.bytes_out || 0) +
+              " out",
+            "mixed",
+          ],
+          [
+            "Stale",
+            summary.stale,
+            summary.active + " active",
+            summary.stale > 0 ? "stale" : "trusted",
+          ],
+        ];
+        document.getElementById("metrics").innerHTML = items
+          .map(
+            ([label, value, note, tone]) =>
+              '<article class="metric-card glass"><div class="metric-label"><span>' +
+              label +
+              "</span>" +
+              tinyDot(tone) +
+              '</div><div class="metric-value">' +
+              value +
+              '</div><div class="metric-note">' +
+              note +
+              "</div></article>",
+          )
+          .join("");
+      }
 
-    function renderRows() {
-      const rows = filteredConnections();
-      const rowsEl = document.getElementById("rows");
-      document.getElementById("table-caption").textContent = rows.length + " of " + connectionSnapshot.connections.length + " connections shown";
-      document.getElementById("empty-state").classList.toggle("hidden", connectionSnapshot.connections.length !== 0);
-      rowsEl.innerHTML = rows.map((item) => {
-        const selected = item.connection_id === selectedId ? " selected" : "";
-        return '<tr class="' + selected + '" data-id="' + escapeAttr(item.connection_id) + '">' +
-          '<td><div class="app-cell"><div class="avatar">' + initials(item) + '</div><div><div class="primary-text">' + escapeHtml(appName(item)) + '</div><div class="subtext">' + escapeHtml(item.connection_id) + '</div></div></div></td>' +
-          '<td>' + badge(item.state, item.state) + '</td>' +
-          '<td>' + badge(item.security.mode, item.security.encrypted ? "E2E" : item.security.mode) + '</td>' +
-          '<td>' + badge(item.transport.current_path, item.transport.current_path) + '</td>' +
-          '<td><div class="primary-text">' + escapeHtml(item.network.ip || "unknown") + '</div><div class="subtext">' + escapeHtml(item.network.ip_source) + '</div></td>' +
-          '<td>' + escapeHtml(item.counters.connection_attempts || 0) + '</td>' +
-          '<td><div class="primary-text">' + escapeHtml(formatBytes((item.counters.bytes_in || 0) + (item.counters.bytes_out || 0))) + '</div><div class="subtext">' + escapeHtml(formatBytes(item.counters.bytes_in || 0)) + ' in · ' + escapeHtml(formatBytes(item.counters.bytes_out || 0)) + ' out</div></td>' +
-          '<td>' + formatDate(item.timing.connected_at) + '</td>' +
-          '<td>' + timeAgo(item.timing.last_message_at || item.timing.last_seen_at) + '</td>' +
-          '</tr>';
-      }).join("");
-      document.querySelectorAll("tbody tr").forEach((row) => {
-        row.addEventListener("click", () => {
-          selectedId = row.getAttribute("data-id");
-          renderRows();
-          renderDetail();
+      function renderRows() {
+        const rows = filteredConnections();
+        const rowsEl = document.getElementById("rows");
+        document.getElementById("table-caption").textContent =
+          rows.length +
+          " of " +
+          connectionSnapshot.connections.length +
+          " connections shown";
+        document
+          .getElementById("empty-state")
+          .classList.toggle(
+            "hidden",
+            connectionSnapshot.connections.length !== 0,
+          );
+        rowsEl.innerHTML = rows
+          .map((item) => {
+            const selected =
+              item.connection_id === selectedId ? " selected" : "";
+            return (
+              '<tr class="' +
+              selected +
+              '" data-id="' +
+              escapeAttr(item.connection_id) +
+              '">' +
+              '<td><div class="app-cell"><div class="avatar">' +
+              initials(item) +
+              '</div><div><div class="primary-text">' +
+              escapeHtml(appName(item)) +
+              '</div><div class="subtext">' +
+              escapeHtml(item.connection_id) +
+              "</div></div></div></td>" +
+              "<td>" +
+              badge(item.state, item.state) +
+              "</td>" +
+              "<td>" +
+              badge(
+                item.security.mode,
+                item.security.encrypted ? "E2E" : item.security.mode,
+              ) +
+              "</td>" +
+              "<td>" +
+              badge(item.transport.current_path, item.transport.current_path) +
+              "</td>" +
+              '<td><div class="primary-text">' +
+              escapeHtml(item.network.ip || "unknown") +
+              '</div><div class="subtext">' +
+              escapeHtml(item.network.ip_source) +
+              "</div></td>" +
+              "<td>" +
+              escapeHtml(item.counters.connection_attempts || 0) +
+              "</td>" +
+              '<td><div class="primary-text">' +
+              escapeHtml(
+                formatBytes(
+                  (item.counters.bytes_in || 0) +
+                    (item.counters.bytes_out || 0),
+                ),
+              ) +
+              '</div><div class="subtext">' +
+              escapeHtml(formatBytes(item.counters.bytes_in || 0)) +
+              " in · " +
+              escapeHtml(formatBytes(item.counters.bytes_out || 0)) +
+              " out</div></td>" +
+              "<td>" +
+              formatDate(item.timing.connected_at) +
+              "</td>" +
+              "<td>" +
+              timeAgo(item.timing.last_message_at || item.timing.last_seen_at) +
+              "</td>" +
+              "</tr>"
+            );
+          })
+          .join("");
+        document.querySelectorAll("tbody tr").forEach((row) => {
+          row.addEventListener("click", () => {
+            selectedId = row.getAttribute("data-id");
+            renderRows();
+            renderDetail();
+          });
         });
-      });
-    }
-
-    function renderDevices() {
-      const devices = connectionSnapshot.devices || [];
-      const rowsEl = document.getElementById("device-rows");
-      document.getElementById("devices-caption").textContent = devices.length + " logical devices observed";
-      document.getElementById("devices-empty").classList.toggle("hidden", devices.length !== 0);
-      rowsEl.innerHTML = devices.map((device) =>
-        '<tr>' +
-          '<td><div class="app-cell"><div class="avatar">' + escapeHtml(deviceInitials(device)) + '</div><div><div class="primary-text">' + escapeHtml(deviceName(device)) + '</div><div class="subtext">' + escapeHtml(device.device_id) + '</div></div></div></td>' +
-          '<td>' + escapeHtml(device.platform || "unknown") + '</td>' +
-          '<td>' + badge(device.current_path, device.current_path) + '</td>' +
-          '<td><div class="primary-text">' + escapeHtml(device.ip || "unknown") + '</div><div class="subtext">' + escapeHtml(device.ip_source || "unknown") + privateNetworkHashSummary(device) + '</div></td>' +
-          '<td><div class="primary-text">' + escapeHtml(device.connection_count || 0) + '</div><div class="subtext">' + escapeHtml(device.active_connections || 0) + ' active · ' + escapeHtml(device.encrypted_connections || 0) + ' e2e</div></td>' +
-          '<td>' + escapeHtml(device.connection_attempts || 0) + '</td>' +
-          '<td><div class="primary-text">' + escapeHtml(formatBytes((device.bytes_in || 0) + (device.bytes_out || 0))) + '</div><div class="subtext">' + escapeHtml(formatBytes(device.bytes_in || 0)) + ' in · ' + escapeHtml(formatBytes(device.bytes_out || 0)) + ' out</div></td>' +
-          '<td><div class="primary-text">' + escapeHtml((device.messages_in || 0) + (device.messages_out || 0)) + '</div><div class="subtext">' + escapeHtml(device.messages_in || 0) + ' in · ' + escapeHtml(device.messages_out || 0) + ' out</div></td>' +
-          '<td>' + timeAgo(device.last_seen_at) + '</td>' +
-        '</tr>'
-      ).join("");
-    }
-
-    function renderDetail() {
-      const item = selectedConnection();
-      const body = document.getElementById("detail-body");
-      if (!item) {
-        document.getElementById("detail-subtitle").textContent = "Select a connection to inspect";
-        body.innerHTML = '<div class="empty"><strong>No connection selected</strong>Click any table row to inspect security, transport, timing, and counters.</div>';
-        return;
       }
-      document.getElementById("detail-subtitle").textContent = appName(item) + " · " + item.state;
-      body.innerHTML = [
-        detailGroup("Basic", [["Connection", item.connection_id], ["App Instance", item.app_instance_id], ["Runtime", item.app_runtime_id], ["Platform", item.app_platform || "unknown"], ["Version", item.app_version || "unknown"]]),
-        detailGroup("Security", [["Trusted", bool(item.trusted)], ["Encrypted", bool(item.security.encrypted)], ["Mode", item.security.mode], ["Key ID", item.security.key_id || "unknown"], ["E2E Ready", bool(item.security.e2e_ready)], ["Last Verified", formatDate(item.security.last_verified_at)]]),
-        detailGroup("Network", [["Method", item.network.connection_method], ["IP", item.network.ip || "unknown"], ["IP Source", item.network.ip_source], ["IP History", (item.network.ip_history || []).join(", ") || "unknown"], ["Private Network Hash", item.network.private_network_hash || "unknown"], ["Relay ID", item.network.relay_connection_id || item.relay_connection_id || "unknown"]]),
-        detailGroup("Timing", [["Connected", formatDate(item.timing.connected_at)], ["First Seen", formatDate(item.timing.first_seen_at)], ["Last Seen", timeAgo(item.timing.last_seen_at)], ["Last Heartbeat", formatDate(item.timing.last_heartbeat_at)], ["Last Message", formatDate(item.timing.last_message_at)], ["Stale After", formatDate(item.timing.stale_after)]]),
-        detailGroup("Transport", [["Current Path", item.transport.current_path], ["Available", item.transport.available_paths.join(", ") || "unknown"], ["P2P State", item.transport.p2p_state || "unknown"], ["Relay State", item.transport.relay_state || "unknown"], ["Path Changed", formatDate(item.transport.last_path_change_at)]]),
-        detailGroup("Counters", [["Connection Attempts", item.counters.connection_attempts || 0], ["Bytes In", formatBytes(item.counters.bytes_in || 0)], ["Bytes Out", formatBytes(item.counters.bytes_out || 0)], ["Messages In", item.counters.messages_in], ["Messages Out", item.counters.messages_out], ["Heartbeats", item.counters.heartbeats], ["Replay Rejected", item.counters.replay_rejected], ["Auth Failures", item.counters.auth_failures]]),
-        detailGroup("Observations", observationRows(item)),
-      ].join("");
-    }
 
-    function filteredConnections() {
-      if (!connectionSnapshot) return [];
-      const q = document.getElementById("search").value.toLowerCase();
-      const state = document.getElementById("state").value;
-      const security = document.getElementById("security").value;
-      const path = document.getElementById("path").value;
-      return connectionSnapshot.connections.filter((item) => {
-        const haystack = JSON.stringify(item).toLowerCase();
-        if (q && !haystack.includes(q)) return false;
-        if (state && item.state !== state) return false;
-        if (path && item.transport.current_path !== path) return false;
-        if (security === "encrypted" && !item.security.encrypted) return false;
-        if (security === "plaintext" && item.security.encrypted) return false;
-        if (security === "trusted" && !item.trusted) return false;
-        if (security === "untrusted" && item.trusted) return false;
-        return true;
-      });
-    }
-
-    function selectedConnection() {
-      if (!selectedId || !connectionSnapshot) return null;
-      return connectionSnapshot.connections.find((item) => item.connection_id === selectedId) || null;
-    }
-    function detailGroup(title, rows) {
-      return '<section class="detail-group"><h3 class="group-title">' + escapeHtml(title) + '</h3><dl class="kv">' + rows.map(([key, value]) => '<dt>' + escapeHtml(key) + '</dt><dd>' + escapeHtml(value == null ? "-" : value) + '</dd>').join("") + '</dl></section>';
-    }
-    function observationRows(item) {
-      const observations = item.observations || [];
-      if (observations.length === 0) return [["Observed", "none"]];
-      return observations.slice(-8).map((observation) => [
-        observation.source + " · " + formatDate(observation.observed_at),
-        [
-          observation.network && (observation.network.remote_ip || observation.network.public_ip || privateNetworkHashSummary(observation.network)),
-          observation.network && observation.network.ip_source,
-          observation.http && observation.http.user_agent,
-          observation.device && [observation.device.name, observation.device.platform, observation.device.os, observation.device.os_version].filter(Boolean).join(" "),
-          observation.app && [observation.app.name, observation.app.version, observation.app.runtime_id].filter(Boolean).join(" "),
-          observation.transport && observation.transport.path,
-        ].filter(Boolean).join(" · ") || "recorded"
-      ]);
-    }
-    function statusPill(label, tone) { return '<span class="pill"><span class="dot ' + tone + '"></span>' + escapeHtml(label) + '</span>'; }
-    function tinyDot(tone) { return '<span class="dot ' + (tone === "stale" || tone === "plaintext" ? "warn" : tone ? "ok" : "") + '"></span>'; }
-    function badge(tone, label) { return '<span class="badge ' + escapeAttr(tone || "unknown") + '">' + escapeHtml(label) + '</span>'; }
-    function bool(value) { return value ? "Yes" : "No"; }
-    function relayStatusLabel(runtime) {
-      return runtime.relay_status || (runtime.relay_connected ? "connected" : "disconnected");
-    }
-    function relayStatusTone(runtime) {
-      const status = relayStatusLabel(runtime);
-      if (status === "connected") return "ok";
-      if (status === "connecting" || status === "reconnecting") return "warn";
-      return "bad";
-    }
-    function formatClose(value) {
-      if (!value) return "-";
-      return [value.code || "-", value.reason || ""].join(" ");
-    }
-    function appName(item) { return item.app_name || item.app_device_name || item.app_instance_id || "Unknown App"; }
-    function initials(item) { return escapeHtml(appName(item).split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "OW"); }
-    function deviceName(device) { return device.device_name || device.app_name || device.device_id || "Unknown Device"; }
-    function deviceInitials(device) { return deviceName(device).split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "OW"; }
-    function privateNetworkHashSummary(value) {
-      return value.private_network_hash ? " · private hash " + value.private_network_hash.slice(0, 12) : "";
-    }
-    function formatTime(value) { return value ? new Date(value).toLocaleTimeString() : "-"; }
-    function formatDate(value) { return value ? new Date(value).toLocaleString() : "-"; }
-    function formatBytes(value) {
-      const bytes = Number(value) || 0;
-      if (bytes < 1024) return bytes + " B";
-      const units = ["KB", "MB", "GB"];
-      let size = bytes / 1024;
-      let index = 0;
-      while (size >= 1024 && index < units.length - 1) {
-        size /= 1024;
-        index += 1;
+      function renderDevices() {
+        const devices = connectionSnapshot.devices || [];
+        const rowsEl = document.getElementById("device-rows");
+        document.getElementById("devices-caption").textContent =
+          devices.length + " logical devices observed";
+        document
+          .getElementById("devices-empty")
+          .classList.toggle("hidden", devices.length !== 0);
+        rowsEl.innerHTML = devices
+          .map(
+            (device) =>
+              "<tr>" +
+              '<td><div class="app-cell"><div class="avatar">' +
+              escapeHtml(deviceInitials(device)) +
+              '</div><div><div class="primary-text">' +
+              escapeHtml(deviceName(device)) +
+              '</div><div class="subtext">' +
+              escapeHtml(device.device_id) +
+              "</div></div></div></td>" +
+              "<td>" +
+              escapeHtml(device.platform || "unknown") +
+              "</td>" +
+              "<td>" +
+              badge(device.current_path, device.current_path) +
+              "</td>" +
+              '<td><div class="primary-text">' +
+              escapeHtml(device.ip || "unknown") +
+              '</div><div class="subtext">' +
+              escapeHtml(device.ip_source || "unknown") +
+              privateNetworkHashSummary(device) +
+              "</div></td>" +
+              '<td><div class="primary-text">' +
+              escapeHtml(device.connection_count || 0) +
+              '</div><div class="subtext">' +
+              escapeHtml(device.active_connections || 0) +
+              " active · " +
+              escapeHtml(device.encrypted_connections || 0) +
+              " e2e</div></td>" +
+              "<td>" +
+              escapeHtml(device.connection_attempts || 0) +
+              "</td>" +
+              '<td><div class="primary-text">' +
+              escapeHtml(
+                formatBytes((device.bytes_in || 0) + (device.bytes_out || 0)),
+              ) +
+              '</div><div class="subtext">' +
+              escapeHtml(formatBytes(device.bytes_in || 0)) +
+              " in · " +
+              escapeHtml(formatBytes(device.bytes_out || 0)) +
+              " out</div></td>" +
+              '<td><div class="primary-text">' +
+              escapeHtml(
+                (device.messages_in || 0) + (device.messages_out || 0),
+              ) +
+              '</div><div class="subtext">' +
+              escapeHtml(device.messages_in || 0) +
+              " in · " +
+              escapeHtml(device.messages_out || 0) +
+              " out</div></td>" +
+              "<td>" +
+              timeAgo(device.last_seen_at) +
+              "</td>" +
+              "</tr>",
+          )
+          .join("");
       }
-      return size.toFixed(size >= 10 ? 1 : 2) + " " + units[index];
-    }
-    function timeAgo(value) {
-      if (!value) return "-";
-      const seconds = Math.max(0, Math.floor((Date.now() - value) / 1000));
-      if (seconds < 5) return "just now";
-      if (seconds < 60) return seconds + "s ago";
-      const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return minutes + "m ago";
-      const hours = Math.floor(minutes / 60);
-      if (hours < 24) return hours + "h ago";
-      return Math.floor(hours / 24) + "d ago";
-    }
-    function relativeDuration(ms) {
-      const minutes = Math.max(0, Math.floor(ms / 60000));
-      if (minutes < 60) return minutes + "m";
-      const hours = Math.floor(minutes / 60);
-      if (hours < 24) return hours + "h " + (minutes % 60) + "m";
-      return Math.floor(hours / 24) + "d " + (hours % 24) + "h";
-    }
-    function showError(message) {
-      document.getElementById("error-state").classList.remove("hidden");
-      document.getElementById("error-message").textContent = message;
-    }
-    function hideError() { document.getElementById("error-state").classList.add("hidden"); }
-    function escapeHtml(value) { return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch])); }
-    function escapeAttr(value) { return escapeHtml(value).replace(new RegExp(String.fromCharCode(96), "g"), "&#96;"); }
 
-    document.getElementById("refresh").addEventListener("click", load);
-    ["search", "state", "security", "path"].forEach((id) => document.getElementById(id).addEventListener("input", renderRows));
-    load();
-    setInterval(load, 5000);
-  </script>
-</body>
+      function renderDetail() {
+        const item = selectedConnection();
+        const body = document.getElementById("detail-body");
+        if (!item) {
+          document.getElementById("detail-subtitle").textContent =
+            "Select a connection to inspect";
+          body.innerHTML =
+            '<div class="empty"><strong>No connection selected</strong>Click any table row to inspect security, transport, timing, and counters.</div>';
+          return;
+        }
+        document.getElementById("detail-subtitle").textContent =
+          appName(item) + " · " + item.state;
+        body.innerHTML = [
+          detailGroup("Basic", [
+            ["Connection", item.connection_id],
+            ["App Instance", item.app_instance_id],
+            ["Runtime", item.app_runtime_id],
+            ["Platform", item.app_platform || "unknown"],
+            ["Version", item.app_version || "unknown"],
+          ]),
+          detailGroup("Security", [
+            ["Trusted", bool(item.trusted)],
+            ["Encrypted", bool(item.security.encrypted)],
+            ["Mode", item.security.mode],
+            ["Key ID", item.security.key_id || "unknown"],
+            ["E2E Ready", bool(item.security.e2e_ready)],
+            ["Last Verified", formatDate(item.security.last_verified_at)],
+          ]),
+          detailGroup("Network", [
+            ["Method", item.network.connection_method],
+            ["IP", item.network.ip || "unknown"],
+            ["IP Source", item.network.ip_source],
+            [
+              "IP History",
+              (item.network.ip_history || []).join(", ") || "unknown",
+            ],
+            [
+              "Private Network Hash",
+              item.network.private_network_hash || "unknown",
+            ],
+            [
+              "Relay ID",
+              item.network.relay_connection_id ||
+                item.relay_connection_id ||
+                "unknown",
+            ],
+          ]),
+          detailGroup("Timing", [
+            ["Connected", formatDate(item.timing.connected_at)],
+            ["First Seen", formatDate(item.timing.first_seen_at)],
+            ["Last Seen", timeAgo(item.timing.last_seen_at)],
+            ["Last Heartbeat", formatDate(item.timing.last_heartbeat_at)],
+            ["Last Message", formatDate(item.timing.last_message_at)],
+            ["Stale After", formatDate(item.timing.stale_after)],
+          ]),
+          detailGroup("Transport", [
+            ["Current Path", item.transport.current_path],
+            [
+              "Available",
+              item.transport.available_paths.join(", ") || "unknown",
+            ],
+            ["P2P State", item.transport.p2p_state || "unknown"],
+            ["Relay State", item.transport.relay_state || "unknown"],
+            ["Path Changed", formatDate(item.transport.last_path_change_at)],
+          ]),
+          detailGroup("Counters", [
+            ["Connection Attempts", item.counters.connection_attempts || 0],
+            ["Bytes In", formatBytes(item.counters.bytes_in || 0)],
+            ["Bytes Out", formatBytes(item.counters.bytes_out || 0)],
+            ["Messages In", item.counters.messages_in],
+            ["Messages Out", item.counters.messages_out],
+            ["Heartbeats", item.counters.heartbeats],
+            ["Replay Rejected", item.counters.replay_rejected],
+            ["Auth Failures", item.counters.auth_failures],
+          ]),
+          detailGroup("Observations", observationRows(item)),
+        ].join("");
+      }
+
+      function filteredConnections() {
+        if (!connectionSnapshot) return [];
+        const q = document.getElementById("search").value.toLowerCase();
+        const state = document.getElementById("state").value;
+        const security = document.getElementById("security").value;
+        const path = document.getElementById("path").value;
+        return connectionSnapshot.connections.filter((item) => {
+          const haystack = JSON.stringify(item).toLowerCase();
+          if (q && !haystack.includes(q)) return false;
+          if (state && item.state !== state) return false;
+          if (path && item.transport.current_path !== path) return false;
+          if (security === "encrypted" && !item.security.encrypted)
+            return false;
+          if (security === "plaintext" && item.security.encrypted) return false;
+          if (security === "trusted" && !item.trusted) return false;
+          if (security === "untrusted" && item.trusted) return false;
+          return true;
+        });
+      }
+
+      function selectedConnection() {
+        if (!selectedId || !connectionSnapshot) return null;
+        return (
+          connectionSnapshot.connections.find(
+            (item) => item.connection_id === selectedId,
+          ) || null
+        );
+      }
+      function detailGroup(title, rows) {
+        return (
+          '<section class="detail-group"><h3 class="group-title">' +
+          escapeHtml(title) +
+          '</h3><dl class="kv">' +
+          rows
+            .map(
+              ([key, value]) =>
+                "<dt>" +
+                escapeHtml(key) +
+                "</dt><dd>" +
+                escapeHtml(value == null ? "-" : value) +
+                "</dd>",
+            )
+            .join("") +
+          "</dl></section>"
+        );
+      }
+      function observationRows(item) {
+        const observations = item.observations || [];
+        if (observations.length === 0) return [["Observed", "none"]];
+        return observations
+          .slice(-8)
+          .map((observation) => [
+            observation.source + " · " + formatDate(observation.observed_at),
+            [
+              observation.network &&
+                (observation.network.remote_ip ||
+                  observation.network.public_ip ||
+                  privateNetworkHashSummary(observation.network)),
+              observation.network && observation.network.ip_source,
+              observation.http && observation.http.user_agent,
+              observation.device &&
+                [
+                  observation.device.name,
+                  observation.device.platform,
+                  observation.device.os,
+                  observation.device.os_version,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              observation.app &&
+                [
+                  observation.app.name,
+                  observation.app.version,
+                  observation.app.runtime_id,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              observation.transport && observation.transport.path,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "recorded",
+          ]);
+      }
+      function statusPill(label, tone) {
+        return (
+          '<span class="pill"><span class="dot ' +
+          tone +
+          '"></span>' +
+          escapeHtml(label) +
+          "</span>"
+        );
+      }
+      function tinyDot(tone) {
+        return (
+          '<span class="dot ' +
+          (tone === "stale" || tone === "plaintext"
+            ? "warn"
+            : tone
+              ? "ok"
+              : "") +
+          '"></span>'
+        );
+      }
+      function badge(tone, label) {
+        return (
+          '<span class="badge ' +
+          escapeAttr(tone || "unknown") +
+          '">' +
+          escapeHtml(label) +
+          "</span>"
+        );
+      }
+      function bool(value) {
+        return value ? "Yes" : "No";
+      }
+      function relayStatusLabel(runtime) {
+        return (
+          runtime.relay_status ||
+          (runtime.relay_connected ? "connected" : "disconnected")
+        );
+      }
+      function relayStatusTone(runtime) {
+        const status = relayStatusLabel(runtime);
+        if (status === "connected") return "ok";
+        if (status === "connecting" || status === "reconnecting") return "warn";
+        return "bad";
+      }
+      function formatClose(value) {
+        if (!value) return "-";
+        return [value.code || "-", value.reason || ""].join(" ");
+      }
+      function appName(item) {
+        return (
+          item.app_name ||
+          item.app_device_name ||
+          item.app_instance_id ||
+          "Unknown App"
+        );
+      }
+      function initials(item) {
+        return escapeHtml(
+          appName(item)
+            .split(/\s+/)
+            .map((part) => part[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase() || "OW",
+        );
+      }
+      function deviceName(device) {
+        return (
+          device.device_name ||
+          device.app_name ||
+          device.device_id ||
+          "Unknown Device"
+        );
+      }
+      function deviceInitials(device) {
+        return (
+          deviceName(device)
+            .split(/\s+/)
+            .map((part) => part[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase() || "OW"
+        );
+      }
+      function privateNetworkHashSummary(value) {
+        return value.private_network_hash
+          ? " · private hash " + value.private_network_hash.slice(0, 12)
+          : "";
+      }
+      function formatTime(value) {
+        return value ? new Date(value).toLocaleTimeString() : "-";
+      }
+      function formatDate(value) {
+        return value ? new Date(value).toLocaleString() : "-";
+      }
+      function formatBytes(value) {
+        const bytes = Number(value) || 0;
+        if (bytes < 1024) return bytes + " B";
+        const units = ["KB", "MB", "GB"];
+        let size = bytes / 1024;
+        let index = 0;
+        while (size >= 1024 && index < units.length - 1) {
+          size /= 1024;
+          index += 1;
+        }
+        return size.toFixed(size >= 10 ? 1 : 2) + " " + units[index];
+      }
+      function timeAgo(value) {
+        if (!value) return "-";
+        const seconds = Math.max(0, Math.floor((Date.now() - value) / 1000));
+        if (seconds < 5) return "just now";
+        if (seconds < 60) return seconds + "s ago";
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return minutes + "m ago";
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return hours + "h ago";
+        return Math.floor(hours / 24) + "d ago";
+      }
+      function relativeDuration(ms) {
+        const minutes = Math.max(0, Math.floor(ms / 60000));
+        if (minutes < 60) return minutes + "m";
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return hours + "h " + (minutes % 60) + "m";
+        return Math.floor(hours / 24) + "d " + (hours % 24) + "h";
+      }
+      function showError(message) {
+        document.getElementById("error-state").classList.remove("hidden");
+        document.getElementById("error-message").textContent = message;
+      }
+      function hideError() {
+        document.getElementById("error-state").classList.add("hidden");
+      }
+      function escapeHtml(value) {
+        return String(value).replace(
+          /[&<>"']/g,
+          (ch) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[ch],
+        );
+      }
+      function escapeAttr(value) {
+        return escapeHtml(value).replace(
+          new RegExp(String.fromCharCode(96), "g"),
+          "&#96;",
+        );
+      }
+
+      document.getElementById("refresh").addEventListener("click", load);
+      ["search", "state", "security", "path"].forEach((id) =>
+        document.getElementById(id).addEventListener("input", renderRows),
+      );
+      load();
+      setInterval(load, 5000);
+    </script>
+  </body>
 </html>

@@ -120,10 +120,10 @@ when Nginx connects from an IP in `OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS`.
 
 ## Admin Web Source
 
-Admin HTML lives under `web/admin` and is shared by both production and local
-development. Production publishes it to `/var/www/omniwork/admin/` through
-`dist/deploy/admin` and proxies `/admin/api/...` only to the Relay admin
-listener.
+Admin HTML lives under `relay/server/admin-web` and is shared by both
+production and local development. Production publishes it to
+`/var/www/omniwork/admin/` through `dist/deploy/admin` and proxies
+`/admin/api/...` only to the Relay admin listener.
 The production admin page uses `/admin/` as its base and redirects expired or
 missing sessions to `/admin/login.html`.
 

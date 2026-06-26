@@ -177,6 +177,13 @@ export class RelayServer {
       admin_port: this.config.admin.port,
       controls_db: this.config.admin.controlsDbPath,
     });
+    if (this.config.admin.webEnabled) {
+      logRelayEvent({
+        event: "admin.web.ready",
+        url: relayAdminWebUrl(this.config.admin.host, this.config.admin.port),
+        https_required: this.config.admin.requireHttps,
+      });
+    }
   }
 
   private handleBusinessHttp(
@@ -1131,6 +1138,12 @@ function resolveConnectionLocation(
     region,
     city,
   };
+}
+
+function relayAdminWebUrl(host: string, port: number): string {
+  const displayHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+  const urlHost = displayHost.includes(":") ? `[${displayHost}]` : displayHost;
+  return `http://${urlHost}:${port}/admin/web`;
 }
 
 function normalizeIpForGeoLookup(remoteIp: string): string {

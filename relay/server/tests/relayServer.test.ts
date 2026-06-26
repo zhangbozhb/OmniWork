@@ -128,8 +128,11 @@ interface FakeHttpResponse {
 
 // Admin Web 只有一份源码：生产默认 /admin/，relay dev 渲染时注入 /admin/web。
 {
-  const rootAdminHtml = join(process.cwd(), "web/admin/index.html");
-  const packageAdminHtml = join(process.cwd(), "../../web/admin/index.html");
+  const rootAdminHtml = join(
+    process.cwd(),
+    "relay/server/admin-web/index.html",
+  );
+  const packageAdminHtml = join(process.cwd(), "admin-web/index.html");
   const sourceHtml = readFileSync(
     existsSync(rootAdminHtml) ? rootAdminHtml : packageAdminHtml,
     "utf8",
