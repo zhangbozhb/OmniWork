@@ -24,6 +24,11 @@ export interface RelayAdminSession {
   expiresAt: number;
 }
 
+export interface RelayAdminStartupToken {
+  token: string;
+  expiresAt: number;
+}
+
 const TOKEN_FILE_NAME = "admin-token.json";
 const SESSION_COOKIE_NAME = "ow_relay_admin_session";
 const TOKEN_LENGTH = 64;
@@ -44,13 +49,14 @@ export class RelayAdminAuth {
     this.config = config;
   }
 
-  start(): void {
-    this.rotateToken(Date.now());
+  start(): RelayAdminStartupToken {
+    const token = this.rotateToken(Date.now());
     this.rotateTimer = setInterval(() => {
       this.rotateToken(Date.now());
       this.pruneSessions(Date.now());
     }, this.config.tokenRotateMs);
     this.rotateTimer.unref?.();
+    return { token: token.value, expiresAt: token.expiresAt };
   }
 
   stop(): void {
@@ -173,7 +179,7 @@ export class RelayAdminAuth {
     };
   }
 
-  private rotateToken(now: number): void {
+  private rotateToken(now: number): CurrentToken {
     mkdirSync(this.config.tokenDir, { recursive: true, mode: 0o700 });
     try {
       chmodSync(this.config.tokenDir, 0o700);
@@ -208,6 +214,7 @@ export class RelayAdminAuth {
     }
     renameSync(temporary, target);
     this.currentToken = token;
+    return token;
   }
 
   private pruneSessions(now: number): void {

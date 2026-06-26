@@ -1,175 +1,877 @@
 <!doctype html>
 <html lang="en" data-admin-base="/admin/" data-admin-login="/admin/login.html">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OmniWork Relay Admin</title>
-  <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0b1117; color: #dbe7f3; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: radial-gradient(circle at top left, rgba(39, 92, 246, 0.2), transparent 32rem), #0b1117; }
-    main { max-width: 1240px; margin: 0 auto; padding: 32px 24px 48px; }
-    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
-    h1 { margin: 0; font-size: 28px; letter-spacing: -0.04em; }
-    h2 { margin: 0 0 14px; font-size: 16px; color: #f8fbff; }
-    p { margin: 6px 0 0; color: #8ea2b7; }
-    button, input { border: 1px solid #263548; border-radius: 10px; background: #101a25; color: #dbe7f3; padding: 10px 12px; }
-    button { cursor: pointer; background: linear-gradient(180deg, #2459e8, #1a43b7); border: 0; font-weight: 700; }
-    button.secondary { background: #172332; border: 1px solid #2b3c52; }
-    button.danger { background: linear-gradient(180deg, #cf3d4d, #9b2634); }
-    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
-    .card, .panel { background: rgba(13, 22, 32, 0.86); border: 1px solid rgba(79, 103, 130, 0.28); border-radius: 18px; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
-    .card { padding: 18px; }
-    .metric { font-size: 30px; font-weight: 800; margin-top: 8px; }
-    .panel { padding: 18px; margin-top: 18px; overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid rgba(79, 103, 130, 0.22); font-size: 13px; }
-    th { color: #8ea2b7; font-weight: 600; }
-    tr[data-device] { cursor: pointer; }
-    tr[data-device]:hover { background: rgba(67, 111, 246, 0.1); }
-    .muted { color: #8ea2b7; }
-    .badge { display: inline-flex; border: 1px solid #2a3d53; border-radius: 999px; padding: 4px 8px; color: #9fb3c8; }
-    .forms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; }
-    #toast { min-height: 20px; color: #9fb3c8; }
-    @media (max-width: 800px) { .grid, .forms { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } header { display: block; } }
-  </style>
-</head>
-<body>
-<main>
-  <header>
-    <div><h1>OmniWork Relay</h1><p>Live agents, app links, and access controls.</p></div>
-    <div><button class="secondary" id="refresh">Refresh</button> <button class="secondary" id="logout">Logout</button></div>
-  </header>
-  <section class="grid">
-    <div class="card"><div class="muted">Devices</div><div class="metric" id="device-count">-</div></div>
-    <div class="card"><div class="muted">Agents</div><div class="metric" id="agent-count">-</div></div>
-    <div class="card"><div class="muted">Apps</div><div class="metric" id="app-count">-</div></div>
-    <div class="card"><div class="muted">Links</div><div class="metric" id="link-count">-</div></div>
-    <div class="card"><div class="muted">Connections</div><div class="metric" id="connection-count">-</div></div>
-    <div class="card"><div class="muted">Traffic In</div><div class="metric" id="traffic-in">-</div></div>
-    <div class="card"><div class="muted">Traffic Out</div><div class="metric" id="traffic-out">-</div></div>
-    <div class="card"><div class="muted">Disabled Agents</div><div class="metric" id="disabled-count">-</div></div>
-    <div class="card"><div class="muted">IP Bans</div><div class="metric" id="ban-count">-</div></div>
-  </section>
-  <section class="panel">
-    <h2>Agents</h2>
-    <table><thead><tr><th>Device</th><th>Agent Instance</th><th>IP</th><th>Apps</th><th>Security</th><th>Connected</th><th>Last Seen</th><th>State</th></tr></thead><tbody id="agents"></tbody></table>
-  </section>
-  <section class="panel">
-    <h2>Apps <span class="badge" id="selected-agent">select an agent</span></h2>
-    <table><thead><tr><th>Connection</th><th>App</th><th>Platform</th><th>Version</th><th>IP</th><th>Auth</th><th>Path</th><th>Last Seen</th></tr></thead><tbody id="apps"></tbody></table>
-  </section>
-  <section class="panel">
-    <h2>Controls</h2>
-    <p id="toast"></p>
-    <div class="forms">
-      <div>
-        <h2>Disable Agent</h2>
-        <div class="form-row"><input id="disable-agent-instance" placeholder="agent_instance_id" /><input id="disable-reason" placeholder="reason" /><button class="danger" id="disable-agent">Disable</button><button class="secondary" id="delete-agent-disable">Delete Rule</button></div>
-      </div>
-      <div>
-        <h2>IP Bans</h2>
-        <div class="form-row"><input id="ban-ip" placeholder="ips, comma separated" /><input id="ban-reason" placeholder="reason" /><button class="danger" id="ban-ip-btn">Ban</button><button class="secondary" id="unban-ip-btn">Unban</button></div>
-      </div>
-    </div>
-    <p class="muted">Admin access uses a 30-minute secure session. Read the current one-time token from the server token file when the session expires.</p>
-  </section>
-</main>
-<script>
-let selectedConnection = null;
-let selectedDevice = null;
-const qs = (id) => document.getElementById(id);
-function adminBase() { return document.documentElement.dataset.adminBase || "/admin/"; }
-function adminLogin() { return document.documentElement.dataset.adminLogin || "/admin/login.html"; }
-async function api(path, options = {}) {
-  const headers = Object.assign({ "content-type": "application/json" }, options.headers || {});
-  const res = await fetch(path, Object.assign({}, options, { headers, credentials: "same-origin" }));
-  const body = await res.json();
-  if (res.status === 401) {
-    location.href = adminLogin();
-    throw new Error("unauthorized");
-  }
-  if (!res.ok) throw new Error(body.error || "request_failed");
-  return body;
-}
-function td(value) { return "<td>" + (value ?? "<span class='muted'>unknown</span>") + "</td>"; }
-async function refresh() {
-  const [status, agents] = await Promise.all([api("/admin/api/status"), api("/admin/api/agents")]);
-  qs("device-count").textContent = status.summary.device_count;
-  qs("agent-count").textContent = status.summary.agent_count;
-  qs("app-count").textContent = status.summary.app_count;
-  qs("link-count").textContent = status.summary.link_count;
-  qs("connection-count").textContent = status.summary.connection_count;
-  qs("traffic-in").textContent = formatBytes(status.traffic.bytes_in);
-  qs("traffic-out").textContent = formatBytes(status.traffic.bytes_out);
-  qs("disabled-count").textContent = status.summary.disabled_agent_count;
-  qs("ban-count").textContent = status.summary.ip_ban_count;
-  qs("agents").innerHTML = agents.agents.map((agent) =>
-    "<tr data-connection='" + encodeURIComponent(agent.connection_id) + "' data-device='" + encodeURIComponent(agent.device_id) + "'>" +
-    td(agent.device_id) + td(agent.agent_instance_id) + td(agent.remote_ip) + td(agent.app_count) + td(agent.business_security_mode) +
-    td(agent.connected_at) + td(agent.last_seen_at) + td(agent.disabled ? "disabled" : agent.state) + "</tr>"
-  ).join("");
-  for (const row of document.querySelectorAll("tr[data-connection]")) {
-    row.onclick = () => loadApps(decodeURIComponent(row.dataset.connection), decodeURIComponent(row.dataset.device));
-  }
-  if (selectedConnection) await loadApps(selectedConnection, selectedDevice);
-}
-async function loadApps(connectionId, deviceId) {
-  selectedConnection = connectionId;
-  selectedDevice = deviceId;
-  qs("selected-agent").textContent = deviceId;
-  const data = await api("/admin/api/agent-connections/" + encodeURIComponent(connectionId) + "/apps");
-  qs("apps").innerHTML = data.apps.map((app) => {
-    const info = app.app_info || {};
-    return "<tr>" + td(app.connection_id) + td(info.name || info.instance_id) + td(info.platform) + td(info.version) +
-      td(app.remote_ip) + td(app.auth_state) + td(app.transport_path) + td(app.last_seen_at) + "</tr>";
-  }).join("");
-}
-qs("refresh").onclick = () => refresh().catch(showError);
-qs("logout").onclick = async () => {
-  await api("/admin/api/logout", { method: "POST" }).catch(() => {});
-  location.href = adminBase();
-};
-qs("disable-agent").onclick = async () => {
-  await api("/admin/api/controls/agents/agent-op", {
-    method: "POST", body: JSON.stringify({ action: "disable", agent_instance_ids: parseCsv(qs("disable-agent-instance").value), reason: qs("disable-reason").value || undefined })
-  });
-  qs("toast").textContent = "Agent disabled.";
-  await refresh();
-};
-qs("delete-agent-disable").onclick = async () => {
-  await api("/admin/api/controls/agents/agent-op", {
-    method: "POST", body: JSON.stringify({ action: "delete", agent_instance_ids: parseCsv(qs("disable-agent-instance").value) })
-  });
-  qs("toast").textContent = "Agent disable rule deleted.";
-  await refresh();
-};
-qs("ban-ip-btn").onclick = async () => {
-  await api("/admin/api/controls/ip-bans", {
-    method: "POST", body: JSON.stringify({ action: "ban", ips: parseIps(qs("ban-ip").value), reason: qs("ban-reason").value || undefined })
-  });
-  qs("toast").textContent = "IP ban updated.";
-  await refresh();
-};
-qs("unban-ip-btn").onclick = async () => {
-  await api("/admin/api/controls/ip-bans", {
-    method: "POST", body: JSON.stringify({ action: "unban", ips: parseIps(qs("ban-ip").value) })
-  });
-  qs("toast").textContent = "IP ban removed.";
-  await refresh();
-};
-function parseCsv(value) { return value.split(",").map((item) => item.trim()).filter(Boolean); }
-function parseIps(value) { return parseCsv(value); }
-function showError(error) { qs("toast").textContent = error.message; }
-function formatBytes(value) {
-  if (!Number.isFinite(value)) return "-";
-  if (value < 1024) return String(value);
-  if (value < 1024 * 1024) return (value / 1024).toFixed(1) + "K";
-  return (value / 1024 / 1024).toFixed(1) + "M";
-}
-refresh().catch(showError);
-setInterval(() => refresh().catch(() => {}), 5000);
-</script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OmniWork Relay Admin</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        background: #0b1117;
+        color: #dbe7f3;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(
+            circle at top left,
+            rgba(39, 92, 246, 0.2),
+            transparent 32rem
+          ),
+          #0b1117;
+      }
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 32px 24px 48px;
+      }
+      header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        letter-spacing: -0.04em;
+      }
+      h2 {
+        margin: 0 0 14px;
+        font-size: 16px;
+        color: #f8fbff;
+      }
+      p {
+        margin: 6px 0 0;
+        color: #8ea2b7;
+      }
+      button,
+      input {
+        border: 1px solid #263548;
+        border-radius: 10px;
+        background: #101a25;
+        color: #dbe7f3;
+        padding: 10px 12px;
+      }
+      button {
+        cursor: pointer;
+        background: linear-gradient(180deg, #2459e8, #1a43b7);
+        border: 0;
+        font-weight: 700;
+      }
+      button.secondary {
+        background: #172332;
+        border: 1px solid #2b3c52;
+      }
+      button.danger {
+        background: linear-gradient(180deg, #cf3d4d, #9b2634);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-bottom: 18px;
+      }
+      .card,
+      .panel {
+        background: rgba(13, 22, 32, 0.86);
+        border: 1px solid rgba(79, 103, 130, 0.28);
+        border-radius: 18px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      }
+      .card {
+        padding: 18px;
+      }
+      .metric {
+        font-size: 30px;
+        font-weight: 800;
+        margin-top: 8px;
+      }
+      .panel {
+        padding: 18px;
+        margin-top: 18px;
+        overflow: hidden;
+      }
+      .panel-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        gap: 16px;
+        align-items: stretch;
+      }
+      .map-stage {
+        min-height: 420px;
+        border: 1px solid rgba(79, 103, 130, 0.24);
+        border-radius: 16px;
+        background:
+          radial-gradient(
+            circle at 50% 45%,
+            rgba(40, 113, 255, 0.18),
+            transparent 32rem
+          ),
+          #08121d;
+        overflow: hidden;
+      }
+      #traffic-map-svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 420px;
+      }
+      .world-land {
+        fill: rgba(43, 73, 103, 0.76);
+        fill-rule: evenodd;
+        stroke: rgba(129, 170, 211, 0.28);
+        stroke-width: 0.6;
+      }
+      .graticule {
+        fill: none;
+        stroke: rgba(129, 170, 211, 0.08);
+        stroke-width: 1;
+      }
+      .flow-line {
+        fill: none;
+        stroke-linecap: round;
+        opacity: 0.78;
+      }
+      .flow-app-agent {
+        stroke: #36d8ff;
+      }
+      .flow-agent-app {
+        stroke: #f6b54f;
+      }
+      .node-ring {
+        fill: rgba(54, 216, 255, 0.16);
+        stroke: rgba(54, 216, 255, 0.84);
+        stroke-width: 2;
+      }
+      .node-label {
+        fill: #dbe7f3;
+        font-size: 12px;
+        font-weight: 700;
+        paint-order: stroke;
+        stroke: rgba(8, 18, 29, 0.9);
+        stroke-width: 4px;
+        stroke-linejoin: round;
+      }
+      .flow-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 10px;
+      }
+      .flow-list li {
+        border: 1px solid rgba(79, 103, 130, 0.24);
+        border-radius: 14px;
+        padding: 10px;
+        background: rgba(11, 17, 23, 0.45);
+      }
+      .flow-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: #f8fbff;
+        font-weight: 700;
+      }
+      .flow-detail {
+        color: #8ea2b7;
+        font-size: 12px;
+        margin-top: 5px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 12px 10px;
+        text-align: left;
+        border-bottom: 1px solid rgba(79, 103, 130, 0.22);
+        font-size: 13px;
+      }
+      th {
+        color: #8ea2b7;
+        font-weight: 600;
+      }
+      tr[data-device] {
+        cursor: pointer;
+      }
+      tr[data-device]:hover {
+        background: rgba(67, 111, 246, 0.1);
+      }
+      .muted {
+        color: #8ea2b7;
+      }
+      .badge {
+        display: inline-flex;
+        border: 1px solid #2a3d53;
+        border-radius: 999px;
+        padding: 4px 8px;
+        color: #9fb3c8;
+      }
+      .forms {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto;
+        gap: 10px;
+      }
+      #toast {
+        min-height: 20px;
+        color: #9fb3c8;
+      }
+      @media (max-width: 900px) {
+        .dashboard-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 800px) {
+        .grid,
+        .forms {
+          grid-template-columns: 1fr;
+        }
+        .form-row {
+          grid-template-columns: 1fr;
+        }
+        header {
+          display: block;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>OmniWork Relay</h1>
+          <p>Live agents, app links, and access controls.</p>
+        </div>
+        <div>
+          <button class="secondary" id="refresh">Refresh</button>
+          <button class="secondary" id="logout">Logout</button>
+        </div>
+      </header>
+      <section class="grid">
+        <div class="card">
+          <div class="muted">Devices</div>
+          <div class="metric" id="device-count">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Agents</div>
+          <div class="metric" id="agent-count">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Apps</div>
+          <div class="metric" id="app-count">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Links</div>
+          <div class="metric" id="link-count">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Connections</div>
+          <div class="metric" id="connection-count">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Traffic In</div>
+          <div class="metric" id="traffic-in">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Traffic Out</div>
+          <div class="metric" id="traffic-out">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Disabled Agents</div>
+          <div class="metric" id="disabled-count">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">IP Bans</div>
+          <div class="metric" id="ban-count">-</div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Traffic Map</h2>
+            <p>
+              Node area represents active connection count. Arrows show observed
+              relay traffic direction.
+            </p>
+          </div>
+          <span class="badge" id="traffic-map-meta">loading</span>
+        </div>
+        <div class="dashboard-grid">
+          <div class="map-stage">
+            <svg
+              id="traffic-map-svg"
+              viewBox="0 0 960 420"
+              role="img"
+              aria-label="Relay traffic world map"
+            >
+              <defs>
+                <marker
+                  id="arrow-app-agent"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4.5"
+                  orient="auto"
+                >
+                  <path d="M0,0 L9,4.5 L0,9 z" fill="#36d8ff"></path>
+                </marker>
+                <marker
+                  id="arrow-agent-app"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4.5"
+                  orient="auto"
+                >
+                  <path d="M0,0 L9,4.5 L0,9 z" fill="#f6b54f"></path>
+                </marker>
+              </defs>
+              <path
+                class="graticule"
+                d="M0 210H960M480 0V420M240 0V420M720 0V420M0 105H960M0 315H960"
+              ></path>
+              <g id="world-land-layer"></g>
+              <g id="traffic-flows-layer"></g>
+              <g id="traffic-nodes-layer"></g>
+            </svg>
+          </div>
+          <div>
+            <h2>Top Flows</h2>
+            <ul class="flow-list" id="traffic-flow-list">
+              <li class="muted">No traffic yet.</li>
+            </ul>
+            <p class="muted">
+              Location precision is based on Relay-visible network metadata.
+              Unknown public IPs are grouped until GeoIP metadata is configured
+              upstream.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Agents</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Device</th>
+              <th>Agent Instance</th>
+              <th>IP</th>
+              <th>Apps</th>
+              <th>Security</th>
+              <th>Connected</th>
+              <th>Last Seen</th>
+              <th>State</th>
+            </tr>
+          </thead>
+          <tbody id="agents"></tbody>
+        </table>
+      </section>
+      <section class="panel">
+        <h2>
+          Apps <span class="badge" id="selected-agent">select an agent</span>
+        </h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Connection</th>
+              <th>App</th>
+              <th>Platform</th>
+              <th>Version</th>
+              <th>IP</th>
+              <th>Auth</th>
+              <th>Path</th>
+              <th>Last Seen</th>
+            </tr>
+          </thead>
+          <tbody id="apps"></tbody>
+        </table>
+      </section>
+      <section class="panel">
+        <h2>Controls</h2>
+        <p id="toast"></p>
+        <div class="forms">
+          <div>
+            <h2>Disable Agent</h2>
+            <div class="form-row">
+              <input
+                id="disable-agent-instance"
+                placeholder="agent_instance_id"
+              /><input id="disable-reason" placeholder="reason" /><button
+                class="danger"
+                id="disable-agent"
+              >
+                Disable</button
+              ><button class="secondary" id="delete-agent-disable">
+                Delete Rule
+              </button>
+            </div>
+          </div>
+          <div>
+            <h2>IP Bans</h2>
+            <div class="form-row">
+              <input id="ban-ip" placeholder="ips, comma separated" /><input
+                id="ban-reason"
+                placeholder="reason"
+              /><button class="danger" id="ban-ip-btn">Ban</button
+              ><button class="secondary" id="unban-ip-btn">Unban</button>
+            </div>
+          </div>
+        </div>
+        <p class="muted">
+          Admin access uses a 30-minute secure session. Read the current
+          one-time token from the server token file when the session expires.
+        </p>
+      </section>
+    </main>
+    <script>
+      let selectedConnection = null;
+      let selectedDevice = null;
+      let worldLandRendered = false;
+      const qs = (id) => document.getElementById(id);
+      function adminBase() {
+        return document.documentElement.dataset.adminBase || "/admin/";
+      }
+      function adminLogin() {
+        return (
+          document.documentElement.dataset.adminLogin || "/admin/login.html"
+        );
+      }
+      function adminAsset(name) {
+        const base = adminBase();
+        return (base.endsWith("/") ? base : base + "/") + name;
+      }
+      async function api(path, options = {}) {
+        const headers = Object.assign(
+          { "content-type": "application/json" },
+          options.headers || {},
+        );
+        const res = await fetch(
+          path,
+          Object.assign({}, options, { headers, credentials: "same-origin" }),
+        );
+        const body = await res.json();
+        if (res.status === 401) {
+          location.href = adminLogin();
+          throw new Error("unauthorized");
+        }
+        if (!res.ok) throw new Error(body.error || "request_failed");
+        return body;
+      }
+      function td(value) {
+        return (
+          "<td>" + (value ?? "<span class='muted'>unknown</span>") + "</td>"
+        );
+      }
+      async function refresh() {
+        const [status, agents, trafficMap] = await Promise.all([
+          api("/admin/api/status"),
+          api("/admin/api/agents"),
+          api("/admin/api/traffic-map"),
+        ]);
+        qs("device-count").textContent = status.summary.device_count;
+        qs("agent-count").textContent = status.summary.agent_count;
+        qs("app-count").textContent = status.summary.app_count;
+        qs("link-count").textContent = status.summary.link_count;
+        qs("connection-count").textContent = status.summary.connection_count;
+        qs("traffic-in").textContent = formatBytes(status.traffic.bytes_in);
+        qs("traffic-out").textContent = formatBytes(status.traffic.bytes_out);
+        qs("disabled-count").textContent = status.summary.disabled_agent_count;
+        qs("ban-count").textContent = status.summary.ip_ban_count;
+        renderTrafficMap(trafficMap);
+        qs("agents").innerHTML = agents.agents
+          .map(
+            (agent) =>
+              "<tr data-connection='" +
+              encodeURIComponent(agent.connection_id) +
+              "' data-device='" +
+              encodeURIComponent(agent.device_id) +
+              "'>" +
+              td(agent.device_id) +
+              td(agent.agent_instance_id) +
+              td(agent.remote_ip) +
+              td(agent.app_count) +
+              td(agent.business_security_mode) +
+              td(agent.connected_at) +
+              td(agent.last_seen_at) +
+              td(agent.disabled ? "disabled" : agent.state) +
+              "</tr>",
+          )
+          .join("");
+        for (const row of document.querySelectorAll("tr[data-connection]")) {
+          row.onclick = () =>
+            loadApps(
+              decodeURIComponent(row.dataset.connection),
+              decodeURIComponent(row.dataset.device),
+            );
+        }
+        if (selectedConnection)
+          await loadApps(selectedConnection, selectedDevice);
+      }
+      async function loadApps(connectionId, deviceId) {
+        selectedConnection = connectionId;
+        selectedDevice = deviceId;
+        qs("selected-agent").textContent = deviceId;
+        const data = await api(
+          "/admin/api/agent-connections/" +
+            encodeURIComponent(connectionId) +
+            "/apps",
+        );
+        qs("apps").innerHTML = data.apps
+          .map((app) => {
+            const info = app.app_info || {};
+            return (
+              "<tr>" +
+              td(app.connection_id) +
+              td(info.name || info.instance_id) +
+              td(info.platform) +
+              td(info.version) +
+              td(app.remote_ip) +
+              td(app.auth_state) +
+              td(app.transport_path) +
+              td(app.last_seen_at) +
+              "</tr>"
+            );
+          })
+          .join("");
+      }
+      qs("refresh").onclick = () => refresh().catch(showError);
+      qs("logout").onclick = async () => {
+        await api("/admin/api/logout", { method: "POST" }).catch(() => {});
+        location.href = adminBase();
+      };
+      qs("disable-agent").onclick = async () => {
+        await api("/admin/api/controls/agents/agent-op", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "disable",
+            agent_instance_ids: parseCsv(qs("disable-agent-instance").value),
+            reason: qs("disable-reason").value || undefined,
+          }),
+        });
+        qs("toast").textContent = "Agent disabled.";
+        await refresh();
+      };
+      qs("delete-agent-disable").onclick = async () => {
+        await api("/admin/api/controls/agents/agent-op", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "delete",
+            agent_instance_ids: parseCsv(qs("disable-agent-instance").value),
+          }),
+        });
+        qs("toast").textContent = "Agent disable rule deleted.";
+        await refresh();
+      };
+      qs("ban-ip-btn").onclick = async () => {
+        await api("/admin/api/controls/ip-bans", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "ban",
+            ips: parseIps(qs("ban-ip").value),
+            reason: qs("ban-reason").value || undefined,
+          }),
+        });
+        qs("toast").textContent = "IP ban updated.";
+        await refresh();
+      };
+      qs("unban-ip-btn").onclick = async () => {
+        await api("/admin/api/controls/ip-bans", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "unban",
+            ips: parseIps(qs("ban-ip").value),
+          }),
+        });
+        qs("toast").textContent = "IP ban removed.";
+        await refresh();
+      };
+      function parseCsv(value) {
+        return value
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+      }
+      function parseIps(value) {
+        return parseCsv(value);
+      }
+      function showError(error) {
+        qs("toast").textContent = error.message;
+      }
+      async function loadWorldLand() {
+        if (worldLandRendered) return;
+        const res = await fetch(adminAsset("world-land-110m.geojson"), {
+          credentials: "same-origin",
+        });
+        if (!res.ok) throw new Error("world_map_load_failed");
+        renderWorldLand(await res.json());
+        worldLandRendered = true;
+      }
+      function renderWorldLand(geojson) {
+        const features = Array.isArray(geojson?.features)
+          ? geojson.features
+          : [];
+        const paths = [];
+        for (const feature of features) {
+          const geometry = feature?.geometry;
+          if (!geometry) continue;
+          if (geometry.type === "Polygon") {
+            paths.push(polygonPath(geometry.coordinates));
+          } else if (geometry.type === "MultiPolygon") {
+            for (const polygon of geometry.coordinates || []) {
+              paths.push(polygonPath(polygon));
+            }
+          }
+        }
+        qs("world-land-layer").innerHTML = paths
+          .filter(Boolean)
+          .map((path) => "<path class='world-land' d='" + path + "'></path>")
+          .join("");
+      }
+      function polygonPath(rings) {
+        if (!Array.isArray(rings)) return "";
+        return rings
+          .map((ring) => {
+            if (!Array.isArray(ring) || ring.length === 0) return "";
+            return (
+              ring
+                .map((coordinate, index) => {
+                  const point = project(coordinate[0], coordinate[1]);
+                  return (
+                    (index === 0 ? "M" : "L") +
+                    point.x.toFixed(2) +
+                    " " +
+                    point.y.toFixed(2)
+                  );
+                })
+                .join(" ") + " Z"
+            );
+          })
+          .join(" ");
+      }
+      function renderTrafficMap(data) {
+        const locations = Array.isArray(data.nodes)
+          ? data.nodes
+          : Array.isArray(data.locations)
+            ? data.locations
+            : [];
+        const flows = Array.isArray(data.flows) ? data.flows : [];
+        const byId = new Map(
+          locations.map((location) => [location.location_id, location]),
+        );
+        const nodesLayer = qs("traffic-nodes-layer");
+        const flowsLayer = qs("traffic-flows-layer");
+        qs("traffic-map-meta").textContent =
+          locations.length +
+          " aggregate nodes / " +
+          flows.length +
+          " aggregate flows";
+        flowsLayer.innerHTML = flows
+          .slice(0, 24)
+          .map((flow, index) => {
+            const from = byId.get(flow.from_location_id);
+            const to = byId.get(flow.to_location_id);
+            if (!from || !to) return "";
+            const paths = [];
+            if (flow.app_to_agent_bytes > 0) {
+              paths.push(
+                flowPath(from, to, flow.app_to_agent_bytes, "app-agent", index),
+              );
+            }
+            if (flow.agent_to_app_bytes > 0) {
+              paths.push(
+                flowPath(
+                  to,
+                  from,
+                  flow.agent_to_app_bytes,
+                  "agent-app",
+                  index + 1,
+                ),
+              );
+            }
+            return paths.join("");
+          })
+          .join("");
+        nodesLayer.innerHTML = locations
+          .map((location) => {
+            const point = project(location.longitude, location.latitude);
+            const count = Number(location.connection_count) || 0;
+            const radius = Math.max(7, Math.sqrt(Math.max(count, 1)) * 11);
+            const labelY = point.y - radius - 8;
+            return (
+              "<g>" +
+              "<circle class='node-ring' cx='" +
+              point.x +
+              "' cy='" +
+              point.y +
+              "' r='" +
+              radius +
+              "'><title>" +
+              location.label +
+              ": " +
+              count +
+              " connections, " +
+              (location.device_count || 0) +
+              " devices, " +
+              location.accuracy +
+              ", " +
+              formatBytes(
+                location.counters.bytes_in + location.counters.bytes_out,
+              ) +
+              "</title></circle>" +
+              "<text class='node-label' x='" +
+              point.x +
+              "' y='" +
+              labelY +
+              "' text-anchor='middle'>" +
+              location.label +
+              " (" +
+              count +
+              ")</text>" +
+              "</g>"
+            );
+          })
+          .join("");
+        qs("traffic-flow-list").innerHTML =
+          flows.length === 0
+            ? "<li class='muted'>No traffic yet.</li>"
+            : flows
+                .slice(0, 8)
+                .map((flow) => {
+                  const from = byId.get(flow.from_location_id);
+                  const to = byId.get(flow.to_location_id);
+                  return (
+                    "<li><div class='flow-title'><span>" +
+                    (from?.label || "Unknown") +
+                    " -> " +
+                    (to?.label || "Unknown") +
+                    "</span><span>" +
+                    formatBytes(flow.total_bytes) +
+                    "</span></div><div class='flow-detail'>App->Agent " +
+                    formatBytes(flow.app_to_agent_bytes) +
+                    " | Agent->App " +
+                    formatBytes(flow.agent_to_app_bytes) +
+                    " | " +
+                    (flow.link_count || 0) +
+                    " links / " +
+                    (flow.device_count || 0) +
+                    " devices | " +
+                    formatTransportPaths(flow.transport_paths) +
+                    "</div></li>"
+                  );
+                })
+                .join("");
+      }
+      function project(longitude, latitude) {
+        return {
+          x: ((Number(longitude) + 180) / 360) * 960,
+          y: ((90 - Number(latitude)) / 180) * 420,
+        };
+      }
+      function flowPath(from, to, bytes, direction, offsetSeed) {
+        const start = project(from.longitude, from.latitude);
+        const end = project(to.longitude, to.latitude);
+        const same = from.location_id === to.location_id;
+        const width = Math.max(
+          2,
+          Math.min(9, Math.log2(Math.max(bytes, 1)) / 2),
+        );
+        const cls =
+          direction === "app-agent" ? "flow-app-agent" : "flow-agent-app";
+        const marker =
+          direction === "app-agent" ? "arrow-app-agent" : "arrow-agent-app";
+        const offset = (offsetSeed % 2 === 0 ? 1 : -1) * 34;
+        const path = same
+          ? "M " +
+            start.x +
+            " " +
+            start.y +
+            " C " +
+            (start.x + 54) +
+            " " +
+            (start.y - 78) +
+            ", " +
+            (start.x - 54) +
+            " " +
+            (start.y - 78) +
+            ", " +
+            (start.x + 1) +
+            " " +
+            (start.y + 1)
+          : "M " +
+            start.x +
+            " " +
+            start.y +
+            " C " +
+            (start.x + end.x) / 2 +
+            " " +
+            (Math.min(start.y, end.y) - 70 + offset) +
+            ", " +
+            (start.x + end.x) / 2 +
+            " " +
+            (Math.min(start.y, end.y) - 70 - offset) +
+            ", " +
+            end.x +
+            " " +
+            end.y;
+        return (
+          "<path class='flow-line " +
+          cls +
+          "' d='" +
+          path +
+          "' stroke-width='" +
+          width +
+          "' marker-end='url(#" +
+          marker +
+          ")'><title>" +
+          formatBytes(bytes) +
+          "</title></path>"
+        );
+      }
+      function formatTransportPaths(paths) {
+        if (!paths || typeof paths !== "object") return "unknown";
+        return (
+          Object.keys(paths)
+            .map((key) => key + ":" + paths[key])
+            .join(", ") || "unknown"
+        );
+      }
+      function formatBytes(value) {
+        if (!Number.isFinite(value)) return "-";
+        if (value < 1024) return String(value);
+        if (value < 1024 * 1024) return (value / 1024).toFixed(1) + "K";
+        return (value / 1024 / 1024).toFixed(1) + "M";
+      }
+      refresh().catch(showError);
+      loadWorldLand().catch(() => {
+        qs("traffic-map-meta").textContent = "map asset unavailable";
+      });
+      setInterval(() => refresh().catch(() => {}), 5000);
+    </script>
+  </body>
 </html>

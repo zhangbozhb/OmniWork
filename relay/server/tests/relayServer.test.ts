@@ -1,5 +1,7 @@
 import { strict as assert } from "node:assert";
 import { existsSync, readFileSync } from "node:fs";
+import type { IncomingMessage } from "node:http";
+import type { Socket } from "node:net";
 import { join } from "node:path";
 
 import {
@@ -11,13 +13,17 @@ import {
   type TunnelUpgradeOfferPayload,
 } from "@omniwork/protocol-ts";
 import { loadRelayServerConfig } from "../src/config.ts";
-import { RelayServer } from "../src/relayServer.ts";
+import { RelayServer, resolveRemoteIp } from "../src/relayServer.ts";
 import { RelayStateStore } from "../src/relayStateStore.ts";
 import {
+  readRelayAdminAsset,
   renderRelayAdminLoginPage,
   renderRelayAdminPage,
 } from "../src/adminPage.ts";
-import type { RelayConnection } from "../src/relayTypes.ts";
+import type {
+  RelayConnection,
+  RelayConnectionLocation,
+} from "../src/relayTypes.ts";
 
 {
   const config = loadRelayServerConfig({
@@ -54,6 +60,29 @@ import type { RelayConnection } from "../src/relayTypes.ts";
   );
 }
 
+// X-Forwarded-For 只有来自可信 proxy 时才可作为客户端 IP，避免直连伪造。
+{
+  const request = {
+    headers: { "x-forwarded-for": "203.0.113.50" },
+  } as unknown as IncomingMessage;
+  const socket = { remoteAddress: "198.51.100.10" } as Socket;
+
+  assert.deepEqual(
+    resolveRemoteIp(request, socket, {
+      trustProxy: false,
+      trustedProxyIps: new Set(["198.51.100.10"]),
+    }),
+    { ip: "198.51.100.10", source: "socket_remote_address" },
+  );
+  assert.deepEqual(
+    resolveRemoteIp(request, socket, {
+      trustProxy: true,
+      trustedProxyIps: new Set(["198.51.100.10"]),
+    }),
+    { ip: "203.0.113.50", source: "x_forwarded_for" },
+  );
+}
+
 interface FakeSocket {
   sent: MessageEnvelope[];
   closed: { code?: number; reason?: string }[];
@@ -82,6 +111,8 @@ interface FakeSocket {
   assert.match(html, /data-admin-login="\/admin\/web"/);
   assert.match(html, /\/admin\/api\/status/);
   assert.match(html, /\/admin\/api\/agents/);
+  assert.match(html, /\/admin\/api\/traffic-map/);
+  assert.match(html, /world-land-110m\.geojson/);
   assert.match(html, /\/admin\/api\/agent-connections/);
   assert.match(html, /\/admin\/api\/controls\/agents\/agent-op/);
   assert.match(html, /\/admin\/api\/controls\/ip-bans/);
@@ -91,6 +122,10 @@ interface FakeSocket {
   assert.match(loginHtml, /Relay Admin Login/);
   assert.match(loginHtml, /data-admin-base="\/admin\/web"/);
   assert.match(loginHtml, /\/admin\/api\/login/);
+  const worldLand = readRelayAdminAsset("world-land-110m.geojson");
+  assert.ok(worldLand);
+  assert.equal(worldLand.contentType, "application/geo+json; charset=utf-8");
+  assert.match(worldLand.body.toString("utf8", 0, 80), /FeatureCollection/);
 }
 
 // 生产默认不暴露 Node 内置 admin web，但 admin API 始终由 Relay 提供。
@@ -103,6 +138,10 @@ interface FakeSocket {
   };
 
   assert.equal(internals.admin.matches("/admin/web"), false);
+  assert.equal(
+    internals.admin.matches("/admin/web/world-land-110m.geojson"),
+    false,
+  );
   assert.equal(internals.admin.matches("/admin/api/status"), true);
 }
 
@@ -121,6 +160,7 @@ type TestRelayConnection = {
   socket: FakeSocket;
   authenticated: boolean;
   remoteIp: string;
+  location?: RelayConnectionLocation;
   connectedAt: number;
   lastSeenAt: number;
   authState: "none" | "pending" | "verified" | "failed";
@@ -215,6 +255,17 @@ type TestAgentConnection = TestRelayConnection & {
       };
       linksSnapshot(): { summary: { link_count: number } };
       trafficTop(): { connections: Array<{ connection_id: string }> };
+      trafficMapSnapshot(): {
+        locations: Array<{ location_id: string; connection_count: number }>;
+        flows: Array<{
+          app_to_agent_bytes: number;
+          agent_to_app_bytes: number;
+        }>;
+        summary: {
+          app_to_agent_bytes: number;
+          agent_to_app_bytes: number;
+        };
+      };
       authenticateApp(
         app: TestRelayConnection,
         agent?: TestAgentConnection,
@@ -398,10 +449,94 @@ type TestAgentConnection = TestRelayConnection & {
 
   const runtime = state.runtimeSnapshot();
   const links = state.linksSnapshot();
+  const trafficMap = state.trafficMapSnapshot();
   assert.equal(runtime.traffic.bytes_in, 128);
   assert.equal(runtime.traffic.bytes_out, 256);
   assert.equal(links.links[0]?.counters.bytes_in, 128);
   assert.equal(links.links[0]?.counters.bytes_out, 256);
+  assert.equal(trafficMap.summary.app_to_agent_bytes, 128);
+  assert.equal(trafficMap.summary.agent_to_app_bytes, 0);
+  assert.equal(trafficMap.nodes.length, 2);
+  assert.equal(trafficMap.locations.length, 2);
+  assert.equal(trafficMap.flows[0]?.app_to_agent_bytes, 128);
+
+  state.recordIngress(
+    relayAgent,
+    {
+      type: "terminal.frame",
+      payload: {},
+      device_id: agent.deviceId,
+      app_connection_id: mobile.id,
+    } as MessageEnvelope,
+    512,
+  );
+
+  assert.equal(state.trafficMapSnapshot().summary.agent_to_app_bytes, 512);
+}
+
+// 地图节点和流量边按位置聚合，连接/link 只是聚合输入。
+{
+  const state = new RelayStateStore();
+  const appLocation: RelayConnectionLocation = {
+    location_id: "city:sg:unknown:singapore",
+    label: "Singapore",
+    latitude: 1.35,
+    longitude: 103.82,
+    source: "geoip",
+    accuracy: "city",
+    country_code: "SG",
+    country: "Singapore",
+    city: "Singapore",
+  };
+  const agentLocation: RelayConnectionLocation = {
+    location_id: "city:cn:shanghai:shanghai",
+    label: "Shanghai, China",
+    latitude: 31.23,
+    longitude: 121.47,
+    source: "geoip",
+    accuracy: "city",
+    country_code: "CN",
+    country: "China",
+    region: "Shanghai",
+    city: "Shanghai",
+  };
+  for (const index of [1, 2]) {
+    const agent = createAgentConnection(
+      `conn_agent_aggregate_${index}`,
+      `device_aggregate_${index}`,
+    );
+    const mobile = createMobileConnection(
+      `conn_mobile_aggregate_${index}`,
+      `device_aggregate_${index}`,
+    );
+    agent.location = agentLocation;
+    mobile.location = appLocation;
+    const relayAgent = agent as unknown as RelayConnection;
+    const relayMobile = mobile as unknown as RelayConnection;
+    state.registerConnection(relayAgent);
+    state.registerConnection(relayMobile);
+    state.registerAgent(relayAgent);
+    state.authenticateApp(relayMobile, relayAgent);
+    state.recordIngress(
+      relayMobile,
+      {
+        type: "e2e.message",
+        payload: {},
+        device_id: mobile.deviceId,
+        app_connection_id: mobile.id,
+      } as MessageEnvelope,
+      index * 100,
+    );
+  }
+
+  const trafficMap = state.trafficMapSnapshot();
+  assert.equal(trafficMap.nodes.length, 2);
+  assert.equal(trafficMap.summary.city_node_count, 2);
+  assert.equal(trafficMap.flows.length, 1);
+  assert.equal(trafficMap.flows[0]?.link_count, 2);
+  assert.equal(trafficMap.flows[0]?.device_count, 2);
+  assert.equal(trafficMap.flows[0]?.app_to_agent_bytes, 300);
+  assert.deepEqual(trafficMap.flows[0]?.transport_paths, { relay: 2 });
 }
 
 function createFakeSocket(): FakeSocket {

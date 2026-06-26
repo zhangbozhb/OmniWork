@@ -105,6 +105,13 @@ to the server's Nginx configuration directory and replace:
 If admin web is not ready as a static site, disable or restrict the `/admin/`
 location and keep only `/admin/api/` proxied to the relay.
 
+Nginx must overwrite `X-Forwarded-For` with `$remote_addr` for both
+`/admin/api/` and `/relay/ws/`. Do not use `$proxy_add_x_forwarded_for` here:
+that appends any client-supplied header and would let direct clients influence
+Relay GeoIP, IP-ban, and auth rate-limit attribution. Relay should run with
+`OMNIWORK_RELAY_ADMIN_TRUST_PROXY=true` only when Nginx connects from an IP in
+`OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS`.
+
 ## Admin Web Source
 
 Admin HTML lives under `web/admin` and is shared by both production and local

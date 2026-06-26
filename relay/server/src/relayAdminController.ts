@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { RelayAdminAuth } from "./adminAuth.ts";
+import { RelayAdminAuth, type RelayAdminStartupToken } from "./adminAuth.ts";
 import {
+  readRelayAdminAsset,
   renderRelayAdminLoginPage,
   renderRelayAdminPage,
 } from "./adminPage.ts";
@@ -16,6 +17,7 @@ const ADMIN_WEB_PATHS = new Set([
   "/admin/web/",
   "/admin/web/index.html",
 ]);
+const ADMIN_WEB_ASSET_PREFIX = "/admin/web/";
 const ADMIN_API_PREFIX = "/admin/api";
 
 export interface RelayAdminControllerOptions {
@@ -44,17 +46,21 @@ export class RelayAdminController {
     this.mobilesByDevice = options.mobilesByDevice;
     this.unregister = options.unregister;
     this.auth = new RelayAdminAuth(options.config.admin);
-    this.controlStore = new AdminControlStore(options.config.admin.controlsDbPath);
+    this.controlStore = new AdminControlStore(
+      options.config.admin.controlsDbPath,
+    );
   }
 
-  start(): void {
+  start(): RelayAdminStartupToken {
     this.loadPermanentControlRules();
-    this.auth.start();
+    return this.auth.start();
   }
 
   matches(pathname: string): boolean {
     return (
-      (this.config.admin.webEnabled && ADMIN_WEB_PATHS.has(pathname)) ||
+      (this.config.admin.webEnabled &&
+        (ADMIN_WEB_PATHS.has(pathname) ||
+          pathname.startsWith(ADMIN_WEB_ASSET_PREFIX))) ||
       pathname.startsWith(`${ADMIN_API_PREFIX}/`)
     );
   }
@@ -70,6 +76,15 @@ export class RelayAdminController {
       ADMIN_WEB_PATHS.has(url.pathname)
     ) {
       this.handleWeb(request, response);
+      return;
+    }
+
+    if (
+      this.config.admin.webEnabled &&
+      request.method === "GET" &&
+      url.pathname.startsWith(ADMIN_WEB_ASSET_PREFIX)
+    ) {
+      this.handleWebAsset(request, response, url.pathname);
       return;
     }
 
@@ -94,17 +109,16 @@ export class RelayAdminController {
     return this.activeRule(this.ipBans, ip);
   }
 
-  activeDisabledAgentInstance(agentInstanceId: string | undefined): ControlRule | null {
+  activeDisabledAgentInstance(
+    agentInstanceId: string | undefined,
+  ): ControlRule | null {
     if (!agentInstanceId) {
       return null;
     }
     return this.activeRule(this.disabledAgentInstances, agentInstanceId);
   }
 
-  private handleWeb(
-    request: IncomingMessage,
-    response: ServerResponse,
-  ): void {
+  private handleWeb(request: IncomingMessage, response: ServerResponse): void {
     if (!this.isHttpsRequest(request)) {
       this.writeJson(response, 403, { error: "admin_https_required" });
       return;
@@ -114,6 +128,34 @@ export class RelayAdminController {
       return;
     }
     this.writeHtml(response, renderRelayAdminPage());
+  }
+
+  private handleWebAsset(
+    request: IncomingMessage,
+    response: ServerResponse,
+    pathname: string,
+  ): void {
+    if (!this.isHttpsRequest(request)) {
+      this.writeJson(response, 403, { error: "admin_https_required" });
+      return;
+    }
+    if (!this.auth.authenticate(request)) {
+      this.writeJson(response, 401, { error: "unauthorized" });
+      return;
+    }
+    const assetName = decodeURIComponent(
+      pathname.slice(ADMIN_WEB_ASSET_PREFIX.length),
+    );
+    const asset = readRelayAdminAsset(assetName);
+    if (!asset) {
+      this.writeJson(response, 404, { error: "not_found" });
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": asset.contentType,
+      "cache-control": "public, max-age=86400",
+    });
+    response.end(asset.body);
   }
 
   private async handleApiHttp(
@@ -208,6 +250,10 @@ export class RelayAdminController {
     }
     if (method === "GET" && url.pathname === "/api/traffic") {
       this.writeJson(response, 200, this.state.trafficTop());
+      return;
+    }
+    if (method === "GET" && url.pathname === "/api/traffic-map") {
+      this.writeJson(response, 200, this.state.trafficMapSnapshot());
       return;
     }
     const agentAppsMatch = url.pathname.match(

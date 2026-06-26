@@ -18,8 +18,10 @@ try {
     trustedProxyIps: new Set(["127.0.0.1"]),
   });
 
-  auth.start();
+  const startupToken = auth.start();
   const firstToken = readToken(tokenDir);
+  assert.equal(startupToken.token, firstToken);
+  assert.equal(startupToken.expiresAt > Date.now(), true);
   assert.equal(firstToken.length, 64);
 
   const session = auth.login(firstToken, 1000);

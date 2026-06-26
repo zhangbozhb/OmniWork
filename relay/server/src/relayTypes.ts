@@ -40,6 +40,7 @@ export interface RelayConnectionBase {
   authenticated: boolean;
   /** Remote address used as the secondary key for auth.proof rate limiting. */
   remoteIp: string;
+  location?: RelayConnectionLocation;
   observations: AppConnectionObservation[];
   connectedAt: number;
   lastSeenAt: number;
@@ -54,6 +55,19 @@ export interface RelayConnectionBase {
   e2eTranscriptHash?: string;
   e2eSessionId?: string;
   agentE2EPeers?: Map<string, AgentE2EPeerState>;
+}
+
+export interface RelayConnectionLocation {
+  location_id: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+  source: "geoip" | "fallback";
+  accuracy: "city" | "region" | "country" | "private" | "unknown";
+  country_code?: string;
+  country?: string;
+  region?: string;
+  city?: string;
 }
 
 export interface UnboundRelayConnection extends RelayConnectionBase {

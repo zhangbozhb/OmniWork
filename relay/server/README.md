@@ -142,6 +142,15 @@ Operational endpoints:
 - `GET /admin/api/links` — current Relay-visible Agent/App links, including E2E
   and transport path state.
 - `GET /admin/api/traffic` — highest-traffic online Agent/App connections.
+- `GET /admin/api/traffic-map` — map-ready location and flow aggregates for the
+  Admin traffic board. Nodes are aggregated location buckets, not individual
+  Agent/App connections. Flow edges are aggregated by `from_location_id ->
+  to_location_id`, with link/device counts and transport-path distribution.
+  Node area represents active connection count; directional bytes are counted
+  from Relay ingress so App-to-Agent and Agent-to-App traffic are not
+  double-counted. Relay resolves public IPs with the bundled local GeoIP
+  database and falls back to private/reserved/unknown buckets when no location
+  is available.
 - `GET /admin/api/controls` — active disabled-Agent and IP-ban rules.
 - `POST /admin/api/login` — consumes the current one-time admin token and sets
   a secure 30-minute session cookie.
@@ -167,7 +176,10 @@ Operational endpoints:
 Relay Admin requires HTTPS by default. When the server is behind a trusted TLS
 terminating proxy, set `OMNIWORK_RELAY_ADMIN_TRUST_PROXY=true` and include the
 proxy IPs in `OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS`; only those proxy
-connections may assert `X-Forwarded-Proto: https`.
+connections may assert `X-Forwarded-Proto: https` or `X-Forwarded-For`. The
+fronting Nginx config must overwrite `X-Forwarded-For` with `$remote_addr`
+rather than appending `$proxy_add_x_forwarded_for`, so client-supplied forwarded
+chains cannot affect GeoIP, IP-ban, or auth rate-limit attribution.
 
 Relay Admin API is always provided by the relay under `/admin/api/...`. The
 Node-served admin web page under `/admin/web` is a development convenience and
@@ -178,7 +190,9 @@ you want the relay process to serve `web/admin/*.html`.
 On startup the server writes runtime artifacts under
 `OMNIWORK_RELAY_RUNTIME_DIR` (default `.omniwork-relay` in the current working
 directory). The 64-character one-time admin token is written to
-`admin-token.json` in that directory by default. Set
+`admin-token.json` in that directory by default, and the initial startup token
+is also emitted once in the `admin.token.ready` structured log record for
+operator convenience. Set
 `OMNIWORK_RELAY_ADMIN_TOKEN_DIR` to write the token file elsewhere. The token
 directory uses mode `0700` when the server creates it, and the token file uses
 mode `0600`. The token rotates every
@@ -198,7 +212,9 @@ that source through the web build output and Nginx at `/admin/`, while relay
 development mode may read the same source and inject `/admin/web` as the local
 base path. Production keeps `/admin/login.html` as the static login route; relay
 dev uses `/admin/web` for both the page and login fallback. Keep UI HTML/CSS/JS
-out of `src/relayServer.ts`.
+out of `src/relayServer.ts`. The traffic board world map uses
+`web/admin/world-land-110m.geojson`, derived from Natural Earth 110m land data,
+as a local static asset rather than a runtime CDN dependency.
 Admin HTTP routing, auth checks, snapshots, and control-rule mutations live in
 `src/relayAdminController.ts`; keep `src/relayServer.ts` focused on Relay
 connections and protocol routing.

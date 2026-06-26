@@ -6,6 +6,7 @@ import {
 } from "node:http";
 import type { Socket } from "node:net";
 
+import geoip from "geoip-lite";
 import {
   createMessage,
   isTransportPreference,
@@ -41,6 +42,7 @@ import type {
   PendingAuth,
   RelayAppInfo,
   RelayConnection,
+  RelayConnectionLocation,
   RelayEndpoint,
   RelayRoutedAppMessage,
   RelaySocket,
@@ -103,13 +105,16 @@ export class RelayServer {
   }
 
   async start(): Promise<void> {
-    this.admin.start();
+    const startupToken = this.admin.start();
     const server = createServer((request, response) =>
       this.handleHttp(request, response),
     );
     server.on("upgrade", (request, socket) => {
       const endpoint = parseRelayEndpoint(request);
-      const remoteIp = resolveRemoteIp(request, socket as Socket);
+      const remoteIp = resolveRemoteIp(request, socket as Socket, {
+        trustProxy: this.config.admin.trustProxy,
+        trustedProxyIps: this.config.admin.trustedProxyIps,
+      });
       const activeBan = this.admin.activeIpBan(remoteIp.ip);
       if (activeBan) {
         rejectWebSocketUpgrade(socket as Socket, "ip_banned", 403);
@@ -127,6 +132,7 @@ export class RelayServer {
       if (connection) {
         this.register(connection, endpoint, {
           remoteIp: remoteIp.ip,
+          location: resolveConnectionLocation(remoteIp.ip),
           observations: [createRelayObservation(request, remoteIp)],
         });
       }
@@ -143,6 +149,8 @@ export class RelayServer {
     });
     logRelayEvent({
       event: "admin.token.ready",
+      token: startupToken.token,
+      token_expires_at: new Date(startupToken.expiresAt).toISOString(),
       token_file: this.admin.tokenPath(),
       token_rotate_ms: this.config.admin.tokenRotateMs,
       session_ttl_ms: this.config.admin.sessionTtlMs,
@@ -237,6 +245,7 @@ export class RelayServer {
     endpoint: RelayEndpoint,
     options: {
       remoteIp?: string;
+      location?: RelayConnectionLocation;
       observations?: AppConnectionObservation[];
     } = {},
   ): void {
@@ -249,6 +258,7 @@ export class RelayServer {
       socket,
       authenticated: false,
       remoteIp: options.remoteIp ?? "unknown",
+      location: options.location,
       observations: options.observations ?? [],
       connectedAt: now,
       lastSeenAt: now,
@@ -1012,30 +1022,117 @@ interface ResolvedRemoteIp {
 }
 
 /**
- * 优先从 X-Forwarded-For 获取真实客户端 IP（在前置 reverse proxy / TLS 终端时），
- * 退化到底层 socket.remoteAddress；空值返回 "unknown" 以保证限流键稳定。
+ * 只有在请求来自可信反代时才使用 X-Forwarded-For；否则使用底层
+ * socket.remoteAddress，避免客户端直连时伪造来源 IP。
  */
-function resolveRemoteIp(
+export function resolveRemoteIp(
   request: IncomingMessage,
   socket: Socket,
+  options: {
+    trustProxy: boolean;
+    trustedProxyIps: Set<string>;
+  },
 ): ResolvedRemoteIp {
-  const forwarded = request.headers["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded.length > 0) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) {
-      return { ip: first, source: "x_forwarded_for" };
+  const socketIp = normalizeIpLiteral(socket.remoteAddress ?? "unknown");
+  if (
+    options.trustProxy &&
+    isTrustedProxyIp(socketIp, options.trustedProxyIps)
+  ) {
+    const forwarded = request.headers["x-forwarded-for"];
+    if (typeof forwarded === "string" && forwarded.length > 0) {
+      const first = forwarded.split(",")[0]?.trim();
+      if (first) {
+        return { ip: normalizeIpLiteral(first), source: "x_forwarded_for" };
+      }
     }
-  }
-  if (Array.isArray(forwarded) && forwarded.length > 0) {
-    const first = forwarded[0]?.split(",")[0]?.trim();
-    if (first) {
-      return { ip: first, source: "x_forwarded_for" };
+    if (Array.isArray(forwarded) && forwarded.length > 0) {
+      const first = forwarded[0]?.split(",")[0]?.trim();
+      if (first) {
+        return { ip: normalizeIpLiteral(first), source: "x_forwarded_for" };
+      }
     }
   }
   return {
-    ip: socket.remoteAddress ?? "unknown",
+    ip: socketIp,
     source: "socket_remote_address",
   };
+}
+
+function isTrustedProxyIp(ip: string, trustedProxyIps: Set<string>): boolean {
+  for (const trustedIp of trustedProxyIps) {
+    if (normalizeIpLiteral(trustedIp) === ip) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function resolveConnectionLocation(
+  remoteIp: string,
+): RelayConnectionLocation | undefined {
+  const geo = geoip.lookup(normalizeIpForGeoLookup(remoteIp));
+  if (!geo || !Array.isArray(geo.ll) || geo.ll.length !== 2) {
+    return undefined;
+  }
+  const [latitude, longitude] = geo.ll;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return undefined;
+  }
+  const countryCode = geo.country || undefined;
+  const country = countryCode ? countryName(countryCode) : undefined;
+  const city = geo.city || undefined;
+  const region = geo.region || undefined;
+  const accuracy = city ? "city" : region ? "region" : "country";
+  const label = [city, region && !city ? region : undefined, country]
+    .filter(Boolean)
+    .join(", ");
+  return {
+    location_id: [
+      accuracy,
+      slugLocationPart(countryCode ?? "unknown"),
+      slugLocationPart(region ?? "unknown"),
+      slugLocationPart(city ?? "unknown"),
+    ].join(":"),
+    label: label || countryCode || "Unknown Internet",
+    latitude,
+    longitude,
+    source: "geoip",
+    accuracy,
+    country_code: countryCode,
+    country,
+    region,
+    city,
+  };
+}
+
+function normalizeIpForGeoLookup(remoteIp: string): string {
+  return normalizeIpLiteral(remoteIp);
+}
+
+function normalizeIpLiteral(remoteIp: string): string {
+  const trimmed = remoteIp.trim().toLowerCase();
+  return trimmed.startsWith("::ffff:")
+    ? trimmed.slice("::ffff:".length)
+    : trimmed;
+}
+
+function countryName(countryCode: string): string {
+  try {
+    return (
+      new Intl.DisplayNames(["en"], { type: "region" }).of(countryCode) ??
+      countryCode
+    );
+  } catch {
+    return countryCode;
+  }
+}
+
+function slugLocationPart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function createRelayObservation(
