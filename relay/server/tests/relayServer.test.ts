@@ -36,6 +36,8 @@ import type {
     join(process.cwd(), ".omniwork-relay", "admin-controls.sqlite"),
   );
   assert.equal(config.admin.webEnabled, false);
+  assert.equal(config.admin.host, "127.0.0.1");
+  assert.equal(config.admin.port, 8788);
 }
 
 {
@@ -57,6 +59,30 @@ import type {
   assert.equal(
     config.admin.controlsDbPath,
     "/tmp/omniwork-relay-runtime/admin-controls.sqlite",
+  );
+}
+
+{
+  assert.throws(
+    () =>
+      loadRelayServerConfig({
+        OMNIWORK_RELAY_HOST: "127.0.0.1",
+        OMNIWORK_RELAY_PORT: "8787",
+        OMNIWORK_RELAY_ADMIN_HOST: "127.0.0.1",
+        OMNIWORK_RELAY_ADMIN_PORT: "8787",
+      }),
+    /admin listener must not share/,
+  );
+  assert.throws(
+    () =>
+      loadRelayServerConfig({
+        OMNIWORK_RELAY_HOST: "0.0.0.0",
+        OMNIWORK_RELAY_PORT: "8788",
+        OMNIWORK_RELAY_ADMIN_HOST: "127.0.0.1",
+        OMNIWORK_RELAY_ADMIN_PORT: "8788",
+        OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS: "true",
+      }),
+    /admin listener must not share/,
   );
 }
 
@@ -90,6 +116,14 @@ interface FakeSocket {
   onClose(handler: () => void): () => void;
   sendText(message: string): void;
   close(code?: number, reason?: string): void;
+}
+
+interface FakeHttpResponse {
+  statusCode?: number;
+  headers?: Record<string, string>;
+  body: string;
+  writeHead(statusCode: number, headers: Record<string, string>): void;
+  end(body: string): void;
 }
 
 // Admin Web 只有一份源码：生产默认 /admin/，relay dev 渲染时注入 /admin/web。
@@ -143,6 +177,29 @@ interface FakeSocket {
     false,
   );
   assert.equal(internals.admin.matches("/admin/api/status"), true);
+}
+
+// 业务 listener 不挂载 Admin API；Admin 只能通过独立 admin listener 进入。
+{
+  const server = createServer();
+  const internals = server as unknown as {
+    handleBusinessHttp(
+      request: IncomingMessage,
+      response: FakeHttpResponse,
+    ): void;
+  };
+  const response = createFakeHttpResponse();
+  internals.handleBusinessHttp(
+    {
+      method: "GET",
+      url: "/admin/api/status",
+      headers: {},
+    } as IncomingMessage,
+    response,
+  );
+
+  assert.equal(response.statusCode, 404);
+  assert.deepEqual(JSON.parse(response.body), { error: "not_found" });
 }
 
 type TestRelayConnection = {
@@ -550,6 +607,19 @@ function createFakeSocket(): FakeSocket {
     },
     close(code?: number, reason?: string): void {
       this.closed.push({ code, reason });
+    },
+  };
+}
+
+function createFakeHttpResponse(): FakeHttpResponse {
+  return {
+    body: "",
+    writeHead(statusCode: number, headers: Record<string, string>): void {
+      this.statusCode = statusCode;
+      this.headers = headers;
+    },
+    end(body: string): void {
+      this.body = body;
     },
   };
 }

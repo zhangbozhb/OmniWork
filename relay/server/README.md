@@ -27,6 +27,8 @@ pnpm verify:relay
 ```text
 OMNIWORK_RELAY_HOST=127.0.0.1
 OMNIWORK_RELAY_PORT=8787
+OMNIWORK_RELAY_ADMIN_HOST=127.0.0.1
+OMNIWORK_RELAY_ADMIN_PORT=8788
 OMNIWORK_DEVICE_ID=omniwork-relay
 OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true
 OMNIWORK_RELAY_REQUIRE_E2E=true
@@ -127,9 +129,14 @@ Operational endpoints:
   `committed`, `failed[reason]`, `downgrade[reason]`, `prefs[preference]`,
   `skipped_by_pref`, `in_flight`, `active_p2p`, and `durations`
   (p50/p95/max over the last 100 successful upgrades).
+- Business listener (`OMNIWORK_RELAY_HOST` / `OMNIWORK_RELAY_PORT`):
+  `GET /healthz`, `GET /readyz`, `GET /metrics`, `POST /debug/upgrade`, and
+  `GET /relay/ws/*` WebSocket upgrades.
 - `POST /debug/upgrade?device_id=<id>&app_connection_id=<connection_id>` —
   manually triggers an upgrade for one E2E-ready App connection under a paired
   device; included in metrics and logs.
+- Admin listener (`OMNIWORK_RELAY_ADMIN_HOST` / `OMNIWORK_RELAY_ADMIN_PORT`):
+  all `/admin/api/*` routes and, in development mode, `/admin/web`.
 - `GET /admin/web` — development-only Relay admin web page for viewing online
   Agents and Apps. Requires HTTPS and a valid admin session.
 - `GET /admin/api/status` — Relay admin status summary with device / Agent /
@@ -181,11 +188,13 @@ fronting Nginx config must overwrite `X-Forwarded-For` with `$remote_addr`
 rather than appending `$proxy_add_x_forwarded_for`, so client-supplied forwarded
 chains cannot affect GeoIP, IP-ban, or auth rate-limit attribution.
 
-Relay Admin API is always provided by the relay under `/admin/api/...`. The
-Node-served admin web page under `/admin/web` is a development convenience and
-is disabled by default with `OMNIWORK_RELAY_ADMIN_WEB_ENABLED=false`. Use
-`pnpm dev:relay` or set `OMNIWORK_RELAY_ADMIN_WEB_ENABLED=true` explicitly when
-you want the relay process to serve `web/admin/*.html`.
+Relay Admin API is provided only by the separate admin listener under
+`/admin/api/...`; the business listener intentionally returns 404 for admin
+routes. The Node-served admin web page under `/admin/web` is a development
+convenience and is disabled by default with
+`OMNIWORK_RELAY_ADMIN_WEB_ENABLED=false`. Use `pnpm dev:relay` or set
+`OMNIWORK_RELAY_ADMIN_WEB_ENABLED=true` explicitly when you want the relay
+process to serve `web/admin/*.html` on the admin listener.
 
 On startup the server writes runtime artifacts under
 `OMNIWORK_RELAY_RUNTIME_DIR` (default `.omniwork-relay` in the current working

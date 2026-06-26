@@ -18,23 +18,6 @@ server {
         try_files $uri $uri/ /app/index.html;
     }
 
-    # Production admin web. Built by pnpm deploy:web:build into dist/deploy/admin.
-    location /admin/ {
-        alias /var/www/omniwork/admin/;
-        try_files $uri $uri/ /admin/index.html;
-    }
-
-    # Admin API is always served by relay server.
-    location /admin/api/ {
-        proxy_pass http://127.0.0.1:8787/admin/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto https;
-          # Overwrite any client-supplied X-Forwarded-For. Relay trusts this
-          # header only from configured proxy IPs, so it must contain Nginx's
-          # observed peer IP rather than an appended client-controlled chain.
-          proxy_set_header X-Forwarded-For $remote_addr;
-    }
-
     # Relay WebSocket endpoints for Agent and App/Web client.
     location /relay/ws/ {
         proxy_pass http://127.0.0.1:8787/relay/ws/;
@@ -43,9 +26,9 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto https;
-          # Overwrite any client-supplied X-Forwarded-For for GeoIP, IP bans,
-          # and auth rate limiting.
-          proxy_set_header X-Forwarded-For $remote_addr;
+        # Overwrite any client-supplied X-Forwarded-For for GeoIP, IP bans,
+        # and auth rate limiting.
+        proxy_set_header X-Forwarded-For $remote_addr;
     }
 
     location /healthz {
@@ -65,5 +48,36 @@ server {
 
     location /debug/ {
         deny all;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name admin.omniwork.example.com;
+
+    # Keep the management plane on localhost, VPN, or an operator network.
+    allow 127.0.0.1;
+    allow 10.0.0.0/8;
+    deny all;
+
+    # Replace these with the certificate paths managed by your deployment.
+    ssl_certificate /etc/letsencrypt/live/admin.omniwork.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/admin.omniwork.example.com/privkey.pem;
+
+    # Production admin web. Built by pnpm deploy:web:build into dist/deploy/admin.
+    location /admin/ {
+        alias /var/www/omniwork/admin/;
+        try_files $uri $uri/ /admin/index.html;
+    }
+
+    # Admin API is served by the separate Relay admin listener.
+    location /admin/api/ {
+        proxy_pass http://127.0.0.1:8788/admin/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        # Overwrite any client-supplied X-Forwarded-For. Relay trusts this
+        # header only from configured proxy IPs, so it must contain Nginx's
+        # observed peer IP rather than an appended client-controlled chain.
+        proxy_set_header X-Forwarded-For $remote_addr;
     }
 }

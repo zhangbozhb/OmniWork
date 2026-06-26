@@ -8,8 +8,9 @@ server in production.
 - Production uses Nginx to serve static web assets and terminate HTTPS.
 - The public website under `/` is built from `site/` and contains only project
   introduction, public docs, downloads, changelog, and the `/app/` entry.
-- Production keeps the Node relay focused on `/relay/ws/...`, `/admin/api/...`,
-  health checks, and internal operational endpoints.
+- Production uses separate Relay listeners: the public listener handles
+  `/relay/ws/...`, health checks, and internal operational endpoints; the
+  private admin listener handles `/admin/api/...`.
 - The Node-served admin web page is disabled by default. Enable it only for
   development or explicit break-glass debugging with
   `OMNIWORK_RELAY_ADMIN_WEB_ENABLED=true`.
@@ -25,8 +26,8 @@ server in production.
 | `/download/` | Nginx static | Public download page |
 | `/changelog/` | Nginx static | Public release notes entry |
 | `/app/` | Nginx static | Web client SPA |
-| `/admin/` | Nginx static, optional | Production admin UI |
-| `/admin/api/` | Relay via Nginx proxy | Admin API and session auth |
+| `/admin/` | Private Nginx static | Production admin UI |
+| `/admin/api/` | Private Relay admin listener via Nginx proxy | Admin API and session auth |
 | `/relay/ws/agent` | Relay via Nginx proxy | Agent WebSocket |
 | `/relay/ws/mobile` | Relay via Nginx proxy | Mobile/Web client WebSocket |
 | `/healthz`, `/readyz` | Relay via Nginx proxy | Health checks |
@@ -71,6 +72,8 @@ Recommended production environment:
 ```bash
 OMNIWORK_RELAY_HOST=127.0.0.1
 OMNIWORK_RELAY_PORT=8787
+OMNIWORK_RELAY_ADMIN_HOST=127.0.0.1
+OMNIWORK_RELAY_ADMIN_PORT=8788
 OMNIWORK_RELAY_REQUIRE_E2E=true
 OMNIWORK_RELAY_ADMIN_REQUIRE_HTTPS=true
 OMNIWORK_RELAY_ADMIN_WEB_ENABLED=false
@@ -102,21 +105,25 @@ to the server's Nginx configuration directory and replace:
 - `/var/www/omniwork/site`, `/var/www/omniwork/app`, and
   `/var/www/omniwork/admin` with the server's actual publish directories.
 
-If admin web is not ready as a static site, disable or restrict the `/admin/`
-location and keep only `/admin/api/` proxied to the relay.
+The public server block must only expose the business listener (`/relay/ws/`)
+and public static assets. Admin web and `/admin/api/` belong on the separate
+admin server block, which proxies to `OMNIWORK_RELAY_ADMIN_HOST` /
+`OMNIWORK_RELAY_ADMIN_PORT` and should be restricted to localhost, VPN, or an
+operator network.
 
-Nginx must overwrite `X-Forwarded-For` with `$remote_addr` for both
-`/admin/api/` and `/relay/ws/`. Do not use `$proxy_add_x_forwarded_for` here:
-that appends any client-supplied header and would let direct clients influence
-Relay GeoIP, IP-ban, and auth rate-limit attribution. Relay should run with
-`OMNIWORK_RELAY_ADMIN_TRUST_PROXY=true` only when Nginx connects from an IP in
-`OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS`.
+Nginx must overwrite `X-Forwarded-For` with `$remote_addr` for both the public
+business WebSocket route and the private admin API route. Do not use
+`$proxy_add_x_forwarded_for` here: that appends any client-supplied header and
+would let direct clients influence Relay GeoIP, IP-ban, and auth rate-limit
+attribution. Relay should run with `OMNIWORK_RELAY_ADMIN_TRUST_PROXY=true` only
+when Nginx connects from an IP in `OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS`.
 
 ## Admin Web Source
 
 Admin HTML lives under `web/admin` and is shared by both production and local
 development. Production publishes it to `/var/www/omniwork/admin/` through
-`dist/deploy/admin` and proxies only `/admin/api/...` to relay.
+`dist/deploy/admin` and proxies `/admin/api/...` only to the Relay admin
+listener.
 The production admin page uses `/admin/` as its base and redirects expired or
 missing sessions to `/admin/login.html`.
 

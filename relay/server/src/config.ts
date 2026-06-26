@@ -48,6 +48,8 @@ export interface RelayServerConfig {
     blockMs: number;
   };
   admin: {
+    host: string;
+    port: number;
     webEnabled: boolean;
     tokenDir: string;
     tokenRotateMs: number;
@@ -87,10 +89,20 @@ export function loadRelayServerConfig(
   const runtimeDir =
     optionalNonEmpty(env.OMNIWORK_RELAY_RUNTIME_DIR) ??
     join(process.cwd(), ".omniwork-relay");
+  const port = Number(env.OMNIWORK_RELAY_PORT ?? "8787");
+  const adminHost = env.OMNIWORK_RELAY_ADMIN_HOST ?? "127.0.0.1";
+  const adminPort = Number(env.OMNIWORK_RELAY_ADMIN_PORT ?? "8788");
+
+  if (listenersOverlap(host, port, adminHost, adminPort)) {
+    throw new RelayConfigError(
+      `[omniwork-relay] admin listener must not share the business listener ${host}:${adminPort}. ` +
+        `Set OMNIWORK_RELAY_ADMIN_PORT to a separate local port.`,
+    );
+  }
 
   return {
     host,
-    port: Number(env.OMNIWORK_RELAY_PORT ?? "8787"),
+    port,
     deviceId: env.OMNIWORK_DEVICE_ID ?? "omniwork-relay",
     allowPlaintextWs,
     requireE2E,
@@ -105,6 +117,8 @@ export function loadRelayServerConfig(
       blockMs: parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS, 60_000),
     },
     admin: {
+      host: adminHost,
+      port: adminPort,
       webEnabled: parseBoolean(env.OMNIWORK_RELAY_ADMIN_WEB_ENABLED, false),
       tokenDir:
         optionalNonEmpty(env.OMNIWORK_RELAY_ADMIN_TOKEN_DIR) ?? runtimeDir,
@@ -172,6 +186,24 @@ function parseNumber(value: string | undefined, fallback: number): number {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function listenersOverlap(
+  host: string,
+  port: number,
+  otherHost: string,
+  otherPort: number,
+): boolean {
+  if (port !== otherPort) {
+    return false;
+  }
+  return (
+    host === otherHost ||
+    host === "0.0.0.0" ||
+    otherHost === "0.0.0.0" ||
+    host === "::" ||
+    otherHost === "::"
+  );
 }
 
 /**

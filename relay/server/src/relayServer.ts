@@ -106,10 +106,13 @@ export class RelayServer {
 
   async start(): Promise<void> {
     const startupToken = this.admin.start();
-    const server = createServer((request, response) =>
-      this.handleHttp(request, response),
+    const businessServer = createServer((request, response) =>
+      this.handleBusinessHttp(request, response),
     );
-    server.on("upgrade", (request, socket) => {
+    const adminServer = createServer((request, response) =>
+      this.handleAdminHttp(request, response),
+    );
+    businessServer.on("upgrade", (request, socket) => {
       const endpoint = parseRelayEndpoint(request);
       const remoteIp = resolveRemoteIp(request, socket as Socket, {
         trustProxy: this.config.admin.trustProxy,
@@ -139,13 +142,27 @@ export class RelayServer {
     });
 
     await new Promise<void>((resolve) => {
-      server.listen(this.config.port, this.config.host, resolve);
+      businessServer.listen(this.config.port, this.config.host, resolve);
+    });
+    await new Promise<void>((resolve) => {
+      adminServer.listen(
+        this.config.admin.port,
+        this.config.admin.host,
+        resolve,
+      );
     });
 
     logRelayEvent({
       event: "server.listening",
+      listener: "business",
       host: this.config.host,
       port: this.config.port,
+    });
+    logRelayEvent({
+      event: "server.listening",
+      listener: "admin",
+      host: this.config.admin.host,
+      port: this.config.admin.port,
     });
     logRelayEvent({
       event: "admin.token.ready",
@@ -156,22 +173,16 @@ export class RelayServer {
       session_ttl_ms: this.config.admin.sessionTtlMs,
       https_required: this.config.admin.requireHttps,
       web_enabled: this.config.admin.webEnabled,
+      admin_host: this.config.admin.host,
+      admin_port: this.config.admin.port,
       controls_db: this.config.admin.controlsDbPath,
     });
   }
 
-  private handleHttp(request: IncomingMessage, response: ServerResponse): void {
-    const url = new URL(request.url ?? "/", "http://relay.local");
-    if (this.admin.matches(url.pathname)) {
-      this.admin.handle(request, response, url).catch((error: unknown) => {
-        this.writeJson(response, 500, {
-          error: "internal_error",
-          message: error instanceof Error ? error.message : String(error),
-        });
-      });
-      return;
-    }
-
+  private handleBusinessHttp(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): void {
     if (request.url === "/healthz" || request.url === "/readyz") {
       this.writeJson(response, 200, { ok: true });
       return;
@@ -195,6 +206,23 @@ export class RelayServer {
     }
 
     this.writeJson(response, 404, { error: "not_found" });
+  }
+
+  private handleAdminHttp(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): void {
+    const url = new URL(request.url ?? "/", "http://relay.local");
+    if (!this.admin.matches(url.pathname)) {
+      this.writeJson(response, 404, { error: "not_found" });
+      return;
+    }
+    this.admin.handle(request, response, url).catch((error: unknown) => {
+      this.writeJson(response, 500, {
+        error: "internal_error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   private handleDebugUpgrade(
