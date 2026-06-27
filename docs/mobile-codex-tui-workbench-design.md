@@ -10,7 +10,7 @@
 
 - [DeviceListScreen](../app/src/screens/devices/DeviceListScreen.tsx)：已保存设备列表与切换；设备页刷新保持轻量，只更新连接状态或触发重连。
 - [PairingScreen](../app/src/screens/pairing/PairingScreen.tsx) + `PairingQrScannerModal.{native,web}.tsx`：扫码 / URL / 32 字符 key 三种配对方式。
-- [SessionListScreen](../app/src/screens/sessions/SessionListScreen.tsx)：按 workspace + provider 分组；进入设备或在工作台刷新时再拉取 session/workspace。
+- [SessionListScreen](../app/src/screens/sessions/SessionListScreen.tsx)：按 workspace + provider 分组；进入设备或在工作台刷新时拉取 `session.list`，该响应携带 workspace 摘要；`workspace.list` 保留为独立 workspace 列表刷新入口，不与 `session.list` 成对发送。
 - [TerminalScreen](../app/src/screens/terminal/TerminalScreen.tsx)：原始 TUI 快照 + 输入。
 - [FileBrowserScreen](../app/src/screens/workspaces/FileBrowserScreen.tsx) / [FileEditorScreen](../app/src/screens/workspaces/FileEditorScreen.tsx) / [GitStatusScreen](../app/src/screens/workspaces/GitStatusScreen.tsx)：workspace 文件浏览、受控文本编辑与只读 Git 上下文。
 

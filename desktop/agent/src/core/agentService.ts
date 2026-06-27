@@ -190,7 +190,8 @@ export class AgentService {
     this.resourceRequests = new ResourceRequestHandler({
       deviceId: this.config.deviceId,
       workspaces: this.workspaces,
-      listSessions: () => this.sessionManager.list(),
+      listWorkspaces: async () =>
+        (await this.sessionManager.listWithWorkspaces()).workspaces,
       sendToApp: (context, message) => this.sendToApp(context, message),
     });
     this.terminalBridge = new TerminalBridge(this.tmux);

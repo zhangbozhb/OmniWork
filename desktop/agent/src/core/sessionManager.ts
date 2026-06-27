@@ -32,6 +32,7 @@ export class SessionManager {
     cwd: string;
     terminalSize: TerminalSize;
   };
+  private listWithWorkspacesInFlight?: Promise<SessionListResult>;
 
   constructor(
     store: SQLiteSessionStore,
@@ -116,6 +117,21 @@ export class SessionManager {
   }
 
   async listWithWorkspaces(): Promise<SessionListResult> {
+    if (this.listWithWorkspacesInFlight) {
+      return this.listWithWorkspacesInFlight;
+    }
+    const inFlight = this.computeListWithWorkspaces();
+    this.listWithWorkspacesInFlight = inFlight;
+    try {
+      return await inFlight;
+    } finally {
+      if (this.listWithWorkspacesInFlight === inFlight) {
+        this.listWithWorkspacesInFlight = undefined;
+      }
+    }
+  }
+
+  private async computeListWithWorkspaces(): Promise<SessionListResult> {
     const storedSessions = await this.store.list();
     const tmuxSessions = await this.tmux.listSessions();
     // 用 (server_pid, session_uid) 构造强 ID 索引；

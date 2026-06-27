@@ -51,7 +51,7 @@ App <-- ws/wss --> Relay <-- ws/wss --> Agent
 
 - Relay 只接受 `/relay/ws/mobile` 和 `/relay/ws/agent` WebSocket endpoint。
 - App 通过 `mobile.connect` 进入 Relay 接入流程。
-- Agent 通过 `agent.hello` 注册 `device_id`、`agent_instance_id`、`key_id`、协议版本和能力；其中 workspace 只使用缓存快照，完整刷新由 `session.list` 承担。
+- Agent 通过 `agent.hello` 注册 `device_id`、`agent_instance_id`、`key_id`、协议版本和能力；其中 workspace 只使用缓存快照，进入工作台或用户显式刷新时由 `session.list` 刷新 session 视图和 workspace 摘要，`workspace.list` 仅保留为独立 workspace 列表刷新入口。
 - `auth.proof` 只用于 Relay 接入校验和限流，不代表业务通道可用。
 - 默认业务消息由 App/Agent 在 E2E ready 后通过 `e2e.message` 传输；
   Relay 不解析业务 payload，也不维护业务明文策略。

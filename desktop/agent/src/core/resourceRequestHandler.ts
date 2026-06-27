@@ -1,12 +1,12 @@
 import {
   createMessage,
-  type TerminalSession,
   type FilesListRequestPayload,
   type FilesReadRequestPayload,
   type FilesWriteRequestPayload,
   type GitDiffRequestPayload,
   type GitStatusRequestPayload,
   type MessageEnvelope,
+  type WorkspaceDefinition,
 } from "@omniwork/protocol-ts";
 import { FileService } from "../files/fileService.ts";
 import { GitService } from "../git/gitService.ts";
@@ -22,7 +22,7 @@ type ResourceRequestHandlerOptions = {
   workspaces: WorkspaceManager;
   files?: FileService;
   git?: GitService;
-  listSessions(): Promise<TerminalSession[]>;
+  listWorkspaces(): Promise<WorkspaceDefinition[]>;
   sendToApp(
     context: AgentDispatchContext | undefined,
     message: MessageEnvelope,
@@ -34,7 +34,7 @@ export class ResourceRequestHandler {
   private readonly workspaces: WorkspaceManager;
   private readonly files: FileService;
   private readonly git: GitService;
-  private readonly listSessions: () => Promise<TerminalSession[]>;
+  private readonly listWorkspaces: () => Promise<WorkspaceDefinition[]>;
   private readonly sendToApp: (
     context: AgentDispatchContext | undefined,
     message: MessageEnvelope,
@@ -45,7 +45,7 @@ export class ResourceRequestHandler {
     this.workspaces = options.workspaces;
     this.files = options.files ?? new FileService();
     this.git = options.git ?? new GitService();
-    this.listSessions = options.listSessions;
+    this.listWorkspaces = options.listWorkspaces;
     this.sendToApp = options.sendToApp;
   }
 
@@ -58,7 +58,7 @@ export class ResourceRequestHandler {
       createMessage(
         "workspace.list",
         {
-          workspaces: await this.workspaces.list(await this.listSessions()),
+          workspaces: await this.listWorkspaces(),
         },
         {
           device_id: this.deviceId,
@@ -72,7 +72,9 @@ export class ResourceRequestHandler {
     message: MessageEnvelope<FilesListRequestPayload>,
     context?: AgentDispatchContext,
   ): Promise<void> {
-    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    const workspace = await this.requireWorkspace(
+      message.payload.workspacePath,
+    );
     this.sendToApp(
       context,
       createMessage(
@@ -90,7 +92,9 @@ export class ResourceRequestHandler {
     message: MessageEnvelope<FilesReadRequestPayload>,
     context?: AgentDispatchContext,
   ): Promise<void> {
-    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    const workspace = await this.requireWorkspace(
+      message.payload.workspacePath,
+    );
     this.sendToApp(
       context,
       createMessage(
@@ -110,7 +114,9 @@ export class ResourceRequestHandler {
   ): Promise<void> {
     let payload;
     try {
-      const workspace = await this.requireWorkspace(message.payload.workspacePath);
+      const workspace = await this.requireWorkspace(
+        message.payload.workspacePath,
+      );
       payload = await this.files.write(workspace, message.payload);
     } catch (error) {
       payload = {
@@ -120,7 +126,8 @@ export class ResourceRequestHandler {
         encoding: "utf8" as const,
         size: 0,
         baseHash: message.payload.baseHash,
-        message: error instanceof Error ? error.message : "Failed to save file.",
+        message:
+          error instanceof Error ? error.message : "Failed to save file.",
       };
     }
     this.sendToApp(
@@ -136,7 +143,9 @@ export class ResourceRequestHandler {
     message: MessageEnvelope<GitStatusRequestPayload>,
     context?: AgentDispatchContext,
   ): Promise<void> {
-    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    const workspace = await this.requireWorkspace(
+      message.payload.workspacePath,
+    );
     this.sendToApp(
       context,
       createMessage("git.status", await this.git.status(workspace), {
@@ -150,7 +159,9 @@ export class ResourceRequestHandler {
     message: MessageEnvelope<GitDiffRequestPayload>,
     context?: AgentDispatchContext,
   ): Promise<void> {
-    const workspace = await this.requireWorkspace(message.payload.workspacePath);
+    const workspace = await this.requireWorkspace(
+      message.payload.workspacePath,
+    );
     this.sendToApp(
       context,
       createMessage(

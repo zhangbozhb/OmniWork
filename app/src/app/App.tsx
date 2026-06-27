@@ -260,6 +260,16 @@ function createWorkspaceDataCache(): WorkspaceDataCache {
   };
 }
 
+function isWorkbenchView(view: AppView): boolean {
+  return (
+    view === "sessions" ||
+    view === "terminal" ||
+    view === "terminalFiles" ||
+    view === "fileEditor" ||
+    view === "gitReview"
+  );
+}
+
 export default function App(): JSX.Element {
   return (
     <ConfirmProvider>
@@ -1136,8 +1146,11 @@ function AppContent(): JSX.Element {
 
   useEffect(() => {
     if (connectionPath === "p2p" && connectionStatus === "authenticated") {
-      if (transportPreference !== "prefer_p2p") {
-        requestAgentStateRefresh();
+      if (
+        transportPreference !== "prefer_p2p" &&
+        shouldRefreshWorkbenchOnConnection()
+      ) {
+        requestSessionListRefresh();
       }
       requestTerminalSnapshotForCurrentSession();
     }
@@ -1457,9 +1470,10 @@ function AppContent(): JSX.Element {
 
     // 用户主动进入设备时若连接已经失败/空闲，主动触发一次重连，
     // 避免列表页一直停留在 "Waiting for ... data" 状态。
+    pendingAutoOpenSessionsRef.current = true;
+    setView("sessions");
     if (connectionStatus === "failed" || connectionStatus === "idle") {
       reconnectActivePairing();
-      setView("sessions");
     }
   }
 
@@ -2321,7 +2335,7 @@ function AppContent(): JSX.Element {
     );
   }
 
-  function requestAgentStateRefresh(): void {
+  function requestSessionListRefresh(): void {
     const activePairing = pairingRef.current;
     if (!activePairing) {
       return;
@@ -2329,10 +2343,19 @@ function AppContent(): JSX.Element {
     sendToRelay(listSessionsRequest(activePairing.deviceId));
   }
 
+  function shouldRefreshWorkbenchOnConnection(): boolean {
+    return (
+      pendingAutoOpenSessionsRef.current ||
+      isWorkbenchView(viewRef.current)
+    );
+  }
+
   function markDirectConnectionReady(): void {
     setConnectionStatus("authenticated");
     setConnectionMessage("Direct P2P connection is ready.");
-    requestAgentStateRefresh();
+    if (shouldRefreshWorkbenchOnConnection()) {
+      requestSessionListRefresh();
+    }
     if (pendingAutoOpenSessionsRef.current) {
       pendingAutoOpenSessionsRef.current = false;
       setView("sessions");
@@ -2391,11 +2414,14 @@ function AppContent(): JSX.Element {
         } else {
           setConnectionStatus("authenticated");
           setConnectionMessage("Connected to Desktop.");
-          relay.send(listSessionsRequest(activePairing.deviceId));
+          const shouldOpenSessions = pendingAutoOpenSessionsRef.current;
+          if (shouldRefreshWorkbenchOnConnection()) {
+            relay.send(listSessionsRequest(activePairing.deviceId));
+          }
           relay.send(
             getAgentNotificationSettingsRequest(activePairing.deviceId),
           );
-          if (pendingAutoOpenSessionsRef.current) {
+          if (shouldOpenSessions) {
             pendingAutoOpenSessionsRef.current = false;
             setView("sessions");
           }
