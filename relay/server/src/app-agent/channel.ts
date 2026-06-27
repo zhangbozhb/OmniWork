@@ -8,10 +8,10 @@ import {
   type RelayAppDeliverPayload,
 } from "@omniwork/protocol-ts";
 
-import type { RelayServerConfig } from "./config.ts";
-import { RelayConnectionRegistry } from "./relayConnectionRegistry.ts";
-import type { RelayStateStore } from "./relayStateStore.ts";
-import type { RelayConnection, RelayRoutedAppMessage } from "./relayTypes.ts";
+import type { RelayServerConfig } from "../config.ts";
+import { RuntimeTopology } from "../runtime/topology.ts";
+import type { RelayStateStore } from "../relayStateStore.ts";
+import type { RelayConnection, RelayRoutedAppMessage } from "../relayTypes.ts";
 
 interface AppDeliveryContext {
   deviceId: string;
@@ -20,18 +20,18 @@ interface AppDeliveryContext {
   expiresAt: number;
 }
 
-export interface RelayMessageRouterOptions {
+export interface AppAgentChannelOptions {
   config: RelayServerConfig;
-  registry: RelayConnectionRegistry;
+  topology: RuntimeTopology;
   state: RelayStateStore;
   send(connection: RelayConnection, message: MessageEnvelope): void;
 }
 
-export class RelayMessageRouter {
-  private readonly options: RelayMessageRouterOptions;
+export class AppAgentChannel {
+  private readonly options: AppAgentChannelOptions;
   private readonly appDeliveryContexts = new Map<string, AppDeliveryContext>();
 
-  constructor(options: RelayMessageRouterOptions) {
+  constructor(options: AppAgentChannelOptions) {
     this.options = options;
   }
 
@@ -53,7 +53,7 @@ export class RelayMessageRouter {
         return;
       }
 
-      const agent = this.options.registry.getPrimaryAgent(connection.deviceId);
+      const agent = this.options.topology.getPrimaryAgent(connection.deviceId);
       if (agent) {
         const relayContextId = this.rememberAppDeliveryContext({
           deviceId: connection.deviceId,
@@ -75,7 +75,7 @@ export class RelayMessageRouter {
 
     if (connection.role === "agent" && connection.deviceId) {
       if (message.app_connection_id) {
-        const mobile = this.options.registry.getConnection(
+        const mobile = this.options.topology.getConnection(
           message.app_connection_id,
         );
         if (mobile) {
@@ -85,7 +85,7 @@ export class RelayMessageRouter {
         }
         return;
       }
-      const mobiles = this.options.registry.mobilesByDevice.get(
+      const mobiles = this.options.topology.mobilesByDevice.get(
         connection.deviceId,
       );
       if (!mobiles) {
@@ -129,7 +129,7 @@ export class RelayMessageRouter {
       return;
     }
 
-    const mobile = this.options.registry.getConnection(context.appConnectionId);
+    const mobile = this.options.topology.getConnection(context.appConnectionId);
     if (
       mobile?.role !== "mobile" ||
       mobile.deviceId !== connection.deviceId ||

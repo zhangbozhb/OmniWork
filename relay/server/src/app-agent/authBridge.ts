@@ -6,21 +6,18 @@ import {
   type MessageEnvelope,
 } from "@omniwork/protocol-ts";
 
-import type { RelayServerConfig } from "./config.ts";
-import { RelayConnectionRegistry } from "./relayConnectionRegistry.ts";
-import { logRelayEvent } from "./relayLog.ts";
-import {
-  appInfoToPayload,
-  buildAuthRateLimitKey,
-} from "./relaySessionPayload.ts";
-import type { RelayStateStore } from "./relayStateStore.ts";
-import { TokenBucketLimiter } from "./tokenBucket.ts";
-import { RelayUpgradeOrchestrator } from "./upgrade/orchestrator.ts";
-import type { PendingAuth, RelayConnection } from "./relayTypes.ts";
+import type { RelayServerConfig } from "../config.ts";
+import { RuntimeTopology } from "../runtime/topology.ts";
+import { logRelayEvent } from "../relayLog.ts";
+import { appInfoToPayload, buildAuthRateLimitKey } from "./payload.ts";
+import type { RelayStateStore } from "../relayStateStore.ts";
+import { TokenBucketLimiter } from "../tokenBucket.ts";
+import { RelayUpgradeOrchestrator } from "../upgrade/orchestrator.ts";
+import type { PendingAuth, RelayConnection } from "../relayTypes.ts";
 
-export interface RelayPairingControllerOptions {
+export interface AppAuthBridgeOptions {
   config: RelayServerConfig;
-  registry: RelayConnectionRegistry;
+  topology: RuntimeTopology;
   state: RelayStateStore;
   pendingAuth: Map<string, PendingAuth>;
   authLimiter: TokenBucketLimiter;
@@ -28,10 +25,10 @@ export interface RelayPairingControllerOptions {
   send(connection: RelayConnection, message: MessageEnvelope): void;
 }
 
-export class RelayPairingController {
-  private readonly options: RelayPairingControllerOptions;
+export class AppAuthBridge {
+  private readonly options: AppAuthBridgeOptions;
 
-  constructor(options: RelayPairingControllerOptions) {
+  constructor(options: AppAuthBridgeOptions) {
     this.options = options;
   }
 
@@ -99,7 +96,7 @@ export class RelayPairingController {
       return;
     }
 
-    const agent = this.options.registry.getPrimaryAgent(pending.deviceId);
+    const agent = this.options.topology.getPrimaryAgent(pending.deviceId);
     if (!agent) {
       this.options.send(
         connection,
@@ -144,7 +141,7 @@ export class RelayPairingController {
     }
 
     const payload = message.payload as AuthOkPayload | AuthFailedPayload;
-    const mobile = this.options.registry.getConnection(payload.connection_id);
+    const mobile = this.options.topology.getConnection(payload.connection_id);
     if (!mobile) {
       return;
     }
@@ -165,7 +162,7 @@ export class RelayPairingController {
         buildAuthRateLimitKey(pending?.keyId, mobile.deviceId, mobile.remoteIp),
       );
       if (mobile.deviceId) {
-        this.options.registry.addMobileToDevice(mobile.deviceId, mobile);
+        this.options.topology.addMobileToDevice(mobile.deviceId, mobile);
         if (agentMode === "plaintext_allowed") {
           this.options.orchestrator.notifyMobileAuthenticated(
             mobile.deviceId,

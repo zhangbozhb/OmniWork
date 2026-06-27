@@ -1,6 +1,6 @@
 import type { AppInfoPayload, MobileConnectPayload } from "@omniwork/protocol-ts";
 
-import type { RelayAppInfo } from "./relayTypes.ts";
+import type { RelayAppInfo } from "../relayTypes.ts";
 
 /**
  * 构造 auth.proof 限流键：(key_id, device_id, remote_ip)。

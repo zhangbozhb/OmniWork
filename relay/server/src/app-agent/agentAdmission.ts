@@ -1,25 +1,25 @@
 import type { AgentHelloPayload, MessageEnvelope } from "@omniwork/protocol-ts";
 
-import type { RelayServerConfig } from "./config.ts";
-import { RelayAdminController } from "./relayAdminController.ts";
-import { RelayConnectionRegistry } from "./relayConnectionRegistry.ts";
-import { verifyRelayDeviceSignature } from "./relayDeviceSignature.ts";
-import type { RelayStateStore } from "./relayStateStore.ts";
-import type { RelayUserAuthStore } from "./relayUserAuthStore.ts";
-import type { RelayConnection } from "./relayTypes.ts";
+import type { RelayServerConfig } from "../config.ts";
+import { RelayAdminController } from "../relayAdminController.ts";
+import { RuntimeTopology } from "../runtime/topology.ts";
+import { verifyRelayDeviceSignature } from "../relayDeviceSignature.ts";
+import type { RelayStateStore } from "../relayStateStore.ts";
+import type { RelayUserAuthStore } from "../relayUserAuthStore.ts";
+import type { RelayConnection } from "../relayTypes.ts";
 
-export interface RelayAgentSessionControllerOptions {
+export interface AgentAdmissionOptions {
   config: RelayServerConfig;
   admin: RelayAdminController;
-  registry: RelayConnectionRegistry;
+  topology: RuntimeTopology;
   state: RelayStateStore;
   userAuthStore: RelayUserAuthStore;
 }
 
-export class RelayAgentSessionController {
-  private readonly options: RelayAgentSessionControllerOptions;
+export class AgentAdmission {
+  private readonly options: AgentAdmissionOptions;
 
-  constructor(options: RelayAgentSessionControllerOptions) {
+  constructor(options: AgentAdmissionOptions) {
     this.options = options;
   }
 
@@ -74,7 +74,7 @@ export class RelayAgentSessionController {
     connection.e2e = message.payload.e2e;
     connection.authenticated = true;
     connection.authState = "verified";
-    this.options.registry.addAgentToDevice(
+    this.options.topology.addAgentToDevice(
       message.payload.device_id,
       connection,
     );

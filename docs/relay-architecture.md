@@ -42,13 +42,13 @@
 
 `RelayServer` 仅作为服务端组合根与 HTTP/WebSocket 入口，协议阶段逻辑按 App-Agent 链路边界拆分：
 
-- `RelayConnectionRegistry` 持有 active connection topology，包括 Agent、Mobile、primary Agent 与 device revoke 关闭。
-- `RelayAgentSessionController` 处理 `agent.hello`、设备签名、nonce 与 Agent 注册。
-- `RelayMobileSessionController` 处理 `mobile.connect`、用户-device ownership 与 `auth.challenge`。
-- `RelayPairingController` 处理 `auth.proof`、`auth.ok`、`auth.failed`，负责 App-Agent pairing 的 Relay 控制面状态。
-- `RelayMessageRouter` 处理 App-Agent 消息路由与 `relay.app.deliver` 的 delivery context。
-- `RelayLifecycleController` 处理 pending auth、device status、auth store 和 delivery context 的周期清理。
-- `RelayNetworkIdentity` 处理可信代理 IP、connection observation、GeoIP location 与 WebSocket endpoint 解析。
+- `ingress/identity.ts` 处理可信代理 IP、connection observation、GeoIP location 与 WebSocket endpoint 解析。
+- `runtime/topology.ts` 的 `RuntimeTopology` 持有 active connection topology，包括 Agent、App、primary Agent 与 device revoke 关闭。
+- `runtime/maintenance.ts` 的 `RuntimeMaintenance` 处理 pending auth、device status、auth store 和 delivery context 的周期清理。
+- `app-agent/agentAdmission.ts` 的 `AgentAdmission` 处理 `agent.hello`、设备签名、nonce 与 Agent 准入。
+- `app-agent/appAdmission.ts` 的 `AppAdmission` 处理 `mobile.connect`、用户-device ownership 与 `auth.challenge`。
+- `app-agent/authBridge.ts` 的 `AppAuthBridge` 处理 `auth.proof`、`auth.ok`、`auth.failed`，负责 App proof 到 Agent 验证的控制面桥接。
+- `app-agent/channel.ts` 的 `AppAgentChannel` 处理 App-Agent 消息路由与 `relay.app.deliver` 的 delivery context。
 
 ## 3. 升级流程
 

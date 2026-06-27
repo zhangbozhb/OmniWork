@@ -25,15 +25,15 @@ import {
 import type { RelayServerConfig } from "./config.ts";
 import { createMailSender } from "./mailSender.ts";
 import { RelayAdminController } from "./relayAdminController.ts";
-import { RelayAgentSessionController } from "./relayAgentSessionController.ts";
-import { RelayConnectionRegistry } from "./relayConnectionRegistry.ts";
+import { AgentAdmission } from "./app-agent/agentAdmission.ts";
+import { RuntimeTopology } from "./runtime/topology.ts";
 import { RelayDeviceStatusStore } from "./relayDeviceStatusStore.ts";
 import { RelayE2EController } from "./relayE2EController.ts";
-import { RelayLifecycleController } from "./relayLifecycleController.ts";
+import { RuntimeMaintenance } from "./runtime/maintenance.ts";
 import { logRelayEvent, logUpgradeEvent } from "./relayLog.ts";
-import { RelayMessageRouter } from "./relayMessageRouter.ts";
-import { RelayMobileSessionController } from "./relayMobileSessionController.ts";
-import { RelayPairingController } from "./relayPairingController.ts";
+import { AppAgentChannel } from "./app-agent/channel.ts";
+import { AppAdmission } from "./app-agent/appAdmission.ts";
+import { AppAuthBridge } from "./app-agent/authBridge.ts";
 import {
   createRelayObservation,
   parseRelayEndpoint,
@@ -41,7 +41,7 @@ import {
   relayAdminWebUrl,
   resolveConnectionLocation,
   resolveRemoteIp,
-} from "./relayNetworkIdentity.ts";
+} from "./ingress/identity.ts";
 import { RelayStateStore } from "./relayStateStore.ts";
 import { RelayUserAuthController } from "./relayUserAuthController.ts";
 import { RelayUserAuthStore } from "./relayUserAuthStore.ts";
@@ -54,11 +54,11 @@ import type {
   RelayEndpoint,
 } from "./relayTypes.ts";
 
-export { resolveRemoteIp } from "./relayNetworkIdentity.ts";
+export { resolveRemoteIp } from "./ingress/identity.ts";
 
 export class RelayServer {
   private readonly config: RelayServerConfig;
-  private readonly registry: RelayConnectionRegistry;
+  private readonly topology: RuntimeTopology;
   readonly connections: Map<string, RelayConnection>;
   readonly agentsByDevice: Map<string, Set<RelayConnection>>;
   readonly primaryAgentByDevice: Map<string, RelayConnection>;
@@ -68,11 +68,11 @@ export class RelayServer {
   private readonly userAuthStore: RelayUserAuthStore;
   private readonly userAuth: RelayUserAuthController;
   private readonly admin: RelayAdminController;
-  private readonly agentSessions: RelayAgentSessionController;
-  private readonly mobileSessions: RelayMobileSessionController;
-  private readonly pairing: RelayPairingController;
-  private readonly router: RelayMessageRouter;
-  private readonly lifecycle: RelayLifecycleController;
+  private readonly agentAdmission: AgentAdmission;
+  private readonly appAdmission: AppAdmission;
+  private readonly appAuthBridge: AppAuthBridge;
+  private readonly appAgentChannel: AppAgentChannel;
+  private readonly maintenance: RuntimeMaintenance;
   private readonly e2e: RelayE2EController;
   private readonly authLimiter: TokenBucketLimiter;
   private readonly orchestrator: RelayUpgradeOrchestrator;
@@ -84,7 +84,7 @@ export class RelayServer {
         config.state.deviceStatusDbPath,
       ),
     });
-    this.registry = new RelayConnectionRegistry({
+    this.topology = new RuntimeTopology({
       state: this.state,
       pendingAuth: this.pendingAuth,
       onRawMessage: (connection, raw) => this.handleRawMessage(connection, raw),
@@ -93,10 +93,10 @@ export class RelayServer {
       onMobileDisconnected: (deviceId, connection) =>
         this.orchestrator.notifyMobileDisconnected(deviceId, connection),
     });
-    this.connections = this.registry.connections;
-    this.agentsByDevice = this.registry.agentsByDevice;
-    this.primaryAgentByDevice = this.registry.primaryAgentByDevice;
-    this.mobilesByDevice = this.registry.mobilesByDevice;
+    this.connections = this.topology.connections;
+    this.agentsByDevice = this.topology.agentsByDevice;
+    this.primaryAgentByDevice = this.topology.primaryAgentByDevice;
+    this.mobilesByDevice = this.topology.mobilesByDevice;
     this.userAuthStore = new RelayUserAuthStore(config.auth.dbPath);
     this.userAuth = new RelayUserAuthController({
       config,
@@ -108,7 +108,7 @@ export class RelayServer {
           trustedProxyIps: this.config.admin.trustedProxyIps,
         }).ip,
       revokeActiveDevice: (deviceId) =>
-        this.registry.closeDeviceConnections(deviceId),
+        this.topology.closeDeviceConnections(deviceId),
     });
     this.authLimiter = new TokenBucketLimiter({
       capacity: config.authRateLimit.capacity,
@@ -120,11 +120,11 @@ export class RelayServer {
       connections: this.connections,
       mobilesByDevice: this.mobilesByDevice,
       state: this.state,
-      unregister: (connection) => this.registry.unregister(connection),
+      unregister: (connection) => this.topology.unregister(connection),
     });
-    this.router = new RelayMessageRouter({
+    this.appAgentChannel = new AppAgentChannel({
       config,
-      registry: this.registry,
+      topology: this.topology,
       state: this.state,
       send: (connection, message) => this.send(connection, message),
     });
@@ -134,7 +134,7 @@ export class RelayServer {
       agentsByDevice: this.primaryAgentByDevice,
       send: (connection, message) => this.send(connection, message),
       routeMessage: (connection, message) =>
-        this.router.routeMessage(connection, message),
+        this.appAgentChannel.routeMessage(connection, message),
       notifyMobileAuthenticated: (deviceId, mobile) =>
         this.orchestrator.notifyMobileAuthenticated(deviceId, mobile),
     });
@@ -143,45 +143,45 @@ export class RelayServer {
       send: (conn, msg) => this.send(conn as RelayConnection, msg),
       getAgent: (deviceId) => this.primaryAgentByDevice.get(deviceId),
     });
-    this.agentSessions = new RelayAgentSessionController({
+    this.agentAdmission = new AgentAdmission({
       config,
       admin: this.admin,
-      registry: this.registry,
+      topology: this.topology,
       state: this.state,
       userAuthStore: this.userAuthStore,
     });
-    this.mobileSessions = new RelayMobileSessionController({
+    this.appAdmission = new AppAdmission({
       config,
-      registry: this.registry,
+      topology: this.topology,
       state: this.state,
       userAuth: this.userAuth,
       userAuthStore: this.userAuthStore,
       pendingAuth: this.pendingAuth,
       send: (connection, message) => this.send(connection, message),
     });
-    this.pairing = new RelayPairingController({
+    this.appAuthBridge = new AppAuthBridge({
       config,
-      registry: this.registry,
+      topology: this.topology,
       state: this.state,
       pendingAuth: this.pendingAuth,
       authLimiter: this.authLimiter,
       orchestrator: this.orchestrator,
       send: (connection, message) => this.send(connection, message),
     });
-    this.lifecycle = new RelayLifecycleController({
+    this.maintenance = new RuntimeMaintenance({
       config,
-      registry: this.registry,
+      topology: this.topology,
       state: this.state,
       userAuthStore: this.userAuthStore,
       pendingAuth: this.pendingAuth,
-      router: this.router,
+      appAgentChannel: this.appAgentChannel,
       send: (connection, message) => this.send(connection, message),
     });
   }
 
   async start(): Promise<void> {
     const startupToken = this.admin.start();
-    this.lifecycle.start();
+    this.maintenance.start();
     const businessServer = createServer((request, response) =>
       this.handleBusinessHttp(request, response),
     );
@@ -213,7 +213,7 @@ export class RelayServer {
           endpoint === "mobile" && this.config.auth.mode === "email_link"
             ? this.userAuth.authenticateRequest(request)
             : null;
-        this.registry.register(connection, endpoint, {
+        this.topology.register(connection, endpoint, {
           remoteIp: remoteIp.ip,
           location: resolveConnectionLocation(remoteIp.ip),
           observations: [createRelayObservation(request, remoteIp)],
@@ -368,7 +368,7 @@ export class RelayServer {
   }
 
   private closeDeviceConnections(deviceId: string): void {
-    this.registry.closeDeviceConnections(deviceId);
+    this.topology.closeDeviceConnections(deviceId);
   }
 
   private handleRawMessage(connection: RelayConnection, raw: string): void {
@@ -509,21 +509,21 @@ export class RelayServer {
     connection: RelayConnection,
     message: MessageEnvelope<AgentHelloPayload>,
   ): void {
-    this.agentSessions.handleAgentHello(connection, message);
+    this.agentAdmission.handleAgentHello(connection, message);
   }
 
   private handleMobileConnect(
     connection: RelayConnection,
     message: MessageEnvelope<MobileConnectPayload>,
   ): void {
-    this.mobileSessions.handleMobileConnect(connection, message);
+    this.appAdmission.handleMobileConnect(connection, message);
   }
 
   private handleAuthProof(
     connection: RelayConnection,
     message: MessageEnvelope<AuthProofPayload>,
   ): void {
-    this.pairing.handleAuthProof(connection, message);
+    this.appAuthBridge.handleAuthProof(connection, message);
   }
 
   private handleAppNetworkChanged(
@@ -563,21 +563,21 @@ export class RelayServer {
     connection: RelayConnection,
     message: MessageEnvelope,
   ): void {
-    this.pairing.handleAuthResult(connection, message);
+    this.appAuthBridge.handleAuthResult(connection, message);
   }
 
   private routeMessage(
     connection: RelayConnection,
     message: MessageEnvelope,
   ): void {
-    this.router.routeMessage(connection, message);
+    this.appAgentChannel.routeMessage(connection, message);
   }
 
   private handleRelayAppDeliver(
     connection: RelayConnection,
     message: MessageEnvelope<RelayAppDeliverPayload>,
   ): void {
-    this.router.handleRelayAppDeliver(connection, message);
+    this.appAgentChannel.handleRelayAppDeliver(connection, message);
   }
 
   private rejectInvalidState(connection: RelayConnection, type: string): void {
@@ -634,7 +634,7 @@ export class RelayServer {
   private getPrimaryAgent(
     deviceId: string | undefined,
   ): RelayConnection | undefined {
-    return this.registry.getPrimaryAgent(deviceId);
+    return this.topology.getPrimaryAgent(deviceId);
   }
 
   private updateLinkForConnection(connection: RelayConnection): void {

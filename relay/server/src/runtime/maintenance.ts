@@ -4,29 +4,29 @@ import {
   type MessageEnvelope,
 } from "@omniwork/protocol-ts";
 
-import type { RelayServerConfig } from "./config.ts";
-import { RelayConnectionRegistry } from "./relayConnectionRegistry.ts";
-import { RelayMessageRouter } from "./relayMessageRouter.ts";
-import type { RelayStateStore } from "./relayStateStore.ts";
-import type { RelayUserAuthStore } from "./relayUserAuthStore.ts";
-import type { PendingAuth, RelayConnection } from "./relayTypes.ts";
+import type { RelayServerConfig } from "../config.ts";
+import { RuntimeTopology } from "./topology.ts";
+import { AppAgentChannel } from "../app-agent/channel.ts";
+import type { RelayStateStore } from "../relayStateStore.ts";
+import type { RelayUserAuthStore } from "../relayUserAuthStore.ts";
+import type { PendingAuth, RelayConnection } from "../relayTypes.ts";
 
-export interface RelayLifecycleControllerOptions {
+export interface RuntimeMaintenanceOptions {
   config: RelayServerConfig;
-  registry: RelayConnectionRegistry;
+  topology: RuntimeTopology;
   state: RelayStateStore;
   userAuthStore: RelayUserAuthStore;
   pendingAuth: Map<string, PendingAuth>;
-  router: RelayMessageRouter;
+  appAgentChannel: AppAgentChannel;
   send(connection: RelayConnection, message: MessageEnvelope): void;
 }
 
-export class RelayLifecycleController {
-  private readonly options: RelayLifecycleControllerOptions;
+export class RuntimeMaintenance {
+  private readonly options: RuntimeMaintenanceOptions;
   private deviceStatusFlushTimer: ReturnType<typeof setInterval> | null = null;
-  private lifecycleTimer: ReturnType<typeof setInterval> | null = null;
+  private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(options: RelayLifecycleControllerOptions) {
+  constructor(options: RuntimeMaintenanceOptions) {
     this.options = options;
   }
 
@@ -36,10 +36,10 @@ export class RelayLifecycleController {
   }
 
   private startLifecycleSweeper(): void {
-    if (this.lifecycleTimer) {
+    if (this.maintenanceTimer) {
       return;
     }
-    this.lifecycleTimer = setInterval(() => {
+    this.maintenanceTimer = setInterval(() => {
       const now = Date.now();
       this.options.state.sweep({
         now,
@@ -47,10 +47,10 @@ export class RelayLifecycleController {
           this.options.config.state.deviceStatusRetentionMs,
       });
       this.cleanupExpiredPendingAuth(now);
-      this.options.router.cleanupExpiredAppDeliveryContexts(now);
+      this.options.appAgentChannel.cleanupExpiredAppDeliveryContexts(now);
       this.options.userAuthStore.sweep(now);
     }, this.options.config.state.sweepIntervalMs);
-    this.lifecycleTimer.unref?.();
+    this.maintenanceTimer.unref?.();
   }
 
   private startDeviceStatusFlusher(): void {
@@ -69,7 +69,7 @@ export class RelayLifecycleController {
         continue;
       }
       this.options.pendingAuth.delete(connectionId);
-      const connection = this.options.registry.getConnection(connectionId);
+      const connection = this.options.topology.getConnection(connectionId);
       if (connection?.role === "mobile" && !connection.authenticated) {
         this.options.send(
           connection,

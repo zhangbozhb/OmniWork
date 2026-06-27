@@ -8,21 +8,20 @@ import {
   type MobileConnectPayload,
 } from "@omniwork/protocol-ts";
 
-import type { RelayServerConfig } from "./config.ts";
-import { RelayConnectionRegistry } from "./relayConnectionRegistry.ts";
-import { appInfoFromMobileConnect } from "./relaySessionPayload.ts";
-import type { RelayStateStore } from "./relayStateStore.ts";
-import { RelayUserAuthController } from "./relayUserAuthController.ts";
-import type { RelayUserAuthStore } from "./relayUserAuthStore.ts";
+import type { RelayServerConfig } from "../config.ts";
+import { RuntimeTopology } from "../runtime/topology.ts";
+import { appInfoFromMobileConnect } from "./payload.ts";
+import type { RelayStateStore } from "../relayStateStore.ts";
+import { RelayUserAuthController } from "../relayUserAuthController.ts";
+import type { RelayUserAuthStore } from "../relayUserAuthStore.ts";
 import type {
   PendingAuth,
   RelayConnection,
-  RelaySocket,
-} from "./relayTypes.ts";
+} from "../relayTypes.ts";
 
-export interface RelayMobileSessionControllerOptions {
+export interface AppAdmissionOptions {
   config: RelayServerConfig;
-  registry: RelayConnectionRegistry;
+  topology: RuntimeTopology;
   state: RelayStateStore;
   userAuth: RelayUserAuthController;
   userAuthStore: RelayUserAuthStore;
@@ -30,10 +29,10 @@ export interface RelayMobileSessionControllerOptions {
   send(connection: RelayConnection, message: MessageEnvelope): void;
 }
 
-export class RelayMobileSessionController {
-  private readonly options: RelayMobileSessionControllerOptions;
+export class AppAdmission {
+  private readonly options: AppAdmissionOptions;
 
-  constructor(options: RelayMobileSessionControllerOptions) {
+  constructor(options: AppAdmissionOptions) {
     this.options = options;
   }
 
@@ -71,7 +70,7 @@ export class RelayMobileSessionController {
       }
       connection.userId = userId;
     }
-    const agent = this.options.registry.getPrimaryAgent(deviceId);
+    const agent = this.options.topology.getPrimaryAgent(deviceId);
     connection.role = "mobile";
     connection.state = "mobile_connected";
     connection.deviceId = deviceId;

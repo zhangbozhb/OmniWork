@@ -4,7 +4,7 @@ import type { Socket } from "node:net";
 import geoip from "geoip-lite";
 import type { AppConnectionObservation } from "@omniwork/protocol-ts";
 
-import type { RelayConnectionLocation, RelayEndpoint } from "./relayTypes.ts";
+import type { RelayConnectionLocation, RelayEndpoint } from "../relayTypes.ts";
 
 type RelayIpSource = NonNullable<
   NonNullable<AppConnectionObservation["network"]>["ip_source"]

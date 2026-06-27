@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 
-import type { RelayStateStore } from "./relayStateStore.ts";
+import type { RelayStateStore } from "../relayStateStore.ts";
 import type {
   PendingAuth,
   RelayConnection,
   RelayConnectionLocation,
   RelayEndpoint,
   RelaySocket,
-} from "./relayTypes.ts";
+} from "../relayTypes.ts";
 
-export interface RelayConnectionRegistryOptions {
+export interface RuntimeTopologyOptions {
   state: RelayStateStore;
   pendingAuth: Map<string, PendingAuth>;
   onRawMessage(connection: RelayConnection, raw: string): void;
@@ -17,15 +17,15 @@ export interface RelayConnectionRegistryOptions {
   onMobileDisconnected(deviceId: string, connection: RelayConnection): void;
 }
 
-export class RelayConnectionRegistry {
+export class RuntimeTopology {
   readonly connections = new Map<string, RelayConnection>();
   readonly agentsByDevice = new Map<string, Set<RelayConnection>>();
   readonly primaryAgentByDevice = new Map<string, RelayConnection>();
   readonly mobilesByDevice = new Map<string, Set<RelayConnection>>();
 
-  private readonly options: RelayConnectionRegistryOptions;
+  private readonly options: RuntimeTopologyOptions;
 
-  constructor(options: RelayConnectionRegistryOptions) {
+  constructor(options: RuntimeTopologyOptions) {
     this.options = options;
   }
 
