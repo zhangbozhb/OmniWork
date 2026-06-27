@@ -97,7 +97,10 @@ export class RelayUserAuthController {
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> {
-    const body = await readJsonBody(request);
+    const body = await readJsonBodyOrRespond(request, response);
+    if (!body) {
+      return;
+    }
     const email = typeof body.email === "string" ? normalizeEmail(body.email) : "";
     if (!isValidEmail(email)) {
       writeJson(response, 400, { error: "invalid_email" });
@@ -205,7 +208,10 @@ export class RelayUserAuthController {
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> {
-    const body = await readJsonBody(request);
+    const body = await readJsonBodyOrRespond(request, response);
+    if (!body) {
+      return;
+    }
     const enrollmentToken =
       typeof body.enrollment_token === "string" ? body.enrollment_token : "";
     const publicKey = typeof body.public_key === "string" ? body.public_key : "";
@@ -279,17 +285,55 @@ export class RelayUserAuthController {
 
 export async function readJsonBody(
   request: IncomingMessage,
+  limitBytes = 32 * 1024,
 ): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > limitBytes) {
+      throw new JsonBodyError("payload_too_large");
+    }
+    chunks.push(buffer);
   }
   if (chunks.length === 0) {
     return {};
   }
   const raw = Buffer.concat(chunks).toString("utf8");
-  const parsed = JSON.parse(raw) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new JsonBodyError("invalid_json");
+  }
   return isRecord(parsed) ? parsed : {};
+}
+
+class JsonBodyError extends Error {
+  readonly code: "invalid_json" | "payload_too_large";
+
+  constructor(code: "invalid_json" | "payload_too_large") {
+    super(code);
+    this.code = code;
+  }
+}
+
+async function readJsonBodyOrRespond(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<Record<string, unknown> | null> {
+  try {
+    return await readJsonBody(request);
+  } catch (error) {
+    if (error instanceof JsonBodyError) {
+      writeJson(response, error.code === "payload_too_large" ? 413 : 400, {
+        error: error.code,
+      });
+      return null;
+    }
+    throw error;
+  }
 }
 
 function readSessionToken(request: IncomingMessage): string | undefined {
@@ -363,9 +407,12 @@ function renderAuthPage(): string {
     input,button { border-radius:10px; border:1px solid #34465b; box-sizing:border-box; font:inherit; padding:10px 12px; }
     input { background:#0f1720; color:#e6edf3; width:100%; }
     button { background:#30c48d; border:0; color:#052014; cursor:pointer; font-weight:700; margin-top:10px; }
+    button.danger { background:#ef6b73; color:#28070a; }
     code,pre { background:#0b1118; border-radius:10px; color:#bfead8; padding:10px; }
     pre { overflow:auto; white-space:pre-wrap; }
     .muted { color:#93a4b7; }
+    .device { border-top:1px solid #263445; padding:12px 0; }
+    .device:first-child { border-top:0; }
   </style>
 </head>
 <body>
@@ -384,6 +431,8 @@ function renderAuthPage(): string {
       <button id="createEnrollment">Create device token</button>
       <p class="muted">Run this command on your desktop within 5 minutes:</p>
       <pre id="command"></pre>
+      <h3>Devices</h3>
+      <div id="devices"></div>
       <button id="logout">Log out</button>
     </section>
   </main>
@@ -392,6 +441,7 @@ function renderAuthPage(): string {
     const account = document.getElementById("account");
     const status = document.getElementById("loginStatus");
     const command = document.getElementById("command");
+    const devices = document.getElementById("devices");
     const relayUrl = location.origin.replace(/^http/, "ws") + "/relay/ws/agent";
 
     async function refresh() {
@@ -405,6 +455,50 @@ function renderAuthPage(): string {
       document.getElementById("user").textContent = data.user.email;
       login.hidden = true;
       account.hidden = false;
+      await refreshDevices();
+    }
+
+    async function refreshDevices() {
+      const res = await fetch("/auth/devices");
+      if (!res.ok) {
+        devices.textContent = "Could not load devices.";
+        return;
+      }
+      const data = await res.json();
+      if (!data.devices || data.devices.length === 0) {
+        devices.innerHTML = '<p class="muted">No devices enrolled yet.</p>';
+        return;
+      }
+      devices.replaceChildren(...data.devices.map(renderDevice));
+    }
+
+    function renderDevice(device) {
+      const node = document.createElement("div");
+      node.className = "device";
+      const title = document.createElement("strong");
+      title.textContent = device.name || device.device_id;
+      const detail = document.createElement("p");
+      detail.className = "muted";
+      detail.textContent = [
+        device.device_id,
+        device.revoked_at ? "revoked " + device.revoked_at : "active",
+        device.last_seen_at ? "last seen " + device.last_seen_at : "",
+      ].filter(Boolean).join(" | ");
+      node.append(title, detail);
+      if (!device.revoked_at) {
+        const button = document.createElement("button");
+        button.className = "danger";
+        button.textContent = "Revoke";
+        button.onclick = async () => {
+          if (!confirm("Revoke this device? Online connections will be closed.")) {
+            return;
+          }
+          await fetch("/auth/devices/" + encodeURIComponent(device.device_id) + "/revoke", { method: "POST" });
+          await refreshDevices();
+        };
+        node.append(button);
+      }
+      return node;
     }
 
     document.getElementById("send").onclick = async () => {
@@ -425,6 +519,7 @@ function renderAuthPage(): string {
       }
       const data = await res.json();
       command.textContent = "omniwork-agent enroll --relay-url " + relayUrl + " --token " + data.enrollment_token;
+      await refreshDevices();
     };
 
     document.getElementById("logout").onclick = async () => {

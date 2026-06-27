@@ -105,7 +105,8 @@ https://relay.example.com/auth/
 ```
 
 The page sends the email magic link, stores the login cookie after verification,
-and creates a short-lived device token. The Desktop Agent can consume that token:
+lists enrolled devices, revokes devices, and creates a short-lived device token.
+The Desktop Agent can consume that token:
 
 ```sh
 omniwork-agent enroll \

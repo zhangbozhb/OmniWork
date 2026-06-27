@@ -4,6 +4,8 @@ import { connect as netConnect, type Socket } from "node:net";
 import type { RelayServerConfig } from "./config.ts";
 import { logRelayEvent } from "./relayLog.ts";
 
+const SMTP_TIMEOUT_MS = 15_000;
+
 export interface MailSender {
   sendMagicLink(input: {
     to: string;
@@ -104,7 +106,7 @@ class SmtpMailSender implements MailSender {
       await client.command(`EHLO ${clientHostname()}`, 250);
       if (!this.options.secure) {
         await client.command("STARTTLS", 220);
-        client.upgradeTls(this.options.host);
+        await client.upgradeTls(this.options.host);
         await client.command(`EHLO ${clientHostname()}`, 250);
       }
       await client.command("AUTH LOGIN", 334);
@@ -142,21 +144,40 @@ class SmtpClient {
     port: number;
     secure: boolean;
   }): Promise<SmtpClient> {
-    return new Promise((resolve, reject) => {
-      const socket = options.secure
-        ? tlsConnect(
-            { port: options.port, host: options.host, servername: options.host },
-            () => resolve(new SmtpClient(socket)),
-          )
-        : netConnect(options.port, options.host, () =>
-            resolve(new SmtpClient(socket)),
-          );
-      socket.once("error", reject);
-    });
+    return withTimeout(
+      new Promise((resolve, reject) => {
+        const socket = options.secure
+          ? tlsConnect(
+              {
+                port: options.port,
+                host: options.host,
+                servername: options.host,
+              },
+              () => resolve(new SmtpClient(socket)),
+            )
+          : netConnect(options.port, options.host, () =>
+              resolve(new SmtpClient(socket)),
+            );
+        socket.once("error", reject);
+      }),
+      "SMTP connection timed out",
+    );
   }
 
-  upgradeTls(host: string): void {
-    this.socket = tlsConnect({ socket: this.socket, servername: host });
+  async upgradeTls(host: string): Promise<void> {
+    this.socket.removeAllListeners("data");
+    this.socket.removeAllListeners("error");
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        const tlsSocket = tlsConnect(
+          { socket: this.socket, servername: host },
+          () => resolve(),
+        );
+        tlsSocket.once("error", reject);
+        this.socket = tlsSocket;
+      }),
+      "SMTP STARTTLS timed out",
+    );
     this.socket.on("data", (chunk) => this.handleData(chunk.toString("utf8")));
     this.socket.on("error", (error) => this.pending?.reject(error));
   }
@@ -167,19 +188,24 @@ class SmtpClient {
   }
 
   expect(expectedCode: number): Promise<string> {
-    return new Promise((resolve, reject) => {
-      this.pending = {
-        resolve: (line) => {
-          const code = Number(line.slice(0, 3));
-          if (code !== expectedCode) {
-            reject(new Error(`SMTP expected ${expectedCode}, got ${line}`));
-            return;
-          }
-          resolve(line);
-        },
-        reject,
-      };
-      this.drainLines();
+    return withTimeout(
+      new Promise<string>((resolve, reject) => {
+        this.pending = {
+          resolve: (line) => {
+            const code = Number(line.slice(0, 3));
+            if (code !== expectedCode) {
+              reject(new Error(`SMTP expected ${expectedCode}, got ${line}`));
+              return;
+            }
+            resolve(line);
+          },
+          reject,
+        };
+        this.drainLines();
+      }),
+      `SMTP response timed out waiting for ${expectedCode}`,
+    ).finally(() => {
+      this.pending = null;
     });
   }
 
@@ -218,4 +244,16 @@ function extractEmail(value: string): string {
 
 function clientHostname(): string {
   return "omniwork-relay.local";
+}
+
+function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  const timer = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), SMTP_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timer]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
 }
