@@ -122,7 +122,6 @@ import {
   gitDiffRequest,
   gitStatusRequest,
   listFilesRequest,
-  listWorkspacesRequest,
   readFileRequest,
   writeFileRequest,
 } from "../features/workspaces/workspaceMessages";
@@ -1436,6 +1435,7 @@ function AppContent(): JSX.Element {
 
   function handleOpenDevice(nextPairing: PairingConfig): void {
     if (!pairing || !isSamePairing(pairing, nextPairing)) {
+      pendingAutoOpenSessionsRef.current = true;
       setPairing(nextPairing);
       setSessions([]);
       setTerminalProviders(fallbackTerminalProviders());
@@ -1445,7 +1445,7 @@ function AppContent(): JSX.Element {
       setTerminalFrames({});
       setClosingSessionIds([]);
       setKillingSessionIds([]);
-      setView("devices");
+      setView("sessions");
       return;
     }
 
@@ -1475,6 +1475,21 @@ function AppContent(): JSX.Element {
     setPairing({ ...pairing });
   }
 
+  function handleRefreshDevices(): void {
+    if (!pairing) {
+      return;
+    }
+    if (connectionStatus !== "authenticated") {
+      reconnectActivePairing();
+      return;
+    }
+    setConnectionMessage(
+      connectionPath === "p2p"
+        ? "Direct P2P connection is ready."
+        : "Connected to Desktop.",
+    );
+  }
+
   function handleRefreshSessions(): void {
     if (!pairing) {
       return;
@@ -1484,7 +1499,6 @@ function AppContent(): JSX.Element {
       return;
     }
     sendToRelay(listSessionsRequest(pairing.deviceId));
-    sendToRelay(listWorkspacesRequest(pairing.deviceId));
   }
 
   function handleChangeAgentNotifications(enabled: boolean): void {
@@ -2313,7 +2327,6 @@ function AppContent(): JSX.Element {
       return;
     }
     sendToRelay(listSessionsRequest(activePairing.deviceId));
-    sendToRelay(listWorkspacesRequest(activePairing.deviceId));
   }
 
   function markDirectConnectionReady(): void {
@@ -2379,7 +2392,6 @@ function AppContent(): JSX.Element {
           setConnectionStatus("authenticated");
           setConnectionMessage("Connected to Desktop.");
           relay.send(listSessionsRequest(activePairing.deviceId));
-          relay.send(listWorkspacesRequest(activePairing.deviceId));
           relay.send(
             getAgentNotificationSettingsRequest(activePairing.deviceId),
           );
@@ -2908,7 +2920,7 @@ function AppContent(): JSX.Element {
               onEditDevice={handleEditDevice}
               onDeleteDevice={handleDeleteDevice}
               onOpenDevice={handleOpenDevice}
-              onRefreshSessions={handleRefreshSessions}
+              onRefreshDevices={handleRefreshDevices}
             />
           ) : view === "messages" ? (
             <AgentMessageInboxScreen

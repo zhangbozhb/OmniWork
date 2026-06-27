@@ -21,6 +21,10 @@ export class WorkspaceManager {
     this.defaultCwd = options.defaultCwd;
   }
 
+  snapshot(): WorkspaceDefinition[] {
+    return this.currentWorkspaces;
+  }
+
   async list(sessions: readonly TerminalSession[] = []): Promise<WorkspaceDefinition[]> {
     const byPath = new Map<string, WorkspaceDefinition>();
 

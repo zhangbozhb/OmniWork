@@ -262,7 +262,7 @@ flowchart LR
 手机端页面：
 
 - `PairingScreen`：输入或扫码 32 字符临时 key。
-- `DeviceListScreen`：选择 电脑。
+- `DeviceListScreen`：选择电脑；设备页刷新只更新连接状态或触发重连，不枚举 session/workspace。
 - `SessionListScreen`：会话列表。
 - `TerminalScreen`：原始 TUI 快照，Native WebView/xterm 终端视图；RN 文本快照仅作为 fallback。
 - `CodexAgentSurfaceScreen`：结构化 Codex UI。

@@ -47,11 +47,12 @@ export class SessionRequestHandler {
     message: MessageEnvelope,
     context?: AgentDispatchContext,
   ): Promise<void> {
-    const sessions = await this.options.sessionManager.list();
+    const { sessions, workspaces } =
+      await this.options.sessionManager.listWithWorkspaces();
     const payload: SessionListPayload = {
       default_cwd: this.options.defaultCwd,
       providers: this.options.terminalProviders.providers(),
-      workspaces: await this.options.workspaces.list(sessions),
+      workspaces,
       sessions,
     };
     this.options.sendToApp(

@@ -18,6 +18,11 @@ import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 
 type SessionStatusListener = (session: TerminalSession) => void | Promise<void>;
 
+export type SessionListResult = {
+  sessions: TerminalSession[];
+  workspaces: WorkspaceDefinition[];
+};
+
 export class SessionManager {
   private readonly store: SQLiteSessionStore;
   private readonly tmux: TmuxManager;
@@ -107,6 +112,10 @@ export class SessionManager {
   }
 
   async list(): Promise<TerminalSession[]> {
+    return (await this.listWithWorkspaces()).sessions;
+  }
+
+  async listWithWorkspaces(): Promise<SessionListResult> {
     const storedSessions = await this.store.list();
     const tmuxSessions = await this.tmux.listSessions();
     // 用 (server_pid, session_uid) 构造强 ID 索引；
@@ -161,7 +170,10 @@ export class SessionManager {
       sessions.map((session) => this.annotateWorkspace(session, workspaces)),
     );
 
-    return annotatedSessions.sort(compareSessionsByRecentTime);
+    return {
+      sessions: annotatedSessions.sort(compareSessionsByRecentTime),
+      workspaces,
+    };
   }
 
   async create(
@@ -171,7 +183,9 @@ export class SessionManager {
     const sessionId = `sess_${randomUUID()}`;
     const tmuxSessionName = toTmuxSessionName(sessionId);
     const now = new Date().toISOString();
-    const terminalProvider = this.terminalProviders.get(payload.terminal_provider_kind);
+    const terminalProvider = this.terminalProviders.get(
+      payload.terminal_provider_kind,
+    );
     const resolvedWorkspace = this.workspaces
       ? await this.workspaces.resolveCreateCwd(payload)
       : { cwd: payload.cwd ?? this.defaults.cwd, workspace: undefined };
@@ -383,7 +397,9 @@ export class SessionManager {
     currentPath?: string;
     currentCommand?: string;
   }): TerminalSession {
-    const terminalProvider = this.terminalProviders.infer(session.currentCommand);
+    const terminalProvider = this.terminalProviders.infer(
+      session.currentCommand,
+    );
     const sessionId = toExternalSessionId(session.name);
     return {
       session_id: sessionId,

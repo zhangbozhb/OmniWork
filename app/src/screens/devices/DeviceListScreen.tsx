@@ -37,7 +37,7 @@ export interface DeviceListScreenProps {
   onEditDevice(pairing: PairingConfig): void;
   onDeleteDevice(pairing: PairingConfig): void | Promise<void>;
   onOpenDevice(pairing: PairingConfig): void;
-  onRefreshSessions(): void;
+  onRefreshDevices(): void;
 }
 
 export function DeviceListScreen({
@@ -50,7 +50,7 @@ export function DeviceListScreen({
   onEditDevice,
   onDeleteDevice,
   onOpenDevice,
-  onRefreshSessions,
+  onRefreshDevices,
 }: DeviceListScreenProps): JSX.Element {
   const { t } = useTranslation();
   const ready = connectionStatus === "authenticated";
@@ -68,9 +68,9 @@ export function DeviceListScreen({
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
-    onRefreshSessions();
+    onRefreshDevices();
     setTimeout(() => setRefreshing(false), 1000);
-  }, [onRefreshSessions]);
+  }, [onRefreshDevices]);
 
   const scrollRef = useRef<ScrollView | null>(null);
   const webPullOffset = useWebPullToRefresh(
@@ -186,7 +186,7 @@ export function DeviceListScreen({
             : getSavedDeviceStatusPresentation(t);
           const pathStatus = active ? activePathStatus : undefined;
           const primaryAction =
-            active && !ready ? onRefreshSessions : () => onOpenDevice(pairing);
+            active && !ready ? onRefreshDevices : () => onOpenDevice(pairing);
           const expanded = expandedDevice === pairingKey;
 
           return (

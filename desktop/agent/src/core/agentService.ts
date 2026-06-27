@@ -419,7 +419,7 @@ export class AgentService {
           platform: "darwin",
           agent_version: this.config.agentVersion,
           providers: this.terminalProviders.providers(),
-          workspaces: await this.workspaces.list(),
+          workspaces: this.workspaces.snapshot(),
           capabilities: [
             E2E_NOISE_NNPSK0_CAPABILITY_V1,
             this.config.businessSecurityMode === "e2e_required"
