@@ -13,7 +13,7 @@ export type AppView =
   | "settings"
   | "securitySettings"
   | "connectionPreference"
-  | "sessions"
+  | "workbench"
   | "gitReview"
   | "terminalFiles"
   | "fileEditor"

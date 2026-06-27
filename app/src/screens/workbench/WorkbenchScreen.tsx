@@ -56,7 +56,7 @@ type TerminalProviderGroup = {
   default?: boolean;
 };
 
-export interface SessionListScreenProps {
+export interface WorkbenchScreenProps {
   sessions: TerminalSession[];
   providers: TerminalProviderDefinition[];
   workspaces: WorkspaceDefinition[];
@@ -123,7 +123,7 @@ const PROVIDER_PREFERENCES_STORAGE_PREFIX =
   "omniwork.session.providerPreferences";
 const UNASSIGNED_WORKSPACE_PATH = "__unassigned__";
 
-export function SessionListScreen({
+export function WorkbenchScreen({
   sessions,
   providers,
   workspaces,
@@ -162,7 +162,7 @@ export function SessionListScreen({
   onCloseSession,
   onRenameSession,
   onKillTerminalSession,
-}: SessionListScreenProps): JSX.Element {
+}: WorkbenchScreenProps): JSX.Element {
   const { t } = useTranslation();
   const [providerPreferences, setProviderPreferences] =
     useState<ProviderPreferences>(EMPTY_PROVIDER_PREFERENCES);

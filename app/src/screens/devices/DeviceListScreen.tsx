@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import QRCode from "react-native-qrcode-svg";
 
 import type { TransportPath } from "@omniwork/protocol-ts";
-import { getPairingDisplayName } from "../../app/appModel";
+import { getPairingDisplayName } from "../../app/pairingState";
 import {
   createPairingSharePackage,
   type PairingSharePackage,

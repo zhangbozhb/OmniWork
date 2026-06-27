@@ -10,9 +10,23 @@
 
 - [DeviceListScreen](../app/src/screens/devices/DeviceListScreen.tsx)：已保存设备列表与切换；设备页刷新保持轻量，只更新连接状态或触发重连。
 - [PairingScreen](../app/src/screens/pairing/PairingScreen.tsx) + `PairingQrScannerModal.{native,web}.tsx`：扫码 / URL / 32 字符 key 三种配对方式。
-- [SessionListScreen](../app/src/screens/sessions/SessionListScreen.tsx)：按 workspace + provider 分组；进入设备、首次进入具体 workspace 或在工作台刷新时拉取 `session.list`，该响应携带 workspace 摘要；进入具体 workspace 后默认停留在 Sessions tab，不主动刷新 files/git；Files/Git 仅在对应 tab 打开时按缓存加载，用户显式刷新时才强制刷新。
+- [WorkbenchScreen](../app/src/screens/workbench/WorkbenchScreen.tsx)：按 workspace + provider 分组；进入设备、首次进入具体 workspace 或在工作台刷新时拉取 `session.list`，该响应携带 workspace 摘要；进入具体 workspace 后默认停留在 Sessions tab，不主动刷新 files/git；Files/Git 仅在对应 tab 打开时按缓存加载，用户显式刷新时才强制刷新。
 - [TerminalScreen](../app/src/screens/terminal/TerminalScreen.tsx)：原始 TUI 快照 + 输入。
 - [FileBrowserScreen](../app/src/screens/workspaces/FileBrowserScreen.tsx) / [FileEditorScreen](../app/src/screens/workspaces/FileEditorScreen.tsx) / [GitStatusScreen](../app/src/screens/workspaces/GitStatusScreen.tsx)：workspace 文件浏览、受控文本编辑与只读 Git 上下文。
+- [AppRouter](../app/src/app/AppRouter.tsx) + [appScreenProps](../app/src/app/appScreenProps.ts)：集中维护顶层 `view` 到 screen 的路由渲染，以及 terminal/files/git overlay 展示；各 screen props 的组装由 `appScreenProps` 维护，App 层只传入组合后的 router props。
+- `AppView` 的工作台主路由命名为 `workbench`；内部 workspace tab 仍保留 `sessions` / `files` / `git`，分别表示工作台中的具体标签页。
+- [appPresentation](../app/src/app/appPresentation.ts) / [pairingState](../app/src/app/pairingState.ts) / [sessionState](../app/src/app/sessionState.ts) / [connectionMessages](../app/src/app/connectionMessages.ts)：按职责承载 App 级无状态 helper，避免用单个泛化文件混合 UI 展示、连接文案和状态更新逻辑。
+- [AppShell](../app/src/app/AppShell.tsx)：集中维护 SafeArea / header / content 容器、primary tabs、agent message banner 与加密 pairing modal；App 层只传入已计算好的 shell props 与路由 children。
+- [useTransportController](../app/src/app/useTransportController.ts)：集中维护 App transport 建链/断链、连接状态、send/reconnect 和 P2P ready 连接事件；AppState 前后台、网络变化与 terminal snapshot 的交叉逻辑由 App 层触发并委托 terminal controller 执行。
+- [usePreferenceController](../app/src/app/usePreferenceController.ts)：集中维护 language、terminal text size 与 transport preference 的启动加载、持久化和切换确认；App 层只消费偏好值与变更 handler。
+- [useAppLifecycleController](../app/src/app/useAppLifecycleController.ts)：集中维护 AppState 前后台、网络变化、P2P 恢复、terminal snapshot 补偿和连接失败提示；App 层只提供 transport、terminal 与 app lock 的回调入口。
+- [appMessageDispatcher](../app/src/app/appMessageDispatcher.ts) + [appRelayMessageHandler](../app/src/app/appRelayMessageHandler.ts)：前者维护协议 `message.type` 分发与 payload 类型收窄，后者维护 relay 消息到各 domain controller 的 handler 组合；App 层只保留薄适配器传入当前 controller context。
+- [usePairingController](../app/src/features/auth/usePairingController.ts)：集中维护已保存设备、当前 pairing、设备增删改、pairing URL 导入、加密 pairing modal 与鉴权失败清理；App 层通过回调执行 session/workspace/terminal/transport 的跨域清理。
+- [useAppLockController](../app/src/features/app-lock/useAppLockController.tsx)：集中维护 app lock 配置加载、手势设置/解锁/重置、安全设置状态与 app lock screen 渲染；App 层只提供 reset 后清业务数据的回调。
+- [useAgentMessageController](../app/src/features/agent/useAgentMessageController.ts)：集中维护 agent message store、未读数、banner、通知设置与 delivered 回执；App 层只保留点击消息后定位 session/workspace 的跨域导航。
+- [useSessionController](../app/src/features/sessions/useSessionController.ts)：集中维护 session/provider/workspace 摘要状态、session 创建/关闭/重命名/kill 操作，以及 `session.list` / `session.status` 的状态应用；终端 surface frame 清理由 terminal controller 基于 `session.list` 返回的 surface 集合执行。
+- [useTerminalController](../app/src/features/terminal/useTerminalController.ts)：集中维护 terminal frame/stream/snapshot 状态、输入与 resize 请求、P2P snapshot 节流、进入终端页的 stream start/stop，以及 terminal 协议 payload 应用；App 层只保留打开 Files overlay、terminal error 后路由回退等跨域编排。
+- [useWorkspaceController](../app/src/features/workspaces/useWorkspaceController.ts) + [workspaceCache](../app/src/features/workspaces/workspaceCache.ts) / [workspaceKeys](../app/src/features/workspaces/workspaceKeys.ts)：集中维护 workspace files/git 本地缓存、请求 handler、协议 payload 应用方法与 cache key 编解码，避免 `App.tsx` 和 workspace 子屏重复定义。
 
 下文中的页面、交互流转可能与现有 5 屏存在差异；以代码为准，本设计为演进的目标态参考。
 

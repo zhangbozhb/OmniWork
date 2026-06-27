@@ -5,11 +5,15 @@ import type { TerminalSession } from "@omniwork/protocol-ts";
 import {
   formatRelayCloseMessage,
   formatStrictForceCloseMessage,
-  getHeaderSubtitle,
+} from "../src/app/connectionMessages.ts";
+import { getHeaderSubtitle } from "../src/app/appPresentation.ts";
+import {
   isSamePairing,
   upsertPairing,
+} from "../src/app/pairingState.ts";
+import {
   upsertSession,
-} from "../src/app/appModel.ts";
+} from "../src/app/sessionState.ts";
 
 const baseSession: TerminalSession = {
   session_id: "sess-1",
@@ -66,7 +70,7 @@ test("getHeaderSubtitle prefers pairing display name", () => {
   };
 
   assert.equal(
-    getHeaderSubtitle("sessions", 1, pairing, (key) => key),
+    getHeaderSubtitle("workbench", 1, pairing, (key) => key),
     "Alice MacBook",
   );
 });

@@ -1,268 +1,45 @@
 import {
   type JSX,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import {
-  Alert,
-  AppState,
-  type AppStateStatus,
-  Dimensions,
-  Modal,
-  Platform,
-  Pressable,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import type {
-  TerminalProviderDefinition,
-  AuthFailedPayload,
   TerminalSession,
-  FilesListPayload,
-  FilesReadPayload,
-  FilesWritePayload,
-  GitDiffPayload,
-  GitDiffScope,
-  GitStatusPayload,
   MessageEnvelope,
-  TerminalProviderKind,
-  SessionListPayload,
-  TerminalErrorPayload,
-  TerminalFramePayload,
-  TerminalInputPayload,
-  TerminalResizePayload,
-  TerminalSnapshotPayload,
-  TerminalStreamDataPayload,
-  TerminalStreamErrorPayload,
-  TransportPath,
-  TransportPreference,
   WorkspaceDefinition,
-  WorkspaceFileEntry,
-  WorkspaceGitStatus,
-  WorkspaceListPayload,
   AgentAppMessage,
-  AgentNotificationSettingsPayload,
-  ProtocolErrorPayload,
 } from "@omniwork/protocol-ts";
-import {
-  DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
-  createMessage,
-  isTransportPreference,
-} from "@omniwork/protocol-ts";
-import { appConfig } from "./appConfig";
+import { createMessage } from "@omniwork/protocol-ts";
 import type {
   AppSessionTransport,
   AppView,
   ConnectionStatus,
-  PrimaryTabView,
 } from "./appTypes";
-import {
-  formatErrorMessage,
-  formatRelayCloseMessage,
-  formatStrictForceCloseMessage,
-  getPairingDisplayName,
-  getHeaderSubtitle,
-  isPrimaryTabView,
-  isSamePairing,
-  isTransitionalSessionStatus,
-  upsertPairing,
-  upsertSession,
-} from "./appModel";
-import {
-  createAppSessionTransport,
-  subscribeNetworkChanges,
-} from "./appTransport";
-import { PairingScreen } from "../screens/pairing/PairingScreen";
-import { DeviceListScreen } from "../screens/devices/DeviceListScreen";
-import { ConnectionPreferenceScreen } from "../screens/settings/ConnectionPreferenceScreen";
-import { SettingsScreen } from "../screens/settings/SettingsScreen";
-import { AppLockIntroScreen } from "../screens/security/AppLockIntroScreen";
-import { GestureSetupScreen } from "../screens/security/GestureSetupScreen";
-import { GestureUnlockScreen } from "../screens/security/GestureUnlockScreen";
-import { SecuritySettingsScreen } from "../screens/security/SecuritySettingsScreen";
-import { Button } from "../ui/components";
-import { SessionListScreen } from "../screens/sessions/SessionListScreen";
-import { TerminalScreen } from "../screens/terminal/TerminalScreen";
-import { FileBrowserScreen } from "../screens/workspaces/FileBrowserScreen";
-import { GitStatusScreen } from "../screens/workspaces/GitStatusScreen";
-import { FileEditorScreen } from "../screens/workspaces/FileEditorScreen";
-import { AgentMessageInboxScreen } from "../screens/messages/AgentMessageInboxScreen";
+import { getHeaderSubtitle, isPrimaryTabView } from "./appPresentation";
+import { handleAppRelayMessage } from "./appRelayMessageHandler";
+import { buildAppRouterProps } from "./appScreenProps";
+import { AppRouter } from "./AppRouter";
+import { AppShell } from "./AppShell";
+import { useTransportController } from "./useTransportController";
+import { usePreferenceController } from "./usePreferenceController";
+import { useAppLifecycleController } from "./useAppLifecycleController";
 import type { PairingConfig } from "../features/auth/types";
-import {
-  decryptPairingConfig,
-  isEncryptedPairingConfig,
-  parsePairingConfig,
-} from "../features/auth/pairingConfig";
-import {
-  closeSessionRequest,
-  renameSessionRequest,
-  killTerminalSessionRequest,
-  listSessionsRequest,
-  createSessionRequest,
-} from "../features/sessions/sessionMessages";
+import { usePairingController } from "../features/auth/usePairingController";
+import { useAppLockController } from "../features/app-lock/useAppLockController";
 import { getSessionCapabilities } from "../features/sessions/sessionCapabilities";
-import {
-  terminalInputRequest,
-  terminalResizeRequest,
-  terminalSnapshotRequest,
-  terminalStreamStartRequest,
-  terminalStreamStopRequest,
-} from "../features/terminal/terminalMessages";
-import {
-  gitDiffRequest,
-  gitStatusRequest,
-  listFilesRequest,
-  readFileRequest,
-  writeFileRequest,
-} from "../features/workspaces/workspaceMessages";
-import {
-  agentMessageDeliveredRequest,
-  getAgentNotificationSettingsRequest,
-  setAgentNotificationSettingsRequest,
-} from "../features/agent/agentMessages";
-import {
-  createAgentMessageStore,
-  type LocalAgentMessageRecord,
-} from "../features/agent/agentMessageStore";
-import {
-  computeInitialTerminalSize,
-  getDefaultTerminalTextSize,
-  isTerminalTextSize,
-  type TerminalTextSize,
-} from "../features/terminal/terminalLayout";
-import { terminalFrameWatermarkAfterSnapshot } from "./terminalFrameWatermark";
-import i18n from "../i18n";
-import {
-  DEFAULT_LANGUAGE,
-  LANGUAGE_STORAGE_KEY,
-  isAppLanguage,
-  type AppLanguage,
-} from "../i18n/language";
-import {
-  addAppUrlListener,
-  getInitialAppUrl,
-} from "../platform/linking/appLinking";
-import {
-  clearPairing,
-  loadPairings,
-  savePairings,
-} from "../platform/secure-storage/securePairingStore";
-import {
-  clearAppLockConfig,
-  loadAppLockConfig,
-  saveAppLockConfig,
-} from "../platform/app-lock-storage/appLockStore";
-import { authenticateDeviceOwner } from "../platform/owner-auth/ownerAuth";
-import {
-  DEFAULT_APP_LOCK_CONFIG,
-  DEFAULT_AUTO_LOCK_OPTION,
-  createGestureSecret,
-  normalizeAppLockConfig,
-  shouldLockForInactivity,
-  verifyGesture,
-} from "../features/app-lock/appLockRules";
-import type {
-  AppLockConfig,
-  AppLockMode,
-  AutoLockOption,
-} from "../features/app-lock/types";
+import { useSessionController } from "../features/sessions/useSessionController";
+import { useTerminalController } from "../features/terminal/useTerminalController";
+import { useWorkspaceController } from "../features/workspaces/useWorkspaceController";
+import { useAgentMessageController } from "../features/agent/useAgentMessageController";
 import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
-import { Icon, type IconName } from "../ui/icons";
-
-const EMPTY_TERMINAL_FRAME =
-  "Waiting for the connected computer terminal snapshot...";
-
-type TerminalStreamChunk = {
-  surfaceId: string;
-  data: string;
-  seq?: number;
-  streamId: string;
-};
-
-type WorkspaceFilesCache = {
-  currentPath: string;
-  selectedFilePath?: string;
-  directoriesByPath: Record<string, WorkspaceFileEntry[]>;
-  filesByPath: Record<string, FilesReadPayload>;
-  loadingDirectoryKeys: Record<string, boolean>;
-  loadingFileKeys: Record<string, boolean>;
-};
-
-type WorkspaceGitCache = {
-  status?: WorkspaceGitStatus;
-  statusLoading?: boolean;
-  activeDiffKey?: string;
-  diffCache: Record<string, GitDiffPayload>;
-  diffLoadingKeys: Record<string, boolean>;
-  fileContentCache: Record<string, FilesReadPayload>;
-  fileContentLoadingKeys: Record<string, boolean>;
-};
-
-type WorkspaceDataCache = {
-  files: WorkspaceFilesCache;
-  git: WorkspaceGitCache;
-};
-
-/**
- * AsyncStorage 中保存的用户传输偏好键；缺省时回退到 appConfig.transportPreference。
- * 取值范围由 packages/protocol-ts isTransportPreference 守卫校验。
- */
-const TRANSPORT_PREFERENCE_STORAGE_KEY = "omniwork.transportPreference";
-const TERMINAL_TEXT_SIZE_STORAGE_KEY = "omniwork.terminal.textSize";
-const DEFAULT_AGENT_NOTIFICATION_SETTINGS: AgentNotificationSettingsPayload = {
-  enabled: true,
-  min_priority: "high",
-  muted_providers: [],
-  muted_message_kinds: [],
-};
-const FALLBACK_TERMINAL_PROVIDERS =
-  DEFAULT_TERMINAL_PROVIDER_DEFINITIONS.filter(
-    (provider) => provider.kind === "terminal",
-  );
-
-function fallbackTerminalProviders(): TerminalProviderDefinition[] {
-  return [...FALLBACK_TERMINAL_PROVIDERS];
-}
-
-function createWorkspaceFilesCache(): WorkspaceFilesCache {
-  return {
-    currentPath: "",
-    directoriesByPath: {},
-    filesByPath: {},
-    loadingDirectoryKeys: {},
-    loadingFileKeys: {},
-  };
-}
-
-function createWorkspaceGitCache(): WorkspaceGitCache {
-  return {
-    diffCache: {},
-    diffLoadingKeys: {},
-    fileContentCache: {},
-    fileContentLoadingKeys: {},
-  };
-}
-
-function createWorkspaceDataCache(): WorkspaceDataCache {
-  return {
-    files: createWorkspaceFilesCache(),
-    git: createWorkspaceGitCache(),
-  };
-}
 
 function isWorkbenchView(view: AppView): boolean {
   return (
-    view === "sessions" ||
+    view === "workbench" ||
     view === "terminal" ||
     view === "terminalFiles" ||
     view === "fileEditor" ||
@@ -280,178 +57,275 @@ export default function App(): JSX.Element {
 
 function AppContent(): JSX.Element {
   const { t } = useTranslation();
-  const [pairings, setPairings] = useState<PairingConfig[]>([]);
-  const [pairing, setPairing] = useState<PairingConfig | null>(null);
   const [view, setView] = useState<AppView>("pairing");
-  const [editingPairing, setEditingPairing] = useState<
-    PairingConfig | undefined
-  >();
-  const [selectedSession, setSelectedSession] =
-    useState<TerminalSession | null>(null);
-  const [sessions, setSessions] = useState<TerminalSession[]>([]);
-  const [terminalProviders, setTerminalProviders] = useState<
-    TerminalProviderDefinition[]
-  >(fallbackTerminalProviders);
-  const [workspaces, setWorkspaces] = useState<WorkspaceDefinition[]>([]);
-  const [selectedWorkspace, setSelectedWorkspace] =
-    useState<WorkspaceDefinition | null>(null);
-  const [workspaceCache, setWorkspaceCache] = useState<
-    Record<string, WorkspaceDataCache>
-  >({});
-  const [gitReviewPath, setGitReviewPath] = useState<string | undefined>();
-  const [gitReviewScope, setGitReviewScope] = useState<GitDiffScope>("all");
-  const [fileEditorPath, setFileEditorPath] = useState<string | undefined>();
-  const [fileEditorReturnView, setFileEditorReturnView] =
-    useState<AppView>("sessions");
-  const [fileWriteLoadingKeys, setFileWriteLoadingKeys] = useState<
-    Record<string, boolean>
-  >({});
-  const [lastFileWriteResult, setLastFileWriteResult] = useState<
-    FilesWritePayload | undefined
-  >();
-  const [defaultSessionCwd, setDefaultSessionCwd] = useState("");
-  const [terminalFrames, setTerminalFrames] = useState<Record<string, string>>(
-    {},
-  );
-  const [terminalStreamChunk, setTerminalStreamChunk] =
-    useState<TerminalStreamChunk | null>(null);
-  const [connectionStatus, setConnectionStatus] =
-    useState<ConnectionStatus>("idle");
-  const [connectionPath, setConnectionPath] = useState<TransportPath>("relay");
-  const [connectionMessage, setConnectionMessage] = useState(
-    "Enter the Desktop key to pair.",
-  );
-  const [pairingError, setPairingError] = useState<string | undefined>();
-  const [pendingEncryptedPairingLink, setPendingEncryptedPairingLink] =
-    useState<string | undefined>();
-  const [encryptedPairingPassword, setEncryptedPairingPassword] = useState("");
-  const [encryptedPairingError, setEncryptedPairingError] = useState<
-    string | undefined
-  >();
-  const [creatingSession, setCreatingSession] = useState(false);
-  const [closingSessionIds, setClosingSessionIds] = useState<string[]>([]);
-  const [killingSessionIds, setKillingSessionIds] = useState<string[]>([]);
-  // 用户在底部全局 Settings 入口选择的传输偏好，持久化到 AsyncStorage；
-  // 缺省时回退到 appConfig.transportPreference（出厂值，默认 "auto"）。
-  // 注意：初始值直接使用 appConfig 默认值，不阻塞建链；AsyncStorage 加载完成后
-  // 若读出与默认不同的值，会经由 setTransportPreferenceState 触发 useEffect
-  // 重建链路（依赖项含 transportPreference）。这样 Web 端首屏不会卡在 idle，
-  // 且大多数用户（默认 auto）启动时不会经历额外重连。
-  const [transportPreference, setTransportPreferenceState] =
-    useState<TransportPreference>(appConfig.transportPreference);
-  const [language, setLanguage] = useState<AppLanguage>(DEFAULT_LANGUAGE);
-  const [terminalTextSize, setTerminalTextSizeState] =
-    useState<TerminalTextSize>(() =>
-      getDefaultTerminalTextSize(Dimensions.get("window")),
-    );
-  const [agentNotificationSettings, setAgentNotificationSettings] =
-    useState<AgentNotificationSettingsPayload>(
-      DEFAULT_AGENT_NOTIFICATION_SETTINGS,
-    );
-  const [agentMessages, setAgentMessages] = useState<LocalAgentMessageRecord[]>(
-    [],
-  );
-  const [agentUnreadCount, setAgentUnreadCount] = useState(0);
-  const [agentMessageBanner, setAgentMessageBanner] =
-    useState<LocalAgentMessageRecord | null>(null);
-  const appLockAvailable = Platform.OS !== "web";
-  const [appLockConfig, setAppLockConfig] = useState<AppLockConfig>(
-    DEFAULT_APP_LOCK_CONFIG,
-  );
-  const [appLockMode, setAppLockMode] = useState<AppLockMode>(
-    appLockAvailable ? "loading" : "disabled",
-  );
-  const [gestureSetupMode, setGestureSetupMode] = useState<
-    "firstRun" | "enable" | "change" | null
-  >(null);
-  const [pendingSecurityAction, setPendingSecurityAction] = useState<
-    "disable" | "change" | null
-  >(null);
-  const [autoLockPickerVisible, setAutoLockPickerVisible] = useState(false);
-  const [selectedAutoLockOption, setSelectedAutoLockOption] =
-    useState<AutoLockOption>(DEFAULT_AUTO_LOCK_OPTION);
-  const [appLockLoadRetry, setAppLockLoadRetry] = useState(0);
-  const relayRef = useRef<AppSessionTransport | null>(null);
-  const agentMessageStoreRef = useRef(createAgentMessageStore());
-  const agentMessageBannerTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
-  const appLockConfigRef = useRef<AppLockConfig>(DEFAULT_APP_LOCK_CONFIG);
-  const appLockModeRef = useRef<AppLockMode>(
-    appLockAvailable ? "loading" : "disabled",
-  );
-  const lastInteractionPersistedAtRef = useRef(0);
-  const pendingCreateRef = useRef(false);
   const pendingAutoOpenSessionsRef = useRef(false);
-  const pairingRef = useRef<PairingConfig | null>(null);
-  const pairingsRef = useRef<PairingConfig[]>([]);
   const viewRef = useRef<AppView>("pairing");
-  const agentNotificationSettingsRef = useRef<AgentNotificationSettingsPayload>(
-    DEFAULT_AGENT_NOTIFICATION_SETTINGS,
-  );
   const selectedSessionRef = useRef<TerminalSession | null>(null);
-  const terminalTextSizeLoadedRef = useRef(false);
-  const terminalFrameSeqRef = useRef<Record<string, number>>({});
-  const terminalStreamSeqRef = useRef<Record<string, number>>({});
-  const terminalStreamActiveRef = useRef<Record<string, string>>({});
-  const terminalLastFrameAtRef = useRef<Record<string, number>>({});
-  const terminalLastSnapshotRequestAtRef = useRef<Record<string, number>>({});
-  const pendingTerminalFramesRef = useRef<Record<string, string>>({});
-  const terminalFrameFlushTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const directBusinessReadyRef = useRef(false);
-  const resettingAppLockRef = useRef(false);
-  // 标记当前失败状态是否已经在交互流程中提示过用户，避免重复弹出
-  // "Connection lost" 对话框（例如重试再次失败时立刻又弹一次）。
-  const failureDialogActiveRef = useRef(false);
   const confirm = useConfirm();
 
-  const selectedWorkspaceCache = selectedWorkspace
-    ? workspaceCache[selectedWorkspace.path]
-    : undefined;
-  const activeFilesCache = selectedWorkspaceCache?.files;
-  const fileRelativePath = activeFilesCache?.currentPath ?? "";
-  const fileEntries =
-    activeFilesCache?.directoriesByPath[fileRelativePath] ?? [];
-  const selectedFilePath = activeFilesCache?.selectedFilePath;
-  const selectedFile = activeFilesCache?.selectedFilePath
-    ? activeFilesCache.filesByPath[activeFilesCache.selectedFilePath]
-    : undefined;
-  const editorFile = fileEditorPath
-    ? activeFilesCache?.filesByPath[fileEditorPath]
-    : undefined;
-  const editorLoading = Boolean(
-    fileEditorPath && activeFilesCache?.loadingFileKeys[fileEditorPath],
-  );
-  const editorSaving = Boolean(
-    selectedWorkspace &&
-    fileEditorPath &&
-    fileWriteLoadingKeys[
-      toWorkspaceFileKey(selectedWorkspace.path, fileEditorPath)
-    ],
-  );
-  const filesLoading = Boolean(
-    activeFilesCache?.loadingDirectoryKeys[fileRelativePath] ||
-    (activeFilesCache?.selectedFilePath &&
-      activeFilesCache.loadingFileKeys[activeFilesCache.selectedFilePath]),
-  );
-  const activeGitCache = selectedWorkspaceCache?.git;
-  const gitStatus = activeGitCache?.status;
-  const gitDiffCache = activeGitCache?.diffCache ?? {};
-  const gitFileContentCache = activeGitCache?.fileContentCache ?? {};
-  const gitFileContentLoadingKeys =
-    activeGitCache?.fileContentLoadingKeys ?? {};
-  const gitDiff = activeGitCache?.activeDiffKey
-    ? gitDiffCache[activeGitCache.activeDiffKey]
-    : undefined;
-  const gitStatusLoading = Boolean(activeGitCache?.statusLoading);
-  const gitDiffLoading = Boolean(
-    activeGitCache?.activeDiffKey &&
-    activeGitCache.diffLoadingKeys[activeGitCache.activeDiffKey],
-  );
-  const gitLoading = gitStatusLoading || gitDiffLoading;
+  const {
+    transportPreference,
+    language,
+    terminalTextSize,
+    handleChangeLanguage,
+    handleChangeTerminalTextSize,
+    handleChangeTransportPreference,
+  } = usePreferenceController(confirm);
+
+  const {
+    pairings,
+    pairing,
+    pairingRef,
+    pairingsRef,
+    editingPairing,
+    pairingError,
+    pendingEncryptedPairingLink,
+    encryptedPairingPassword,
+    encryptedPairingError,
+    setPairing,
+    setEncryptedPairingPassword,
+    setEncryptedPairingError,
+    handlePair,
+    handleEncryptedPairingSubmit,
+    handleEncryptedPairingCancel,
+    handleAddDevice,
+    handleEditDevice,
+    handleCancelPairing,
+    handleDeleteDevice,
+    handleOpenDevice,
+    handleAuthFailureCleanup,
+    resetPairingState,
+  } = usePairingController({
+    t,
+    confirm,
+    getConnectionStatus: () => connectionStatus,
+    setView,
+    setConnectionStatus: (status) => setConnectionStatus(status),
+    setConnectionMessage: (message) => setConnectionMessage(message),
+    onClearActiveDeviceData: clearLocalAgentData,
+    onCloseActiveTransport: () => closeActiveTransport(),
+    onReconnectActivePairing: reconnectActivePairing,
+    onRequestActiveDeviceRefresh: () => requestSessionListRefresh(),
+    setPendingAutoOpenSessions: (value) => {
+      pendingAutoOpenSessionsRef.current = value;
+    },
+  });
+
+  const {
+    connectionStatus,
+    connectionPath,
+    connectionMessage,
+    setConnectionStatus,
+    setConnectionMessage,
+    sendToRelay,
+    reconnectActivePairing: reconnectTransport,
+    closeActiveTransport,
+    getAppConnectionId,
+    withActiveTransport,
+    requestP2pReconnect,
+  } = useTransportController({
+    pairing,
+    transportPreference,
+    onMessage: handleRelayMessage,
+    onPreferP2pConnectStart: clearLocalAgentData,
+    onDirectConnectionReady: markDirectConnectionReady,
+    setPairing,
+  });
+
+  const {
+    selectedWorkspace,
+    workspaceCache,
+    gitReviewPath,
+    gitReviewScope,
+    fileEditorPath,
+    fileRelativePath,
+    fileEntries,
+    selectedFilePath,
+    selectedFile,
+    editorFile,
+    editorLoading,
+    editorSaving,
+    filesLoading,
+    gitStatus,
+    gitDiffCache,
+    gitFileContentCache,
+    gitFileContentLoadingKeys,
+    gitDiff,
+    gitDiffLoading,
+    gitLoading,
+    lastFileWriteResult,
+    selectWorkspace: setSelectedWorkspace,
+    clearSelectedWorkspace,
+    clearWorkspaceState,
+    reconcileSelectedWorkspace,
+    requestWorkspaceDirectory,
+    handleOpenWorkspaceFiles,
+    handleRefreshWorkspaceFiles,
+    handleOpenWorkspaceGit,
+    handleRefreshWorkspaceGit,
+    handleOpenDirectory,
+    handleReadFile,
+    handleOpenFileEditor,
+    handleReloadEditorFile,
+    handleSaveEditorFile,
+    handleEditorContentChange,
+    handleCloseFileEditor,
+    handleCloseFilePreview,
+    handleOpenGitDiff,
+    handleOpenGitReview,
+    handlePrefetchGitDiff,
+    handleReadGitFileContent,
+    applyFilesList,
+    applyFilesRead,
+    applyFilesWrite,
+    applyGitStatus,
+    applyGitDiff,
+  } = useWorkspaceController({
+    pairing,
+    connectionStatus,
+    currentView: view,
+    setView,
+    sendToRelay,
+  });
+
+  const {
+    selectedSession,
+    selectedSessionCapabilities,
+    sessions,
+    terminalProviders,
+    workspaces,
+    defaultSessionCwd,
+    creatingSession,
+    closingSessionIds,
+    killingSessionIds,
+    selectSession: setSelectedSession,
+    clearSessionState,
+    resetSessionProgress,
+    requestSessionListRefresh,
+    handleRefreshSessions,
+    handleCreateSession,
+    handleCloseSession,
+    handleRenameSession,
+    handleKillTerminalSession,
+    applySessionList,
+    applySessionStatus,
+    applyWorkspaceList,
+    applySelectedSessionTerminalSize,
+  } = useSessionController({
+    pairing,
+    connectionStatus,
+    terminalTextSize,
+    confirm,
+    setView,
+    setConnectionMessage,
+    reconnectActivePairing,
+    sendToRelay,
+    onSessionWorkspaces: reconcileSelectedWorkspace,
+  });
+
+  const {
+    selectedFrame,
+    terminalStreamChunk,
+    handleTerminalInput,
+    handleTerminalResize,
+    requestTerminalSnapshot,
+    requestTerminalSnapshotForCurrentSession,
+    clearTerminalState,
+    pruneTerminalSurfaces,
+    applyTerminalSnapshot,
+    applyTerminalFrame,
+    applyTerminalStreamReady,
+    applyTerminalStreamData,
+    applyTerminalStreamError,
+  } = useTerminalController({
+    pairing,
+    connectionStatus,
+    connectionPath,
+    currentView: view,
+    selectedSession,
+    closingSessionIds,
+    killingSessionIds,
+    sendToRelay,
+    setConnectionMessage,
+    applySelectedSessionTerminalSize,
+  });
+
+  const {
+    appLockAvailable,
+    appLockConfig,
+    appLockScreen,
+    autoLockPickerVisible,
+    selectedAutoLockOption,
+    showingAppLockScreen,
+    updateLastInteraction,
+    lockIfInactive,
+    setGestureSetupMode,
+    setPendingSecurityAction,
+    setAutoLockPickerVisible,
+    setSelectedAutoLockOption,
+    handleConfirmAutoLockOption,
+  } = useAppLockController({
+    t,
+    confirm,
+    pairingsCount: () => pairingsRef.current.length,
+    setView,
+    onResetAppData: (message) => {
+      closeActiveTransport("app_lock_reset");
+      pendingAutoOpenSessionsRef.current = false;
+      resetSessionProgress();
+      resetPairingState();
+      clearLocalAgentData();
+      resetSessionProgress();
+      setConnectionStatus("idle");
+      setConnectionMessage(message);
+    },
+  });
+
+  const {
+    agentNotificationSettings,
+    agentMessages,
+    agentUnreadCount,
+    agentMessageBanner,
+    dismissAgentMessageBanner,
+    handleChangeAgentNotifications,
+    handleRefreshAgentMessages,
+    handleMarkAgentMessageRead,
+    handleMarkAgentMessageHandled,
+    handleOpenAgentMessage,
+    handleAgentMessage,
+    handleAgentNotificationSettings,
+  } = useAgentMessageController({
+    getPairing: () => pairingRef.current,
+    getConnectionStatus: () => connectionStatus,
+    getAppConnectionId,
+    getCurrentSessionId: () => selectedSessionRef.current?.session_id,
+    getCurrentView: () => viewRef.current,
+    sendToRelay,
+    setConnectionMessage,
+    onOpenMessageTarget: openAgentMessageTarget,
+  });
+
+  const { clearFailureDialogState } = useAppLifecycleController({
+    appLockAvailable,
+    connectionPath,
+    connectionStatus,
+    connectionMessage,
+    pairing,
+    currentView: view,
+    selectedSessionId: selectedSession?.session_id,
+    selectedSurfaceId: selectedSession?.primary_surface_id,
+    transportPreference,
+    confirm,
+    lockIfInactive,
+    withActiveTransport,
+    requestP2pReconnect,
+    requestTerminalSnapshotForCurrentSession,
+    shouldRefreshWorkbenchOnConnection,
+    requestSessionListRefresh,
+    reconnectActivePairing,
+    clearSelectedSession: () => setSelectedSession(null),
+    setView,
+  });
 
   const canUseWorkspace = pairings.length > 0;
   const showPrimaryTabs = canUseWorkspace && isPrimaryTabView(view);
@@ -465,7 +339,7 @@ function AppContent(): JSX.Element {
       return selectedSession?.title ?? t("app.titles.terminal");
     }
     if (view === "terminalFiles") return t("workspaces.tabs.files");
-    if (view === "sessions") return t("app.titles.workspaces");
+    if (view === "workbench") return t("app.titles.workspaces");
     if (view === "connectionPreference") return t("app.titles.connectionMode");
     if (view === "securitySettings") return t("appLock.settings.title");
     if (view === "messages") return t("app.titles.messages");
@@ -473,56 +347,6 @@ function AppContent(): JSX.Element {
     return t("app.titles.devices");
   }, [editingPairing, selectedSession?.title, t, view]);
 
-  const flushPendingTerminalFrames = useCallback(() => {
-    terminalFrameFlushTimerRef.current = null;
-    const pending = pendingTerminalFramesRef.current;
-    pendingTerminalFramesRef.current = {};
-    if (Object.keys(pending).length === 0) {
-      return;
-    }
-    setTerminalFrames((current) => ({
-      ...current,
-      ...pending,
-    }));
-  }, []);
-
-  const queueTerminalFrame = useCallback(
-    (surfaceId: string, payload: TerminalFramePayload, seq?: number) => {
-      if (typeof seq === "number") {
-        const lastSeq = terminalFrameSeqRef.current[surfaceId] ?? 0;
-        if (seq <= lastSeq) {
-          return;
-        }
-        terminalFrameSeqRef.current[surfaceId] = seq;
-      }
-      terminalLastFrameAtRef.current[surfaceId] = Date.now();
-      pendingTerminalFramesRef.current = {
-        ...pendingTerminalFramesRef.current,
-        [surfaceId]: payload.data,
-      };
-      if (terminalFrameFlushTimerRef.current) {
-        return;
-      }
-      terminalFrameFlushTimerRef.current = setTimeout(
-        flushPendingTerminalFrames,
-        16,
-      );
-    },
-    [flushPendingTerminalFrames],
-  );
-
-  const selectedFrame = selectedSession
-    ? (terminalFrames[selectedSession.primary_surface_id] ??
-      EMPTY_TERMINAL_FRAME)
-    : EMPTY_TERMINAL_FRAME;
-  const showingAppLockScreen =
-    appLockAvailable &&
-    (Boolean(pendingSecurityAction) ||
-      Boolean(gestureSetupMode) ||
-      appLockMode === "loading" ||
-      appLockMode === "unavailable" ||
-      appLockMode === "firstRunPrompt" ||
-      appLockMode === "locked");
   const showHeader = view === "pairing" && !showingAppLockScreen;
 
   useEffect(() => {
@@ -533,960 +357,9 @@ function AppContent(): JSX.Element {
     viewRef.current = view;
   }, [view]);
 
-  useEffect(() => {
-    agentNotificationSettingsRef.current = agentNotificationSettings;
-  }, [agentNotificationSettings]);
-
-  useEffect(() => {
-    pairingRef.current = pairing;
-  }, [pairing]);
-
-  useEffect(() => {
-    pairingsRef.current = pairings;
-  }, [pairings]);
-
-  useEffect(() => {
-    appLockConfigRef.current = appLockConfig;
-  }, [appLockConfig]);
-
-  useEffect(() => {
-    appLockModeRef.current = appLockMode;
-  }, [appLockMode]);
-
-  useEffect(() => {
-    if (!appLockAvailable) {
-      setAppLockMode("disabled");
-      return;
-    }
-    let active = true;
-    loadAppLockConfig()
-      .then((storedConfig) => {
-        if (!active) return;
-        const nextConfig = normalizeAppLockConfig(storedConfig);
-        appLockConfigRef.current = nextConfig;
-        setAppLockConfig(nextConfig);
-        setSelectedAutoLockOption(nextConfig.autoLockOption);
-        if (!nextConfig.initialized) {
-          setAppLockMode("firstRunPrompt");
-        } else if (nextConfig.enabled) {
-          setAppLockMode("locked");
-        } else {
-          setAppLockMode("disabled");
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setAppLockMode("unavailable");
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [appLockAvailable, appLockLoadRetry]);
-
-  useEffect(() => {
-    if (
-      !appLockAvailable ||
-      appLockMode !== "unlocked" ||
-      appLockConfig.autoLockOption === "never"
-    ) {
-      return undefined;
-    }
-    const timer = setInterval(() => {
-      const currentConfig = appLockConfigRef.current;
-      if (shouldLockForInactivity(currentConfig)) {
-        setAppLockMode("locked");
-      }
-    }, 15_000);
-    return () => clearInterval(timer);
-  }, [appLockAvailable, appLockConfig.autoLockOption, appLockMode]);
-
-  useEffect(() => {
-    let active = true;
-    Promise.all([loadPairings(), getInitialAppUrl()])
-      .then(async ([savedPairings, initialUrl]) => {
-        if (!active) {
-          return;
-        }
-        const scannedPairing = initialUrl
-          ? parsePairingConfig(initialUrl)
-          : null;
-        if (scannedPairing) {
-          await saveAndActivatePairing(scannedPairing, savedPairings, {
-            autoOpenSessions: true,
-          });
-          setConnectionMessage("Pairing imported from link. Connecting...");
-          return;
-        }
-
-        if (initialUrl && isEncryptedPairingConfig(initialUrl)) {
-          pairingsRef.current = savedPairings;
-          setPairings(savedPairings);
-          setPairing(savedPairings[0] ?? null);
-          setPendingEncryptedPairingLink(initialUrl);
-          setEncryptedPairingPassword("");
-          setEncryptedPairingError(undefined);
-          setConnectionMessage("Encrypted pairing link detected.");
-          setView(savedPairings.length > 0 ? "devices" : "pairing");
-          return;
-        }
-
-        pairingsRef.current = savedPairings;
-        setPairings(savedPairings);
-        setPairing(savedPairings[0] ?? null);
-        setView(savedPairings.length > 0 ? "devices" : "pairing");
-      })
-      .catch(() => {
-        if (active) {
-          setPairingError(
-            "Could not restore the saved pairing. Enter the latest key again.",
-          );
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (terminalFrameFlushTimerRef.current) {
-        clearTimeout(terminalFrameFlushTimerRef.current);
-        terminalFrameFlushTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const subscription = addAppUrlListener((url) => {
-      handlePairingUrl(url).catch((error: unknown) => {
-        setPairingError(
-          `Could not import pairing link: ${formatErrorMessage(error)}`,
-        );
-      });
-    });
-
-    return () => subscription.remove();
-  }, []);
-
-  // 启动时从 AsyncStorage 加载用户偏好；缺省回退到 appConfig.transportPreference。
-  // 加载完成前已经按默认值开始建链；若磁盘值与默认值不同，setTransportPreferenceState
-  // 会触发下面的连接 useEffect 自动重建链路。
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(TRANSPORT_PREFERENCE_STORAGE_KEY)
-      .then((raw) => {
-        if (!active) return;
-        if (isTransportPreference(raw)) {
-          setTransportPreferenceState(raw);
-        }
-      })
-      .catch(() => {
-        // 持久化失败不影响功能；使用 appConfig 默认值。
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(TERMINAL_TEXT_SIZE_STORAGE_KEY)
-      .then((raw) => {
-        if (!active) return;
-        if (isTerminalTextSize(raw)) {
-          setTerminalTextSizeState(raw);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          terminalTextSizeLoadedRef.current = true;
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(LANGUAGE_STORAGE_KEY)
-      .then((raw) => {
-        if (!active || !isAppLanguage(raw)) {
-          return;
-        }
-        setLanguage(raw);
-        void i18n.changeLanguage(raw);
-      })
-      .catch(() => {
-        // 语言偏好读取失败不影响启动；使用默认英文。
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const handleChangeLanguage = useCallback((next: AppLanguage) => {
-    setLanguage(next);
-    void i18n.changeLanguage(next);
-    AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, next).catch(() => {
-      // 语言偏好持久化失败仅影响下次启动恢复。
-    });
-  }, []);
-
-  const handleChangeTerminalTextSize = useCallback((next: TerminalTextSize) => {
-    setTerminalTextSizeState(next);
-    if (!terminalTextSizeLoadedRef.current) {
-      return;
-    }
-
-    AsyncStorage.setItem(TERMINAL_TEXT_SIZE_STORAGE_KEY, next).catch(() => {
-      // 字号偏好持久化失败不影响终端使用。
-    });
-  }, []);
-
-  const persistAppLockConfig = useCallback((nextConfig: AppLockConfig) => {
-    const normalized = normalizeAppLockConfig(nextConfig);
-    appLockConfigRef.current = normalized;
-    setAppLockConfig(normalized);
-    setSelectedAutoLockOption(normalized.autoLockOption);
-    saveAppLockConfig(normalized).catch(() => {
-      // 本地安全配置持久化失败不影响当前内存态。
-    });
-  }, []);
-
-  const updateLastInteraction = useCallback(() => {
-    if (!appLockAvailable || appLockModeRef.current !== "unlocked") {
-      return;
-    }
-    const now = Date.now();
-    if (shouldLockForInactivity(appLockConfigRef.current, now)) {
-      setAppLockMode("locked");
-      return;
-    }
-    if (now - lastInteractionPersistedAtRef.current < 5_000) {
-      return;
-    }
-    lastInteractionPersistedAtRef.current = now;
-    const nextConfig = {
-      ...appLockConfigRef.current,
-      lastInteractionAt: now,
-    };
-    appLockConfigRef.current = nextConfig;
-    setAppLockConfig(nextConfig);
-    saveAppLockConfig(nextConfig).catch(() => {
-      // 非关键路径：失败只影响下次启动后的超时判断。
-    });
-  }, [appLockAvailable]);
-
-  const handleSkipFirstAppLockSetup = useCallback(() => {
-    const nextConfig = {
-      ...DEFAULT_APP_LOCK_CONFIG,
-      initialized: true,
-      enabled: false,
-    };
-    persistAppLockConfig(nextConfig);
-    setGestureSetupMode(null);
-    setAppLockMode("disabled");
-  }, [persistAppLockConfig]);
-
-  const handleCompleteGestureSetup = useCallback(
-    (gesture: number[]) => {
-      const secret = createGestureSecret(gesture);
-      const now = Date.now();
-      const nextConfig: AppLockConfig = {
-        ...appLockConfigRef.current,
-        initialized: true,
-        enabled: true,
-        gestureHash: secret.hash,
-        gestureSalt: secret.salt,
-        lastInteractionAt: now,
-        lastUnlockedAt: now,
-      };
-      persistAppLockConfig(nextConfig);
-      setGestureSetupMode(null);
-      setPendingSecurityAction(null);
-      setAppLockMode("unlocked");
-      setView((current) =>
-        current === "securitySettings"
-          ? current
-          : pairingsRef.current.length > 0
-            ? "devices"
-            : "pairing",
-      );
-    },
-    [persistAppLockConfig],
-  );
-
-  const handleUnlockGesture = useCallback(
-    (gesture: number[]): boolean => {
-      const currentConfig = appLockConfigRef.current;
-      if (!verifyGesture(gesture, currentConfig)) {
-        return false;
-      }
-      const now = Date.now();
-      if (pendingSecurityAction === "disable") {
-        const nextConfig: AppLockConfig = {
-          ...currentConfig,
-          initialized: true,
-          enabled: false,
-          gestureHash: undefined,
-          gestureSalt: undefined,
-          lastInteractionAt: now,
-          lastUnlockedAt: now,
-        };
-        persistAppLockConfig(nextConfig);
-        setPendingSecurityAction(null);
-        setAppLockMode("disabled");
-        return true;
-      }
-      if (pendingSecurityAction === "change") {
-        setPendingSecurityAction(null);
-        setGestureSetupMode("change");
-        return true;
-      }
-      const nextConfig = {
-        ...currentConfig,
-        lastInteractionAt: now,
-        lastUnlockedAt: now,
-      };
-      persistAppLockConfig(nextConfig);
-      setAppLockMode("unlocked");
-      return true;
-    },
-    [pendingSecurityAction, persistAppLockConfig],
-  );
-
-  const resetAppAfterForgotGesture = useCallback(async () => {
-    await Promise.all([clearAppLockConfig(), clearPairing()]);
-    relayRef.current?.close("app_lock_reset");
-    relayRef.current = null;
-    pairingsRef.current = [];
-    pairingRef.current = null;
-    pendingAutoOpenSessionsRef.current = false;
-    pendingCreateRef.current = false;
-    directBusinessReadyRef.current = false;
-    lastInteractionPersistedAtRef.current = 0;
-    appLockConfigRef.current = DEFAULT_APP_LOCK_CONFIG;
-
-    setPairings([]);
-    setPairing(null);
-    setEditingPairing(undefined);
-    clearLocalAgentData();
-    setCreatingSession(false);
-    setClosingSessionIds([]);
-    setKillingSessionIds([]);
-    setConnectionStatus("idle");
-    setConnectionPath("relay");
-    setConnectionMessage(t("appLock.reset.pairingMessage"));
-    setPairingError(undefined);
-    setPendingSecurityAction(null);
-    setGestureSetupMode(null);
-    setAppLockConfig(DEFAULT_APP_LOCK_CONFIG);
-    setSelectedAutoLockOption(DEFAULT_AUTO_LOCK_OPTION);
-    setAppLockMode("firstRunPrompt");
-    setView("pairing");
-  }, [t]);
-
-  const handleForgotGesture = useCallback(() => {
-    if (resettingAppLockRef.current) {
-      return;
-    }
-    confirm({
-      title: t("appLock.reset.title"),
-      message: t("appLock.reset.description"),
-      confirmText: t("appLock.reset.confirm"),
-      cancelText: t("common.cancel"),
-      tone: "danger",
-    })
-      .then(async (confirmed) => {
-        if (!confirmed || resettingAppLockRef.current) {
-          return;
-        }
-        resettingAppLockRef.current = true;
-        const authResult = await authenticateDeviceOwner({
-          title: t("appLock.reset.authTitle"),
-          subtitle: t("appLock.reset.authSubtitle"),
-          description: t("appLock.reset.authDescription"),
-          cancel: t("common.cancel"),
-        });
-        if (authResult === "unavailable") {
-          Alert.alert(
-            t("appLock.reset.unavailableTitle"),
-            t("appLock.reset.unavailableDescription"),
-          );
-          return;
-        }
-        if (authResult !== "authenticated") {
-          Alert.alert(
-            t("appLock.reset.cancelledTitle"),
-            t("appLock.reset.cancelledDescription"),
-          );
-          return;
-        }
-        await resetAppAfterForgotGesture();
-        Alert.alert(
-          t("appLock.reset.successTitle"),
-          t("appLock.reset.successDescription"),
-        );
-      })
-      .catch((error: unknown) => {
-        Alert.alert(t("appLock.reset.failedTitle"), formatErrorMessage(error));
-      })
-      .finally(() => {
-        resettingAppLockRef.current = false;
-      });
-  }, [confirm, resetAppAfterForgotGesture, t]);
-
-  const handleConfirmAutoLockOption = useCallback(() => {
-    persistAppLockConfig({
-      ...appLockConfigRef.current,
-      autoLockOption: selectedAutoLockOption,
-    });
-    setAutoLockPickerVisible(false);
-  }, [persistAppLockConfig, selectedAutoLockOption]);
-
-  // 用户切换偏好时持久化；首次加载未完成前不写回，避免覆盖磁盘值。
-  // 切换会立即触发 useEffect 重建 transport（因为 transportPreference 是依赖项），
-  // 同时若旧/新偏好涉及 prefer_p2p（UI 展示为 Direct only），需要弹确认让用户明确知晓
-  // "立即重连 + Direct only 模式失败不会回退到 Relay"的副作用。
-  //
-  // 注意：RN 的 `Alert.alert` 在 web 端是 no-op，会导致 web 用户点 "Direct only"
-  // 后无任何反馈。这里统一改用项目内的跨端 `useConfirm`（基于 RN `Modal`，
-  // web/native 表现一致），保证三端都能弹出确认。
-  const handleChangeTransportPreference = useCallback(
-    (next: TransportPreference) => {
-      const persist = (value: TransportPreference) => {
-        setTransportPreferenceState(value);
-        AsyncStorage.setItem(TRANSPORT_PREFERENCE_STORAGE_KEY, value).catch(
-          () => {
-            // 非关键路径：偏好下次启动会回退到 appConfig 默认值。
-          },
-        );
-      };
-      if (next === "prefer_p2p") {
-        confirm({
-          title: "Switch to Direct only?",
-          message:
-            "The App will reconnect immediately. After a direct link is ready, no relay server will carry session payload data. The session may fail if a direct link cannot be established.",
-          confirmText: "Switch",
-          cancelText: "Cancel",
-          tone: "primary",
-          // 语义上是"切换连接路径"而非"删除"，覆盖默认的 trash 图标。
-          confirmIcon: "plug",
-        })
-          .then((confirmed) => {
-            if (confirmed) {
-              persist(next);
-            }
-          })
-          .catch(() => {
-            // confirm Promise 不应 reject；保底吞掉。
-          });
-        return;
-      }
-      persist(next);
-    },
-    [confirm],
-  );
-
-  useEffect(() => {
-    loadAgentMessages();
-    return () => {
-      if (agentMessageBannerTimerRef.current) {
-        clearTimeout(agentMessageBannerTimerRef.current);
-        agentMessageBannerTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!pairing) {
-      relayRef.current?.close();
-      relayRef.current = null;
-      setConnectionStatus("idle");
-      setConnectionPath("relay");
-      setConnectionMessage("Enter the Desktop key to pair.");
-      return undefined;
-    }
-
-    let closed = false;
-    const relay = createAppSessionTransport(pairing, transportPreference, {
-      onForceClose: (reason) => {
-        if (closed) {
-          return;
-        }
-        // 严格 P2P 模式下协商或运行期失败 → 关闭 session 并把错误透出到 UI。
-        // 不会回退到 Relay；用户需要切换 transport_preference 或重连才能继续。
-        setConnectionStatus("failed");
-        setConnectionMessage(formatStrictForceCloseMessage(reason));
-      },
-    });
-    relayRef.current = relay;
-    directBusinessReadyRef.current = false;
-    if (transportPreference === "prefer_p2p") {
-      clearLocalAgentData();
-    }
-    setConnectionStatus("connecting");
-    setConnectionPath(relay.getCurrentPath());
-    setConnectionMessage("Opening secure connection...");
-
-    const unsubscribe = relay.onMessage((message) => {
-      if (closed) {
-        return;
-      }
-      handleRelayMessage(message, relay, pairing);
-    });
-    const unsubscribeClose = relay.onClose((event) => {
-      if (closed) {
-        return;
-      }
-      setConnectionStatus("failed");
-      setConnectionMessage(formatRelayCloseMessage(event));
-    });
-    const unsubscribePathChange = relay.onPathChange((path) => {
-      setConnectionPath(path);
-      if (
-        transportPreference === "prefer_p2p" &&
-        path === "p2p" &&
-        directBusinessReadyRef.current
-      ) {
-        markDirectConnectionReady();
-      }
-    });
-    const unsubscribeBusinessReady = relay.onBusinessReady(() => {
-      directBusinessReadyRef.current = true;
-      if (
-        transportPreference === "prefer_p2p" &&
-        relay.getCurrentPath() === "p2p"
-      ) {
-        markDirectConnectionReady();
-      }
-    });
-
-    relay
-      .connect()
-      .then(() => {
-        if (!closed) {
-          setConnectionStatus("authenticating");
-          setConnectionMessage("Waiting for key proof challenge...");
-        }
-      })
-      .catch((error: unknown) => {
-        if (!closed) {
-          setConnectionStatus("failed");
-          setConnectionMessage(
-            `Secure connection failed: ${formatErrorMessage(error)}`,
-          );
-        }
-      });
-
-    return () => {
-      closed = true;
-      unsubscribe();
-      unsubscribeClose();
-      unsubscribePathChange();
-      unsubscribeBusinessReady();
-      relay.close();
-      if (relayRef.current === relay) {
-        relayRef.current = null;
-      }
-    };
-  }, [pairing, transportPreference]);
-
-  // 进入后台时释放 P2P；回到前台后主动通知 Relay 清退避并立即 propose，
-  // 不再依赖下一轮被动升级窗口。strict P2P 下业务消息仍由 strict 队列暂存，
-  // 不会回退到 relay path 承载。
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (next) => {
-      const relay = relayRef.current;
-      const previous = appStateRef.current;
-      appStateRef.current = next;
-      if (
-        appLockAvailable &&
-        next === "active" &&
-        previous !== "active" &&
-        appLockModeRef.current === "unlocked" &&
-        shouldLockForInactivity(appLockConfigRef.current)
-      ) {
-        setAppLockMode("locked");
-      }
-      if (!relay) {
-        return;
-      }
-      if (relay.isStrictP2p()) {
-        if (next === "active") {
-          relay.resumeForForeground();
-          if (previous !== "active") {
-            relay.requestP2pReconnect("foreground_resume");
-            requestTerminalSnapshotForCurrentSession();
-          }
-        } else {
-          relay.pauseForBackground();
-        }
-        return;
-      }
-      if (next !== "active") {
-        relay.forceDowngrade("app_background");
-      } else if (previous !== "active") {
-        relay.requestP2pReconnect("foreground_resume");
-        requestTerminalSnapshotForCurrentSession();
-      }
-    });
-    return () => subscription.remove();
-  }, []);
-
-  useEffect(() => {
-    return subscribeNetworkChanges((event) => {
-      relayRef.current?.requestP2pReconnect("network_changed", event);
-      requestTerminalSnapshotForCurrentSession();
-    });
-  }, []);
-
-  useEffect(() => {
-    if (connectionPath === "p2p" && connectionStatus === "authenticated") {
-      if (
-        transportPreference !== "prefer_p2p" &&
-        shouldRefreshWorkbenchOnConnection()
-      ) {
-        requestSessionListRefresh();
-      }
-      requestTerminalSnapshotForCurrentSession();
-    }
-  }, [
-    connectionPath,
-    connectionStatus,
-    selectedSession?.session_id,
-    selectedSession?.primary_surface_id,
-    transportPreference,
-  ]);
-
-  useEffect(() => {
-    if (connectionPath !== "p2p" || connectionStatus !== "authenticated") {
-      return undefined;
-    }
-    const timer = setInterval(() => {
-      const session = selectedSessionRef.current;
-      if (!session) {
-        return;
-      }
-      const lastFrameAt =
-        terminalLastFrameAtRef.current[session.primary_surface_id] ?? 0;
-      if (Date.now() - lastFrameAt >= 3_000) {
-        requestTerminalSnapshotForCurrentSession();
-      }
-    }, 3_000);
-    return () => clearInterval(timer);
-  }, [connectionPath, connectionStatus]);
-
-  useEffect(() => {
-    if (
-      connectionStatus !== "authenticated" ||
-      view !== "terminal" ||
-      !pairing ||
-      !selectedSession
-    ) {
-      return undefined;
-    }
-
-    // 进入终端页时主动拉取一次 snapshot；stream 模式只作为可选增量通道。
-    requestTerminalSnapshot(pairing.deviceId, selectedSession);
-    if (appConfig.terminal.streamEnabled) {
-      sendToRelay(
-        terminalStreamStartRequest(
-          pairing.deviceId,
-          selectedSession.session_id,
-          selectedSession.primary_surface_id,
-        ),
-      );
-    }
-    return () => {
-      if (appConfig.terminal.streamEnabled) {
-        sendToRelay(
-          terminalStreamStopRequest(
-            pairing.deviceId,
-            selectedSession.session_id,
-            selectedSession.primary_surface_id,
-          ),
-        );
-      }
-    };
-  }, [connectionStatus, pairing, selectedSession, view]);
-
-  useEffect(() => {
-    // 仅在用户已经进入到依赖 Agent 数据的页面时弹出重连提示，
-    // 避免在 devices 页（已有连接状态条）上重复打扰用户。
-    if (
-      connectionStatus !== "failed" ||
-      !pairing ||
-      (view !== "sessions" &&
-        view !== "terminal" &&
-        view !== "terminalFiles") ||
-      failureDialogActiveRef.current
-    ) {
-      return;
-    }
-
-    failureDialogActiveRef.current = true;
-    const message =
-      connectionMessage || "Lost connection to the connected computer.";
-    confirm({
-      title: "Connection lost",
-      message: `${message}\n\nRetry now or return to the device list?`,
-      confirmText: "Retry",
-      cancelText: "Back to devices",
-      tone: "primary",
-    })
-      .then((retry) => {
-        failureDialogActiveRef.current = false;
-        if (retry) {
-          reconnectActivePairing();
-        } else {
-          setSelectedSession(null);
-          setView("devices");
-        }
-      })
-      .catch(() => {
-        failureDialogActiveRef.current = false;
-      });
-  }, [confirm, connectionMessage, connectionStatus, pairing, view]);
-
-  async function handlePair(nextPairing: PairingConfig): Promise<void> {
-    setPairingError(undefined);
-    const nextPairings = editingPairing
-      ? pairings.map((item) =>
-          isSamePairing(item, editingPairing) ? nextPairing : item,
-        )
-      : upsertPairing(pairings, nextPairing);
-    await savePairings(nextPairings);
-    setPairings(nextPairings);
-    setPairing(nextPairing);
-    setEditingPairing(undefined);
-    setView("devices");
-  }
-
-  async function handlePairingUrl(url: string): Promise<void> {
-    const nextPairing = parsePairingConfig(url);
-    if (!nextPairing && isEncryptedPairingConfig(url)) {
-      setPendingEncryptedPairingLink(url);
-      setEncryptedPairingPassword("");
-      setEncryptedPairingError(undefined);
-      setConnectionMessage("Encrypted pairing link detected.");
-      return;
-    }
-    if (!nextPairing) {
-      Alert.alert(
-        "Invalid pairing link",
-        "Open or paste the pairing link generated by your computer.",
-      );
-      return;
-    }
-
-    setPairingError(undefined);
-    setConnectionMessage("Pairing imported from link. Connecting...");
-    await saveAndActivatePairing(nextPairing, pairingsRef.current, {
-      autoOpenSessions: true,
-    });
-  }
-
-  async function handleEncryptedPairingSubmit(): Promise<void> {
-    if (!pendingEncryptedPairingLink) {
-      return;
-    }
-    if (encryptedPairingPassword.length !== 4) {
-      setEncryptedPairingError(t("pairing.encrypted.passwordRequired"));
-      return;
-    }
-    const nextPairing = decryptPairingConfig(
-      pendingEncryptedPairingLink,
-      encryptedPairingPassword,
-    );
-    if (!nextPairing) {
-      setEncryptedPairingError(t("pairing.encrypted.invalidPassword"));
-      return;
-    }
-    setPairingError(undefined);
-    setEncryptedPairingError(undefined);
-    setPendingEncryptedPairingLink(undefined);
-    setEncryptedPairingPassword("");
-    setConnectionMessage("Pairing imported from link. Connecting...");
-    await saveAndActivatePairing(nextPairing, pairingsRef.current, {
-      autoOpenSessions: true,
-    });
-  }
-
-  function handleEncryptedPairingCancel(): void {
-    setPendingEncryptedPairingLink(undefined);
-    setEncryptedPairingPassword("");
-    setEncryptedPairingError(undefined);
-  }
-
-  async function saveAndActivatePairing(
-    nextPairing: PairingConfig,
-    basePairings: PairingConfig[],
-    options: { autoOpenSessions?: boolean } = {},
-  ): Promise<void> {
-    const nextPairings = upsertPairing(basePairings, nextPairing);
-    await savePairings(nextPairings);
-    pendingAutoOpenSessionsRef.current = Boolean(options.autoOpenSessions);
-    pairingsRef.current = nextPairings;
-    setPairings(nextPairings);
-    setPairing(nextPairing);
-    setEditingPairing(undefined);
-    setView("devices");
-  }
-
-  function handleAddDevice(): void {
-    setPairingError(undefined);
-    setEditingPairing(undefined);
-    setView("pairing");
-  }
-
-  function handleEditDevice(nextPairing: PairingConfig): void {
-    setPairingError(undefined);
-    setEditingPairing(nextPairing);
-    setView("pairing");
-  }
-
-  function handleCancelPairing(): void {
-    setEditingPairing(undefined);
-    setView(pairings.length > 0 ? "devices" : "pairing");
-  }
-
-  async function handleDeleteDevice(
-    targetPairing: PairingConfig,
-  ): Promise<void> {
-    const deviceName = getPairingDisplayName(targetPairing);
-    const confirmed = await confirm({
-      title: "Delete device",
-      message: `Delete ${deviceName} from linked devices?`,
-      confirmText: "Delete",
-    });
-    if (!confirmed) {
-      return;
-    }
-
-    removeDevice(targetPairing).catch((error: unknown) => {
-      setPairingError(`Could not delete device: ${String(error)}`);
-    });
-  }
-
-  async function removeDevice(targetPairing: PairingConfig): Promise<void> {
-    const nextPairings = await removeSavedPairing(targetPairing);
-    setSessions([]);
-    setTerminalProviders(fallbackTerminalProviders());
-    setWorkspaces([]);
-    setSelectedSession(null);
-    setSelectedWorkspace(null);
-    setTerminalFrames({});
-    setClosingSessionIds([]);
-    setKillingSessionIds([]);
-    setEditingPairing(undefined);
-
-    if (pairing && isSamePairing(pairing, targetPairing)) {
-      relayRef.current?.close();
-      setPairing(nextPairings[0] ?? null);
-    }
-
-    setView(nextPairings.length > 0 ? "devices" : "pairing");
-  }
-
-  /**
-   * 处理鉴权失败后的本地清理：
-   * - 保留已保存的 pairing 条目（这样用户在 Device Center 里仍能看到该设备，
-   *   可主动 Edit 修正 key 或 Delete）；过去会自动删除该 pairing 并把用户
-   *   丢回 Pairing 页，但 web 端 RN `Alert.alert` 是 no-op，导致体感上是
-   *   "保存失败、设备被静默删除、重新弹出输入界面"。
-   * - 把当前会话/工作区状态全部置空，避免误用上一次会话状态；
-   * - 通过 connectionMessage / pairingError 透出失败原因。
-   */
-  async function handleAuthFailureCleanup(
-    targetPairing: PairingConfig,
-    reason: string,
-  ): Promise<void> {
-    setSessions([]);
-    setTerminalProviders(fallbackTerminalProviders());
-    setWorkspaces([]);
-    setSelectedSession(null);
-    setSelectedWorkspace(null);
-    setTerminalFrames({});
-    setClosingSessionIds([]);
-    setKillingSessionIds([]);
-
-    const errorText = `Authentication failed for "${getPairingDisplayName(
-      targetPairing,
-    )}": ${reason}. Edit the device to enter a new key, or delete it.`;
-    setConnectionStatus("failed");
-    setConnectionMessage(errorText);
-    setPairingError(errorText);
-
-    if (view === "pairing" && editingPairing) {
-      // 用户正在 Edit 当前 pairing 时被打回，保留 editingPairing 让其继续修改。
-      return;
-    }
-    setEditingPairing(undefined);
-    setView("devices");
-  }
-
-  async function removeSavedPairing(
-    targetPairing: PairingConfig,
-  ): Promise<PairingConfig[]> {
-    const nextPairings = pairingsRef.current.filter(
-      (item) => !isSamePairing(item, targetPairing),
-    );
-    if (nextPairings.length > 0) {
-      await savePairings(nextPairings);
-    } else {
-      await clearPairing();
-    }
-
-    pairingsRef.current = nextPairings;
-    setPairings(nextPairings);
-    return nextPairings;
-  }
-
-  function handleOpenDevice(nextPairing: PairingConfig): void {
-    if (!pairing || !isSamePairing(pairing, nextPairing)) {
-      pendingAutoOpenSessionsRef.current = true;
-      setPairing(nextPairing);
-      setSessions([]);
-      setTerminalProviders(fallbackTerminalProviders());
-      setWorkspaces([]);
-      setSelectedSession(null);
-      setSelectedWorkspace(null);
-      setTerminalFrames({});
-      setClosingSessionIds([]);
-      setKillingSessionIds([]);
-      setView("sessions");
-      return;
-    }
-
-    if (connectionStatus === "authenticated") {
-      setView("sessions");
-      sendToRelay(listSessionsRequest(nextPairing.deviceId));
-      return;
-    }
-
-    // 用户主动进入设备时若连接已经失败/空闲，主动触发一次重连，
-    // 避免列表页一直停留在 "Waiting for ... data" 状态。
-    pendingAutoOpenSessionsRef.current = true;
-    setView("sessions");
-    if (connectionStatus === "failed" || connectionStatus === "idle") {
-      reconnectActivePairing();
-    }
-  }
-
   function reconnectActivePairing(): void {
-    if (!pairing) {
-      return;
-    }
-    failureDialogActiveRef.current = false;
-    setConnectionStatus("connecting");
-    setConnectionMessage("Reconnecting securely...");
-    // 通过创建一个新的 pairing 引用强制触发上面的连接 useEffect
-    // （依赖 pairing 引用变化），从而重建 transport。
-    setPairing({ ...pairing });
+    clearFailureDialogState();
+    reconnectTransport();
   }
 
   function handleRefreshDevices(): void {
@@ -1502,143 +375,6 @@ function AppContent(): JSX.Element {
         ? "Direct P2P connection is ready."
         : "Connected to Desktop.",
     );
-  }
-
-  function handleRefreshSessions(): void {
-    if (!pairing) {
-      return;
-    }
-    if (connectionStatus !== "authenticated") {
-      reconnectActivePairing();
-      return;
-    }
-    sendToRelay(listSessionsRequest(pairing.deviceId));
-  }
-
-  function handleChangeAgentNotifications(enabled: boolean): void {
-    const nextSettings = {
-      ...agentNotificationSettings,
-      enabled,
-    };
-    setAgentNotificationSettings(nextSettings);
-    if (!pairing || connectionStatus !== "authenticated") {
-      return;
-    }
-    sendToRelay(
-      setAgentNotificationSettingsRequest(pairing.deviceId, nextSettings),
-    );
-  }
-
-  function loadAgentMessages(): void {
-    const store = agentMessageStoreRef.current;
-    store
-      .initialize()
-      .then(() => Promise.all([store.listMessages(), store.unreadCount()]))
-      .then(([records, unreadCount]) => {
-        setAgentMessages(records);
-        setAgentUnreadCount(unreadCount);
-      })
-      .catch((error: unknown) => {
-        setConnectionMessage(
-          `Agent messages unavailable: ${formatErrorMessage(error)}`,
-        );
-      });
-  }
-
-  function handleAgentMessage(message: AgentAppMessage): void {
-    const store = agentMessageStoreRef.current;
-    store
-      .saveMessage(message)
-      .then((record) => {
-        return Promise.all([store.listMessages(), store.unreadCount()]).then(
-          ([records, unreadCount]) => ({ record, records, unreadCount }),
-        );
-      })
-      .then(({ record, records, unreadCount }) => {
-        setAgentMessages(records);
-        setAgentUnreadCount(unreadCount);
-        sendAgentMessageDelivered(message.id);
-        maybeShowAgentMessageBanner(record);
-      })
-      .catch((error: unknown) => {
-        setConnectionMessage(
-          `Agent message save failed: ${formatErrorMessage(error)}`,
-        );
-      });
-  }
-
-  function sendAgentMessageDelivered(messageId: string): void {
-    if (!pairingRef.current) {
-      return;
-    }
-    const appConnectionId = relayRef.current?.getAppConnectionId();
-    sendToRelay(
-      agentMessageDeliveredRequest(pairingRef.current.deviceId, {
-        message_id: messageId,
-        app_connection_id: appConnectionId ?? undefined,
-        delivered_at: new Date().toISOString(),
-      }),
-    );
-  }
-
-  function maybeShowAgentMessageBanner(record: LocalAgentMessageRecord): void {
-    if (!agentNotificationSettingsRef.current.enabled) {
-      return;
-    }
-    const message = record.message;
-    if (message.priority === "low") {
-      return;
-    }
-    if (
-      selectedSessionRef.current?.session_id === message.session_id &&
-      viewRef.current === "terminal"
-    ) {
-      return;
-    }
-    setAgentMessageBanner(record);
-    if (agentMessageBannerTimerRef.current) {
-      clearTimeout(agentMessageBannerTimerRef.current);
-    }
-    agentMessageBannerTimerRef.current = setTimeout(
-      () => {
-        setAgentMessageBanner(null);
-        agentMessageBannerTimerRef.current = null;
-      },
-      message.priority === "normal" ? 4000 : 8000,
-    );
-  }
-
-  function handleRefreshAgentMessages(): void {
-    loadAgentMessages();
-  }
-
-  function handleMarkAgentMessageRead(messageId: string): void {
-    const store = agentMessageStoreRef.current;
-    store
-      .markRead(messageId)
-      .then(() => Promise.all([store.listMessages(), store.unreadCount()]))
-      .then(([records, unreadCount]) => {
-        setAgentMessages(records);
-        setAgentUnreadCount(unreadCount);
-      })
-      .catch(() => undefined);
-  }
-
-  function handleMarkAgentMessageHandled(messageId: string): void {
-    const store = agentMessageStoreRef.current;
-    store
-      .markHandled(messageId)
-      .then(() => Promise.all([store.listMessages(), store.unreadCount()]))
-      .then(([records, unreadCount]) => {
-        setAgentMessages(records);
-        setAgentUnreadCount(unreadCount);
-      })
-      .catch(() => undefined);
-  }
-
-  function handleOpenAgentMessage(record: LocalAgentMessageRecord): void {
-    handleMarkAgentMessageRead(record.message.id);
-    openAgentMessageTarget(record.message);
   }
 
   function openAgentMessageTarget(message: AgentAppMessage): void {
@@ -1659,526 +395,6 @@ function AppContent(): JSX.Element {
       return;
     }
     setView("messages");
-  }
-
-  function handleCreateSession(input: {
-    cwd: string;
-    terminalProviderKind: TerminalProviderKind;
-    workspacePath?: string;
-  }): void {
-    if (!pairing || connectionStatus !== "authenticated") {
-      return;
-    }
-    pendingCreateRef.current = true;
-    setCreatingSession(true);
-    sendToRelay(
-      createSessionRequest(pairing.deviceId, {
-        cwd: input.cwd,
-        workspace_path: input.workspacePath,
-        terminal_provider_kind: input.terminalProviderKind,
-        terminal_size: computeInitialTerminalSize(terminalTextSize),
-      }),
-    );
-  }
-
-  function updateWorkspaceDataCache(
-    workspacePath: string,
-    updater: (cache: WorkspaceDataCache) => WorkspaceDataCache,
-  ): void {
-    setWorkspaceCache((current) => {
-      const existing = current[workspacePath] ?? createWorkspaceDataCache();
-      return {
-        ...current,
-        [workspacePath]: updater(existing),
-      };
-    });
-  }
-
-  function requestWorkspaceDirectory(
-    workspace: WorkspaceDefinition,
-    relativePath: string,
-    options: { force?: boolean; activate?: boolean } = {},
-  ): void {
-    if (!pairing || connectionStatus !== "authenticated") {
-      return;
-    }
-    const activate = options.activate ?? true;
-    const workspacePath = workspace.path;
-    const filesCache =
-      workspaceCache[workspacePath]?.files ?? createWorkspaceFilesCache();
-    const hasCachedEntries = Boolean(
-      filesCache.directoriesByPath[relativePath],
-    );
-    if (!options.force && hasCachedEntries) {
-      if (activate) {
-        updateWorkspaceDataCache(workspacePath, (cache) => ({
-          ...cache,
-          files: {
-            ...cache.files,
-            currentPath: relativePath,
-            selectedFilePath: undefined,
-          },
-        }));
-      }
-      return;
-    }
-    if (filesCache.loadingDirectoryKeys[relativePath]) {
-      if (activate) {
-        updateWorkspaceDataCache(workspacePath, (cache) => ({
-          ...cache,
-          files: {
-            ...cache.files,
-            currentPath: relativePath,
-            selectedFilePath: undefined,
-          },
-        }));
-      }
-      return;
-    }
-    updateWorkspaceDataCache(workspacePath, (cache) => ({
-      ...cache,
-      files: {
-        ...cache.files,
-        currentPath: activate ? relativePath : cache.files.currentPath,
-        selectedFilePath: activate ? undefined : cache.files.selectedFilePath,
-        loadingDirectoryKeys: {
-          ...cache.files.loadingDirectoryKeys,
-          [relativePath]: true,
-        },
-      },
-    }));
-    sendToRelay(
-      listFilesRequest(pairing.deviceId, {
-        workspacePath,
-        relativePath,
-      }),
-    );
-  }
-
-  function requestWorkspaceGitStatus(
-    workspace: WorkspaceDefinition,
-    options: { force?: boolean } = {},
-  ): void {
-    if (
-      !pairing ||
-      connectionStatus !== "authenticated" ||
-      !workspace.isGitRepository
-    ) {
-      return;
-    }
-    const workspacePath = workspace.path;
-    const gitCache =
-      workspaceCache[workspacePath]?.git ?? createWorkspaceGitCache();
-    if (!options.force && gitCache.status) {
-      return;
-    }
-    if (gitCache.statusLoading) {
-      return;
-    }
-    updateWorkspaceDataCache(workspacePath, (cache) => ({
-      ...cache,
-      git: {
-        ...cache.git,
-        statusLoading: true,
-      },
-    }));
-    sendToRelay(gitStatusRequest(pairing.deviceId, { workspacePath }));
-  }
-
-  function handleOpenWorkspaceFiles(workspace: WorkspaceDefinition): void {
-    setSelectedWorkspace(workspace);
-    const currentPath = workspaceCache[workspace.path]?.files.currentPath ?? "";
-    requestWorkspaceDirectory(workspace, currentPath, { activate: true });
-  }
-
-  function handleRefreshWorkspaceFiles(
-    workspace: WorkspaceDefinition,
-    relativePath: string,
-  ): void {
-    setSelectedWorkspace(workspace);
-    requestWorkspaceDirectory(workspace, relativePath, {
-      activate: true,
-      force: true,
-    });
-  }
-
-  function handleOpenWorkspaceGit(workspace: WorkspaceDefinition): void {
-    setSelectedWorkspace(workspace);
-    requestWorkspaceGitStatus(workspace);
-  }
-
-  function handleRefreshWorkspaceGit(workspace: WorkspaceDefinition): void {
-    setSelectedWorkspace(workspace);
-    updateWorkspaceDataCache(workspace.path, (cache) => ({
-      ...cache,
-      git: {
-        ...cache.git,
-        diffCache: {},
-        diffLoadingKeys: {},
-        fileContentCache: {},
-        fileContentLoadingKeys: {},
-      },
-    }));
-    requestWorkspaceGitStatus(workspace, { force: true });
-  }
-
-  function handleOpenDirectory(relativePath: string): void {
-    if (!selectedWorkspace) {
-      return;
-    }
-    requestWorkspaceDirectory(selectedWorkspace, relativePath, {
-      activate: true,
-    });
-  }
-
-  function requestWorkspaceFile(
-    workspace: WorkspaceDefinition,
-    relativePath: string,
-    options: { activatePreview?: boolean; force?: boolean } = {},
-  ): void {
-    if (!pairing || connectionStatus !== "authenticated") {
-      return;
-    }
-    const activatePreview = options.activatePreview ?? true;
-    const workspacePath = workspace.path;
-    const filesCache =
-      workspaceCache[workspacePath]?.files ?? createWorkspaceFilesCache();
-    if (!options.force && filesCache.filesByPath[relativePath]) {
-      if (activatePreview) {
-        updateWorkspaceDataCache(workspacePath, (cache) => ({
-          ...cache,
-          files: {
-            ...cache.files,
-            selectedFilePath: relativePath,
-          },
-        }));
-      }
-      return;
-    }
-    if (filesCache.loadingFileKeys[relativePath]) {
-      if (activatePreview) {
-        updateWorkspaceDataCache(workspacePath, (cache) => ({
-          ...cache,
-          files: {
-            ...cache.files,
-            selectedFilePath: relativePath,
-          },
-        }));
-      }
-      return;
-    }
-    updateWorkspaceDataCache(workspacePath, (cache) => ({
-      ...cache,
-      files: {
-        ...cache.files,
-        selectedFilePath: activatePreview
-          ? relativePath
-          : cache.files.selectedFilePath,
-        loadingFileKeys: {
-          ...cache.files.loadingFileKeys,
-          [relativePath]: true,
-        },
-      },
-    }));
-    sendToRelay(
-      readFileRequest(pairing.deviceId, {
-        workspacePath,
-        relativePath,
-      }),
-    );
-  }
-
-  function handleReadFile(relativePath: string): void {
-    if (!selectedWorkspace) {
-      return;
-    }
-    requestWorkspaceFile(selectedWorkspace, relativePath, {
-      activatePreview: true,
-    });
-  }
-
-  function handleOpenFileEditor(
-    workspace: WorkspaceDefinition,
-    relativePath: string,
-  ): void {
-    setSelectedWorkspace(workspace);
-    setFileEditorPath(relativePath);
-    setFileEditorReturnView(view);
-    setLastFileWriteResult(undefined);
-    setView("fileEditor");
-    requestWorkspaceFile(workspace, relativePath, { activatePreview: false });
-  }
-
-  function handleReloadEditorFile(): void {
-    if (!selectedWorkspace || !fileEditorPath) {
-      return;
-    }
-    setLastFileWriteResult(undefined);
-    requestWorkspaceFile(selectedWorkspace, fileEditorPath, {
-      activatePreview: false,
-      force: true,
-    });
-  }
-
-  function handleSaveEditorFile(content: string, baseHash: string): void {
-    if (
-      !pairing ||
-      !selectedWorkspace ||
-      !fileEditorPath ||
-      connectionStatus !== "authenticated"
-    ) {
-      return;
-    }
-    const workspacePath = selectedWorkspace.path;
-    const writeKey = toWorkspaceFileKey(workspacePath, fileEditorPath);
-    setFileWriteLoadingKeys((current) => ({ ...current, [writeKey]: true }));
-    setLastFileWriteResult(undefined);
-    sendToRelay(
-      writeFileRequest(pairing.deviceId, {
-        workspacePath,
-        relativePath: fileEditorPath,
-        content,
-        encoding: "utf8",
-        baseHash,
-      }),
-    );
-  }
-
-  function handleEditorContentChange(): void {
-    if (lastFileWriteResult) {
-      setLastFileWriteResult(undefined);
-    }
-  }
-
-  function handleCloseFileEditor(): void {
-    setView(fileEditorReturnView);
-  }
-
-  function handleCloseFilePreview(): void {
-    if (!selectedWorkspace) {
-      return;
-    }
-    updateWorkspaceDataCache(selectedWorkspace.path, (cache) => ({
-      ...cache,
-      files: {
-        ...cache.files,
-        selectedFilePath: undefined,
-      },
-    }));
-  }
-
-  function requestGitDiff(
-    workspace: WorkspaceDefinition,
-    relativePath?: string,
-    scope: GitDiffScope = "unstaged",
-    options: { activate?: boolean } = {},
-  ): void {
-    if (!pairing || connectionStatus !== "authenticated") {
-      return;
-    }
-    const activate = options.activate ?? true;
-    const workspacePath = workspace.path;
-    const cacheKey = toGitDiffCacheKey(relativePath, scope);
-    const gitCache =
-      workspaceCache[workspacePath]?.git ?? createWorkspaceGitCache();
-    const cachedDiff = gitCache.diffCache[cacheKey];
-    if (cachedDiff) {
-      if (activate) {
-        updateWorkspaceDataCache(workspacePath, (cache) => ({
-          ...cache,
-          git: {
-            ...cache.git,
-            activeDiffKey: cacheKey,
-          },
-        }));
-      }
-      return;
-    }
-    if (gitCache.diffLoadingKeys[cacheKey]) {
-      if (activate) {
-        updateWorkspaceDataCache(workspacePath, (cache) => ({
-          ...cache,
-          git: {
-            ...cache.git,
-            activeDiffKey: cacheKey,
-          },
-        }));
-      }
-      return;
-    }
-    updateWorkspaceDataCache(workspacePath, (cache) => ({
-      ...cache,
-      git: {
-        ...cache.git,
-        activeDiffKey: activate ? cacheKey : cache.git.activeDiffKey,
-        diffLoadingKeys: {
-          ...cache.git.diffLoadingKeys,
-          [cacheKey]: true,
-        },
-      },
-    }));
-    sendToRelay(
-      gitDiffRequest(pairing.deviceId, {
-        workspacePath,
-        relativePath,
-        scope,
-      }),
-    );
-  }
-
-  function handleOpenGitDiff(
-    relativePath?: string,
-    scope: GitDiffScope = "unstaged",
-  ): void {
-    if (!selectedWorkspace) {
-      return;
-    }
-    requestGitDiff(selectedWorkspace, relativePath, scope, { activate: true });
-  }
-
-  function handleOpenGitReview(
-    workspace: WorkspaceDefinition,
-    relativePath?: string,
-    scope: GitDiffScope = "all",
-  ): void {
-    setSelectedWorkspace(workspace);
-    setGitReviewPath(relativePath);
-    setGitReviewScope(scope);
-    setView("gitReview");
-    requestGitDiff(workspace, relativePath, scope, { activate: true });
-  }
-
-  function handlePrefetchGitDiff(
-    relativePath?: string,
-    scope: GitDiffScope = "unstaged",
-  ): void {
-    if (!selectedWorkspace || connectionStatus !== "authenticated") {
-      return;
-    }
-    requestGitDiff(selectedWorkspace, relativePath, scope, { activate: false });
-  }
-
-  function handleReadGitFileContent(relativePath: string): void {
-    if (
-      !pairing ||
-      !selectedWorkspace ||
-      connectionStatus !== "authenticated"
-    ) {
-      return;
-    }
-    const workspacePath = selectedWorkspace.path;
-    const gitCache =
-      workspaceCache[workspacePath]?.git ?? createWorkspaceGitCache();
-    if (
-      gitCache.fileContentCache[relativePath] ||
-      gitCache.fileContentLoadingKeys[relativePath]
-    ) {
-      return;
-    }
-    updateWorkspaceDataCache(workspacePath, (cache) => ({
-      ...cache,
-      git: {
-        ...cache.git,
-        fileContentLoadingKeys: {
-          ...cache.git.fileContentLoadingKeys,
-          [relativePath]: true,
-        },
-      },
-    }));
-    sendToRelay(
-      readFileRequest(pairing.deviceId, {
-        workspacePath,
-        relativePath,
-      }),
-    );
-  }
-
-  async function handleCloseSession(session: TerminalSession): Promise<void> {
-    if (!pairing || connectionStatus !== "authenticated") {
-      return;
-    }
-
-    const external = session.origin === "external";
-    const removeOnly =
-      session.status === "exited" || session.status === "archived";
-    const title = external
-      ? "Forget tmux session"
-      : removeOnly
-        ? "Remove session"
-        : "Close session";
-    const message = external
-      ? `Forget ${session.title} in OmniWork? The tmux session will keep running on the connected computer.`
-      : removeOnly
-        ? `Remove ${session.title} from OmniWork? The session is not interactive.`
-        : `Close ${session.title} on the connected computer?`;
-    const confirmed = await confirm({
-      title,
-      message,
-      confirmText: external ? "Forget" : removeOnly ? "Remove" : "Close",
-    });
-    if (!confirmed) {
-      return;
-    }
-
-    setClosingSessionIds((current) =>
-      current.includes(session.session_id)
-        ? current
-        : [...current, session.session_id],
-    );
-    sendToRelay(closeSessionRequest(pairing.deviceId, session.session_id));
-  }
-
-  function handleRenameSession(session: TerminalSession, title: string): void {
-    if (!pairing || connectionStatus !== "authenticated") {
-      return;
-    }
-
-    const nextTitle = title.trim();
-    if (!nextTitle || nextTitle === session.title) {
-      return;
-    }
-
-    setSessions((current) =>
-      current.map((item) =>
-        item.session_id === session.session_id
-          ? { ...item, title: nextTitle }
-          : item,
-      ),
-    );
-    setSelectedSession((current) =>
-      current?.session_id === session.session_id
-        ? { ...current, title: nextTitle }
-        : current,
-    );
-    sendToRelay(
-      renameSessionRequest(pairing.deviceId, session.session_id, nextTitle),
-    );
-  }
-
-  async function handleKillTerminalSession(
-    session: TerminalSession,
-  ): Promise<void> {
-    if (!pairing || connectionStatus !== "authenticated") {
-      return;
-    }
-
-    const confirmed = await confirm({
-      title: "Kill tmux session",
-      message: `Really kill ${session.title}? This will close the tmux session on the connected computer and cannot be undone.`,
-      confirmText: "Kill tmux",
-    });
-    if (!confirmed) {
-      return;
-    }
-
-    setKillingSessionIds((current) =>
-      current.includes(session.session_id)
-        ? current
-        : [...current, session.session_id],
-    );
-    sendToRelay(
-      killTerminalSessionRequest(pairing.deviceId, session.session_id),
-    );
   }
 
   function handleOpenSession(session: TerminalSession): void {
@@ -2226,111 +442,6 @@ function AppContent(): JSX.Element {
     setView("terminalFiles");
   }
 
-  function handleTerminalInput(input: TerminalInputPayload): void {
-    if (!pairing || !selectedSession || connectionStatus !== "authenticated") {
-      return;
-    }
-    const capabilities = getSessionCapabilities(selectedSession, {
-      closing: closingSessionIds.includes(selectedSession.session_id),
-      killing: killingSessionIds.includes(selectedSession.session_id),
-    });
-    if (!capabilities.canInput) {
-      setConnectionMessage(
-        capabilities.unavailableReason ??
-          "This session is not accepting input right now.",
-      );
-      return;
-    }
-
-    sendToRelay(
-      terminalInputRequest(
-        pairing.deviceId,
-        selectedSession.session_id,
-        selectedSession.primary_surface_id,
-        input,
-      ),
-    );
-    // 电脑端会基于 PTY 内容哈希自动 push terminal.frame，App 不再做事后多次轮询。
-  }
-
-  function handleTerminalResize(size: TerminalResizePayload): void {
-    if (!pairing || !selectedSession || connectionStatus !== "authenticated") {
-      return;
-    }
-    const capabilities = getSessionCapabilities(selectedSession, {
-      closing: closingSessionIds.includes(selectedSession.session_id),
-      killing: killingSessionIds.includes(selectedSession.session_id),
-    });
-    if (!capabilities.canResize) {
-      return;
-    }
-
-    setSelectedSession((current) =>
-      current && current.session_id === selectedSession.session_id
-        ? { ...current, terminal_size: size }
-        : current,
-    );
-    setSessions((current) =>
-      current.map((session) =>
-        session.session_id === selectedSession.session_id
-          ? { ...session, terminal_size: size }
-          : session,
-      ),
-    );
-    sendToRelay(
-      terminalResizeRequest(
-        pairing.deviceId,
-        selectedSession.session_id,
-        selectedSession.primary_surface_id,
-        size,
-      ),
-    );
-    requestTerminalSnapshot(pairing.deviceId, selectedSession);
-  }
-
-  function requestTerminalSnapshot(
-    deviceId: string,
-    session: TerminalSession,
-  ): void {
-    sendToRelay(
-      terminalSnapshotRequest(
-        deviceId,
-        session.session_id,
-        session.primary_surface_id,
-      ),
-    );
-  }
-
-  function requestTerminalSnapshotForCurrentSession(): void {
-    const activePairing = pairingRef.current;
-    const session = selectedSessionRef.current;
-    if (!activePairing || !session) {
-      return;
-    }
-    const now = Date.now();
-    const lastRequest =
-      terminalLastSnapshotRequestAtRef.current[session.primary_surface_id] ?? 0;
-    if (now - lastRequest < 2_000) {
-      return;
-    }
-    terminalLastSnapshotRequestAtRef.current[session.primary_surface_id] = now;
-    sendToRelay(
-      terminalSnapshotRequest(
-        activePairing.deviceId,
-        session.session_id,
-        session.primary_surface_id,
-      ),
-    );
-  }
-
-  function requestSessionListRefresh(): void {
-    const activePairing = pairingRef.current;
-    if (!activePairing) {
-      return;
-    }
-    sendToRelay(listSessionsRequest(activePairing.deviceId));
-  }
-
   function shouldRefreshWorkbenchOnConnection(): boolean {
     return (
       pendingAutoOpenSessionsRef.current ||
@@ -2346,37 +457,14 @@ function AppContent(): JSX.Element {
     }
     if (pendingAutoOpenSessionsRef.current) {
       pendingAutoOpenSessionsRef.current = false;
-      setView("sessions");
+      setView("workbench");
     }
   }
 
   function clearLocalAgentData(): void {
-    setSessions([]);
-    setTerminalProviders(fallbackTerminalProviders());
-    setWorkspaces([]);
-    setSelectedSession(null);
-    setSelectedWorkspace(null);
-    setWorkspaceCache({});
-    setGitReviewPath(undefined);
-    setGitReviewScope("all");
-    setDefaultSessionCwd("");
-    setTerminalFrames({});
-    setTerminalStreamChunk(null);
-    pendingTerminalFramesRef.current = {};
-    terminalFrameSeqRef.current = {};
-    terminalStreamSeqRef.current = {};
-    terminalStreamActiveRef.current = {};
-    terminalLastFrameAtRef.current = {};
-    terminalLastSnapshotRequestAtRef.current = {};
-  }
-
-  function sendToRelay(message: MessageEnvelope): void {
-    try {
-      relayRef.current?.send(message);
-    } catch (error: unknown) {
-      setConnectionStatus("failed");
-      setConnectionMessage(`Relay send failed: ${formatErrorMessage(error)}`);
-    }
+    clearSessionState({ clearDefaultCwd: true, clearCreating: true });
+    clearWorkspaceState();
+    clearTerminalState();
   }
 
   function handleRelayMessage(
@@ -2384,1226 +472,173 @@ function AppContent(): JSX.Element {
     relay: AppSessionTransport,
     activePairing: PairingConfig,
   ): void {
-    if (message.type.startsWith("tunnel.upgrade.")) {
-      relay.handleUpgradeMessage(message);
-      return;
-    }
-    switch (message.type) {
-      case "auth.challenge":
-        setConnectionStatus("authenticating");
-        setConnectionMessage("Verifying temporary key...");
-        break;
-      case "auth.ok":
-        failureDialogActiveRef.current = false;
-        if (relay.isStrictP2p()) {
-          clearLocalAgentData();
-          setConnectionStatus("authenticating");
-          setConnectionMessage("Establishing direct P2P connection...");
-        } else {
-          setConnectionStatus("authenticated");
-          setConnectionMessage("Connected to Desktop.");
-          const shouldOpenSessions = pendingAutoOpenSessionsRef.current;
-          if (shouldRefreshWorkbenchOnConnection()) {
-            relay.send(listSessionsRequest(activePairing.deviceId));
-          }
-          relay.send(
-            getAgentNotificationSettingsRequest(activePairing.deviceId),
-          );
-          if (shouldOpenSessions) {
-            pendingAutoOpenSessionsRef.current = false;
-            setView("sessions");
-          }
-        }
-        break;
-      case "auth.failed": {
-        const payload = message.payload as AuthFailedPayload;
-        setConnectionStatus("failed");
-        setConnectionMessage(`Authentication failed: ${payload.reason}`);
-        pendingAutoOpenSessionsRef.current = false;
-        // 鉴权失败说明电脑端重启或 key 已失效，按 engineering-requirements.md
-        // 中 "App 认证失败后清理旧 key" 的要求清除本地 pairing，并跳回配对页让用户输入新 key。
-        relay.close();
-        void handleAuthFailureCleanup(activePairing, payload.reason);
-        break;
-      }
-      case "session.list": {
-        const payload = message.payload as SessionListPayload;
-        const remoteSessionIds = new Set(
-          payload.sessions.map((session) => session.session_id),
-        );
-        const remoteSurfaceIds = new Set(
-          payload.sessions.flatMap((session) =>
-            session.surfaces.map((surface) => surface.surface_id),
-          ),
-        );
-        const closableSessionIds = new Set(
-          payload.sessions
-            .filter((session) => session.registered !== false)
-            .map((session) => session.session_id),
-        );
-        if (payload.default_cwd) {
-          setDefaultSessionCwd(payload.default_cwd);
-        }
-        setTerminalProviders(
-          payload.providers?.length
-            ? payload.providers
-            : fallbackTerminalProviders(),
-        );
-        if (payload.workspaces?.length) {
-          setWorkspaces(payload.workspaces);
-          setSelectedWorkspace((current) =>
-            current
-              ? (payload.workspaces?.find(
-                  (workspace) => workspace.path === current.path,
-                ) ?? current)
-              : current,
-          );
-        }
-        setSessions(payload.sessions);
-        setSelectedSession((current) => {
-          if (!current) {
-            return current;
-          }
-          return (
-            payload.sessions.find(
-              (session) => session.session_id === current.session_id,
-            ) ?? current
-          );
-        });
-        setClosingSessionIds((current) =>
-          current.filter((sessionId) => closableSessionIds.has(sessionId)),
-        );
-        setKillingSessionIds((current) =>
-          current.filter((sessionId) => remoteSessionIds.has(sessionId)),
-        );
-        setTerminalFrames((current) => {
-          const nextFrames = { ...current };
-          for (const surfaceId of Object.keys(nextFrames)) {
-            if (!remoteSurfaceIds.has(surfaceId)) {
-              delete nextFrames[surfaceId];
-              delete terminalFrameSeqRef.current[surfaceId];
-              delete terminalStreamSeqRef.current[surfaceId];
-              delete terminalStreamActiveRef.current[surfaceId];
-              delete terminalLastFrameAtRef.current[surfaceId];
-              delete terminalLastSnapshotRequestAtRef.current[surfaceId];
-              delete pendingTerminalFramesRef.current[surfaceId];
-            }
-          }
-          return nextFrames;
-        });
-        setTerminalStreamChunk((current) =>
-          current && !remoteSurfaceIds.has(current.surfaceId) ? null : current,
-        );
-        if (
-          selectedSessionRef.current &&
-          !remoteSessionIds.has(selectedSessionRef.current.session_id)
-        ) {
-          setSelectedSession(null);
-          setView("sessions");
-        }
-        setCreatingSession(false);
-        break;
-      }
-      case "session.status": {
-        const payload = message.payload as { session: TerminalSession };
-        setSessions((current) => upsertSession(current, payload.session));
-        setSelectedSession((current) =>
-          current?.session_id === payload.session.session_id
-            ? payload.session
-            : current,
-        );
-        if (pendingCreateRef.current) {
-          if (isTransitionalSessionStatus(payload.session.status)) {
-            setCreatingSession(true);
-            setConnectionMessage(
-              `${payload.session.title} is ${payload.session.status}.`,
-            );
-            break;
-          }
-
-          pendingCreateRef.current = false;
-          setCreatingSession(false);
-          const capabilities = getSessionCapabilities(payload.session);
-          if (capabilities.canOpen) {
-            setSelectedSession(payload.session);
-            setView("terminal");
-          } else {
-            setConnectionMessage(
-              capabilities.unavailableReason ??
-                "Session was created but is not interactive.",
-            );
-            setView("sessions");
-          }
-        } else if (!isTransitionalSessionStatus(payload.session.status)) {
-          setCreatingSession(false);
-        }
-        break;
-      }
-      case "workspace.list": {
-        const payload = message.payload as WorkspaceListPayload;
-        setWorkspaces(payload.workspaces);
-        break;
-      }
-      case "files.list": {
-        const payload = message.payload as FilesListPayload;
-        updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
-          ...cache,
-          files: {
-            ...cache.files,
-            directoriesByPath: {
-              ...cache.files.directoriesByPath,
-              [payload.relativePath]: payload.entries,
-            },
-            loadingDirectoryKeys: omitKey(
-              cache.files.loadingDirectoryKeys,
-              payload.relativePath,
-            ),
-          },
-        }));
-        break;
-      }
-      case "files.read": {
-        const payload = message.payload as FilesReadPayload;
-        updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
-          ...cache,
-          files: {
-            ...cache.files,
-            filesByPath: {
-              ...cache.files.filesByPath,
-              [payload.relativePath]: payload,
-            },
-            loadingFileKeys: omitKey(
-              cache.files.loadingFileKeys,
-              payload.relativePath,
-            ),
-          },
-          git: {
-            ...cache.git,
-            fileContentCache: {
-              ...cache.git.fileContentCache,
-              [payload.relativePath]: payload,
-            },
-            fileContentLoadingKeys: omitKey(
-              cache.git.fileContentLoadingKeys,
-              payload.relativePath,
-            ),
-          },
-        }));
-        break;
-      }
-      case "files.write": {
-        const payload = message.payload as FilesWritePayload;
-        const writeKey = toWorkspaceFileKey(
-          payload.workspacePath,
-          payload.relativePath,
-        );
-        const previousActiveDiffKey =
-          workspaceCache[payload.workspacePath]?.git.activeDiffKey;
-        const previousActiveDiff = parseGitDiffCacheKey(previousActiveDiffKey);
-        setFileWriteLoadingKeys((current) => omitKey(current, writeKey));
-        setLastFileWriteResult(payload);
-        if (payload.status === "saved") {
-          const savedFile: FilesReadPayload = {
-            workspacePath: payload.workspacePath,
-            relativePath: payload.relativePath,
-            content: payload.content ?? "",
-            encoding: "utf8",
-            size: payload.size,
-            modifiedAt: payload.modifiedAt,
-            contentHash: payload.contentHash,
-          };
-          updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
-            ...cache,
-            files: {
-              ...cache.files,
-              filesByPath: {
-                ...cache.files.filesByPath,
-                [payload.relativePath]: savedFile,
-              },
-            },
-            git: {
-              ...cache.git,
-              statusLoading: true,
-              diffCache: {},
-              diffLoadingKeys: cache.git.activeDiffKey
-                ? { [cache.git.activeDiffKey]: true }
-                : {},
-              fileContentCache: {
-                ...cache.git.fileContentCache,
-                [payload.relativePath]: savedFile,
-              },
-              fileContentLoadingKeys: omitKey(
-                cache.git.fileContentLoadingKeys,
-                payload.relativePath,
-              ),
-            },
-          }));
-          if (pairing && selectedWorkspace?.path === payload.workspacePath) {
-            sendToRelay(
-              gitStatusRequest(pairing.deviceId, {
-                workspacePath: payload.workspacePath,
-              }),
-            );
-            if (previousActiveDiff) {
-              sendToRelay(
-                gitDiffRequest(pairing.deviceId, {
-                  workspacePath: payload.workspacePath,
-                  relativePath: previousActiveDiff.relativePath,
-                  scope: previousActiveDiff.scope,
-                }),
-              );
-            }
-          }
-        }
-        break;
-      }
-      case "git.status": {
-        const payload = message.payload as GitStatusPayload;
-        updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
-          ...cache,
-          git: {
-            ...cache.git,
-            status: payload.status,
-            statusLoading: false,
-          },
-        }));
-        break;
-      }
-      case "git.diff": {
-        const payload = message.payload as GitDiffPayload;
-        const cacheKey = toGitDiffCacheKey(
-          payload.relativePath,
-          payload.scope ?? "unstaged",
-        );
-        updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
-          ...cache,
-          git: {
-            ...cache.git,
-            diffCache: {
-              ...cache.git.diffCache,
-              [cacheKey]: payload,
-            },
-            diffLoadingKeys: omitKey(cache.git.diffLoadingKeys, cacheKey),
-          },
-        }));
-        break;
-      }
-      case "agent.message": {
-        handleAgentMessage(message.payload as AgentAppMessage);
-        break;
-      }
-      case "agent.notification.settings.get":
-      case "agent.notification.settings.set": {
-        setAgentNotificationSettings(
-          message.payload as AgentNotificationSettingsPayload,
-        );
-        break;
-      }
-      case "protocol.error": {
-        const payload = message.payload as ProtocolErrorPayload;
-        const detail = payload.detail || t("app.errors.protocolError");
-        setConnectionMessage(detail);
-        if (payload.code === "plaintext_business_rejected") {
-          confirm({
-            title: t("app.errors.hostError"),
-            message: detail,
-            confirmText: t("app.actions.ok"),
-            cancelText: "",
-            tone: "danger",
-          }).catch(() => {
-            /* user dismissed */
-          });
-        }
-        break;
-      }
-      case "terminal.snapshot": {
-        const payload = message.payload as TerminalSnapshotPayload;
-        if (message.surface_id) {
-          const nextWatermark = terminalFrameWatermarkAfterSnapshot(
-            terminalFrameSeqRef.current[message.surface_id],
-            message.seq,
-          );
-          if (typeof nextWatermark === "number") {
-            terminalFrameSeqRef.current[message.surface_id] = nextWatermark;
-          } else {
-            delete terminalFrameSeqRef.current[message.surface_id];
-          }
-          delete pendingTerminalFramesRef.current[message.surface_id];
-          terminalLastFrameAtRef.current[message.surface_id] = Date.now();
-          setTerminalFrames((current) => ({
-            ...current,
-            [message.surface_id as string]: payload.data,
-          }));
-        }
-        break;
-      }
-      case "terminal.frame": {
-        const payload = message.payload as TerminalFramePayload;
-        if (message.surface_id) {
-          if (terminalStreamActiveRef.current[message.surface_id]) {
-            break;
-          }
-          queueTerminalFrame(message.surface_id, payload, message.seq);
-        }
-        break;
-      }
-      case "terminal.stream.ready": {
-        const payload = message.payload as { stream_id?: string };
-        if (message.surface_id && payload.stream_id) {
-          terminalStreamActiveRef.current[message.surface_id] =
-            payload.stream_id;
-          terminalStreamSeqRef.current[message.surface_id] = 0;
-        }
-        break;
-      }
-      case "terminal.stream.data": {
-        const payload = message.payload as TerminalStreamDataPayload;
-        if (!message.surface_id) {
-          break;
-        }
-        const activeStreamId =
-          terminalStreamActiveRef.current[message.surface_id];
-        if (activeStreamId && activeStreamId !== payload.stream_id) {
-          break;
-        }
-        if (typeof message.seq === "number") {
-          const lastSeq = terminalStreamSeqRef.current[message.surface_id] ?? 0;
-          if (message.seq <= lastSeq) {
-            break;
-          }
-          terminalStreamSeqRef.current[message.surface_id] = message.seq;
-        }
-        terminalLastFrameAtRef.current[message.surface_id] = Date.now();
-        setTerminalStreamChunk({
-          surfaceId: message.surface_id,
-          data: payload.data,
-          seq: message.seq,
-          streamId: payload.stream_id,
-        });
-        break;
-      }
-      case "terminal.stream.error": {
-        const payload = message.payload as TerminalStreamErrorPayload;
-        if (message.surface_id) {
-          delete terminalStreamActiveRef.current[message.surface_id];
-          delete terminalStreamSeqRef.current[message.surface_id];
-        }
-        if (payload.code !== "TERMINAL_STREAM_DISABLED") {
-          setConnectionMessage(payload.message);
-        }
-        break;
-      }
-      case "terminal.error": {
-        const payload = message.payload as TerminalErrorPayload;
-        setCreatingSession(false);
-        pendingCreateRef.current = false;
-        const detail = payload.message || t("app.errors.terminalError");
-        setConnectionMessage(detail);
-        if (payload.code === "TMUX_TARGET_MISSING") {
-          setSelectedSession(null);
-          setView("sessions");
-        }
-        // session.create 等失败路径下，前端原本只是默默更新 connectionMessage，
-        // 用户在 SessionListScreen 上根本看不到。这里用 confirm 弹一次性提示，
-        // 让用户明确感知失败原因，避免"按了创建但什么也没发生"的体感。
-        const title =
-          payload.code === "SESSION_CREATE_FAILED"
-            ? t("app.errors.failedCreateSession")
-            : payload.code === "TMUX_TARGET_MISSING"
-              ? t("app.errors.sessionUnavailable")
-              : t("app.errors.hostError");
-        confirm({
-          title,
-          message: detail,
-          confirmText: t("app.actions.ok"),
-          cancelText: "",
-          tone: "danger",
-        }).catch(() => {
-          /* user dismissed */
-        });
-        break;
-      }
-      default:
-        break;
-    }
+    handleAppRelayMessage(message, relay, activePairing, {
+      t,
+      confirm,
+      currentView: view,
+      pendingAutoOpenSessionsRef,
+      clearFailureDialogState,
+      clearLocalAgentData,
+      shouldRefreshWorkbenchOnConnection,
+      setConnectionStatus,
+      setConnectionMessage,
+      setView,
+      setSelectedSession,
+      resetSessionProgress,
+      handleAuthFailureCleanup,
+      applySessionList,
+      pruneTerminalSurfaces,
+      applySessionStatus,
+      applyWorkspaceList,
+      applyFilesList,
+      applyFilesRead,
+      applyFilesWrite,
+      applyGitStatus,
+      applyGitDiff,
+      handleAgentMessage,
+      handleAgentNotificationSettings,
+      applyTerminalSnapshot,
+      applyTerminalFrame,
+      applyTerminalStreamReady,
+      applyTerminalStreamData,
+      applyTerminalStreamError,
+    });
   }
 
-  const selectedSessionCapabilities = selectedSession
-    ? getSessionCapabilities(selectedSession, {
-        closing: closingSessionIds.includes(selectedSession.session_id),
-        killing: killingSessionIds.includes(selectedSession.session_id),
-      })
-    : null;
-  const appLockScreen = appLockAvailable ? (
-    pendingSecurityAction ? (
-      <GestureUnlockScreen
-        canCancel
-        onCancel={() => setPendingSecurityAction(null)}
-        onUnlock={handleUnlockGesture}
-      />
-    ) : gestureSetupMode ? (
-      <GestureSetupScreen
-        mode={gestureSetupMode}
-        onBack={
-          gestureSetupMode === "firstRun"
-            ? undefined
-            : () => setGestureSetupMode(null)
-        }
-        onComplete={handleCompleteGestureSetup}
-        onSkip={
-          gestureSetupMode === "firstRun"
-            ? handleSkipFirstAppLockSetup
-            : undefined
-        }
-      />
-    ) : appLockMode === "loading" ? (
-      <View style={styles.loadingScreen}>
-        <Text style={styles.loadingText}>{t("common.loading")}</Text>
-      </View>
-    ) : appLockMode === "unavailable" ? (
-      <View style={styles.appLockErrorScreen}>
-        <Text style={styles.appLockErrorTitle}>
-          {t("appLock.unavailable.title")}
-        </Text>
-        <Text style={styles.appLockErrorText}>
-          {t("appLock.unavailable.description")}
-        </Text>
-        <Button
-          tone="primary"
-          variant="solid"
-          onPress={() => {
-            setAppLockMode("loading");
-            setAppLockLoadRetry((current) => current + 1);
-          }}
-        >
-          {t("common.refresh")}
-        </Button>
-      </View>
-    ) : appLockMode === "firstRunPrompt" ? (
-      <AppLockIntroScreen
-        onSetup={() => setGestureSetupMode("firstRun")}
-        onSkip={handleSkipFirstAppLockSetup}
-      />
-    ) : appLockMode === "locked" ? (
-      <GestureUnlockScreen
-        onForgotGesture={handleForgotGesture}
-        onUnlock={handleUnlockGesture}
-      />
-    ) : null
-  ) : null;
+  const routerProps = buildAppRouterProps({
+    t,
+    view,
+    setView,
+    appLockScreen,
+    appLockAvailable,
+    appLockConfig,
+    autoLockPickerVisible,
+    selectedAutoLockOption,
+    setGestureSetupMode,
+    setPendingSecurityAction,
+    setAutoLockPickerVisible,
+    setSelectedAutoLockOption,
+    handleConfirmAutoLockOption,
+    pairings,
+    pairing,
+    editingPairing,
+    pairingError,
+    handlePair,
+    handleCancelPairing,
+    handleAddDevice,
+    handleEditDevice,
+    handleDeleteDevice,
+    handleOpenDevice,
+    handleRefreshDevices,
+    connectionStatus,
+    connectionPath,
+    connectionMessage,
+    agentMessages,
+    agentNotificationSettings,
+    handleChangeAgentNotifications,
+    handleRefreshAgentMessages,
+    handleOpenAgentMessage,
+    handleMarkAgentMessageRead,
+    handleMarkAgentMessageHandled,
+    transportPreference,
+    terminalTextSize,
+    language,
+    handleChangeLanguage,
+    handleChangeTerminalTextSize,
+    handleChangeTransportPreference,
+    sessions,
+    terminalProviders,
+    workspaces,
+    creatingSession,
+    closingSessionIds,
+    killingSessionIds,
+    defaultSessionCwd,
+    fileRelativePath,
+    fileEntries,
+    selectedFilePath,
+    selectedFile,
+    filesLoading,
+    gitStatus,
+    gitDiff,
+    gitDiffCache,
+    gitFileContentCache,
+    gitFileContentLoadingKeys,
+    gitLoading,
+    gitDiffLoading,
+    gitReviewPath,
+    gitReviewScope,
+    selectedWorkspace,
+    selectedSession,
+    selectedFrame,
+    selectedSessionCapabilities,
+    terminalStreamChunk,
+    fileEditorPath,
+    editorFile,
+    editorLoading,
+    editorSaving,
+    lastFileWriteResult,
+    handleRefreshSessions,
+    handleCreateSession,
+    handleOpenWorkspaceFiles,
+    handleOpenWorkspaceGit,
+    handleRefreshWorkspaceFiles,
+    handleRefreshWorkspaceGit,
+    handleOpenDirectory,
+    handleReadFile,
+    handleOpenFileEditor,
+    handleCloseFilePreview,
+    handleOpenGitDiff,
+    handleOpenGitReview,
+    handlePrefetchGitDiff,
+    handleReadGitFileContent,
+    handleOpenSession,
+    handleCloseSession,
+    handleRenameSession,
+    handleKillTerminalSession,
+    handleOpenTerminalFiles,
+    handleTerminalInput,
+    handleTerminalResize,
+    handleCloseFileEditor,
+    handleEditorContentChange,
+    handleReloadEditorFile,
+    handleSaveEditorFile,
+  });
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView
-        style={styles.root}
-        edges={["top", "right", "bottom", "left"]}
-      >
-        <StatusBar barStyle="light-content" />
-        {showHeader ? (
-          <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
-            {canUseWorkspace ? (
-              <Text style={styles.subtitle}>
-                {getHeaderSubtitle(view, pairings.length, pairing, t)}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-
-        <View style={styles.content} onTouchStart={updateLastInteraction}>
-          {appLockScreen ? (
-            appLockScreen
-          ) : view === "pairing" ? (
-            <PairingScreen
-              errorMessage={pairingError}
-              initialPairing={editingPairing}
-              submitLabel={
-                editingPairing ? t("app.actions.saveDevice") : undefined
-              }
-              onCancel={pairings.length > 0 ? handleCancelPairing : undefined}
-              onPair={handlePair}
-            />
-          ) : view === "devices" ? (
-            <DeviceListScreen
-              pairings={pairings}
-              activePairing={pairing ?? undefined}
-              connectionStatus={connectionStatus}
-              connectionPath={connectionPath}
-              connectionMessage={connectionMessage}
-              onAddDevice={handleAddDevice}
-              onEditDevice={handleEditDevice}
-              onDeleteDevice={handleDeleteDevice}
-              onOpenDevice={handleOpenDevice}
-              onRefreshDevices={handleRefreshDevices}
-            />
-          ) : view === "messages" ? (
-            <AgentMessageInboxScreen
-              messages={agentMessages}
-              onRefresh={handleRefreshAgentMessages}
-              onOpenMessage={handleOpenAgentMessage}
-              onMarkRead={handleMarkAgentMessageRead}
-              onMarkHandled={handleMarkAgentMessageHandled}
-            />
-          ) : view === "settings" ? (
-            <SettingsScreen
-              terminalTextSize={terminalTextSize}
-              language={language}
-              agentNotificationsEnabled={agentNotificationSettings.enabled}
-              onChangeLanguage={handleChangeLanguage}
-              onChangeTerminalTextSize={handleChangeTerminalTextSize}
-              onChangeAgentNotifications={handleChangeAgentNotifications}
-              onOpenConnectionPreference={() => setView("connectionPreference")}
-              onOpenSecuritySettings={
-                appLockAvailable ? () => setView("securitySettings") : undefined
-              }
-            />
-          ) : view === "securitySettings" ? (
-            <SecuritySettingsScreen
-              config={appLockConfig}
-              pickerVisible={autoLockPickerVisible}
-              selectedAutoLockOption={selectedAutoLockOption}
-              onBack={() => setView("settings")}
-              onEnable={() => setGestureSetupMode("enable")}
-              onChangeGesture={() => setPendingSecurityAction("change")}
-              onDisable={() => setPendingSecurityAction("disable")}
-              onOpenAutoLockPicker={() => {
-                setSelectedAutoLockOption(appLockConfig.autoLockOption);
-                setAutoLockPickerVisible(true);
-              }}
-              onCloseAutoLockPicker={() => setAutoLockPickerVisible(false)}
-              onSelectAutoLockOption={setSelectedAutoLockOption}
-              onConfirmAutoLockOption={handleConfirmAutoLockOption}
-            />
-          ) : view === "connectionPreference" ? (
-            <ConnectionPreferenceScreen
-              transportPreference={transportPreference}
-              onChangeTransportPreference={handleChangeTransportPreference}
-              onBack={() => setView("settings")}
-            />
-          ) : view === "sessions" ||
-            view === "gitReview" ||
-            view === "terminal" ||
-            view === "terminalFiles" ||
-            view === "fileEditor" ? (
-            <>
-              <SessionListScreen
-                sessions={sessions}
-                providers={terminalProviders}
-                workspaces={workspaces}
-                providerPreferenceScope={pairing?.deviceId ?? "default"}
-                creating={creatingSession}
-                closingSessionIds={closingSessionIds}
-                killingSessionIds={killingSessionIds}
-                defaultCwd={defaultSessionCwd || sessions[0]?.cwd || ""}
-                fileRelativePath={fileRelativePath}
-                fileEntries={fileEntries}
-                selectedFilePath={selectedFilePath}
-                selectedFile={selectedFile}
-                filesLoading={filesLoading}
-                gitStatus={gitStatus}
-                gitDiff={gitDiff}
-                gitDiffCache={gitDiffCache}
-                gitFileContentCache={gitFileContentCache}
-                gitFileContentLoadingKeys={gitFileContentLoadingKeys}
-                gitLoading={gitLoading}
-                onBack={() => setView("devices")}
-                onRefreshSessions={handleRefreshSessions}
-                onCreateSession={handleCreateSession}
-                onOpenWorkspaceFiles={handleOpenWorkspaceFiles}
-                onOpenWorkspaceGit={handleOpenWorkspaceGit}
-                onRefreshWorkspaceFiles={handleRefreshWorkspaceFiles}
-                onRefreshWorkspaceGit={handleRefreshWorkspaceGit}
-                onOpenDirectory={handleOpenDirectory}
-                onReadFile={handleReadFile}
-                onEditFile={handleOpenFileEditor}
-                onCloseFilePreview={handleCloseFilePreview}
-                onOpenGitDiff={handleOpenGitDiff}
-                onOpenGitReview={handleOpenGitReview}
-                onPrefetchGitDiff={handlePrefetchGitDiff}
-                onReadGitFileContent={handleReadGitFileContent}
-                onOpenSession={handleOpenSession}
-                onCloseSession={handleCloseSession}
-                onRenameSession={handleRenameSession}
-                onKillTerminalSession={handleKillTerminalSession}
-              />
-              {view === "gitReview" && selectedWorkspace ? (
-                <View style={styles.fullScreenPage}>
-                  <GitStatusScreen
-                    workspace={selectedWorkspace}
-                    status={gitStatus}
-                    diff={gitDiff}
-                    diffCache={gitDiffCache}
-                    fileContentCache={gitFileContentCache}
-                    fileContentLoadingKeys={gitFileContentLoadingKeys}
-                    loading={gitDiffLoading}
-                    initialMode="review"
-                    initialPath={gitReviewPath}
-                    initialScope={gitReviewScope}
-                    onBack={() => setView("sessions")}
-                    onRefresh={() =>
-                      handleRefreshWorkspaceGit(selectedWorkspace)
-                    }
-                    onOpenDiff={handleOpenGitDiff}
-                    onEditFile={(relativePath) =>
-                      handleOpenFileEditor(selectedWorkspace, relativePath)
-                    }
-                    onPrefetchDiff={handlePrefetchGitDiff}
-                    onReadFileContent={handleReadGitFileContent}
-                  />
-                </View>
-              ) : null}
-              {(view === "terminal" || view === "terminalFiles") &&
-              selectedSession ? (
-                <View style={styles.fullScreenPage}>
-                  <TerminalScreen
-                    session={selectedSession}
-                    frame={selectedFrame}
-                    streamChunk={
-                      terminalStreamChunk?.surfaceId ===
-                      selectedSession.primary_surface_id
-                        ? terminalStreamChunk
-                        : undefined
-                    }
-                    connectionStatus={connectionStatus}
-                    statusLabel={connectionMessage}
-                    readOnlyReason={
-                      selectedSessionCapabilities?.canInput
-                        ? undefined
-                        : (selectedSessionCapabilities?.unavailableReason ??
-                          t("app.errors.readOnlySession"))
-                    }
-                    canInput={Boolean(selectedSessionCapabilities?.canInput)}
-                    canResize={Boolean(selectedSessionCapabilities?.canResize)}
-                    textSize={terminalTextSize}
-                    onBack={() => setView("sessions")}
-                    onOpenFiles={() => handleOpenTerminalFiles(selectedSession)}
-                    onChangeTextSize={handleChangeTerminalTextSize}
-                    onRefreshSessions={handleRefreshSessions}
-                    onInput={handleTerminalInput}
-                    onResize={handleTerminalResize}
-                  />
-                </View>
-              ) : null}
-              {view === "terminalFiles" && selectedWorkspace ? (
-                <Pressable
-                  style={styles.presentedBackdrop}
-                  onPress={() => setView("terminal")}
-                >
-                  <Pressable
-                    style={styles.presentedPage}
-                    onPress={(event) => event.stopPropagation()}
-                  >
-                    <FileBrowserScreen
-                      workspace={selectedWorkspace}
-                      relativePath={fileRelativePath}
-                      entries={fileEntries}
-                      selectedFilePath={selectedFilePath}
-                      file={selectedFile}
-                      loading={filesLoading}
-                      presentation="modal"
-                      onBack={() => setView("terminal")}
-                      onRefresh={() =>
-                        handleRefreshWorkspaceFiles(
-                          selectedWorkspace,
-                          fileRelativePath,
-                        )
-                      }
-                      onOpenDirectory={handleOpenDirectory}
-                      onReadFile={handleReadFile}
-                      onEditFile={(relativePath) =>
-                        handleOpenFileEditor(selectedWorkspace, relativePath)
-                      }
-                      onCloseFilePreview={handleCloseFilePreview}
-                    />
-                  </Pressable>
-                </Pressable>
-              ) : null}
-              {view === "fileEditor" && selectedWorkspace && fileEditorPath ? (
-                <View style={styles.fullScreenPage}>
-                  <FileEditorScreen
-                    workspace={selectedWorkspace}
-                    relativePath={fileEditorPath}
-                    file={editorFile}
-                    loading={editorLoading}
-                    saving={editorSaving}
-                    writeResult={lastFileWriteResult}
-                    onBack={handleCloseFileEditor}
-                    onContentChange={handleEditorContentChange}
-                    onReload={handleReloadEditorFile}
-                    onSave={handleSaveEditorFile}
-                  />
-                </View>
-              ) : null}
-            </>
-          ) : null}
-        </View>
-        {!appLockScreen && showPrimaryTabs ? (
-          <PrimaryTabBar
-            activeView={view}
-            unreadMessages={agentUnreadCount}
-            onChange={setView}
-          />
-        ) : null}
-        {!appLockScreen && agentMessageBanner ? (
-          <AgentMessageBanner
-            record={agentMessageBanner}
-            onDismiss={() => setAgentMessageBanner(null)}
-            onOpen={() => {
-              const record = agentMessageBanner;
-              setAgentMessageBanner(null);
-              if (record) {
-                handleOpenAgentMessage(record);
-              }
-            }}
-          />
-        ) : null}
-        <Modal
-          animationType="fade"
-          transparent
-          visible={Boolean(pendingEncryptedPairingLink)}
-          onRequestClose={handleEncryptedPairingCancel}
-        >
-          <View style={styles.encryptedPairingBackdrop}>
-            <View style={styles.encryptedPairingDialog}>
-              <Text style={styles.encryptedPairingTitle}>
-                {t("pairing.encrypted.title")}
-              </Text>
-              <Text style={styles.encryptedPairingText}>
-                {t("pairing.encrypted.description")}
-              </Text>
-              <TextInput
-                autoFocus
-                keyboardType="number-pad"
-                maxLength={4}
-                placeholder={t("pairing.encrypted.placeholder")}
-                placeholderTextColor="#64727c"
-                secureTextEntry
-                style={styles.encryptedPairingInput}
-                value={encryptedPairingPassword}
-                onChangeText={(value) => {
-                  setEncryptedPairingPassword(
-                    value.replace(/\D/g, "").slice(0, 4),
-                  );
-                  setEncryptedPairingError(undefined);
-                }}
-                onSubmitEditing={() => {
-                  void handleEncryptedPairingSubmit();
-                }}
-              />
-              {encryptedPairingError ? (
-                <Text style={styles.encryptedPairingError}>
-                  {encryptedPairingError}
-                </Text>
-              ) : null}
-              <View style={styles.encryptedPairingActions}>
-                <Button
-                  style={styles.encryptedPairingAction}
-                  variant="ghost"
-                  onPress={handleEncryptedPairingCancel}
-                >
-                  {t("common.cancel")}
-                </Button>
-                <Button
-                  disabled={encryptedPairingPassword.length !== 4}
-                  style={styles.encryptedPairingAction}
-                  tone="primary"
-                  variant="solid"
-                  onPress={() => {
-                    void handleEncryptedPairingSubmit();
-                  }}
-                >
-                  {t("pairing.encrypted.import")}
-                </Button>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <AppShell
+      title={title}
+      subtitle={
+        canUseWorkspace ? getHeaderSubtitle(view, pairings.length, pairing, t) : undefined
+      }
+      showHeader={showHeader}
+      showPrimaryTabs={!appLockScreen && showPrimaryTabs}
+      activeTab={view}
+      unreadMessages={agentUnreadCount}
+      agentMessageBanner={!appLockScreen ? (agentMessageBanner ?? undefined) : undefined}
+      encryptedPairingModal={{
+        visible: Boolean(pendingEncryptedPairingLink),
+        password: encryptedPairingPassword,
+        error: encryptedPairingError,
+        onPasswordChange: (password) => {
+          setEncryptedPairingPassword(password);
+          setEncryptedPairingError(undefined);
+        },
+        onSubmit: () => {
+          void handleEncryptedPairingSubmit();
+        },
+        onCancel: handleEncryptedPairingCancel,
+      }}
+      onContentTouchStart={updateLastInteraction}
+      onChangeTab={setView}
+      onDismissAgentMessageBanner={dismissAgentMessageBanner}
+      onOpenAgentMessageBanner={(record) => {
+        dismissAgentMessageBanner();
+        handleOpenAgentMessage(record);
+      }}
+    >
+          <AppRouter {...routerProps} />
+    </AppShell>
   );
-}
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#101417",
-  },
-  content: {
-    flex: 1,
-  },
-  fullScreenPage: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#101417",
-  },
-  presentedBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.34)",
-  },
-  presentedPage: {
-    flex: 1,
-    marginTop: 18,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    overflow: "hidden",
-    backgroundColor: "#101417",
-  },
-  encryptedPairingBackdrop: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.52)",
-  },
-  encryptedPairingDialog: {
-    width: "100%",
-    maxWidth: 420,
-    gap: 14,
-    borderRadius: 22,
-    borderColor: "#263037",
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 20,
-    backgroundColor: "#11181d",
-  },
-  encryptedPairingTitle: {
-    color: "#f5f7f8",
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  encryptedPairingText: {
-    color: "#94a3ad",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  encryptedPairingInput: {
-    borderRadius: 14,
-    borderColor: "#263037",
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: "#f5f7f8",
-    fontSize: 20,
-    fontWeight: "800",
-    letterSpacing: 8,
-    textAlign: "center",
-    backgroundColor: "#0d1317",
-  },
-  encryptedPairingError: {
-    color: "#ff8b8b",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  encryptedPairingActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  encryptedPairingAction: {
-    flex: 1,
-  },
-  loadingScreen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    color: "#94a3ad",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  appLockErrorScreen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 14,
-    paddingHorizontal: 32,
-  },
-  appLockErrorTitle: {
-    color: "#f5f7f8",
-    fontSize: 20,
-    fontWeight: "800",
-    textAlign: "center",
-  },
-  appLockErrorText: {
-    color: "#94a3ad",
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
-  },
-  header: {
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 10,
-    alignItems: "center",
-    borderBottomColor: "#263037",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  title: {
-    color: "#f5f7f8",
-    fontSize: 20,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: "#94a3ad",
-    fontSize: 12,
-    marginTop: 3,
-    textAlign: "center",
-  },
-  tabBar: {
-    flexDirection: "row",
-    borderTopColor: "#263037",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    backgroundColor: "#11181d",
-    paddingHorizontal: 18,
-    paddingTop: 8,
-    paddingBottom: 10,
-  },
-  tabButton: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-    minHeight: 46,
-    borderRadius: 12,
-  },
-  tabButtonActive: {
-    backgroundColor: "rgba(48, 196, 141, 0.12)",
-  },
-  tabButtonPressed: {
-    opacity: 0.85,
-  },
-  tabIconWrap: {
-    position: "relative",
-  },
-  tabBadge: {
-    position: "absolute",
-    top: -7,
-    right: -11,
-    minWidth: 17,
-    height: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    backgroundColor: "#f4c95d",
-  },
-  tabBadgeText: {
-    color: "#1b1300",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  tabLabel: {
-    color: "#94a3ad",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  tabLabelActive: {
-    color: "#30c48d",
-  },
-  messageBanner: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 76,
-    gap: 8,
-    padding: 14,
-    borderRadius: 18,
-    borderColor: "#34424c",
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: "#11181d",
-    shadowColor: "#000",
-    shadowOpacity: 0.32,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  messageBannerHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  messageBannerProvider: {
-    color: "#30c48d",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  messageBannerTitle: {
-    color: "#f5f7f8",
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  messageBannerSummary: {
-    color: "#94a3ad",
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  messageBannerActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  messageBannerAction: {
-    flex: 1,
-    alignItems: "center",
-    borderRadius: 12,
-    paddingVertical: 10,
-    backgroundColor: "rgba(48, 196, 141, 0.16)",
-  },
-  messageBannerActionText: {
-    color: "#30c48d",
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  messageBannerGhost: {
-    backgroundColor: "rgba(148, 163, 173, 0.16)",
-  },
-  messageBannerGhostText: {
-    color: "#d7dde2",
-  },
-});
-
-const PRIMARY_TABS: ReadonlyArray<{
-  icon: IconName;
-  value: PrimaryTabView;
-}> = [
-  { icon: "device", value: "devices" },
-  { icon: "message", value: "messages" },
-  { icon: "settings", value: "settings" },
-];
-
-function PrimaryTabBar({
-  activeView,
-  unreadMessages,
-  onChange,
-}: {
-  activeView: PrimaryTabView;
-  unreadMessages: number;
-  onChange(view: PrimaryTabView): void;
-}): JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <View style={styles.tabBar} accessibilityRole="tablist">
-      {PRIMARY_TABS.map((tab) => {
-        const selected = tab.value === activeView;
-        const tintColor = selected ? "#30c48d" : "#94a3ad";
-        const label = t(`app.tabs.${tab.value}`);
-        return (
-          <Pressable
-            key={tab.value}
-            accessibilityRole="tab"
-            accessibilityState={{ selected }}
-            accessibilityLabel={label}
-            style={({ pressed }) => [
-              styles.tabButton,
-              selected && styles.tabButtonActive,
-              pressed && styles.tabButtonPressed,
-            ]}
-            onPress={() => onChange(tab.value)}
-          >
-            <View style={styles.tabIconWrap}>
-              <Icon name={tab.icon} color={tintColor} size={20} />
-              {tab.value === "messages" && unreadMessages > 0 ? (
-                <View style={styles.tabBadge}>
-                  <Text style={styles.tabBadgeText}>
-                    {unreadMessages > 99 ? "99+" : unreadMessages}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={[styles.tabLabel, selected && styles.tabLabelActive]}>
-              {label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-function AgentMessageBanner({
-  record,
-  onDismiss,
-  onOpen,
-}: {
-  record: LocalAgentMessageRecord;
-  onDismiss(): void;
-  onOpen(): void;
-}): JSX.Element {
-  const { t } = useTranslation();
-  const message = record.message;
-  return (
-    <View style={styles.messageBanner} accessibilityRole="alert">
-      <View style={styles.messageBannerHeader}>
-        <Text style={styles.messageBannerProvider}>
-          {message.provider.toUpperCase()}
-        </Text>
-        <Pressable accessibilityRole="button" onPress={onDismiss}>
-          <Icon name="close" color="#94a3ad" size={18} />
-        </Pressable>
-      </View>
-      <Text style={styles.messageBannerTitle}>{message.title}</Text>
-      {message.summary ? (
-        <Text numberOfLines={2} style={styles.messageBannerSummary}>
-          {message.summary}
-        </Text>
-      ) : null}
-      <View style={styles.messageBannerActions}>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.messageBannerAction}
-          onPress={onOpen}
-        >
-          <Text style={styles.messageBannerActionText}>
-            {t("messages.open")}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          style={[styles.messageBannerAction, styles.messageBannerGhost]}
-          onPress={onDismiss}
-        >
-          <Text
-            style={[
-              styles.messageBannerActionText,
-              styles.messageBannerGhostText,
-            ]}
-          >
-            {t("messages.later")}
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function toGitDiffCacheKey(
-  relativePath: string | undefined,
-  scope: GitDiffScope,
-): string {
-  return `${scope}:${relativePath ?? ""}`;
-}
-
-function parseGitDiffCacheKey(
-  key: string | undefined,
-): { relativePath?: string; scope: GitDiffScope } | undefined {
-  if (!key) {
-    return undefined;
-  }
-  const separatorIndex = key.indexOf(":");
-  if (separatorIndex < 0) {
-    return undefined;
-  }
-  const scope = key.slice(0, separatorIndex) as GitDiffScope;
-  if (scope !== "all" && scope !== "staged" && scope !== "unstaged") {
-    return undefined;
-  }
-  const relativePath = key.slice(separatorIndex + 1);
-  return { scope, relativePath: relativePath || undefined };
-}
-
-function toWorkspaceFileKey(
-  workspacePath: string,
-  relativePath: string,
-): string {
-  return `${workspacePath}:${relativePath}`;
 }
 
 function getSessionFilesWorkspace(
@@ -3647,9 +682,4 @@ function isPathInside(path: string, parent: string): boolean {
 
 function basename(path: string): string {
   return path.split("/").filter(Boolean).at(-1) ?? path;
-}
-
-function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-  const { [key]: _removed, ...rest } = record;
-  return rest;
 }

@@ -24,6 +24,7 @@ import type {
 import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
+import { toGitDiffCacheKey } from "../../features/workspaces/workspaceKeys";
 
 type FileStatus = "modified" | "added" | "deleted" | "renamed" | "untracked";
 type GitViewMode = "overview" | "review";
@@ -1138,10 +1139,6 @@ function getCachedDiff(
     return fallback;
   }
   return undefined;
-}
-
-function toGitDiffCacheKey(relativePath: string | undefined, scope: GitDiffScope): string {
-  return `${scope}:${relativePath ?? ""}`;
 }
 
 function shouldUseUntrackedFileContentFallback(

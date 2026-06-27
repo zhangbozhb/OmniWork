@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { terminalFrameWatermarkAfterSnapshot } from "../src/app/terminalFrameWatermark.ts";
+import { terminalFrameWatermarkAfterSnapshot } from "../src/features/terminal/terminalFrameWatermark.ts";
 
 test("snapshot seq advances terminal frame watermark", () => {
   assert.equal(terminalFrameWatermarkAfterSnapshot(undefined, 10), 10);

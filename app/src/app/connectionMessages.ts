@@ -1,76 +1,3 @@
-import type { TerminalSession } from "@omniwork/protocol-ts";
-import type { PairingConfig } from "../features/auth/types";
-import type { AppView, PrimaryTabView } from "./appTypes";
-
-export function upsertSession(
-  sessions: TerminalSession[],
-  nextSession: TerminalSession,
-): TerminalSession[] {
-  const index = sessions.findIndex(
-    (session) => session.session_id === nextSession.session_id,
-  );
-  if (index < 0) {
-    return [nextSession, ...sessions];
-  }
-
-  const nextSessions = [...sessions];
-  nextSessions[index] = nextSession;
-  return nextSessions;
-}
-
-export function upsertPairing(
-  pairings: PairingConfig[],
-  nextPairing: PairingConfig,
-): PairingConfig[] {
-  const index = pairings.findIndex((pairing) =>
-    isSamePairing(pairing, nextPairing),
-  );
-  if (index < 0) {
-    return [...pairings, nextPairing];
-  }
-
-  const nextPairings = [...pairings];
-  nextPairings[index] = nextPairing;
-  return nextPairings;
-}
-
-export function isSamePairing(
-  left: PairingConfig,
-  right: PairingConfig,
-): boolean {
-  return left.relayUrl === right.relayUrl && left.deviceId === right.deviceId;
-}
-
-export function getPairingDisplayName(pairing: PairingConfig): string {
-  return pairing.displayName?.trim() || pairing.deviceId;
-}
-
-export function getHeaderSubtitle(
-  view: AppView,
-  deviceCount: number,
-  activePairing: PairingConfig | null,
-  t: (key: string, options?: Record<string, unknown>) => string,
-): string {
-  if (view === "devices") {
-    return t("app.subtitle.linkedDevices", { count: deviceCount });
-  }
-  if (view === "settings") {
-    return t("app.subtitle.globalPreferences");
-  }
-  if (view === "messages") {
-    return t("app.subtitle.agentMessages");
-  }
-  if (view === "connectionPreference") {
-    return t("app.subtitle.connectionSettings");
-  }
-
-  return activePairing ? getPairingDisplayName(activePairing) : "";
-}
-
-export function isPrimaryTabView(view: AppView): view is PrimaryTabView {
-  return view === "devices" || view === "messages" || view === "settings";
-}
-
 export function formatErrorMessage(
   error: unknown,
   fallback = "Unknown error",
@@ -87,12 +14,6 @@ export function formatErrorMessage(
   } catch {
     return fallback;
   }
-}
-
-export function isTransitionalSessionStatus(
-  status: TerminalSession["status"],
-): boolean {
-  return status === "created" || status === "starting";
 }
 
 export function formatRelayCloseMessage(event: {
