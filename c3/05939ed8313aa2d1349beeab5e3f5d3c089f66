@@ -1,0 +1,34 @@
+desktop/agent/src/core/terminalFramePusher.ts
+  s_a3409a0f90f538::t_a46ab027dd1b23 99-101
+desktop/agent/src/core/agentService.ts
+  s_a3409a0f90f538::t_1efd88ee867c90 1650-1653
+desktop/agent/src/core/sessionManager.ts
+  s_a3409a0f90f538::t_33a5ac2bf332d4 122-123,524
+  s_a3409a0f90f538::t_2a2011b62be5d2 36-37,121,124-130,201-203,205,264,273,294,300,321,332,342,368,382,400,411,422,488-523,525-528
+desktop/agent/package.json
+  s_a3409a0f90f538::t_8adf6a9beb6870 11,38
+desktop/agent/README.md
+  s_a3409a0f90f538::t_bd9cd0d60d8f35 18
+desktop/agent/tests/sessionManager-known-cache.test.ts
+  s_a3409a0f90f538::t_20bcf6df9ebb49 1-182
+desktop/agent/src/core/terminalStreamPusher.ts
+  s_a3409a0f90f538::t_228585dbfd07a5 77-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c305939ed8313aa2d1349beeab5e3f5d3c089f66",
+  "prompts": {},
+  "sessions": {
+    "s_a3409a0f90f538": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a3f3370244eee11ee9beed6",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": "zhangbozhb <zhangbozhb@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
