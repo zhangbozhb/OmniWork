@@ -1,4 +1,3 @@
-import { randomBytes, randomUUID } from "node:crypto";
 import {
   createServer,
   type IncomingMessage,
@@ -6,18 +5,11 @@ import {
 } from "node:http";
 import type { Socket } from "node:net";
 
-import geoip from "geoip-lite";
 import {
   createMessage,
-  isTransportPreference,
   parseMessageEnvelope,
   type AgentHelloPayload,
-  type AppConnectionObservation,
-  type AppInfoPayload,
   type AppNetworkChangedPayload,
-  type AuthFailedPayload,
-  type AuthOkPayload,
-  type BusinessSecurityMode,
   type AuthProofPayload,
   type E2EFailedPayload,
   type E2EHandshakeInitPayload,
@@ -33,10 +25,23 @@ import {
 import type { RelayServerConfig } from "./config.ts";
 import { createMailSender } from "./mailSender.ts";
 import { RelayAdminController } from "./relayAdminController.ts";
-import { verifyRelayDeviceSignature } from "./relayDeviceSignature.ts";
+import { RelayAgentSessionController } from "./relayAgentSessionController.ts";
+import { RelayConnectionRegistry } from "./relayConnectionRegistry.ts";
 import { RelayDeviceStatusStore } from "./relayDeviceStatusStore.ts";
 import { RelayE2EController } from "./relayE2EController.ts";
+import { RelayLifecycleController } from "./relayLifecycleController.ts";
 import { logRelayEvent, logUpgradeEvent } from "./relayLog.ts";
+import { RelayMessageRouter } from "./relayMessageRouter.ts";
+import { RelayMobileSessionController } from "./relayMobileSessionController.ts";
+import { RelayPairingController } from "./relayPairingController.ts";
+import {
+  createRelayObservation,
+  parseRelayEndpoint,
+  rejectWebSocketUpgrade,
+  relayAdminWebUrl,
+  resolveConnectionLocation,
+  resolveRemoteIp,
+} from "./relayNetworkIdentity.ts";
 import { RelayStateStore } from "./relayStateStore.ts";
 import { RelayUserAuthController } from "./relayUserAuthController.ts";
 import { RelayUserAuthStore } from "./relayUserAuthStore.ts";
@@ -45,38 +50,32 @@ import { RelayUpgradeOrchestrator } from "./upgrade/orchestrator.ts";
 import { acceptWebSocket } from "./websocket.ts";
 import type {
   PendingAuth,
-  RelayAppInfo,
   RelayConnection,
-  RelayConnectionLocation,
   RelayEndpoint,
-  RelayRoutedAppMessage,
-  RelaySocket,
 } from "./relayTypes.ts";
 
-interface AppDeliveryContext {
-  deviceId: string;
-  agentConnectionId: string;
-  appConnectionId: string;
-  expiresAt: number;
-}
+export { resolveRemoteIp } from "./relayNetworkIdentity.ts";
 
 export class RelayServer {
   private readonly config: RelayServerConfig;
-  private readonly connections = new Map<string, RelayConnection>();
-  private readonly agentsByDevice = new Map<string, Set<RelayConnection>>();
-  private readonly primaryAgentByDevice = new Map<string, RelayConnection>();
+  private readonly registry: RelayConnectionRegistry;
+  readonly connections: Map<string, RelayConnection>;
+  readonly agentsByDevice: Map<string, Set<RelayConnection>>;
+  readonly primaryAgentByDevice: Map<string, RelayConnection>;
   private readonly pendingAuth = new Map<string, PendingAuth>();
-  private readonly mobilesByDevice = new Map<string, Set<RelayConnection>>();
-  private readonly appDeliveryContexts = new Map<string, AppDeliveryContext>();
+  readonly mobilesByDevice: Map<string, Set<RelayConnection>>;
   private readonly state: RelayStateStore;
   private readonly userAuthStore: RelayUserAuthStore;
   private readonly userAuth: RelayUserAuthController;
   private readonly admin: RelayAdminController;
+  private readonly agentSessions: RelayAgentSessionController;
+  private readonly mobileSessions: RelayMobileSessionController;
+  private readonly pairing: RelayPairingController;
+  private readonly router: RelayMessageRouter;
+  private readonly lifecycle: RelayLifecycleController;
   private readonly e2e: RelayE2EController;
   private readonly authLimiter: TokenBucketLimiter;
   private readonly orchestrator: RelayUpgradeOrchestrator;
-  private deviceStatusFlushTimer: ReturnType<typeof setInterval> | null = null;
-  private lifecycleTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: RelayServerConfig) {
     this.config = config;
@@ -85,6 +84,19 @@ export class RelayServer {
         config.state.deviceStatusDbPath,
       ),
     });
+    this.registry = new RelayConnectionRegistry({
+      state: this.state,
+      pendingAuth: this.pendingAuth,
+      onRawMessage: (connection, raw) => this.handleRawMessage(connection, raw),
+      onAgentDisconnected: (deviceId) =>
+        this.orchestrator.notifyAgentDisconnected(deviceId),
+      onMobileDisconnected: (deviceId, connection) =>
+        this.orchestrator.notifyMobileDisconnected(deviceId, connection),
+    });
+    this.connections = this.registry.connections;
+    this.agentsByDevice = this.registry.agentsByDevice;
+    this.primaryAgentByDevice = this.registry.primaryAgentByDevice;
+    this.mobilesByDevice = this.registry.mobilesByDevice;
     this.userAuthStore = new RelayUserAuthStore(config.auth.dbPath);
     this.userAuth = new RelayUserAuthController({
       config,
@@ -95,7 +107,8 @@ export class RelayServer {
           trustProxy: this.config.admin.trustProxy,
           trustedProxyIps: this.config.admin.trustedProxyIps,
         }).ip,
-      revokeActiveDevice: (deviceId) => this.closeDeviceConnections(deviceId),
+      revokeActiveDevice: (deviceId) =>
+        this.registry.closeDeviceConnections(deviceId),
     });
     this.authLimiter = new TokenBucketLimiter({
       capacity: config.authRateLimit.capacity,
@@ -107,7 +120,13 @@ export class RelayServer {
       connections: this.connections,
       mobilesByDevice: this.mobilesByDevice,
       state: this.state,
-      unregister: (connection) => this.unregister(connection),
+      unregister: (connection) => this.registry.unregister(connection),
+    });
+    this.router = new RelayMessageRouter({
+      config,
+      registry: this.registry,
+      state: this.state,
+      send: (connection, message) => this.send(connection, message),
     });
     this.e2e = new RelayE2EController({
       protocolVersion: config.protocolVersion,
@@ -115,7 +134,7 @@ export class RelayServer {
       agentsByDevice: this.primaryAgentByDevice,
       send: (connection, message) => this.send(connection, message),
       routeMessage: (connection, message) =>
-        this.routeMessage(connection, message),
+        this.router.routeMessage(connection, message),
       notifyMobileAuthenticated: (deviceId, mobile) =>
         this.orchestrator.notifyMobileAuthenticated(deviceId, mobile),
     });
@@ -124,12 +143,45 @@ export class RelayServer {
       send: (conn, msg) => this.send(conn as RelayConnection, msg),
       getAgent: (deviceId) => this.primaryAgentByDevice.get(deviceId),
     });
+    this.agentSessions = new RelayAgentSessionController({
+      config,
+      admin: this.admin,
+      registry: this.registry,
+      state: this.state,
+      userAuthStore: this.userAuthStore,
+    });
+    this.mobileSessions = new RelayMobileSessionController({
+      config,
+      registry: this.registry,
+      state: this.state,
+      userAuth: this.userAuth,
+      userAuthStore: this.userAuthStore,
+      pendingAuth: this.pendingAuth,
+      send: (connection, message) => this.send(connection, message),
+    });
+    this.pairing = new RelayPairingController({
+      config,
+      registry: this.registry,
+      state: this.state,
+      pendingAuth: this.pendingAuth,
+      authLimiter: this.authLimiter,
+      orchestrator: this.orchestrator,
+      send: (connection, message) => this.send(connection, message),
+    });
+    this.lifecycle = new RelayLifecycleController({
+      config,
+      registry: this.registry,
+      state: this.state,
+      userAuthStore: this.userAuthStore,
+      pendingAuth: this.pendingAuth,
+      router: this.router,
+      send: (connection, message) => this.send(connection, message),
+    });
   }
 
   async start(): Promise<void> {
     const startupToken = this.admin.start();
-    this.startLifecycleSweeper();
-    this.startDeviceStatusFlusher();
+    this.lifecycle.start();
     const businessServer = createServer((request, response) =>
       this.handleBusinessHttp(request, response),
     );
@@ -161,7 +213,7 @@ export class RelayServer {
           endpoint === "mobile" && this.config.auth.mode === "email_link"
             ? this.userAuth.authenticateRequest(request)
             : null;
-        this.register(connection, endpoint, {
+        this.registry.register(connection, endpoint, {
           remoteIp: remoteIp.ip,
           location: resolveConnectionLocation(remoteIp.ip),
           observations: [createRelayObservation(request, remoteIp)],
@@ -315,76 +367,8 @@ export class RelayServer {
     response.end(JSON.stringify({ ok: true, upgrade_id: upgradeId }));
   }
 
-  private register(
-    socket: RelaySocket,
-    endpoint: RelayEndpoint,
-    options: {
-      remoteIp?: string;
-      userId?: string;
-      location?: RelayConnectionLocation;
-      observations?: AppConnectionObservation[];
-    } = {},
-  ): void {
-    const now = Date.now();
-    const connection: RelayConnection = {
-      id: `conn_${randomUUID()}`,
-      endpoint,
-      role: "unknown",
-      state: "socket_connected",
-      socket,
-      userId: options.userId,
-      authenticated: false,
-      remoteIp: options.remoteIp ?? "unknown",
-      location: options.location,
-      observations: options.observations ?? [],
-      connectedAt: now,
-      lastSeenAt: now,
-      authState: "none",
-      transportPath: "relay",
-    };
-    this.connections.set(connection.id, connection);
-    this.state.registerConnection(connection);
-
-    socket.onMessage((raw) => this.handleRawMessage(connection, raw));
-    socket.onClose(() => this.unregister(connection));
-  }
-
-  private unregister(connection: RelayConnection): void {
-    connection.state = "closed";
-    this.connections.delete(connection.id);
-    this.pendingAuth.delete(connection.id);
-    if (connection.role === "agent" && connection.deviceId) {
-      const agents = this.agentsByDevice.get(connection.deviceId);
-      agents?.delete(connection);
-      if (agents && agents.size === 0) {
-        this.agentsByDevice.delete(connection.deviceId);
-      }
-      if (this.primaryAgentByDevice.get(connection.deviceId) === connection) {
-        const next = agents?.values().next().value;
-        if (next) {
-          this.primaryAgentByDevice.set(connection.deviceId, next);
-        } else {
-          this.primaryAgentByDevice.delete(connection.deviceId);
-          this.orchestrator.notifyAgentDisconnected(connection.deviceId);
-        }
-      }
-    }
-    if (connection.role === "mobile" && connection.deviceId) {
-      this.mobilesByDevice.get(connection.deviceId)?.delete(connection);
-      this.orchestrator.notifyMobileDisconnected(
-        connection.deviceId,
-        connection,
-      );
-    }
-    this.state.closeConnection(connection);
-  }
-
   private closeDeviceConnections(deviceId: string): void {
-    for (const connection of this.connections.values()) {
-      if (connection.deviceId === deviceId) {
-        connection.socket.close(4403, "device_revoked");
-      }
-    }
+    this.registry.closeDeviceConnections(deviceId);
   }
 
   private handleRawMessage(connection: RelayConnection, raw: string): void {
@@ -525,240 +509,21 @@ export class RelayServer {
     connection: RelayConnection,
     message: MessageEnvelope<AgentHelloPayload>,
   ): void {
-    if (
-      this.admin.activeDisabledAgentInstance(message.payload.agent_instance_id)
-    ) {
-      connection.socket.close(4403, "agent_disabled");
-      return;
-    }
-    if (this.config.auth.mode === "email_link") {
-      const device = this.userAuthStore.getDevice(message.payload.device_id);
-      if (!device || device.revoked_at) {
-        connection.socket.close(4403, "device_not_registered");
-        return;
-      }
-      const verified = verifyRelayDeviceSignature({
-        publicKey: device.public_key,
-        hello: message.payload,
-        skewMs: this.config.auth.nonceTtlMs,
-      });
-      if (!verified.ok) {
-        connection.socket.close(4403, verified.reason);
-        return;
-      }
-      const nonceOk = this.userAuthStore.rememberNonce(
-        message.payload.device_id,
-        message.payload.relay_auth?.nonce ?? "",
-        this.config.auth.nonceTtlMs,
-      );
-      if (!nonceOk) {
-        connection.socket.close(4403, "replayed_nonce");
-        return;
-      }
-      connection.userId = device.user_id;
-      this.userAuthStore.markDeviceSeen(device.id);
-    }
-    connection.role = "agent";
-    connection.state = "registered_agent";
-    connection.deviceId = message.payload.device_id;
-    connection.agentInstanceId = message.payload.agent_instance_id;
-    connection.keyId = message.payload.key_id;
-    connection.businessSecurityMode =
-      message.payload.business_security_mode ?? "e2e_required";
-    connection.e2e = message.payload.e2e;
-    connection.authenticated = true;
-    connection.authState = "verified";
-    this.addAgentToDevice(message.payload.device_id, connection);
-    this.state.registerAgent(connection);
+    this.agentSessions.handleAgentHello(connection, message);
   }
 
   private handleMobileConnect(
     connection: RelayConnection,
     message: MessageEnvelope<MobileConnectPayload>,
   ): void {
-    const deviceId = message.payload.device_id;
-    if (this.config.auth.mode === "email_link") {
-      const user = this.userAuth.authenticateToken(
-        message.payload.session_token,
-      );
-      const device = this.userAuthStore.getDevice(deviceId);
-      const userId = user?.id ?? connection.userId;
-      if (
-        !userId ||
-        !device ||
-        device.revoked_at ||
-        device.user_id !== userId
-      ) {
-        connection.authState = "failed";
-        this.send(
-          connection,
-          createMessage<AuthFailedPayload>(
-            "auth.failed",
-            {
-              reason: "malformed_proof",
-              connection_id: connection.id,
-              retry_after_ms: 2000,
-            },
-            { device_id: deviceId },
-          ),
-        );
-        return;
-      }
-      connection.userId = userId;
-    }
-    const agent = this.getPrimaryAgent(deviceId);
-    connection.role = "mobile";
-    connection.state = "mobile_connected";
-    connection.deviceId = deviceId;
-    connection.authState = "pending";
-    const appInfo = appInfoFromMobileConnect(message.payload);
-    connection.appInfo = appInfo;
-
-    const rawPreference = message.payload.transport_preference;
-    if (isTransportPreference(rawPreference)) {
-      connection.transportPreference = rawPreference;
-    }
-    this.state.registerApp(connection);
-
-    if (!agent?.keyId) {
-      connection.authState = "failed";
-      this.send(
-        connection,
-        createMessage<AuthFailedPayload>(
-          "auth.failed",
-          {
-            reason: "device_not_online",
-            connection_id: connection.id,
-            retry_after_ms: 2000,
-          },
-          { device_id: deviceId },
-        ),
-      );
-      return;
-    }
-
-    const nonce = randomBytes(24).toString("base64url");
-    const expiresAt = Date.now() + this.config.state.pendingAuthTtlMs;
-    this.pendingAuth.set(connection.id, {
-      deviceId,
-      nonce,
-      keyId: agent.keyId,
-      appInfo,
-      expiresAt,
-    });
-
-    this.send(
-      connection,
-      createMessage(
-        "auth.challenge",
-        {
-          nonce,
-          key_id: agent.keyId,
-          expires_at: new Date(expiresAt).toISOString(),
-        },
-        { device_id: deviceId },
-      ),
-    );
+    this.mobileSessions.handleMobileConnect(connection, message);
   }
 
   private handleAuthProof(
     connection: RelayConnection,
     message: MessageEnvelope<AuthProofPayload>,
   ): void {
-    const pending = this.pendingAuth.get(connection.id);
-    const limiterKey = buildAuthRateLimitKey(
-      message.payload.key_id,
-      pending?.deviceId ?? connection.deviceId,
-      connection.remoteIp,
-    );
-
-    if (this.authLimiter.isBlocked(limiterKey)) {
-      logRelayEvent({
-        event: "auth.rate_limit",
-        key_id: message.payload.key_id,
-        device_id: pending?.deviceId ?? connection.deviceId,
-        remote_ip: connection.remoteIp,
-      });
-      this.send(
-        connection,
-        createMessage<AuthFailedPayload>(
-          "auth.failed",
-          {
-            reason: "too_many_attempts",
-            connection_id: connection.id,
-            retry_after_ms: this.config.authRateLimit.blockMs,
-          },
-          { device_id: connection.deviceId },
-        ),
-      );
-      connection.authState = "failed";
-      this.state.recordAuthFailed();
-      connection.socket.close(1008, "auth rate limit");
-      return;
-    }
-
-    if (
-      !pending ||
-      message.payload.nonce !== pending.nonce ||
-      message.payload.key_id !== pending.keyId ||
-      message.payload.app_info.instance_id !== pending.appInfo.instanceId ||
-      message.payload.app_info.runtime_id !== pending.appInfo.runtimeId
-    ) {
-      // 仅对失败的 proof 计数，避免合法重连/切偏好的连续 proof 把桶耗尽
-      // 触发 60s 误封禁。limiter.reset 在 auth.ok 时清零，所以正常路径
-      // 始终通过；这里 consume 的返回值已经被上面的 isBlocked 覆盖，忽略即可。
-      this.authLimiter.consume(limiterKey);
-      this.send(
-        connection,
-        createMessage<AuthFailedPayload>(
-          "auth.failed",
-          {
-            reason: "malformed_proof",
-            connection_id: connection.id,
-            retry_after_ms: 2000,
-          },
-          { device_id: connection.deviceId },
-        ),
-      );
-      connection.authState = "failed";
-      this.state.recordAuthFailed();
-      return;
-    }
-
-    const agent = this.getPrimaryAgent(pending.deviceId);
-    if (!agent) {
-      this.send(
-        connection,
-        createMessage<AuthFailedPayload>(
-          "auth.failed",
-          {
-            reason: "device_not_online",
-            connection_id: connection.id,
-            retry_after_ms: 2000,
-          },
-          { device_id: pending.deviceId },
-        ),
-      );
-      connection.authState = "failed";
-      this.state.recordAuthFailed();
-      return;
-    }
-
-    this.send(
-      agent,
-      createMessage(
-        "auth.verify",
-        {
-          key_id: message.payload.key_id,
-          nonce: message.payload.nonce,
-          app_info: appInfoToPayload(pending.appInfo),
-          proof: message.payload.proof,
-          connection_id: connection.id,
-          observations: connection.observations,
-        },
-        { device_id: pending.deviceId },
-      ),
-    );
+    this.pairing.handleAuthProof(connection, message);
   }
 
   private handleAppNetworkChanged(
@@ -798,261 +563,21 @@ export class RelayServer {
     connection: RelayConnection,
     message: MessageEnvelope,
   ): void {
-    if (connection.role !== "agent") {
-      return;
-    }
-
-    const payload = message.payload as AuthOkPayload | AuthFailedPayload;
-    const mobileConnectionId = payload.connection_id;
-    const mobile = mobileConnectionId
-      ? this.connections.get(mobileConnectionId)
-      : undefined;
-    if (!mobile) {
-      return;
-    }
-
-    const pending = this.pendingAuth.get(mobile.id);
-    this.pendingAuth.delete(mobile.id);
-    if (message.type === "auth.ok") {
-      const okPayload = message.payload as AuthOkPayload;
-      const agentMode = connection.businessSecurityMode ?? "e2e_required";
-      okPayload.business_security_mode ??= agentMode;
-      okPayload.e2e ??= connection.e2e;
-      mobile.authenticated = true;
-      mobile.authState = "verified";
-      mobile.state = "relay_pairing_verified";
-      this.state.authenticateApp(mobile, connection);
-      // 鉴权成功后释放限流计数，避免合法重连被旧失败拖累。
-      this.authLimiter.reset(
-        buildAuthRateLimitKey(pending?.keyId, mobile.deviceId, mobile.remoteIp),
-      );
-      if (mobile.deviceId) {
-        const mobiles =
-          this.mobilesByDevice.get(mobile.deviceId) ??
-          new Set<RelayConnection>();
-        mobiles.add(mobile);
-        this.mobilesByDevice.set(mobile.deviceId, mobiles);
-        if (agentMode === "plaintext_allowed") {
-          this.orchestrator.notifyMobileAuthenticated(mobile.deviceId, mobile);
-        }
-      }
-    } else if (message.type === "auth.failed") {
-      mobile.authState = "failed";
-      this.state.recordAuthFailed();
-      // agent 端确认 key 不匹配 → 这才是真实的鉴权失败，计入限流；
-      // 避免合法 proof 被一并消耗 token 触发 60s 误封禁。
-      this.authLimiter.consume(
-        buildAuthRateLimitKey(pending?.keyId, mobile.deviceId, mobile.remoteIp),
-      );
-    }
-
-    this.send(mobile, message);
+    this.pairing.handleAuthResult(connection, message);
   }
 
   private routeMessage(
     connection: RelayConnection,
     message: MessageEnvelope,
   ): void {
-    if (connection.role === "mobile") {
-      if (!connection.authenticated || !connection.deviceId) {
-        this.send(
-          connection,
-          createMessage<AuthFailedPayload>(
-            "auth.failed",
-            {
-              reason: "malformed_proof",
-              connection_id: connection.id,
-              retry_after_ms: 2000,
-            },
-            { device_id: connection.deviceId },
-          ),
-        );
-        return;
-      }
-
-      const agent = this.getPrimaryAgent(connection.deviceId);
-      if (agent) {
-        const relayContextId = this.rememberAppDeliveryContext({
-          deviceId: connection.deviceId,
-          agentConnectionId: agent.id,
-          appConnectionId: connection.id,
-        });
-        const routedMessage: RelayRoutedAppMessage = {
-          ...message,
-          device_id: connection.deviceId,
-          app_connection_id: connection.id,
-          relay_context_id: relayContextId,
-        };
-        this.send(agent, routedMessage);
-      } else {
-        this.state.recordRouteDropped();
-      }
-      return;
-    }
-
-    if (connection.role === "agent" && connection.deviceId) {
-      if (message.app_connection_id) {
-        const mobile = this.connections.get(message.app_connection_id);
-        if (mobile) {
-          this.send(mobile, message);
-        } else {
-          this.state.recordRouteDropped();
-        }
-        return;
-      }
-      const mobiles = this.mobilesByDevice.get(connection.deviceId);
-      if (!mobiles) {
-        this.state.recordRouteDropped();
-        return;
-      }
-      for (const mobile of mobiles) {
-        this.send(mobile, message);
-      }
-    }
+    this.router.routeMessage(connection, message);
   }
 
   private handleRelayAppDeliver(
     connection: RelayConnection,
     message: MessageEnvelope<RelayAppDeliverPayload>,
   ): void {
-    if (connection.role !== "agent" || !connection.deviceId) {
-      this.rejectInvalidState(connection, message.type);
-      return;
-    }
-
-    const context = this.takeAppDeliveryContext(
-      message.payload.relay_context_id,
-    );
-    if (
-      !context ||
-      context.deviceId !== connection.deviceId ||
-      context.agentConnectionId !== connection.id
-    ) {
-      this.sendProtocolError(
-        connection,
-        "route_not_found",
-        `No active App delivery context for "${message.payload.relay_context_id}".`,
-        false,
-      );
-      return;
-    }
-
-    const mobile = this.connections.get(context.appConnectionId);
-    if (
-      mobile?.role !== "mobile" ||
-      mobile.deviceId !== connection.deviceId ||
-      !mobile.authenticated
-    ) {
-      this.sendProtocolError(
-        connection,
-        "route_not_found",
-        `App delivery context "${message.payload.relay_context_id}" is no longer routable.`,
-        false,
-      );
-      return;
-    }
-
-    const delivery = message.payload.message;
-    this.send(
-      mobile,
-      createMessage(delivery.type, delivery.payload, {
-        id: delivery.id,
-        device_id: connection.deviceId,
-        session_id: delivery.session_id,
-        surface_id: delivery.surface_id,
-        seq: delivery.seq,
-        app_connection_id: mobile.id,
-      }),
-    );
-  }
-
-  private rememberAppDeliveryContext(input: {
-    deviceId: string;
-    agentConnectionId: string;
-    appConnectionId: string;
-  }): string {
-    this.cleanupExpiredAppDeliveryContexts();
-    const relayContextId = `relay_ctx_${randomUUID()}`;
-    this.appDeliveryContexts.set(relayContextId, {
-      deviceId: input.deviceId,
-      agentConnectionId: input.agentConnectionId,
-      appConnectionId: input.appConnectionId,
-      expiresAt: Date.now() + this.config.state.appContextTtlMs,
-    });
-    return relayContextId;
-  }
-
-  private takeAppDeliveryContext(
-    relayContextId: string,
-  ): AppDeliveryContext | null {
-    this.cleanupExpiredAppDeliveryContexts();
-    const context = this.appDeliveryContexts.get(relayContextId);
-    if (!context) {
-      return null;
-    }
-    this.appDeliveryContexts.delete(relayContextId);
-    return context;
-  }
-
-  private cleanupExpiredAppDeliveryContexts(now = Date.now()): void {
-    for (const [relayContextId, context] of this.appDeliveryContexts) {
-      if (context.expiresAt <= now) {
-        this.appDeliveryContexts.delete(relayContextId);
-      }
-    }
-  }
-
-  private startLifecycleSweeper(): void {
-    if (this.lifecycleTimer) {
-      return;
-    }
-    this.lifecycleTimer = setInterval(() => {
-      const now = Date.now();
-      this.state.sweep({
-        now,
-        offlineDeviceRetentionMs: this.config.state.deviceStatusRetentionMs,
-      });
-      this.cleanupExpiredPendingAuth(now);
-      this.cleanupExpiredAppDeliveryContexts(now);
-      this.userAuthStore.sweep(now);
-    }, this.config.state.sweepIntervalMs);
-    this.lifecycleTimer.unref?.();
-  }
-
-  private startDeviceStatusFlusher(): void {
-    if (this.deviceStatusFlushTimer) {
-      return;
-    }
-    this.deviceStatusFlushTimer = setInterval(() => {
-      this.state.flushDeviceStatus();
-    }, this.config.state.deviceStatusFlushIntervalMs);
-    this.deviceStatusFlushTimer.unref?.();
-  }
-
-  private cleanupExpiredPendingAuth(now = Date.now()): void {
-    for (const [connectionId, pending] of this.pendingAuth) {
-      if (pending.expiresAt > now) {
-        continue;
-      }
-      this.pendingAuth.delete(connectionId);
-      const connection = this.connections.get(connectionId);
-      if (connection?.role === "mobile" && !connection.authenticated) {
-        this.send(
-          connection,
-          createMessage<AuthFailedPayload>(
-            "auth.failed",
-            {
-              reason: "malformed_proof",
-              connection_id: connection.id,
-              retry_after_ms: 2000,
-            },
-            { device_id: connection.deviceId },
-          ),
-        );
-        connection.authState = "failed";
-        connection.socket.close(1008, "auth timeout");
-      }
-    }
+    this.router.handleRelayAppDeliver(connection, message);
   }
 
   private rejectInvalidState(connection: RelayConnection, type: string): void {
@@ -1109,20 +634,7 @@ export class RelayServer {
   private getPrimaryAgent(
     deviceId: string | undefined,
   ): RelayConnection | undefined {
-    return deviceId ? this.primaryAgentByDevice.get(deviceId) : undefined;
-  }
-
-  private addAgentToDevice(
-    deviceId: string,
-    connection: RelayConnection,
-  ): void {
-    const agents =
-      this.agentsByDevice.get(deviceId) ?? new Set<RelayConnection>();
-    agents.add(connection);
-    this.agentsByDevice.set(deviceId, agents);
-    if (!this.primaryAgentByDevice.has(deviceId)) {
-      this.primaryAgentByDevice.set(deviceId, connection);
-    }
+    return this.registry.getPrimaryAgent(deviceId);
   }
 
   private updateLinkForConnection(connection: RelayConnection): void {
@@ -1176,226 +688,4 @@ export class RelayServer {
     );
     return false;
   }
-}
-
-/**
- * 构造 auth.proof 限流键：(key_id, device_id, remote_ip)。
- * 任一字段缺失时使用 "_" 占位，确保未携带身份的连接也会被限流。
- */
-function buildAuthRateLimitKey(
-  keyId: string | undefined,
-  deviceId: string | undefined,
-  remoteIp: string | undefined,
-): string {
-  return [keyId ?? "_", deviceId ?? "_", remoteIp ?? "_"].join("|");
-}
-
-function appInfoFromMobileConnect(payload: MobileConnectPayload): RelayAppInfo {
-  return {
-    instanceId: payload.app_info.instance_id,
-    runtimeId: payload.app_info.runtime_id,
-    device: payload.app_info.device,
-    app: payload.app_info.app,
-  };
-}
-
-function appInfoToPayload(appInfo: RelayAppInfo): AppInfoPayload {
-  return {
-    instance_id: appInfo.instanceId,
-    runtime_id: appInfo.runtimeId,
-    device: appInfo.device,
-    app: appInfo.app,
-  };
-}
-
-type RelayIpSource = NonNullable<
-  NonNullable<AppConnectionObservation["network"]>["ip_source"]
->;
-
-interface ResolvedRemoteIp {
-  ip: string;
-  source: Extract<RelayIpSource, "x_forwarded_for" | "socket_remote_address">;
-}
-
-/**
- * 只有在请求来自可信反代时才使用 X-Forwarded-For；否则使用底层
- * socket.remoteAddress，避免客户端直连时伪造来源 IP。
- */
-export function resolveRemoteIp(
-  request: IncomingMessage,
-  socket: Socket,
-  options: {
-    trustProxy: boolean;
-    trustedProxyIps: Set<string>;
-  },
-): ResolvedRemoteIp {
-  const socketIp = normalizeIpLiteral(socket.remoteAddress ?? "unknown");
-  if (
-    options.trustProxy &&
-    isTrustedProxyIp(socketIp, options.trustedProxyIps)
-  ) {
-    const forwarded = request.headers["x-forwarded-for"];
-    if (typeof forwarded === "string" && forwarded.length > 0) {
-      const first = forwarded.split(",")[0]?.trim();
-      if (first) {
-        return { ip: normalizeIpLiteral(first), source: "x_forwarded_for" };
-      }
-    }
-    if (Array.isArray(forwarded) && forwarded.length > 0) {
-      const first = forwarded[0]?.split(",")[0]?.trim();
-      if (first) {
-        return { ip: normalizeIpLiteral(first), source: "x_forwarded_for" };
-      }
-    }
-  }
-  return {
-    ip: socketIp,
-    source: "socket_remote_address",
-  };
-}
-
-function isTrustedProxyIp(ip: string, trustedProxyIps: Set<string>): boolean {
-  for (const trustedIp of trustedProxyIps) {
-    if (normalizeIpLiteral(trustedIp) === ip) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function resolveConnectionLocation(
-  remoteIp: string,
-): RelayConnectionLocation | undefined {
-  const geo = geoip.lookup(normalizeIpForGeoLookup(remoteIp));
-  if (!geo || !Array.isArray(geo.ll) || geo.ll.length !== 2) {
-    return undefined;
-  }
-  const [latitude, longitude] = geo.ll;
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return undefined;
-  }
-  const countryCode = geo.country || undefined;
-  const country = countryCode ? countryName(countryCode) : undefined;
-  const city = geo.city || undefined;
-  const region = geo.region || undefined;
-  const accuracy = city ? "city" : region ? "region" : "country";
-  const label = [city, region && !city ? region : undefined, country]
-    .filter(Boolean)
-    .join(", ");
-  return {
-    location_id: [
-      accuracy,
-      slugLocationPart(countryCode ?? "unknown"),
-      slugLocationPart(region ?? "unknown"),
-      slugLocationPart(city ?? "unknown"),
-    ].join(":"),
-    label: label || countryCode || "Unknown Internet",
-    latitude,
-    longitude,
-    source: "geoip",
-    accuracy,
-    country_code: countryCode,
-    country,
-    region,
-    city,
-  };
-}
-
-function relayAdminWebUrl(host: string, port: number): string {
-  const displayHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
-  const urlHost = displayHost.includes(":") ? `[${displayHost}]` : displayHost;
-  return `http://${urlHost}:${port}/admin/web`;
-}
-
-function normalizeIpForGeoLookup(remoteIp: string): string {
-  return normalizeIpLiteral(remoteIp);
-}
-
-function normalizeIpLiteral(remoteIp: string): string {
-  const trimmed = remoteIp.trim().toLowerCase();
-  return trimmed.startsWith("::ffff:")
-    ? trimmed.slice("::ffff:".length)
-    : trimmed;
-}
-
-function countryName(countryCode: string): string {
-  try {
-    return (
-      new Intl.DisplayNames(["en"], { type: "region" }).of(countryCode) ??
-      countryCode
-    );
-  } catch {
-    return countryCode;
-  }
-}
-
-function slugLocationPart(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function createRelayObservation(
-  request: IncomingMessage,
-  remoteIp: ResolvedRemoteIp,
-): AppConnectionObservation {
-  const userAgent = request.headers["user-agent"];
-  const normalizedUserAgent =
-    typeof userAgent === "string" ? userAgent.trim() || undefined : undefined;
-  return {
-    source: "relay",
-    observed_at: new Date().toISOString(),
-    network: {
-      remote_ip: remoteIp.ip,
-      ip_source: remoteIp.source,
-    },
-    ...(normalizedUserAgent
-      ? { http: { user_agent: normalizedUserAgent } }
-      : {}),
-  };
-}
-
-function parseRelayEndpoint(request: IncomingMessage): RelayEndpoint | null {
-  const url = new URL(request.url ?? "/", "http://relay.local");
-  const pathname = normalizeRelayPathname(url.pathname);
-  if (pathname === "/relay/ws/agent") {
-    return "agent";
-  }
-  if (pathname === "/relay/ws/mobile") {
-    return "mobile";
-  }
-  return null;
-}
-
-function normalizeRelayPathname(pathname: string): string {
-  if (pathname.length > 1 && pathname.endsWith("/")) {
-    return pathname.slice(0, -1);
-  }
-
-  return pathname;
-}
-
-function rejectWebSocketUpgrade(
-  socket: Socket,
-  message: string,
-  statusCode = 404,
-): void {
-  const statusText = statusCode === 403 ? "Forbidden" : "Not Found";
-  const body = JSON.stringify({
-    error: statusCode === 403 ? message : "invalid_relay_path",
-    message,
-  });
-  socket.write(
-    [
-      `HTTP/1.1 ${statusCode} ${statusText}`,
-      "Content-Type: application/json",
-      `Content-Length: ${Buffer.byteLength(body)}`,
-      "Connection: close",
-      "",
-      body,
-    ].join("\r\n"),
-  );
-  socket.destroy();
 }
