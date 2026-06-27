@@ -83,6 +83,7 @@ import { AgentRelayPath, AgentSessionTransport } from "../transport/index.ts";
 import { UpgradeCoordinator } from "../transport/upgradeCoordinator.ts";
 import { createAgentWebRtcPeerAdapter } from "../transport/webRtcPeerAdapter.ts";
 import { AuthReplayCache } from "./authReplayCache.ts";
+import { createRelayDeviceAuth } from "./relayDeviceAuth.ts";
 import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 import { ResourceRequestHandler } from "./resourceRequestHandler.ts";
 import { SessionRequestHandler } from "./sessionRequestHandler.ts";
@@ -413,6 +414,15 @@ export class AgentService {
           device_id: this.config.deviceId,
           agent_instance_id: keyRecord.agent_instance_id,
           key_id: keyRecord.key_id,
+          ...(this.config.relayDevicePrivateKey
+            ? {
+                relay_auth: createRelayDeviceAuth({
+                  deviceId: this.config.deviceId,
+                  agentInstanceId: keyRecord.agent_instance_id,
+                  privateKeyPem: this.config.relayDevicePrivateKey,
+                }),
+              }
+            : {}),
           protocol: PROTOCOL_SUPPORT_V1,
           e2e: this.e2eSupport(),
           business_security_mode: this.config.businessSecurityMode,

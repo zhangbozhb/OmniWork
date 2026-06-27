@@ -123,6 +123,7 @@ export interface AgentHelloPayload {
   device_id: string;
   agent_instance_id: string;
   key_id: string;
+  relay_auth?: RelayAgentAuthPayload;
   protocol: ProtocolSupport;
   e2e: E2ESupport;
   business_security_mode?: BusinessSecurityMode;
@@ -132,6 +133,13 @@ export interface AgentHelloPayload {
   providers?: TerminalProviderDefinition[];
   workspaces?: WorkspaceDefinition[];
   capabilities: AgentCapability[];
+}
+
+export interface RelayAgentAuthPayload {
+  method: "device_signature";
+  timestamp: number;
+  nonce: string;
+  signature: string;
 }
 
 export type KnownAgentCapability =
@@ -197,6 +205,7 @@ export interface MobileConnectPayload {
   app_info: AppInfoPayload;
   protocol: ProtocolSupport;
   e2e: E2ESupport;
+  session_token?: string;
   /**
    * App 端显式声明的传输偏好，由 Relay 在 propose 守门时读取：
    * - "auto"（缺省）：跟随 Relay 灰度/黑名单/退避策略

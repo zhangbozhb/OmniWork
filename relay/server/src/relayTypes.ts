@@ -31,6 +31,7 @@ export interface RelayConnectionBase {
   role: RelayRole;
   state: RelayConnectionState;
   socket: RelaySocket;
+  userId?: string;
   deviceId?: string;
   agentInstanceId?: string;
   keyId?: string;

@@ -4,5 +4,6 @@ export interface PairingConfig {
   displayName?: string;
   key: string;
   keyId?: string;
+  relaySessionToken?: string;
   appInstanceId: string;
 }

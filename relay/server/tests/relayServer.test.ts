@@ -39,6 +39,11 @@ import type {
     config.state.deviceStatusDbPath,
     join(process.cwd(), ".omniwork-relay", "relay-device-status.sqlite"),
   );
+  assert.equal(config.auth.mode, "none");
+  assert.equal(
+    config.auth.dbPath,
+    join(process.cwd(), ".omniwork-relay", "relay-auth.sqlite"),
+  );
   assert.equal(config.admin.webEnabled, false);
   assert.equal(config.admin.host, "127.0.0.1");
   assert.equal(config.admin.port, 8788);
@@ -68,6 +73,7 @@ import type {
     config.state.deviceStatusDbPath,
     "/tmp/omniwork-relay-runtime/relay-device-status.sqlite",
   );
+  assert.equal(config.auth.dbPath, "/tmp/omniwork-relay-runtime/relay-auth.sqlite");
 }
 
 {
@@ -91,6 +97,34 @@ import type {
         OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS: "true",
       }),
     /admin listener must not share/,
+  );
+  assert.throws(
+    () =>
+      loadRelayServerConfig({
+        OMNIWORK_RELAY_HOST: "127.0.0.1",
+        OMNIWORK_RELAY_AUTH_MODE: "email_link",
+      }),
+    /OMNIWORK_PUBLIC_BASE_URL is required/,
+  );
+  assert.throws(
+    () =>
+      loadRelayServerConfig({
+        OMNIWORK_RELAY_HOST: "0.0.0.0",
+        OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS: "true",
+        OMNIWORK_RELAY_AUTH_MODE: "email_link",
+        OMNIWORK_PUBLIC_BASE_URL: "http://relay.example.com",
+        OMNIWORK_MAIL_FROM: "OmniWork <test@example.com>",
+      }),
+    /must use https/,
+  );
+  assert.equal(
+    loadRelayServerConfig({
+      OMNIWORK_RELAY_HOST: "127.0.0.1",
+      OMNIWORK_RELAY_AUTH_MODE: "email_link",
+      OMNIWORK_PUBLIC_BASE_URL: "http://127.0.0.1:8787",
+      OMNIWORK_MAIL_FROM: "OmniWork <test@example.com>",
+    }).auth.mail.provider,
+    "console",
   );
 }
 
@@ -455,6 +489,33 @@ type TestAgentConnection = TestRelayConnection & {
     code: 4403,
     reason: "agent_disabled",
   });
+}
+
+// 用户 revoke device 后应立即关闭该 device 的在线连接。
+{
+  const server = createServer();
+  const agent = createAgentConnection("conn_agent_revoked", "device_revoked");
+  const mobile = createMobileConnection("conn_mobile_revoked", "device_revoked");
+  const other = createAgentConnection("conn_agent_other", "device_other");
+  const internals = server as unknown as {
+    connections: Map<string, TestAgentConnection | TestRelayConnection>;
+    closeDeviceConnections(deviceId: string): void;
+  };
+  internals.connections.set(agent.id, agent);
+  internals.connections.set(mobile.id, mobile);
+  internals.connections.set(other.id, other);
+
+  internals.closeDeviceConnections("device_revoked");
+
+  assert.deepEqual(agent.socket.closed[0], {
+    code: 4403,
+    reason: "device_revoked",
+  });
+  assert.deepEqual(mobile.socket.closed[0], {
+    code: 4403,
+    reason: "device_revoked",
+  });
+  assert.equal(other.socket.closed.length, 0);
 }
 
 // IP 封禁应立即关闭匹配来源 IP 的现有连接。

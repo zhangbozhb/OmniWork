@@ -10,6 +10,11 @@ import {
 } from "@omniwork/protocol-ts";
 import type { TerminalSize } from "@omniwork/protocol-ts";
 import { resolveAgentDeviceId } from "./deviceIdentity.ts";
+import {
+  defaultRelayDeviceCredentialsPath,
+  readRelayDeviceCredentials,
+  type RelayDeviceCredentials,
+} from "./relayDeviceCredentials.ts";
 
 export interface AgentConfig {
   agentVersion: string;
@@ -17,6 +22,8 @@ export interface AgentConfig {
   hostname: string;
   displayName: string;
   relayUrl: string;
+  relayDeviceCredentialsPath: string;
+  relayDevicePrivateKey?: string;
   adminEnabled: boolean;
   adminHost: string;
   adminPort: number;
@@ -53,18 +60,29 @@ export function loadAgentConfig(
   const appSupportDir =
     env.OMNIWORK_APP_SUPPORT_DIR ??
     join(homedir(), "Library", "Application Support", "OmniWork", "agent");
-  const relayUrl = requireNonEmptyString(
-    env.OMNIWORK_RELAY_URL,
-    "OMNIWORK_RELAY_URL",
+  const relayDeviceCredentialsPath =
+    env.OMNIWORK_AGENT_RELAY_DEVICE_CREDENTIALS_PATH ??
+    defaultRelayDeviceCredentialsPath(appSupportDir);
+  const relayDeviceCredentials = readRelayDeviceCredentials(
+    relayDeviceCredentialsPath,
   );
+  const relayUrl =
+    env.OMNIWORK_RELAY_URL?.trim() ||
+    relayDeviceCredentials?.relayUrl ||
+    requireNonEmptyString(undefined, "OMNIWORK_RELAY_URL");
   const host = hostname();
 
   return {
     agentVersion: env.OMNIWORK_AGENT_VERSION ?? "0.1.0",
-    deviceId: resolveDeviceId(env),
+    deviceId: resolveDeviceId(env, relayDeviceCredentials),
     hostname: host,
     displayName: resolveAgentDisplayName(env, host),
     relayUrl,
+    relayDeviceCredentialsPath,
+    relayDevicePrivateKey:
+      env.OMNIWORK_AGENT_RELAY_DEVICE_PRIVATE_KEY?.replace(/\\n/g, "\n").trim() ||
+      relayDeviceCredentials?.privateKeyPem ||
+      undefined,
     adminEnabled: parseBoolean(env.OMNIWORK_AGENT_ADMIN_ENABLED, true),
     adminHost: env.OMNIWORK_AGENT_ADMIN_HOST ?? "127.0.0.1",
     adminPort: parsePositiveInteger(env.OMNIWORK_AGENT_ADMIN_PORT, 17668),
@@ -334,10 +352,16 @@ function readNonEmptyString(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
-function resolveDeviceId(env: NodeJS.ProcessEnv): string {
+function resolveDeviceId(
+  env: NodeJS.ProcessEnv,
+  credentials?: RelayDeviceCredentials | null,
+): string {
   const configuredDeviceId = env.OMNIWORK_DEVICE_ID?.trim();
   if (configuredDeviceId) {
     return configuredDeviceId;
+  }
+  if (credentials?.deviceId) {
+    return credentials.deviceId;
   }
 
   return resolveAgentDeviceId({

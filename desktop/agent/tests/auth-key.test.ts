@@ -63,6 +63,7 @@ const baseConfig: AgentConfig = {
   hostname: "test.local",
   displayName: "test",
   relayUrl: "wss://relay.example/relay/ws/agent",
+  relayDeviceCredentialsPath: join(dir, "relay-device.json"),
   adminEnabled: true,
   adminHost: "127.0.0.1",
   adminPort: 17668,

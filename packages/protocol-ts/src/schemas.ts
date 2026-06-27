@@ -282,12 +282,22 @@ const e2eSupportSchema = z
   })
   .strict();
 
+const relayAgentAuthPayloadSchema = z
+  .object({
+    method: z.literal("device_signature"),
+    timestamp: z.number().int().positive(),
+    nonce: z.string().min(16),
+    signature: z.string().min(1),
+  })
+  .strict();
+
 export const agentHelloPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     device_id: z.string().min(1),
     agent_instance_id: z.string().min(1),
     key_id: z.string().min(1),
+    relay_auth: relayAgentAuthPayloadSchema.optional(),
     protocol: protocolSupportSchema,
     e2e: e2eSupportSchema,
     business_security_mode: z
@@ -310,6 +320,7 @@ export const mobileConnectPayloadSchema = z
     app_info: appInfoPayloadSchema,
     protocol: protocolSupportSchema,
     e2e: e2eSupportSchema,
+    session_token: z.string().min(1).optional(),
     transport_preference: z
       .enum(["auto", "relay_only", "prefer_p2p"])
       .optional(),

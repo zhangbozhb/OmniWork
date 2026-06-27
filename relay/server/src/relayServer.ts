@@ -31,11 +31,15 @@ import {
 } from "@omniwork/protocol-ts";
 
 import type { RelayServerConfig } from "./config.ts";
+import { createMailSender } from "./mailSender.ts";
 import { RelayAdminController } from "./relayAdminController.ts";
+import { verifyRelayDeviceSignature } from "./relayDeviceSignature.ts";
 import { RelayDeviceStatusStore } from "./relayDeviceStatusStore.ts";
 import { RelayE2EController } from "./relayE2EController.ts";
 import { logRelayEvent, logUpgradeEvent } from "./relayLog.ts";
 import { RelayStateStore } from "./relayStateStore.ts";
+import { RelayUserAuthController } from "./relayUserAuthController.ts";
+import { RelayUserAuthStore } from "./relayUserAuthStore.ts";
 import { TokenBucketLimiter } from "./tokenBucket.ts";
 import { RelayUpgradeOrchestrator } from "./upgrade/orchestrator.ts";
 import { acceptWebSocket } from "./websocket.ts";
@@ -65,6 +69,8 @@ export class RelayServer {
   private readonly mobilesByDevice = new Map<string, Set<RelayConnection>>();
   private readonly appDeliveryContexts = new Map<string, AppDeliveryContext>();
   private readonly state: RelayStateStore;
+  private readonly userAuthStore: RelayUserAuthStore;
+  private readonly userAuth: RelayUserAuthController;
   private readonly admin: RelayAdminController;
   private readonly e2e: RelayE2EController;
   private readonly authLimiter: TokenBucketLimiter;
@@ -78,6 +84,18 @@ export class RelayServer {
       deviceStatusStore: new RelayDeviceStatusStore(
         config.state.deviceStatusDbPath,
       ),
+    });
+    this.userAuthStore = new RelayUserAuthStore(config.auth.dbPath);
+    this.userAuth = new RelayUserAuthController({
+      config,
+      store: this.userAuthStore,
+      mail: createMailSender(config),
+      resolveRemoteIp: (request) =>
+        resolveRemoteIp(request, request.socket as Socket, {
+          trustProxy: this.config.admin.trustProxy,
+          trustedProxyIps: this.config.admin.trustedProxyIps,
+        }).ip,
+      revokeActiveDevice: (deviceId) => this.closeDeviceConnections(deviceId),
     });
     this.authLimiter = new TokenBucketLimiter({
       capacity: config.authRateLimit.capacity,
@@ -139,10 +157,15 @@ export class RelayServer {
 
       const connection = acceptWebSocket(request, socket as Socket);
       if (connection) {
+        const user =
+          endpoint === "mobile" && this.config.auth.mode === "email_link"
+            ? this.userAuth.authenticateRequest(request)
+            : null;
         this.register(connection, endpoint, {
           remoteIp: remoteIp.ip,
           location: resolveConnectionLocation(remoteIp.ip),
           observations: [createRelayObservation(request, remoteIp)],
+          userId: user?.id,
         });
       }
     });
@@ -196,6 +219,17 @@ export class RelayServer {
     request: IncomingMessage,
     response: ServerResponse,
   ): void {
+    const url = new URL(request.url ?? "/", "http://relay.local");
+    if (this.userAuth.matches(url.pathname)) {
+      this.userAuth.handle(request, response, url).catch((error: unknown) => {
+        this.writeJson(response, 500, {
+          error: "internal_error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+      return;
+    }
+
     if (request.url === "/healthz" || request.url === "/readyz") {
       this.writeJson(response, 200, { ok: true });
       return;
@@ -286,6 +320,7 @@ export class RelayServer {
     endpoint: RelayEndpoint,
     options: {
       remoteIp?: string;
+      userId?: string;
       location?: RelayConnectionLocation;
       observations?: AppConnectionObservation[];
     } = {},
@@ -297,6 +332,7 @@ export class RelayServer {
       role: "unknown",
       state: "socket_connected",
       socket,
+      userId: options.userId,
       authenticated: false,
       remoteIp: options.remoteIp ?? "unknown",
       location: options.location,
@@ -341,6 +377,14 @@ export class RelayServer {
       );
     }
     this.state.closeConnection(connection);
+  }
+
+  private closeDeviceConnections(deviceId: string): void {
+    for (const connection of this.connections.values()) {
+      if (connection.deviceId === deviceId) {
+        connection.socket.close(4403, "device_revoked");
+      }
+    }
   }
 
   private handleRawMessage(connection: RelayConnection, raw: string): void {
@@ -487,6 +531,33 @@ export class RelayServer {
       connection.socket.close(4403, "agent_disabled");
       return;
     }
+    if (this.config.auth.mode === "email_link") {
+      const device = this.userAuthStore.getDevice(message.payload.device_id);
+      if (!device || device.revoked_at) {
+        connection.socket.close(4403, "device_not_registered");
+        return;
+      }
+      const verified = verifyRelayDeviceSignature({
+        publicKey: device.public_key,
+        hello: message.payload,
+        skewMs: this.config.auth.nonceTtlMs,
+      });
+      if (!verified.ok) {
+        connection.socket.close(4403, verified.reason);
+        return;
+      }
+      const nonceOk = this.userAuthStore.rememberNonce(
+        message.payload.device_id,
+        message.payload.relay_auth?.nonce ?? "",
+        this.config.auth.nonceTtlMs,
+      );
+      if (!nonceOk) {
+        connection.socket.close(4403, "replayed_nonce");
+        return;
+      }
+      connection.userId = device.user_id;
+      this.userAuthStore.markDeviceSeen(device.id);
+    }
     connection.role = "agent";
     connection.state = "registered_agent";
     connection.deviceId = message.payload.device_id;
@@ -506,6 +577,35 @@ export class RelayServer {
     message: MessageEnvelope<MobileConnectPayload>,
   ): void {
     const deviceId = message.payload.device_id;
+    if (this.config.auth.mode === "email_link") {
+      const user = this.userAuth.authenticateToken(
+        message.payload.session_token,
+      );
+      const device = this.userAuthStore.getDevice(deviceId);
+      const userId = user?.id ?? connection.userId;
+      if (
+        !userId ||
+        !device ||
+        device.revoked_at ||
+        device.user_id !== userId
+      ) {
+        connection.authState = "failed";
+        this.send(
+          connection,
+          createMessage<AuthFailedPayload>(
+            "auth.failed",
+            {
+              reason: "malformed_proof",
+              connection_id: connection.id,
+              retry_after_ms: 2000,
+            },
+            { device_id: deviceId },
+          ),
+        );
+        return;
+      }
+      connection.userId = userId;
+    }
     const agent = this.getPrimaryAgent(deviceId);
     connection.role = "mobile";
     connection.state = "mobile_connected";
@@ -914,6 +1014,7 @@ export class RelayServer {
       });
       this.cleanupExpiredPendingAuth(now);
       this.cleanupExpiredAppDeliveryContexts(now);
+      this.userAuthStore.sweep(now);
     }, this.config.state.sweepIntervalMs);
     this.lifecycleTimer.unref?.();
   }

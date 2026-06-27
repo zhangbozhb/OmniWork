@@ -40,6 +40,16 @@
 
 ## 3. 升级流程
 
+### 3.0 可选用户与设备归属
+
+Relay 用户体系是可选控制面能力，默认 `OMNIWORK_RELAY_AUTH_MODE=none`，保持现有本地/内网使用方式。开启 `OMNIWORK_RELAY_AUTH_MODE=email_link` 后：
+
+- 用户通过 Relay 网站 `/auth/` 进行邮箱 magic link 注册/登录，邮件发送支持本地 `console` 与 SMTP；非 loopback host 必须配置 HTTPS `OMNIWORK_PUBLIC_BASE_URL`，且不能使用 `console` provider。
+- Relay 使用 SQLite 保存 user/session/device/enrollment/nonce，默认路径为 `<OMNIWORK_RELAY_RUNTIME_DIR>/relay-auth.sqlite`。
+- Agent 首次设备登记通过网站生成的短期 enrollment token 完成：`omniwork-agent enroll` 自动生成 Ed25519 keypair、提交 public key、保存 Relay 分配的 `device_id` 和本地 private key；后续 `agent.hello.payload.relay_auth` 必须签名 `device_id|agent_instance_id|timestamp|nonce`。
+- App 的 `mobile.connect.payload.session_token` 必须属于目标 device 的 owner user，否则 Relay 在进入 App-Agent 鉴权前拒绝连接。
+- 该能力只约束 Relay 控制面身份与设备归属，不改变 App-Agent 业务 E2E 边界，Relay 仍不解析业务 payload。
+
 ### 3.1 触发
 
 - 安全态：App 通过 `mobile.connect` + `auth.proof` 完成 Relay 接入鉴权后，默认业务安全模式由 App-Agent 继续完成 E2E 握手，并通过 `e2e.message` 承载业务消息；Relay 不解析、不裁决业务 payload。

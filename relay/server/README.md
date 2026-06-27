@@ -52,6 +52,23 @@ OMNIWORK_RELAY_DEVICE_STATUS_FLUSH_INTERVAL_MS=5000
 OMNIWORK_RELAY_STATE_SWEEP_INTERVAL_MS=30000
 OMNIWORK_RELAY_PENDING_AUTH_TTL_MS=60000
 OMNIWORK_RELAY_APP_CONTEXT_TTL_MS=16000
+OMNIWORK_RELAY_AUTH_MODE=none
+OMNIWORK_PUBLIC_BASE_URL=
+OMNIWORK_RELAY_AUTH_DB_PATH=
+OMNIWORK_MAIL_PROVIDER=console
+OMNIWORK_MAIL_FROM=
+OMNIWORK_SMTP_HOST=smtp.gmail.com
+OMNIWORK_SMTP_PORT=587
+OMNIWORK_SMTP_SECURE=false
+OMNIWORK_SMTP_USER=
+OMNIWORK_SMTP_PASS=
+OMNIWORK_AUTH_EMAIL_LINK_TTL_MS=900000
+OMNIWORK_AUTH_SESSION_TTL_MS=2592000000
+OMNIWORK_AUTH_DEVICE_ENROLL_TTL_MS=300000
+OMNIWORK_AUTH_NONCE_TTL_MS=300000
+OMNIWORK_AUTH_EMAIL_RATE_LIMIT_PER_HOUR=3
+OMNIWORK_AUTH_IP_RATE_LIMIT_PER_HOUR=10
+OMNIWORK_AUTH_MAX_DEVICES_PER_USER=10
 ```
 
 ### Plaintext WS and E2E
@@ -67,6 +84,59 @@ non-loopback host must explicitly set `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`.
 business encryption is no longer enforced globally by the relay. `wss://` is
 still recommended to reduce network metadata exposure, but it is not the
 business security boundary.
+
+### Optional user registration
+
+User registration is disabled by default with `OMNIWORK_RELAY_AUTH_MODE=none`.
+In this mode Relay keeps the current behavior and does not require mail
+configuration.
+
+Set `OMNIWORK_RELAY_AUTH_MODE=email_link` to enable email-link login and
+device ownership checks. Startup then requires `OMNIWORK_PUBLIC_BASE_URL` and
+`OMNIWORK_MAIL_FROM`; non-loopback hosts must use an HTTPS public base URL and
+cannot use the `console` mail provider. `OMNIWORK_MAIL_PROVIDER=smtp` also
+requires SMTP host, port, user and password. A personal Gmail account with an
+App Password can be used for low-volume deployments.
+
+Users register and manage device enrollment from the Relay website:
+
+```text
+https://relay.example.com/auth/
+```
+
+The page sends the email magic link, stores the login cookie after verification,
+and creates a short-lived device token. The Desktop Agent can consume that token:
+
+```sh
+omniwork-agent enroll \
+  --relay-url wss://relay.example.com/relay/ws/agent \
+  --token <device-enrollment-token>
+```
+
+The enrollment command generates an Ed25519 key pair, registers the public key
+with Relay, and stores the local private key plus Relay-owned `device_id` in
+`<OMNIWORK_APP_SUPPORT_DIR>/relay-device.json`.
+
+Auth data is stored in `OMNIWORK_RELAY_AUTH_DB_PATH` (default
+`<OMNIWORK_RELAY_RUNTIME_DIR>/relay-auth.sqlite`). Public endpoints:
+
+- `POST /auth/email/start` — body `{ "email": "user@example.com" }`; sends a
+  magic login link and always returns `202` for rate-limited valid requests.
+- `GET /auth/email/verify?token=...` — consumes the one-time link, creates the
+  user if needed, and returns a session token while also setting a cookie.
+- `GET /auth/me`, `POST /auth/logout` — session inspection and logout.
+- `POST /auth/devices/enrollments` — authenticated user creates a short-lived
+  device enrollment token.
+- `POST /auth/devices` — Agent/client exchanges an enrollment token and
+  Ed25519 public key for a Relay-owned `device_id`.
+- `GET /auth/devices`, `POST /auth/devices/:device_id/revoke` — list and
+  revoke user devices.
+
+When enabled, `agent.hello` must include a `relay_auth.device_signature`
+signature over `device_id|agent_instance_id|timestamp|nonce`, verified against
+the registered device public key. `mobile.connect` must include a user
+`session_token`, and Relay only allows access when the session user owns the
+target device.
 
 ### auth.proof rate limiting
 

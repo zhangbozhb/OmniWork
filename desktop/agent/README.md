@@ -84,6 +84,24 @@ Provider metadata is sent to the App through `agent.hello` and `session.list`,
 so the App can display and create configured providers without hardcoded
 Codex/Claude/Gemini assumptions.
 
+When Relay is started with `OMNIWORK_RELAY_AUTH_MODE=email_link`, the Agent
+must send device-signature auth in `agent.hello`. Register on the Relay website
+at `/auth/`, create a device token, then run:
+
+```sh
+omniwork-agent enroll \
+  --relay-url wss://relay.example.com/relay/ws/agent \
+  --token <device-enrollment-token>
+```
+
+The command generates an Ed25519 key pair and stores `relayUrl`, Relay-owned
+`deviceId`, and the local private key in
+`<OMNIWORK_APP_SUPPORT_DIR>/relay-device.json`. Later Agent starts read that file
+automatically. `OMNIWORK_RELAY_URL`, `OMNIWORK_DEVICE_ID`, and
+`OMNIWORK_AGENT_RELAY_DEVICE_PRIVATE_KEY` can still override the stored values.
+If no stored key or private-key environment variable is present, the Agent keeps
+the legacy hello format for relays running with `OMNIWORK_RELAY_AUTH_MODE=none`.
+
 Workspaces are not configured provider lists. The 桌面端 Agent discovers them from
 the current working directories of managed sessions and existing tmux sessions.
 When a session cwd is inside a Git repository, the workspace is promoted to the

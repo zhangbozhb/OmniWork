@@ -99,6 +99,9 @@ export class MobileRelaySession {
           app_info: appInfo,
           protocol: PROTOCOL_SUPPORT_V1,
           e2e: E2E_SUPPORT_V1,
+          ...(this.pairing.relaySessionToken
+            ? { session_token: this.pairing.relaySessionToken }
+            : {}),
           ...(this.options.transportPreference
             ? { transport_preference: this.options.transportPreference }
             : {}),

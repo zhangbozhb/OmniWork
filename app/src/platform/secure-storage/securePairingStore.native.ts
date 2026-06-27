@@ -46,6 +46,7 @@ function normalizePairingConfig(
     displayName: pairing.displayName?.trim() || undefined,
     key: pairing.key ?? "",
     keyId: pairing.keyId,
+    relaySessionToken: pairing.relaySessionToken,
     appInstanceId: pairing.appInstanceId ?? createAppInstanceId(),
   };
 }

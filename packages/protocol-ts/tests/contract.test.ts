@@ -217,6 +217,12 @@ describe("agent hello security mode", () => {
       device_id: "device-1",
       agent_instance_id: "agent-1",
       key_id: "key-1",
+      relay_auth: {
+        method: "device_signature",
+        timestamp: Date.now(),
+        nonce: "nonce-12345678901234567890",
+        signature: "signature",
+      },
       protocol: PROTOCOL_SUPPORT_V1,
       e2e: E2E_SUPPORT_V1,
       business_security_mode: "e2e_required",
@@ -440,6 +446,7 @@ describe("app client metadata payload schemas", () => {
         },
         protocol: PROTOCOL_SUPPORT_V1,
         e2e: E2E_SUPPORT_V1,
+        session_token: "session-token",
       }),
     );
     appConnectionHeartbeatPayloadSchema.parse({

@@ -69,6 +69,29 @@ export interface RelayServerConfig {
     pendingAuthTtlMs: number;
     appContextTtlMs: number;
   };
+  auth: {
+    mode: "none" | "email_link";
+    publicBaseUrl?: string;
+    dbPath: string;
+    emailLinkTtlMs: number;
+    sessionTtlMs: number;
+    deviceEnrollmentTtlMs: number;
+    nonceTtlMs: number;
+    emailRateLimitPerHour: number;
+    ipRateLimitPerHour: number;
+    maxDevicesPerUser: number;
+    mail: {
+      provider: "console" | "smtp";
+      from?: string;
+      smtp?: {
+        host: string;
+        port: number;
+        secure: boolean;
+        user: string;
+        pass: string;
+      };
+    };
+  };
   /** 升级编排器配置。阶段 4 引入。 */
   upgrade: UpgradeOrchestratorConfig;
 }
@@ -106,6 +129,45 @@ export function loadRelayServerConfig(
       `[omniwork-relay] admin listener must not share the business listener ${host}:${adminPort}. ` +
         `Set OMNIWORK_RELAY_ADMIN_PORT to a separate local port.`,
     );
+  }
+  const authMode = parseAuthMode(env.OMNIWORK_RELAY_AUTH_MODE);
+  const publicBaseUrl = optionalNonEmpty(env.OMNIWORK_PUBLIC_BASE_URL);
+  const mailProvider = parseMailProvider(env.OMNIWORK_MAIL_PROVIDER);
+  const mailFrom = optionalNonEmpty(env.OMNIWORK_MAIL_FROM);
+  const smtpHost = optionalNonEmpty(env.OMNIWORK_SMTP_HOST);
+  const smtpUser = optionalNonEmpty(env.OMNIWORK_SMTP_USER);
+  const smtpPass = optionalNonEmpty(env.OMNIWORK_SMTP_PASS);
+  const smtpPort = parseNumber(env.OMNIWORK_SMTP_PORT, 587);
+  const smtpSecure = parseBoolean(env.OMNIWORK_SMTP_SECURE, false);
+
+  if (authMode === "email_link") {
+    if (!publicBaseUrl) {
+      throw new RelayConfigError(
+        "[omniwork-relay] OMNIWORK_PUBLIC_BASE_URL is required when OMNIWORK_RELAY_AUTH_MODE=email_link.",
+      );
+    }
+    if (!mailFrom) {
+      throw new RelayConfigError(
+        "[omniwork-relay] OMNIWORK_MAIL_FROM is required when OMNIWORK_RELAY_AUTH_MODE=email_link.",
+      );
+    }
+    if (!isLoopbackHost(host)) {
+      if (!publicBaseUrl.startsWith("https://")) {
+        throw new RelayConfigError(
+          "[omniwork-relay] OMNIWORK_PUBLIC_BASE_URL must use https on non-loopback hosts when user auth is enabled.",
+        );
+      }
+      if (mailProvider === "console") {
+        throw new RelayConfigError(
+          "[omniwork-relay] OMNIWORK_MAIL_PROVIDER=console is only allowed on loopback hosts.",
+        );
+      }
+    }
+    if (mailProvider === "smtp" && (!smtpHost || !smtpUser || !smtpPass)) {
+      throw new RelayConfigError(
+        "[omniwork-relay] SMTP host, user and pass are required when OMNIWORK_MAIL_PROVIDER=smtp.",
+      );
+    }
   }
 
   return {
@@ -180,6 +242,52 @@ export function loadRelayServerConfig(
         16_000,
       ),
     },
+    auth: {
+      mode: authMode,
+      publicBaseUrl,
+      dbPath:
+        optionalNonEmpty(env.OMNIWORK_RELAY_AUTH_DB_PATH) ??
+        join(runtimeDir, "relay-auth.sqlite"),
+      emailLinkTtlMs: parseNumber(
+        env.OMNIWORK_AUTH_EMAIL_LINK_TTL_MS,
+        900_000,
+      ),
+      sessionTtlMs: parseNumber(
+        env.OMNIWORK_AUTH_SESSION_TTL_MS,
+        2_592_000_000,
+      ),
+      deviceEnrollmentTtlMs: parseNumber(
+        env.OMNIWORK_AUTH_DEVICE_ENROLL_TTL_MS,
+        300_000,
+      ),
+      nonceTtlMs: parseNumber(env.OMNIWORK_AUTH_NONCE_TTL_MS, 300_000),
+      emailRateLimitPerHour: parseNumber(
+        env.OMNIWORK_AUTH_EMAIL_RATE_LIMIT_PER_HOUR,
+        3,
+      ),
+      ipRateLimitPerHour: parseNumber(
+        env.OMNIWORK_AUTH_IP_RATE_LIMIT_PER_HOUR,
+        10,
+      ),
+      maxDevicesPerUser: parseNumber(
+        env.OMNIWORK_AUTH_MAX_DEVICES_PER_USER,
+        10,
+      ),
+      mail: {
+        provider: mailProvider,
+        from: mailFrom,
+        smtp:
+          mailProvider === "smtp"
+            ? {
+                host: smtpHost ?? "",
+                port: smtpPort,
+                secure: smtpSecure,
+                user: smtpUser ?? "",
+                pass: smtpPass ?? "",
+              }
+            : undefined,
+      },
+    },
     upgrade: {
       enabled: parseBoolean(env.OMNIWORK_UPGRADE_ENABLED, true),
       rolloutPercent: parseRolloutPercent(env.OMNIWORK_UPGRADE_ROLLOUT, 100),
@@ -211,6 +319,32 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
     return false;
   }
   return fallback;
+}
+
+function parseAuthMode(value: string | undefined): "none" | "email_link" {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "none") {
+    return "none";
+  }
+  if (normalized === "email_link") {
+    return "email_link";
+  }
+  throw new RelayConfigError(
+    `[omniwork-relay] unsupported OMNIWORK_RELAY_AUTH_MODE "${value}". Use none or email_link.`,
+  );
+}
+
+function parseMailProvider(value: string | undefined): "console" | "smtp" {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "console") {
+    return "console";
+  }
+  if (normalized === "smtp") {
+    return "smtp";
+  }
+  throw new RelayConfigError(
+    `[omniwork-relay] unsupported OMNIWORK_MAIL_PROVIDER "${value}". Use console or smtp.`,
+  );
 }
 
 function parseNumber(value: string | undefined, fallback: number): number {
