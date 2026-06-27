@@ -1647,7 +1647,10 @@ export class AgentService {
     if (!message.surface_id) {
       return undefined;
     }
-    return this.sessionManager.getBySurfaceId(message.surface_id);
+    return (
+      this.sessionManager.getKnownBySurfaceId(message.surface_id) ??
+      (await this.sessionManager.getBySurfaceId(message.surface_id))
+    );
   }
 
   private async handleMissingTmuxTarget(

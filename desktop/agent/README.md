@@ -15,7 +15,7 @@ TypeScript/Node.js 桌面端 Agent for managing Terminal provider TUI sessions.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.
 - Provides workspace file listing/reading/writing for supported UTF-8 text files, plus read-only Git status/diff messages.
 - Runs a local Agent Probe hook receiver for Codex / Claude Code / Trae / Trae CN events and auto-installs Codex / Claude Code hooks with the shared `omniwork-agent-hook.mjs` script.
-- Server-driven terminal frames: each attached session runs a ~450ms pusher in `src/core/agentService.ts` that captures the current PTY snapshot, hashes it with SHA-1, and emits `terminal.frame` only when the hash changes. The App no longer polls the snapshot on a 3s idle interval or after each input.
+- Server-driven terminal frames: each attached session runs a ~450ms pusher in `src/core/terminalFramePusher.ts` that captures the current PTY snapshot, hashes it with SHA-1, and emits `terminal.frame` only when the hash changes. Terminal input/resize/frame hot paths use `SessionManager`'s lightweight in-memory session cache before falling back to the authoritative `session.list` reconciliation path.
 - Serves the local Agent Admin UI from `static/admin/index.html`; keep UI HTML/CSS/JS there instead of embedding it in `src/core/adminServer.ts`.
 
 ## Run

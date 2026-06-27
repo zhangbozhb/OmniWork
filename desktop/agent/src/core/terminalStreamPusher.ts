@@ -74,7 +74,9 @@ export class TerminalStreamPusher {
       return;
     }
 
-    const session = await this.options.sessionManager.get(sessionId);
+    const session =
+      this.options.sessionManager.getKnown(sessionId) ??
+      (await this.options.sessionManager.get(sessionId));
     if (!session) {
       return;
     }

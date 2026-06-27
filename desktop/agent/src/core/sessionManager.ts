@@ -33,6 +33,8 @@ export class SessionManager {
     terminalSize: TerminalSize;
   };
   private listWithWorkspacesInFlight?: Promise<SessionListResult>;
+  private readonly knownSessionsById = new Map<string, TerminalSession>();
+  private readonly knownSessionIdBySurfaceId = new Map<string, string>();
 
   constructor(
     store: SQLiteSessionStore,
@@ -116,6 +118,16 @@ export class SessionManager {
     return (await this.listWithWorkspaces()).sessions;
   }
 
+  getKnown(sessionId: string): TerminalSession | undefined {
+    const session = this.knownSessionsById.get(sessionId);
+    return session ? cloneSession(session) : undefined;
+  }
+
+  getKnownBySurfaceId(surfaceId: string): TerminalSession | undefined {
+    const sessionId = this.knownSessionIdBySurfaceId.get(surfaceId);
+    return sessionId ? this.getKnown(sessionId) : undefined;
+  }
+
   async listWithWorkspaces(): Promise<SessionListResult> {
     if (this.listWithWorkspacesInFlight) {
       return this.listWithWorkspacesInFlight;
@@ -186,8 +198,11 @@ export class SessionManager {
       sessions.map((session) => this.annotateWorkspace(session, workspaces)),
     );
 
+    const sortedSessions = annotatedSessions.sort(compareSessionsByRecentTime);
+    this.rebuildKnownSessions(sortedSessions);
+
     return {
-      sessions: annotatedSessions.sort(compareSessionsByRecentTime),
+      sessions: sortedSessions,
       workspaces,
     };
   }
@@ -246,6 +261,7 @@ export class SessionManager {
     };
 
     await this.store.upsert(created);
+    this.upsertKnownSession(created);
     await onStatus?.(created);
 
     const starting = {
@@ -254,6 +270,7 @@ export class SessionManager {
       last_active_at: new Date().toISOString(),
     };
     await this.store.upsert(starting);
+    this.upsertKnownSession(starting);
     await onStatus?.(starting);
 
     try {
@@ -274,11 +291,13 @@ export class SessionManager {
         tmux_session_uid: identity.sessionUid || undefined,
       };
       await this.store.upsert(running);
+      this.upsertKnownSession(running);
       return running;
     } catch (error) {
       // 启动 tmux 失败时不再写 status="error" 占位，直接删除 store 条目，
       // 并把异常上抛给调用方（agentService）以便其向前端推送一次性失败提示。
       await this.store.remove(sessionId, "tmux_create_failed");
+      this.removeKnownSession(sessionId);
       throw error;
     }
   }
@@ -299,6 +318,7 @@ export class SessionManager {
 
   async remove(sessionId: string): Promise<void> {
     await this.store.remove(sessionId, "manager_remove");
+    this.removeKnownSession(sessionId);
   }
 
   async close(sessionId: string): Promise<void> {
@@ -309,6 +329,7 @@ export class SessionManager {
 
     if (session.origin === "external") {
       await this.store.remove(sessionId, "external_close");
+      this.removeKnownSession(sessionId);
       return;
     }
 
@@ -318,6 +339,7 @@ export class SessionManager {
       // Treat stale tmux records as already closed so mobile can recover.
     } finally {
       await this.store.remove(sessionId, "managed_close");
+      this.removeKnownSession(sessionId);
     }
   }
 
@@ -343,6 +365,7 @@ export class SessionManager {
       registered: session.registered ?? true,
     };
     await this.store.upsert(renamed);
+    this.upsertKnownSession(renamed);
     return renamed;
   }
 
@@ -356,6 +379,7 @@ export class SessionManager {
       await this.tmux.killSession(session.tmux_session_name);
     } finally {
       await this.store.remove(sessionId, "kill_terminal");
+      this.removeKnownSession(sessionId);
     }
   }
 
@@ -373,6 +397,7 @@ export class SessionManager {
         registered: true,
       };
       await this.store.upsert(attached);
+      this.upsertKnownSession(attached);
       return attached;
     }
 
@@ -383,7 +408,7 @@ export class SessionManager {
     sessionId: string,
     terminalSize: TerminalSize,
   ): Promise<TerminalSession | undefined> {
-    const session = await this.get(sessionId);
+    const session = this.getKnown(sessionId) ?? (await this.get(sessionId));
     if (!session) {
       return undefined;
     }
@@ -394,6 +419,7 @@ export class SessionManager {
       last_active_at: new Date().toISOString(),
     };
     await this.store.upsert(updated);
+    this.upsertKnownSession(updated);
     return updated;
   }
 
@@ -459,6 +485,47 @@ export class SessionManager {
       git_repository: workspace?.isGitRepository ?? session.git_repository,
     };
   }
+
+  private rebuildKnownSessions(sessions: readonly TerminalSession[]): void {
+    this.knownSessionsById.clear();
+    this.knownSessionIdBySurfaceId.clear();
+    for (const session of sessions) {
+      this.upsertKnownSession(session);
+    }
+  }
+
+  private upsertKnownSession(session: TerminalSession): void {
+    const previous = this.knownSessionsById.get(session.session_id);
+    if (previous) {
+      for (const surface of previous.surfaces) {
+        this.knownSessionIdBySurfaceId.delete(surface.surface_id);
+      }
+    }
+    this.knownSessionsById.set(session.session_id, cloneSession(session));
+    for (const surface of session.surfaces) {
+      this.knownSessionIdBySurfaceId.set(
+        surface.surface_id,
+        session.session_id,
+      );
+    }
+  }
+
+  private removeKnownSession(sessionId: string): void {
+    const previous = this.knownSessionsById.get(sessionId);
+    if (previous) {
+      for (const surface of previous.surfaces) {
+        this.knownSessionIdBySurfaceId.delete(surface.surface_id);
+      }
+    }
+    this.knownSessionsById.delete(sessionId);
+  }
+}
+
+function cloneSession(session: TerminalSession): TerminalSession {
+  return {
+    ...session,
+    surfaces: session.surfaces.map((surface) => ({ ...surface })),
+  };
 }
 
 function toTmuxSessionName(sessionId: string): string {
