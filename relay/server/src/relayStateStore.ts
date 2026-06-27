@@ -5,6 +5,11 @@ import type {
   RelayConnection,
   RelayConnectionLocation,
 } from "./relayTypes.ts";
+import type {
+  RelayDeviceStatusStore,
+  RelayDeviceTrafficDelta,
+  RelayPersistedDeviceStatusRecord,
+} from "./relayDeviceStatusStore.ts";
 
 export interface RelayTrafficCounters {
   bytes_in: number;
@@ -108,6 +113,10 @@ export interface RelayDeviceState {
   counters: RelayTrafficCounters;
 }
 
+export interface RelayStateStoreOptions {
+  deviceStatusStore?: RelayDeviceStatusStore;
+}
+
 export interface RelayRuntimeSnapshot {
   runtime: {
     started_at: string;
@@ -119,6 +128,8 @@ export interface RelayRuntimeSnapshot {
     app_connection_count: number;
     link_count: number;
     connection_count: number;
+    known_device_count?: number;
+    offline_device_count?: number;
   };
   traffic: RelayTrafficCounters;
   auth: {
@@ -137,6 +148,24 @@ export interface RelayStateSnapshot extends RelayRuntimeSnapshot {
   agents: RelayAgentConnectionSnapshot[];
   apps: RelayAppConnectionSnapshot[];
   links: RelayLinkSnapshot[];
+}
+
+export interface RelayDeviceSnapshot {
+  device_id: string;
+  agent_count: number;
+  app_count: number;
+  link_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  offline_at?: string;
+  status: "online" | "degraded" | "offline";
+  counters: RelayTrafficCounters;
+  source: "active" | "persisted";
+  last_agent_instance_id?: string;
+  last_agent_remote_ip?: string;
+  last_app_remote_ip?: string;
+  last_close_role?: string;
+  last_close_reason?: string;
 }
 
 interface TrafficMapLocation {
@@ -175,6 +204,7 @@ interface TrafficMapFlowBuilder {
 
 export class RelayStateStore {
   readonly startedAt = Date.now();
+  private readonly deviceStatusStore?: RelayDeviceStatusStore;
   private readonly counters = emptyCounters();
   private readonly auth = { failed: 0 };
   private readonly routing = { dropped: 0 };
@@ -185,6 +215,14 @@ export class RelayStateStore {
   private readonly apps = new Map<string, RelayAppConnectionState>();
   private readonly links = new Map<string, RelayLinkState>();
   private readonly linkByApp = new Map<string, string>();
+  private readonly pendingDeviceTraffic = new Map<
+    string,
+    RelayDeviceTrafficDelta
+  >();
+
+  constructor(options: RelayStateStoreOptions = {}) {
+    this.deviceStatusStore = options.deviceStatusStore;
+  }
 
   registerConnection(connection: RelayConnection): void {
     this.connections.set(connection.id, connection);
@@ -192,25 +230,33 @@ export class RelayStateStore {
 
   closeConnection(connection: RelayConnection): void {
     const now = Date.now();
+    this.connections.delete(connection.id);
     const agent = this.agents.get(connection.id);
     if (agent) {
-      agent.state = "closed";
-      agent.last_seen_at = now;
-      this.refreshDeviceStatus(agent.device_id, now);
+      this.agents.delete(connection.id);
+      const device = this.devices.get(agent.device_id);
+      device?.agents.delete(connection.id);
+      this.refreshDeviceStatus(agent.device_id, now, {
+        lastCloseRole: "agent",
+        lastAgentInstanceId: agent.agent_instance_id,
+        lastAgentRemoteIp: agent.remote_ip,
+      });
     }
     const app = this.apps.get(connection.id);
     if (app) {
-      app.state = "closed";
-      app.last_seen_at = now;
+      this.apps.delete(connection.id);
+      const device = this.devices.get(app.device_id);
+      device?.apps.delete(connection.id);
       const linkId = this.linkByApp.get(connection.id);
       if (linkId) {
-        const link = this.links.get(linkId);
-        if (link) {
-          link.state = "closed";
-          link.last_seen_at = now;
-        }
+        this.links.delete(linkId);
+        this.linkByApp.delete(connection.id);
+        device?.links.delete(linkId);
       }
-      this.refreshDeviceStatus(app.device_id, now);
+      this.refreshDeviceStatus(app.device_id, now, {
+        lastCloseRole: "mobile",
+        lastAppRemoteIp: app.remote_ip,
+      });
     }
   }
 
@@ -223,6 +269,13 @@ export class RelayStateStore {
     device.agents.add(connection.id);
     device.last_seen_at = connection.lastSeenAt;
     device.status = "online";
+    this.deviceStatusStore?.upsert({
+      deviceId: connection.deviceId,
+      status: "online",
+      seenAt: connection.lastSeenAt,
+      lastAgentInstanceId: connection.agentInstanceId,
+      lastAgentRemoteIp: connection.remoteIp,
+    });
     this.agents.set(connection.id, {
       connection_id: connection.id,
       device_id: connection.deviceId,
@@ -247,6 +300,14 @@ export class RelayStateStore {
     );
     device.apps.add(connection.id);
     device.last_seen_at = connection.lastSeenAt;
+    device.status =
+      activeCount(device.agents, this.agents) > 0 ? "online" : "degraded";
+    this.deviceStatusStore?.upsert({
+      deviceId: connection.deviceId,
+      status: device.status,
+      seenAt: connection.lastSeenAt,
+      lastAppRemoteIp: connection.remoteIp,
+    });
     this.apps.set(connection.id, {
       connection_id: connection.id,
       device_id: connection.deviceId,
@@ -321,6 +382,11 @@ export class RelayStateStore {
     const device = this.ensureDevice(input.deviceId, now);
     device.links.add(linkId);
     device.last_seen_at = now;
+    this.deviceStatusStore?.upsert({
+      deviceId: input.deviceId,
+      status: device.status,
+      seenAt: now,
+    });
     return link;
   }
 
@@ -352,6 +418,25 @@ export class RelayStateStore {
     this.protocol.errors_sent += 1;
   }
 
+  flushDeviceStatus(now = Date.now()): void {
+    if (!this.deviceStatusStore) {
+      this.pendingDeviceTraffic.clear();
+      return;
+    }
+    for (const [deviceId, delta] of this.pendingDeviceTraffic) {
+      this.deviceStatusStore.addTraffic(deviceId, delta, now);
+    }
+    this.pendingDeviceTraffic.clear();
+  }
+
+  sweep(options: { offlineDeviceRetentionMs: number; now?: number }): void {
+    const now = options.now ?? Date.now();
+    this.flushDeviceStatus(now);
+    this.deviceStatusStore?.pruneOffline(
+      now - options.offlineDeviceRetentionMs,
+    );
+  }
+
   runtimeSnapshot(now = Date.now()): RelayRuntimeSnapshot {
     const activeConnections = [...this.connections.values()].filter(
       (connection) => connection.state !== "closed",
@@ -365,6 +450,7 @@ export class RelayStateStore {
     const activeLinks = [...this.links.values()].filter(
       (link) => link.state !== "closed",
     );
+    const deviceStatusSummary = this.deviceStatusStore?.summary();
     return {
       runtime: {
         started_at: toIso(this.startedAt),
@@ -376,6 +462,9 @@ export class RelayStateStore {
         app_connection_count: activeApps.length,
         link_count: activeLinks.length,
         connection_count: activeConnections.length,
+        known_device_count:
+          deviceStatusSummary?.known_device_count ?? this.devices.size,
+        offline_device_count: deviceStatusSummary?.offline_device_count ?? 0,
       },
       traffic: cloneCounters(this.counters),
       auth: { ...this.auth },
@@ -384,23 +473,43 @@ export class RelayStateStore {
     };
   }
 
-  devicesSnapshot() {
-    const devices = [...this.devices.values()]
+  devicesSnapshot(options: { includeOffline?: boolean; limit?: number } = {}) {
+    const activeDevices = [...this.devices.values()]
       .sort((a, b) => a.device_id.localeCompare(b.device_id))
-      .map((device) => ({
-        device_id: device.device_id,
-        agent_count: activeCount(device.agents, this.agents),
-        app_count: activeCount(device.apps, this.apps),
-        link_count: activeCount(device.links, this.links),
-        first_seen_at: toIso(device.first_seen_at),
-        last_seen_at: toIso(device.last_seen_at),
-        status: device.status,
-        counters: cloneCounters(device.counters),
-      }));
+      .map(
+        (device): RelayDeviceSnapshot => ({
+          device_id: device.device_id,
+          agent_count: activeCount(device.agents, this.agents),
+          app_count: activeCount(device.apps, this.apps),
+          link_count: activeCount(device.links, this.links),
+          first_seen_at: toIso(device.first_seen_at),
+          last_seen_at: toIso(device.last_seen_at),
+          status: device.status,
+          counters: cloneCounters(device.counters),
+          source: "active",
+        }),
+      );
+    const activeDeviceIds = new Set(
+      activeDevices.map((device) => device.device_id),
+    );
+    const persistedDevices =
+      this.deviceStatusStore
+        ?.list({
+          includeOffline: options.includeOffline ?? true,
+          limit: options.limit ?? 100,
+        })
+        .filter((device) => !activeDeviceIds.has(device.device_id))
+        .map(persistedDeviceToSnapshot) ?? [];
+    const devices = [...activeDevices, ...persistedDevices];
+    const knownSummary = this.deviceStatusStore?.summary();
     return {
       devices,
       summary: {
         device_count: devices.length,
+        active_device_count: activeDevices.length,
+        known_device_count:
+          knownSummary?.known_device_count ?? activeDevices.length,
+        offline_device_count: knownSummary?.offline_device_count ?? 0,
         agent_count: devices.reduce(
           (total, device) => total + device.agent_count,
           0,
@@ -601,6 +710,7 @@ export class RelayStateStore {
     update(this.counters);
     if (connection.deviceId) {
       update(this.ensureDevice(connection.deviceId, Date.now()).counters);
+      this.addPendingDeviceTraffic(connection.deviceId, direction, bytes);
     }
     const connectionState =
       connection.role === "agent"
@@ -685,7 +795,16 @@ export class RelayStateStore {
     return device;
   }
 
-  private refreshDeviceStatus(deviceId: string, now: number): void {
+  private refreshDeviceStatus(
+    deviceId: string,
+    now: number,
+    closed: {
+      lastCloseRole?: "agent" | "mobile";
+      lastAgentInstanceId?: string;
+      lastAgentRemoteIp?: string;
+      lastAppRemoteIp?: string;
+    } = {},
+  ): void {
     const device = this.devices.get(deviceId);
     if (!device) {
       return;
@@ -700,6 +819,41 @@ export class RelayStateStore {
     } else {
       device.status = "offline";
     }
+    this.deviceStatusStore?.upsert({
+      deviceId,
+      status: device.status,
+      seenAt: now,
+      offlineAt: device.status === "offline" ? now : undefined,
+      lastCloseRole: closed.lastCloseRole,
+      lastAgentInstanceId: closed.lastAgentInstanceId,
+      lastAgentRemoteIp: closed.lastAgentRemoteIp,
+      lastAppRemoteIp: closed.lastAppRemoteIp,
+    });
+    if (
+      device.status === "offline" &&
+      device.agents.size === 0 &&
+      device.apps.size === 0 &&
+      device.links.size === 0
+    ) {
+      this.devices.delete(deviceId);
+    }
+  }
+
+  private addPendingDeviceTraffic(
+    deviceId: string,
+    direction: "in" | "out",
+    bytes: number,
+  ): void {
+    const delta =
+      this.pendingDeviceTraffic.get(deviceId) ?? emptyDeviceTrafficDelta();
+    if (direction === "in") {
+      delta.bytesIn += bytes;
+      delta.messagesIn += 1;
+    } else {
+      delta.bytesOut += bytes;
+      delta.messagesOut += 1;
+    }
+    this.pendingDeviceTraffic.set(deviceId, delta);
   }
 }
 
@@ -718,6 +872,15 @@ function emptyLinkDirectionCounters(): RelayLinkDirectionCounters {
   return {
     app_to_agent_bytes: 0,
     agent_to_app_bytes: 0,
+  };
+}
+
+function emptyDeviceTrafficDelta(): RelayDeviceTrafficDelta {
+  return {
+    bytesIn: 0,
+    bytesOut: 0,
+    messagesIn: 0,
+    messagesOut: 0,
   };
 }
 
@@ -946,11 +1109,41 @@ function activeCount<T extends { state: string }>(
 ): number {
   let count = 0;
   for (const id of ids) {
-    if (records.get(id)?.state !== "closed") {
+    const record = records.get(id);
+    if (record && record.state !== "closed") {
       count += 1;
     }
   }
   return count;
+}
+
+function persistedDeviceToSnapshot(
+  device: RelayPersistedDeviceStatusRecord,
+): RelayDeviceSnapshot {
+  return {
+    device_id: device.device_id,
+    agent_count: 0,
+    app_count: 0,
+    link_count: 0,
+    first_seen_at: toIso(device.first_seen_at),
+    last_seen_at: toIso(device.last_seen_at),
+    offline_at: device.offline_at ? toIso(device.offline_at) : undefined,
+    status: device.status,
+    counters: {
+      bytes_in: device.bytes_in,
+      bytes_out: device.bytes_out,
+      messages_in: device.messages_in,
+      messages_out: device.messages_out,
+      messages_in_by_type: {},
+      messages_out_by_type: {},
+    },
+    source: "persisted",
+    last_agent_instance_id: device.last_agent_instance_id,
+    last_agent_remote_ip: device.last_agent_remote_ip,
+    last_app_remote_ip: device.last_app_remote_ip,
+    last_close_role: device.last_close_role,
+    last_close_reason: device.last_close_reason,
+  };
 }
 
 function appInfoToPayload(info: RelayAppInfo): AppInfoPayload {

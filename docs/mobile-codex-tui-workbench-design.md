@@ -457,7 +457,7 @@ MVP 建议采用：
 - MVP 范围不接入 SSO。
 - 桌面端 Agent 每次启动生成 32 字符临时 key。
 - App 使用该 key 完成本次连接授权。
-- WebSocket 允许 `ws://` 与 `wss://`，业务消息必须通过 App-Agent E2E 加密。
+- WebSocket 允许 `ws://` 与 `wss://`；默认业务安全模式由 App-Agent 负责 E2E 加密，Relay 不解析业务 payload。
 - Relay 不保存完整 key。
 - 桌面端 Agent 重启后旧 key 自动失效。
 - 长时间未操作自动锁定。

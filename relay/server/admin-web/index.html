@@ -275,23 +275,23 @@
       </header>
       <section class="grid">
         <div class="card">
-          <div class="muted">Devices</div>
+            <div class="muted">Active Devices</div>
           <div class="metric" id="device-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">Agents</div>
+            <div class="muted">Active Agents</div>
           <div class="metric" id="agent-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">Apps</div>
+            <div class="muted">Active Apps</div>
           <div class="metric" id="app-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">Links</div>
+            <div class="muted">Active Links</div>
           <div class="metric" id="link-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">Connections</div>
+            <div class="muted">Open Connections</div>
           <div class="metric" id="connection-count">-</div>
         </div>
         <div class="card">
@@ -374,6 +374,25 @@
           </div>
         </div>
       </section>
+        <section class="panel">
+          <h2>Devices</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>Status</th>
+                <th>Agents</th>
+                <th>Apps</th>
+                <th>Last Seen</th>
+                <th>Offline At</th>
+                <th>Last Agent</th>
+                <th>Agent IP</th>
+                <th>App IP</th>
+              </tr>
+            </thead>
+            <tbody id="devices"></tbody>
+          </table>
+        </section>
       <section class="panel">
         <h2>Agents</h2>
         <table>
@@ -489,21 +508,39 @@
         );
       }
       async function refresh() {
-        const [status, agents, trafficMap] = await Promise.all([
+          const [status, devices, agents, trafficMap] = await Promise.all([
           api("/admin/api/status"),
+            api("/admin/api/devices?include_offline=true&limit=100"),
           api("/admin/api/agents"),
           api("/admin/api/traffic-map"),
         ]);
-        qs("device-count").textContent = status.summary.device_count;
-        qs("agent-count").textContent = status.summary.agent_count;
-        qs("app-count").textContent = status.summary.app_count;
-        qs("link-count").textContent = status.summary.link_count;
-        qs("connection-count").textContent = status.summary.connection_count;
+          qs("device-count").textContent = status.summary.active_device_count;
+          qs("agent-count").textContent = status.summary.active_agent_count;
+          qs("app-count").textContent = status.summary.active_app_count;
+          qs("link-count").textContent = status.summary.active_link_count;
+          qs("connection-count").textContent =
+            status.summary.open_connection_count;
         qs("traffic-in").textContent = formatBytes(status.traffic.bytes_in);
         qs("traffic-out").textContent = formatBytes(status.traffic.bytes_out);
         qs("disabled-count").textContent = status.summary.disabled_agent_count;
         qs("ban-count").textContent = status.summary.ip_ban_count;
         renderTrafficMap(trafficMap);
+          qs("devices").innerHTML = devices.devices
+            .map(
+              (device) =>
+                "<tr>" +
+                td(device.device_id) +
+                td(device.status) +
+                td(device.agent_count) +
+                td(device.app_count) +
+                td(device.last_seen_at) +
+                td(device.offline_at) +
+                td(device.last_agent_instance_id) +
+                td(device.last_agent_remote_ip) +
+                td(device.last_app_remote_ip) +
+                "</tr>",
+            )
+            .join("");
         qs("agents").innerHTML = agents.agents
           .map(
             (agent) =>

@@ -31,21 +31,21 @@
 
 ## 2. 关键抽象
 
-| 抽象                       | 位置                                                 | 职责                                                                                                               |
-| -------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 抽象                       | 位置                                                     | 职责                                                                                                               |
+| -------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `SessionTransport`         | `desktop/agent/src/transport/`、`app/src/lib/transport/` | 业务模块面对的统一接口；`send` / `onMessage` / `switchPath` / `onPathChange` / `onEvent`                           |
-| `WebRtcPeerAdapter`        | 同上                                                 | 跨平台 WebRTC peer 抽象；Agent 用 `@roamhq/wrtc`，App Native 用 `react-native-webrtc`，App Web 用浏览器 WebRTC API |
-| `UpgradeCoordinator`       | 同上                                                 | 客户端升级状态机（idle → proposed → negotiating → committing → upgraded）                                          |
-| `RelayUpgradeOrchestrator` | `relay/server/src/upgrade/orchestrator.ts`           | Relay 端：触发条件、灰度、退避、metrics、控制消息透传                                                              |
+| `WebRtcPeerAdapter`        | 同上                                                     | 跨平台 WebRTC peer 抽象；Agent 用 `@roamhq/wrtc`，App Native 用 `react-native-webrtc`，App Web 用浏览器 WebRTC API |
+| `UpgradeCoordinator`       | 同上                                                     | 客户端升级状态机（idle → proposed → negotiating → committing → upgraded）                                          |
+| `RelayUpgradeOrchestrator` | `relay/server/src/upgrade/orchestrator.ts`               | Relay 端：触发条件、灰度、退避、metrics、控制消息透传                                                              |
 
 ## 3. 升级流程
 
 ### 3.1 触发
 
-- 安全态：App 通过 `mobile.connect` + `auth.proof` 完成 Relay 接入鉴权后，必须继续完成 App-Agent E2E 握手；业务消息只允许通过 `e2e.message` 传输。
+- 安全态：App 通过 `mobile.connect` + `auth.proof` 完成 Relay 接入鉴权后，默认业务安全模式由 App-Agent 继续完成 E2E 握手，并通过 `e2e.message` 承载业务消息；Relay 不解析、不裁决业务 payload。
 - Relay 为每个 mobile WebSocket 分配 canonical `app_connection_id`；E2E 握手、ready 和密文消息都按该连接 ID 绑定并定向路由。
 - Relay 只在对应 App 的 E2E pair ready 后触发 P2P propose；P2P 升级按 `app_connection_id` 独立编排。
-- `tunnel.upgrade.propose` 是 Relay 定向升级提示；offer / answer / candidate / committed / downgrade 属于 P2P 控制面信令，只在 App-Agent E2E pair ready 后由 Relay 按 `app_connection_id` 透传。业务 payload 仍必须通过 `e2e.message` 承载，SDP/ICE 信令不被视为业务明文。
+- `tunnel.upgrade.propose` 是 Relay 定向升级提示；offer / answer / candidate / committed / downgrade 属于 P2P 控制面信令，只在 App-Agent E2E pair ready 后由 Relay 按 `app_connection_id` 透传。默认业务安全模式下，业务 payload 由 App-Agent 协商封装为 `e2e.message`；SDP/ICE 信令不被视为业务明文。
 
 ### 3.2 协商
 
@@ -122,7 +122,9 @@ App                       Relay                       Agent
       "agent_count": 2,
       "app_connection_count": 3,
       "link_count": 3,
-      "connection_count": 5
+      "connection_count": 5,
+      "known_device_count": 8,
+      "offline_device_count": 6
     },
     "traffic": {
       "bytes_in": 4096,
@@ -152,7 +154,7 @@ App                       Relay                       Agent
 
 字段语义：
 
-- `relay.totals`：Relay 控制面看到的设备、Agent、App 连接、Agent/App 链接、在线连接数。
+- `relay.totals`：Relay 控制面看到的 active 设备、Agent、App 连接、Agent/App 链接、在线连接数；`known_device_count` / `offline_device_count` 来自 device 级最小持久化摘要。
 - `relay.traffic`：Relay envelope 层流量，不解析业务 payload；按入站/出站累计 bytes、messages 与 message type 分布。
 - `relay.auth.failed`：Relay 可见的鉴权失败计数。
 - `relay.routing.dropped`：无可用路由或目标连接不存在导致的丢弃计数。
@@ -238,7 +240,7 @@ P2P propose 恢复后，Relay 只下发按 `app_connection_id` 定向的 propose
 
 ### 8.1 Relay 无法启动
 
-- 错误 `RelayConfigError: refusing to start on non-loopback host`：非 loopback host 使用 `ws://` 时必须设置 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`，且 `OMNIWORK_RELAY_REQUIRE_E2E=true` 必须保持开启。`wss://` 仍推荐，但业务安全边界是 App-Agent E2E。
+- 错误 `RelayConfigError: refusing to start on non-loopback host`：非 loopback host 使用 `ws://` 时必须设置 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`。`OMNIWORK_RELAY_REQUIRE_E2E` 仅作为旧配置兼容项保留；`wss://` 仍推荐，但业务 payload 安全边界由 App-Agent 协议协商执行。
 
 ### 8.2 始终走 relay path，从未升级
 

@@ -46,6 +46,12 @@ OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS=127.0.0.1,::1
 OMNIWORK_RELAY_ADMIN_CONTROLS_DB_PATH=
 OMNIWORK_RELAY_AGENT_DISABLE_DEFAULT_MS=86400000
 OMNIWORK_RELAY_IP_BAN_DEFAULT_MS=86400000
+OMNIWORK_RELAY_DEVICE_STATUS_DB_PATH=
+OMNIWORK_RELAY_DEVICE_STATUS_RETENTION_MS=604800000
+OMNIWORK_RELAY_DEVICE_STATUS_FLUSH_INTERVAL_MS=5000
+OMNIWORK_RELAY_STATE_SWEEP_INTERVAL_MS=30000
+OMNIWORK_RELAY_PENDING_AUTH_TTL_MS=60000
+OMNIWORK_RELAY_APP_CONTEXT_TTL_MS=16000
 ```
 
 ### Plaintext WS and E2E
@@ -139,10 +145,13 @@ Operational endpoints:
   all `/admin/api/*` routes and, in development mode, `/admin/web`.
 - `GET /admin/web` — development-only Relay admin web page for viewing online
   Agents and Apps. Requires HTTPS and a valid admin session.
-- `GET /admin/api/status` — Relay admin status summary with device / Agent /
-  App / link / connection totals and traffic counters.
-- `GET /admin/api/devices` — Relay-visible device summary with per-device
-  Agent, App, link, and traffic counters.
+- `GET /admin/api/status` — Relay admin status summary with active device /
+  Agent / App / link / connection totals, persisted known/offline device
+  counts, and traffic counters.
+- `GET /admin/api/devices?include_offline=true&limit=100` — Relay-visible
+  device summary. Active devices come from in-memory runtime state; offline
+  devices come from the persisted device-status summary and contain only
+  minimal metadata.
 - `GET /admin/api/agents` — online Agent list with current App counts.
 - `GET /admin/api/agent-connections/:connection_id/apps` — Relay-visible App
   connections under one online Agent connection.
@@ -216,6 +225,21 @@ Permanent Agent disable and IP-ban rules are stored in
 `<OMNIWORK_RELAY_RUNTIME_DIR>/admin-controls.sqlite`) and reloaded on startup.
 Temporary rules with
 `ttl_ms`, `expires_in_ms`, `expires_at`, or the default TTL stay in memory only.
+
+Relay active connection state is memory-only: closed Agent/App/link records are
+removed from runtime maps immediately. Device-level minimal status is persisted
+to `OMNIWORK_RELAY_DEVICE_STATUS_DB_PATH` (default
+`<OMNIWORK_RELAY_RUNTIME_DIR>/relay-device-status.sqlite`) so Admin can show
+recent offline devices without retaining connection objects. The persisted
+record stores only `device_id`, status, first/last seen timestamps, offline
+timestamp, last Agent/App remote IPs, last Agent instance ID, close role/reason,
+and device-level byte/message counters. It does not store connection history,
+link history, App info, session data, E2E details, or business payload.
+Offline device summaries are pruned after
+`OMNIWORK_RELAY_DEVICE_STATUS_RETENTION_MS` (default 7 days). Device counters
+flush every `OMNIWORK_RELAY_DEVICE_STATUS_FLUSH_INTERVAL_MS` (default 5s);
+expired pending auth entries and Relay app delivery contexts are swept by
+`OMNIWORK_RELAY_STATE_SWEEP_INTERVAL_MS` (default 30s).
 
 The admin web source lives in `relay/server/admin-web`. Production deployments
 should serve that source through the web build output and Nginx at `/admin/`,

@@ -32,6 +32,7 @@ import {
 
 import type { RelayServerConfig } from "./config.ts";
 import { RelayAdminController } from "./relayAdminController.ts";
+import { RelayDeviceStatusStore } from "./relayDeviceStatusStore.ts";
 import { RelayE2EController } from "./relayE2EController.ts";
 import { logRelayEvent, logUpgradeEvent } from "./relayLog.ts";
 import { RelayStateStore } from "./relayStateStore.ts";
@@ -48,10 +49,6 @@ import type {
   RelaySocket,
 } from "./relayTypes.ts";
 
-// Relay keeps App request routing context only for immediate Agent control
-// responses, not as a request queue. Keep the relay-issued handle short-lived.
-const APP_DELIVERY_CONTEXT_TTL_MS = 16_000;
-
 interface AppDeliveryContext {
   deviceId: string;
   agentConnectionId: string;
@@ -67,14 +64,21 @@ export class RelayServer {
   private readonly pendingAuth = new Map<string, PendingAuth>();
   private readonly mobilesByDevice = new Map<string, Set<RelayConnection>>();
   private readonly appDeliveryContexts = new Map<string, AppDeliveryContext>();
-  private readonly state = new RelayStateStore();
+  private readonly state: RelayStateStore;
   private readonly admin: RelayAdminController;
   private readonly e2e: RelayE2EController;
   private readonly authLimiter: TokenBucketLimiter;
   private readonly orchestrator: RelayUpgradeOrchestrator;
+  private deviceStatusFlushTimer: ReturnType<typeof setInterval> | null = null;
+  private lifecycleTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: RelayServerConfig) {
     this.config = config;
+    this.state = new RelayStateStore({
+      deviceStatusStore: new RelayDeviceStatusStore(
+        config.state.deviceStatusDbPath,
+      ),
+    });
     this.authLimiter = new TokenBucketLimiter({
       capacity: config.authRateLimit.capacity,
       refillPerSecond: config.authRateLimit.refillPerSecond,
@@ -106,6 +110,8 @@ export class RelayServer {
 
   async start(): Promise<void> {
     const startupToken = this.admin.start();
+    this.startLifecycleSweeper();
+    this.startDeviceStatusFlusher();
     const businessServer = createServer((request, response) =>
       this.handleBusinessHttp(request, response),
     );
@@ -532,11 +538,13 @@ export class RelayServer {
     }
 
     const nonce = randomBytes(24).toString("base64url");
+    const expiresAt = Date.now() + this.config.state.pendingAuthTtlMs;
     this.pendingAuth.set(connection.id, {
       deviceId,
       nonce,
       keyId: agent.keyId,
       appInfo,
+      expiresAt,
     });
 
     this.send(
@@ -546,7 +554,7 @@ export class RelayServer {
         {
           nonce,
           key_id: agent.keyId,
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
+          expires_at: new Date(expiresAt).toISOString(),
         },
         { device_id: deviceId },
       ),
@@ -869,7 +877,7 @@ export class RelayServer {
       deviceId: input.deviceId,
       agentConnectionId: input.agentConnectionId,
       appConnectionId: input.appConnectionId,
-      expiresAt: Date.now() + APP_DELIVERY_CONTEXT_TTL_MS,
+      expiresAt: Date.now() + this.config.state.appContextTtlMs,
     });
     return relayContextId;
   }
@@ -890,6 +898,58 @@ export class RelayServer {
     for (const [relayContextId, context] of this.appDeliveryContexts) {
       if (context.expiresAt <= now) {
         this.appDeliveryContexts.delete(relayContextId);
+      }
+    }
+  }
+
+  private startLifecycleSweeper(): void {
+    if (this.lifecycleTimer) {
+      return;
+    }
+    this.lifecycleTimer = setInterval(() => {
+      const now = Date.now();
+      this.state.sweep({
+        now,
+        offlineDeviceRetentionMs: this.config.state.deviceStatusRetentionMs,
+      });
+      this.cleanupExpiredPendingAuth(now);
+      this.cleanupExpiredAppDeliveryContexts(now);
+    }, this.config.state.sweepIntervalMs);
+    this.lifecycleTimer.unref?.();
+  }
+
+  private startDeviceStatusFlusher(): void {
+    if (this.deviceStatusFlushTimer) {
+      return;
+    }
+    this.deviceStatusFlushTimer = setInterval(() => {
+      this.state.flushDeviceStatus();
+    }, this.config.state.deviceStatusFlushIntervalMs);
+    this.deviceStatusFlushTimer.unref?.();
+  }
+
+  private cleanupExpiredPendingAuth(now = Date.now()): void {
+    for (const [connectionId, pending] of this.pendingAuth) {
+      if (pending.expiresAt > now) {
+        continue;
+      }
+      this.pendingAuth.delete(connectionId);
+      const connection = this.connections.get(connectionId);
+      if (connection?.role === "mobile" && !connection.authenticated) {
+        this.send(
+          connection,
+          createMessage<AuthFailedPayload>(
+            "auth.failed",
+            {
+              reason: "malformed_proof",
+              connection_id: connection.id,
+              retry_after_ms: 2000,
+            },
+            { device_id: connection.deviceId },
+          ),
+        );
+        connection.authState = "failed";
+        connection.socket.close(1008, "auth timeout");
       }
     }
   }

@@ -61,6 +61,14 @@ export interface RelayServerConfig {
     agentDisableDefaultMs: number;
     ipBanDefaultMs: number;
   };
+  state: {
+    deviceStatusDbPath: string;
+    deviceStatusRetentionMs: number;
+    deviceStatusFlushIntervalMs: number;
+    sweepIntervalMs: number;
+    pendingAuthTtlMs: number;
+    appContextTtlMs: number;
+  };
   /** 升级编排器配置。阶段 4 引入。 */
   upgrade: UpgradeOrchestratorConfig;
 }
@@ -145,6 +153,31 @@ export function loadRelayServerConfig(
       ipBanDefaultMs: parseNumber(
         env.OMNIWORK_RELAY_IP_BAN_DEFAULT_MS,
         86_400_000,
+      ),
+    },
+    state: {
+      deviceStatusDbPath:
+        optionalNonEmpty(env.OMNIWORK_RELAY_DEVICE_STATUS_DB_PATH) ??
+        join(runtimeDir, "relay-device-status.sqlite"),
+      deviceStatusRetentionMs: parseNumber(
+        env.OMNIWORK_RELAY_DEVICE_STATUS_RETENTION_MS,
+        604_800_000,
+      ),
+      deviceStatusFlushIntervalMs: parseNumber(
+        env.OMNIWORK_RELAY_DEVICE_STATUS_FLUSH_INTERVAL_MS,
+        5000,
+      ),
+      sweepIntervalMs: parseNumber(
+        env.OMNIWORK_RELAY_STATE_SWEEP_INTERVAL_MS,
+        30_000,
+      ),
+      pendingAuthTtlMs: parseNumber(
+        env.OMNIWORK_RELAY_PENDING_AUTH_TTL_MS,
+        60_000,
+      ),
+      appContextTtlMs: parseNumber(
+        env.OMNIWORK_RELAY_APP_CONTEXT_TTL_MS,
+        16_000,
       ),
     },
     upgrade: {

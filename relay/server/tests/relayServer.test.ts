@@ -35,6 +35,10 @@ import type {
     config.admin.controlsDbPath,
     join(process.cwd(), ".omniwork-relay", "admin-controls.sqlite"),
   );
+  assert.equal(
+    config.state.deviceStatusDbPath,
+    join(process.cwd(), ".omniwork-relay", "relay-device-status.sqlite"),
+  );
   assert.equal(config.admin.webEnabled, false);
   assert.equal(config.admin.host, "127.0.0.1");
   assert.equal(config.admin.port, 8788);
@@ -59,6 +63,10 @@ import type {
   assert.equal(
     config.admin.controlsDbPath,
     "/tmp/omniwork-relay-runtime/admin-controls.sqlite",
+  );
+  assert.equal(
+    config.state.deviceStatusDbPath,
+    "/tmp/omniwork-relay-runtime/relay-device-status.sqlite",
   );
 }
 
@@ -148,6 +156,7 @@ interface FakeHttpResponse {
   assert.match(html, /data-admin-login="\/admin\/web"/);
   assert.match(html, /\/admin\/api\/status/);
   assert.match(html, /\/admin\/api\/agents/);
+  assert.match(html, /\/admin\/api\/devices/);
   assert.match(html, /\/admin\/api\/traffic-map/);
   assert.match(html, /world-land-110m\.geojson/);
   assert.match(html, /\/admin\/api\/agent-connections/);
@@ -308,6 +317,7 @@ type TestAgentConnection = TestRelayConnection & {
       devicesSnapshot(): {
         summary: {
           device_count: number;
+            active_device_count: number;
           agent_count: number;
           app_count: number;
           link_count: number;
@@ -382,7 +392,7 @@ type TestAgentConnection = TestRelayConnection & {
   assert.equal(status.summary.app_count, 1);
   assert.equal(status.traffic.bytes_in, 0);
   assert.equal(status.traffic.bytes_out, 0);
-  assert.equal(devices.summary.device_count, 1);
+  assert.equal(devices.summary.active_device_count, 1);
   assert.equal(devices.summary.agent_count, 1);
   assert.equal(devices.summary.app_count, 1);
   assert.equal(devices.summary.link_count, 1);

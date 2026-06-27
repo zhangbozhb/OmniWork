@@ -25,9 +25,10 @@ MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密
 - `ws://` 和 `wss://` 都只是传输；业务安全边界是 App-Agent E2E。
 - Relay 不可信，只负责外层路由、状态校验、限流和升级协调。
 - P2P 是传输路径优化，不能单独作为业务安全边界。
-- 默认模式下所有业务消息必须封装为 `e2e.message`，Relay 不转发明文 `session.*`、
-  `terminal.*`、`workspace.*`、`files.*`、`git.*`、`codex.*`。`tunnel.upgrade.*`
-  是 P2P 控制面信令，只允许在对应 App-Agent E2E pair ready 后按 `app_connection_id` 透传。
+- 默认模式下，App-Agent 协议应将业务消息封装为 `e2e.message`；Relay 不解析业务
+  payload，也不按 `session.*`、`terminal.*`、`workspace.*`、`files.*`、`git.*`、
+  `codex.*` 等业务类型裁决明文 envelope。`tunnel.upgrade.*` 是 P2P 控制面信令，
+  只允许在对应 App-Agent E2E pair ready 后按 `app_connection_id` 透传。
 - Agent 可通过 `OMNIWORK_AGENT_REQUIRE_E2E=false` 显式声明
   `business_security_mode=plaintext_allowed`；同一 Relay 可同时承载
   `e2e_required` 与 `plaintext_allowed` Agent，并按目标 Agent 模式路由。

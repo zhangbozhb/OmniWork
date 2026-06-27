@@ -241,7 +241,14 @@ export class RelayAdminController {
       return;
     }
     if (method === "GET" && url.pathname === "/api/devices") {
-      this.writeJson(response, 200, this.state.devicesSnapshot());
+      this.writeJson(
+        response,
+        200,
+        this.state.devicesSnapshot({
+          includeOffline: url.searchParams.get("include_offline") !== "false",
+          limit: readPositiveInteger(url.searchParams.get("limit"), 100),
+        }),
+      );
       return;
     }
     if (method === "GET" && url.pathname === "/api/links") {
@@ -346,6 +353,11 @@ export class RelayAdminController {
       },
       summary: {
         ...runtime.totals,
+        active_device_count: runtime.totals.device_count,
+        active_agent_count: runtime.totals.agent_count,
+        active_app_count: runtime.totals.app_connection_count,
+        active_link_count: runtime.totals.link_count,
+        open_connection_count: runtime.totals.connection_count,
         app_count: runtime.totals.app_connection_count,
         disabled_agent_count: this.activeDisabledAgentInstances().length,
         ip_ban_count: this.activeIpBans().length,
@@ -645,6 +657,14 @@ function readOptionalString(
 ): string | undefined {
   const value = body[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readPositiveInteger(value: string | null, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

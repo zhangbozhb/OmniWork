@@ -144,6 +144,7 @@ export interface PendingAuth {
   nonce: string;
   keyId: string;
   appInfo: RelayAppInfo;
+  expiresAt: number;
 }
 
 export interface ControlRule {
