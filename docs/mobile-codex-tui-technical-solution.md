@@ -390,7 +390,7 @@ flowchart LR
 - 后台运行交给 `tmux`。
 - WebSocket 慢客户端不能拖垮 PTY 读取，需要缓冲和丢弃策略。
 - 对每个会话维护会话输出和屏幕快照。
-- 终端帧由 桌面端 Agent 主动推送：`desktop/agent/src/core/agentService.ts` 为每个 attached session 启动一个 ~450ms 的定时器，对PTY 内容做 SHA-1 哈希，仅当哈希变化时下发 `terminal.frame`，避免无变化空帧；App 不再做 3 秒 idle 全量轮询或输入后多次轮询，进入终端页时只主动拉取一次 `terminal.snapshot` 作为初始画面。
+- 终端帧由桌面端 Agent 主动推送：`desktop/agent/src/core/terminalFramePusher.ts` 为每个 attached session 启动一个 ~450ms 的定时器，对 PTY 内容做 SHA-1 哈希，仅当哈希变化时下发 `terminal.frame`，避免无变化空帧；`terminalRequestHandler.ts` 负责 `terminal.input`、`terminal.resize`、`terminal.snapshot` 和 stream 请求热路径。App 不再做 3 秒 idle 全量轮询或输入后多次轮询，进入终端页时只主动拉取一次 `terminal.snapshot` 作为初始画面。
 
 ## 协议设计
 
@@ -722,18 +722,18 @@ device_id + agent_instance_id + key_id + key_proof
 
 ## 技术选型表
 
-| 领域 | 推荐 | 备选 | 不推荐作为主线 |
-| --- | --- | --- | --- |
-| 手机端 | React Native CLI + TypeScript，产出 APK/IPA | Flutter | 只做 PWA 或网页作为主交付 |
-| 原始终端 | Native WebView/xterm 终端视图，本地打包终端资源 | 可替换原生 terminal renderer | Android/iOS 分别自研终端渲染器 |
-| TUI 持久化 | tmux | screen / zellij | Agent 自己模拟持久终端 |
-| Codex 结构化集成 | Codex app-server adapter | Codex SDK 用于非交互任务 | 直接暴露 app-server 给手机 |
-| 桌面端 Agent | TypeScript + Node.js LTS + tmux-manager/pty-bridge | node-pty 或极薄 native addon | Rust/Swift 承载 Agent 业务 |
-| 中继 | Go / Rust WebSocket Relay | Node.js Relay | 通用远控网关 |
-| 认证 | 32 字符临时 key + HMAC challenge | 演进 SSO / OIDC | 静态持久共享密码 |
-| Agent 设备认证 | agent.hello + key_id + proof 校验 | 演进 mTLS / signed bearer | 无认证 WebSocket |
-| key 存储 | `session-key.json`，0600 权限 | 演进 Keychain 存持久凭证 | 仓库内明文配置 |
-| 通知 | APNs / FCM / 公司统一推送 | 公司内部调试通道 | WebSocket 长久在线 |
+| 领域             | 推荐                                               | 备选                         | 不推荐作为主线                 |
+| ---------------- | -------------------------------------------------- | ---------------------------- | ------------------------------ |
+| 手机端           | React Native CLI + TypeScript，产出 APK/IPA        | Flutter                      | 只做 PWA 或网页作为主交付      |
+| 原始终端         | Native WebView/xterm 终端视图，本地打包终端资源    | 可替换原生 terminal renderer | Android/iOS 分别自研终端渲染器 |
+| TUI 持久化       | tmux                                               | screen / zellij              | Agent 自己模拟持久终端         |
+| Codex 结构化集成 | Codex app-server adapter                           | Codex SDK 用于非交互任务     | 直接暴露 app-server 给手机     |
+| 桌面端 Agent     | TypeScript + Node.js LTS + tmux-manager/pty-bridge | node-pty 或极薄 native addon | Rust/Swift 承载 Agent 业务     |
+| 中继             | Go / Rust WebSocket Relay                          | Node.js Relay                | 通用远控网关                   |
+| 认证             | 32 字符临时 key + HMAC challenge                   | 演进 SSO / OIDC              | 静态持久共享密码               |
+| Agent 设备认证   | agent.hello + key_id + proof 校验                  | 演进 mTLS / signed bearer    | 无认证 WebSocket               |
+| key 存储         | `session-key.json`，0600 权限                      | 演进 Keychain 存持久凭证     | 仓库内明文配置                 |
+| 通知             | APNs / FCM / 公司统一推送                          | 公司内部调试通道             | WebSocket 长久在线             |
 
 ## 现有项目参考
 

@@ -233,7 +233,7 @@ desktop/
 |   |-- src/
 |   |   |-- main.ts
 |   |   |-- agentd/              # startAgent 主入口
-|   |   |-- core/                # agentService / sessionManager / sessionRequestHandler / resourceRequestHandler / terminalFramePusher
+|   |   |-- core/                # Agent 组合根、协议 dispatcher、连接安全网关、请求 handler 与推流组件
 |   |   |-- relay-client/        # agentRelayClient
 |   |   |-- transport/           # SessionTransport / UpgradeCoordinator / WebRtcPeerAdapter / relayPath
 |   |   |-- terminal-provider/   # terminalProviderRegistry（Codex/Claude/Gemini 终端 provider 抽象）
@@ -279,7 +279,7 @@ desktop/
 
 `agentd/`：Agent 主进程入口（`startAgent.ts`），解析配置、启动各子系统、处理 shutdown。
 
-`core/`：Agent 领域模型。`agentService` 负责生命周期与协议分发，`sessionManager` 负责 session 持久化与 tmux 生命周期，`sessionRequestHandler` 负责 session list/create/rename/attach/close/kill 请求处理，`resourceRequestHandler` 负责 workspace/files/git 查询处理，`terminalFramePusher` 负责终端帧推流、去重、订阅者与背压队列，`authReplayCache` 负责鉴权 nonce replay 缓存。
+`core/`：Agent 领域模型与运行期编排。`agentService` 是组合根，负责构造依赖、启动和停止；`agentRelayController` 负责 Relay 连接、重连与 `agent.hello`；`agentAppSecurityGateway` 负责 App 认证、E2E 加解密、业务消息准入和按连接投递；`agentMessageDispatcher` 负责协议类型分发；`agentTunnelUpgradeHandler` 负责 `tunnel.upgrade.*` 和按 `app_connection_id` 隔离的 Strict P2P；`sessionManager` 负责 session 持久化与 tmux 生命周期；`sessionRequestHandler` 负责 session list/create/rename/attach/close/kill 请求处理；`resourceRequestHandler` 负责 workspace/files/git 查询处理；`terminalRequestHandler` 负责 terminal input/resize/snapshot/stream 请求热路径；`terminalFramePusher` 负责终端帧推流、去重、订阅者与背压队列；`agentProbeRuntime`、`agentInboxHandler`、`agentAdminRuntime` 分别负责 Probe、Agent 消息和 Admin 运行域。
 
 `relay-client/`：与 Relay 的出站连接，WebSocket、临时 key proof、重连、心跳。不直接管理终端 provider 进程。
 
