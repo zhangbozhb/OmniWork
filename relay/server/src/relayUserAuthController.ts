@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { RelayServerConfig } from "./config.ts";
@@ -9,6 +10,12 @@ import {
 } from "./relayUserAuthStore.ts";
 
 export const USER_SESSION_COOKIE = "omniwork_user_session";
+export const USER_CSRF_HEADER = "x-csrf-token";
+
+type SessionCredential = {
+  token: string;
+  source: "authorization" | "cookie";
+};
 
 export class RelayUserAuthController {
   private readonly options: {
@@ -168,15 +175,26 @@ export class RelayUserAuthController {
   }
 
   private me(request: IncomingMessage, response: ServerResponse): void {
-    const user = this.authenticateRequest(request);
+    const credential = readSessionCredential(request);
+    if (!credential) {
+      writeJson(response, 401, { error: "unauthorized" });
+      return;
+    }
+    const user = this.options.store.authenticateSession(credential.token);
     if (!user) {
       writeJson(response, 401, { error: "unauthorized" });
       return;
     }
-    writeJson(response, 200, { user: publicUser(user) });
+    writeJson(response, 200, {
+      user: publicUser(user),
+      csrf_token: createCsrfToken(credential.token),
+    });
   }
 
   private logout(request: IncomingMessage, response: ServerResponse): void {
+    if (!this.verifyCsrfForCookieSession(request, response)) {
+      return;
+    }
     this.options.store.revokeSession(readSessionToken(request));
     response.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
@@ -192,6 +210,9 @@ export class RelayUserAuthController {
     const user = this.authenticateRequest(request);
     if (!user) {
       writeJson(response, 401, { error: "unauthorized" });
+      return;
+    }
+    if (!this.verifyCsrfForCookieSession(request, response)) {
       return;
     }
     const enrollment = this.options.store.createDeviceEnrollment({
@@ -271,6 +292,9 @@ export class RelayUserAuthController {
       writeJson(response, 401, { error: "unauthorized" });
       return;
     }
+    if (!this.verifyCsrfForCookieSession(request, response)) {
+      return;
+    }
     const revoked = this.options.store.revokeDevice(deviceId, user.id);
     if (revoked) {
       this.options.revokeActiveDevice?.(deviceId);
@@ -280,6 +304,23 @@ export class RelayUserAuthController {
       revoked ? 200 : 404,
       revoked ? { ok: true } : { error: "not_found" },
     );
+  }
+
+  private verifyCsrfForCookieSession(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): boolean {
+    const credential = readSessionCredential(request);
+    if (!credential || credential.source !== "cookie") {
+      return true;
+    }
+    const header = request.headers[USER_CSRF_HEADER];
+    const csrfToken = Array.isArray(header) ? header[0] : header;
+    if (!csrfToken || !verifyCsrfToken(credential.token, csrfToken)) {
+      writeJson(response, 403, { error: "invalid_csrf" });
+      return false;
+    }
+    return true;
   }
 }
 
@@ -337,9 +378,15 @@ async function readJsonBodyOrRespond(
 }
 
 function readSessionToken(request: IncomingMessage): string | undefined {
+  return readSessionCredential(request)?.token;
+}
+
+function readSessionCredential(
+  request: IncomingMessage,
+): SessionCredential | undefined {
   const auth = request.headers.authorization;
   if (auth?.startsWith("Bearer ")) {
-    return auth.slice("Bearer ".length).trim();
+    return { token: auth.slice("Bearer ".length).trim(), source: "authorization" };
   }
   const cookie = request.headers.cookie;
   if (!cookie) {
@@ -348,10 +395,25 @@ function readSessionToken(request: IncomingMessage): string | undefined {
   for (const part of cookie.split(";")) {
     const [name, ...rest] = part.trim().split("=");
     if (name === USER_SESSION_COOKIE) {
-      return decodeURIComponent(rest.join("="));
+      return { token: decodeURIComponent(rest.join("=")), source: "cookie" };
     }
   }
   return undefined;
+}
+
+export function createCsrfToken(sessionToken: string): string {
+  return createHmac("sha256", sessionToken)
+    .update("omniwork-relay-user-auth-csrf-v1")
+    .digest("base64url");
+}
+
+export function verifyCsrfToken(
+  sessionToken: string,
+  csrfToken: string,
+): boolean {
+  const expected = Buffer.from(createCsrfToken(sessionToken));
+  const actual = Buffer.from(csrfToken);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 function sessionCookie(token: string, expiresAt: number): string {
@@ -443,6 +505,7 @@ function renderAuthPage(): string {
     const command = document.getElementById("command");
     const devices = document.getElementById("devices");
     const relayUrl = location.origin.replace(/^http/, "ws") + "/relay/ws/agent";
+    let csrfToken = "";
 
     async function refresh() {
       const res = await fetch("/auth/me");
@@ -452,6 +515,7 @@ function renderAuthPage(): string {
         return;
       }
       const data = await res.json();
+      csrfToken = data.csrf_token;
       document.getElementById("user").textContent = data.user.email;
       login.hidden = true;
       account.hidden = false;
@@ -493,12 +557,19 @@ function renderAuthPage(): string {
           if (!confirm("Revoke this device? Online connections will be closed.")) {
             return;
           }
-          await fetch("/auth/devices/" + encodeURIComponent(device.device_id) + "/revoke", { method: "POST" });
+          await authPost("/auth/devices/" + encodeURIComponent(device.device_id) + "/revoke");
           await refreshDevices();
         };
         node.append(button);
       }
       return node;
+    }
+
+    async function authPost(url) {
+      return fetch(url, {
+        method: "POST",
+        headers: { "x-csrf-token": csrfToken },
+      });
     }
 
     document.getElementById("send").onclick = async () => {
@@ -512,7 +583,7 @@ function renderAuthPage(): string {
     };
 
     document.getElementById("createEnrollment").onclick = async () => {
-      const res = await fetch("/auth/devices/enrollments", { method: "POST" });
+      const res = await authPost("/auth/devices/enrollments");
       if (!res.ok) {
         command.textContent = "Please sign in again.";
         return;
@@ -523,7 +594,7 @@ function renderAuthPage(): string {
     };
 
     document.getElementById("logout").onclick = async () => {
-      await fetch("/auth/logout", { method: "POST" });
+      await authPost("/auth/logout");
       await refresh();
     };
 

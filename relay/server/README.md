@@ -133,6 +133,9 @@ Auth data is stored in `OMNIWORK_RELAY_AUTH_DB_PATH` (default
 - `GET /auth/devices`, `POST /auth/devices/:device_id/revoke` — list and
   revoke user devices.
 
+Cookie-authenticated state-changing requests must include `x-csrf-token` from
+`GET /auth/me`. Bearer-token API calls are not subject to this CSRF check.
+
 When enabled, `agent.hello` must include a `relay_auth.device_signature`
 signature over `device_id|agent_instance_id|timestamp|nonce`, verified against
 the registered device public key. `mobile.connect` must include a user
