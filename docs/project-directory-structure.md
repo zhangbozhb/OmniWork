@@ -235,7 +235,7 @@ desktop/
 |   |   |-- agentd/              # startAgent 主入口
 |   |   |-- core/                # Agent 组合根、协议 dispatcher、连接安全网关、请求 handler 与推流组件
 |   |   |-- relay-client/        # agentRelayClient
-|   |   |-- transport/           # SessionTransport / UpgradeCoordinator / WebRtcPeerAdapter / relayPath
+|   |   |-- transport/           # SessionTransport 门面、session-transport 内部实现、UpgradeCoordinator、WebRtcPeerAdapter、relayPath
 |   |   |-- terminal-provider/   # terminalProviderRegistry（Codex/Claude/Gemini 终端 provider 抽象）
 |   |   |-- pty-bridge/          # terminalBridge
 |   |   |-- tmux-manager/        # tmuxManager

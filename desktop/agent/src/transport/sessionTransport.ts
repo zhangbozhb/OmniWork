@@ -1,131 +1,34 @@
-import {
-  createMessage,
-  parseMessageEnvelope,
-  type MessageEnvelope,
-  type P2pChannelKind,
-  type SessionTransport,
-  type TransportPath,
-  type TransportPingPayload,
-  type TransportPongPayload,
-  type WebRtcPeerAdapter,
+import type {
+  MessageEnvelope,
+  P2pChannelKind,
+  SessionTransport,
+  TransportPath,
+  WebRtcPeerAdapter,
 } from "@omniwork/protocol-ts";
 import type { AgentRelayPath } from "./relayPath.ts";
-
-type MessageHandler = (envelope: MessageEnvelope) => void;
-type PathChangeHandler = (path: TransportPath) => void;
-type DowngradeReasonHandler = (reason: string) => void;
-type ForceCloseHandler = (reason: string) => void;
-type QueuedSend = {
-  envelope: MessageEnvelope;
-  channel?: P2pChannelKind;
-};
-type SendOptions = {
-  strictBypass?: boolean;
-};
-interface PeerRouteState {
-  peer: WebRtcPeerAdapter;
-  detach: () => void;
-  onDowngrade: DowngradeReasonHandler | null;
-  upgradeId: string | null;
-}
-interface AppRouteState {
-  currentPath: TransportPath;
-  strictP2p: boolean;
-  forceCloseHandler: ForceCloseHandler | null;
-  forceClosed: boolean;
-  pendingQueue: QueuedSend[];
-  switching: boolean;
-  outboundQueue: QueuedSend[] | null;
-  pingTimer: ReturnType<typeof setInterval> | null;
-  pingSeq: number;
-  pendingPings: Map<
-    number,
-    {
-      sentAt: number;
-      timeout: ReturnType<typeof setTimeout>;
-    }
-  >;
-  pongTimeoutCount: number;
-  bufferedSampleTimer: ReturnType<typeof setInterval> | null;
-  bufferedOverflowSeconds: number;
-  iceDisconnectedTimer: ReturnType<typeof setTimeout> | null;
-}
-type TransportEvent =
-  | { type: "path_change"; from: TransportPath; to: TransportPath }
-  | { type: "ping_timeout"; seq: number; count: number }
-  | { type: "pong_received"; seq: number; rtt_ms: number }
-  | { type: "downgrade"; reason: string }
-  | { type: "force_close"; reason: string }
-  | { type: "strict_send_blocked"; envelope_type: string }
-  | {
-      type: "display_frame_deferred";
-      app_connection_id: string;
-      buffered_amount: number;
-    }
-  | {
-      type: "pending_drop";
-      reason: "queue_overflow" | "session_close" | "force_close";
-      count: number;
-    };
-type TransportEventHandler = (event: TransportEvent) => void;
-
-/**
- * 严格 P2P 模式下放行的控制面消息前缀；其余业务消息（session.x / terminal.x /
- * workspace.x / files.x / git.x / agent.x）必须在 currentPath === "p2p" 时才能 send。
- */
-const STRICT_CONTROL_PREFIXES = ["tunnel.upgrade.", "transport."] as const;
-
-function isStrictControlMessage(envelopeType: string): boolean {
-  for (const prefix of STRICT_CONTROL_PREFIXES) {
-    if (envelopeType.startsWith(prefix)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-const DRAIN_DELAY_MS = 100;
-const PING_INTERVAL_MS = 5_000;
-const PING_TIMEOUT_MS = 2_500;
-const PING_TIMEOUT_THRESHOLD = 4;
-/**
- * strict 模式下心跳采用更宽松的阈值，避免 4G/5G 弱网偶发丢包就触发不可恢复的 forceClose。
- * - INTERVAL 使用 4s：降低移动弱网和 JS 短暂停顿下的探测噪声；
- * - TIMEOUT 放宽到 5s：覆盖 RTT 较高的跨大洲 / 移动网络场景；
- * - THRESHOLD 提升到 6：单次成功收到 pong 即清零，连续 6 次未收到才算"真死"。
- */
-const STRICT_PING_INTERVAL_MS = 4_000;
-const STRICT_PING_TIMEOUT_MS = 5_000;
-const STRICT_PING_TIMEOUT_THRESHOLD = 6;
-const PING_TIMER_STALL_GRACE_MS = 5_000;
-const STRICT_PING_TIMER_STALL_GRACE_MS = 8_000;
-const BUFFERED_AMOUNT_LIMIT = 1_000_000;
-export const DISPLAY_FRAME_BUFFERED_AMOUNT_LIMIT = 256_000;
-const BUFFERED_AMOUNT_SAMPLE_INTERVAL_MS = 1_000;
-const BUFFERED_AMOUNT_OVERFLOW_SECONDS = 5;
-const ICE_DISCONNECTED_GRACE_MS = 8_000;
-/**
- * strict 模式下 ICE disconnected → connected 的容忍窗口拉长到 16s，
- * 避免移动端 LTE/Wi-Fi 漫游瞬间的 ICE 抖动直接 forceClose。
- */
-const STRICT_ICE_DISCONNECTED_GRACE_MS = 16_000;
-/**
- * strict 模式下 P2P 未就绪期间业务消息暂存队列的上限。超过此上限说明
- * 协商窗口异常长，继续累积只会让 flush 时 burst 写入 DataChannel 触发
- * buffered_overflow，直接 forceClose 让上层重建 session 更安全。
- */
-const STRICT_PENDING_QUEUE_LIMIT = 256;
-
-export interface AttachP2pPeerOptions {
-  appConnectionId?: string;
-  /**
-   * 当传输层检测到需要降级（pong 超时 / bufferedAmount / ICE 异常）时回调，
-   * 由外部（通常是 UpgradeCoordinator.downgrade）执行真正的协议降级动作。
-   */
-  onDowngrade?: DowngradeReasonHandler;
-  /** 当前 upgrade_id，会写入 transport.ping 的 payload，便于 Relay/对端审计。 */
-  upgradeId?: string;
-}
+import {
+  channelForP2pEnvelope,
+  getEnvelopeAppConnectionId,
+} from "./session-transport/channelRouter.ts";
+import {
+  DRAIN_DELAY_MS,
+  type AttachP2pPeerOptions,
+  type DowngradeReasonHandler,
+  type ForceCloseHandler,
+  type MessageHandler,
+  type PathChangeHandler,
+  type QueuedSend,
+  type SendOptions,
+  type TransportEventHandler,
+} from "./session-transport/types.ts";
+import { TransportEventBus } from "./session-transport/eventBus.ts";
+import { TransportRouteStore } from "./session-transport/routeStore.ts";
+import { StrictP2pGate } from "./session-transport/strictP2pGate.ts";
+import { P2pPeerRegistry } from "./session-transport/p2pPeerRegistry.ts";
+import { TransportHealthMonitor } from "./session-transport/healthMonitor.ts";
+import { TransportDowngradeController } from "./session-transport/downgradeController.ts";
+export { DISPLAY_FRAME_BUFFERED_AMOUNT_LIMIT } from "./session-transport/types.ts";
+export type { AttachP2pPeerOptions } from "./session-transport/types.ts";
 
 export interface AgentSessionTransportOptions {
   /**
@@ -144,50 +47,89 @@ export interface AgentSessionTransportOptions {
 
 export class AgentSessionTransport implements SessionTransport {
   private readonly relayPath: AgentRelayPath;
+  private readonly eventBus = new TransportEventBus();
+  private readonly routeStore = new TransportRouteStore();
+  private readonly peerRegistry = new P2pPeerRegistry({
+    routeStore: this.routeStore,
+    dispatch: (message) => this.dispatch(message),
+    handleIncomingPing: (envelope) =>
+      this.healthMonitor.handleIncomingPing(envelope),
+    handleIncomingPong: (envelope) =>
+      this.healthMonitor.handleIncomingPong(envelope),
+    handleIncomingPingForConnection: (appConnectionId, envelope) =>
+      this.healthMonitor.handleIncomingPingForConnection(
+        appConnectionId,
+        envelope,
+      ),
+    handleIncomingPongForConnection: (appConnectionId, envelope) =>
+      this.healthMonitor.handleIncomingPongForConnection(
+        appConnectionId,
+        envelope,
+      ),
+    handleHealthDowngrade: (reason) => this.handleHealthDowngrade(reason),
+    handleHealthDowngradeForConnection: (appConnectionId, reason) =>
+      this.handleHealthDowngradeForConnection(appConnectionId, reason),
+    armIceDisconnectedTimer: () => this.healthMonitor.armIceDisconnectedTimer(),
+    armIceDisconnectedTimerForConnection: (appConnectionId) =>
+      this.healthMonitor.armIceDisconnectedTimerForConnection(appConnectionId),
+    clearIceDisconnectedTimer: () =>
+      this.healthMonitor.clearIceDisconnectedTimer(),
+    clearIceDisconnectedTimerForConnection: (appConnectionId) =>
+      this.healthMonitor.clearIceDisconnectedTimerForConnection(
+        appConnectionId,
+      ),
+    currentGlobalPath: () => this.currentPath,
+  });
+  private readonly healthMonitor = new TransportHealthMonitor({
+    peerRegistry: this.peerRegistry,
+    routeStore: this.routeStore,
+    emitEvent: (event) => this.eventBus.emitEvent(event),
+    globalStrictP2p: () => this.strictP2p,
+    globalCurrentPath: () => this.currentPath,
+    globalUpgradeId: () => this.upgradeId,
+    handleHealthDowngrade: (reason) => this.handleHealthDowngrade(reason),
+    handleHealthDowngradeForConnection: (appConnectionId, reason) =>
+      this.handleHealthDowngradeForConnection(appConnectionId, reason),
+  });
+  private readonly strictGate = new StrictP2pGate({
+    emitEvent: (event) => this.eventBus.emitEvent(event),
+    forceClose: (reason) => this.forceClose(reason),
+    forceCloseConnection: (appConnectionId, reason) =>
+      this.forceCloseConnection(appConnectionId, reason),
+    dispatchSend: (envelope, channel) => this.dispatchSend(envelope, channel),
+  });
+  private readonly downgradeController = new TransportDowngradeController({
+    routeStore: this.routeStore,
+    peerRegistry: this.peerRegistry,
+    strictGate: this.strictGate,
+    emitEvent: (event) => this.eventBus.emitEvent(event),
+    currentPath: () => this.currentPath,
+    strictP2p: () => this.strictP2p,
+    forceClosed: () => this.forceClosed,
+    setForceClosed: (forceClosed) => {
+      this.forceClosed = forceClosed;
+    },
+    globalDowngradeHandler: () => this.downgradeHandler,
+    globalForceCloseHandler: () => this.forceCloseHandler,
+    clearGlobalStrictState: () => {
+      this.strictP2p = false;
+      this.forceCloseHandler = null;
+    },
+    detachP2pPeer: (appConnectionId) => this.detachP2pPeer(appConnectionId),
+    resetPathState: () => this.resetPathState(),
+    switchPath: (target) => this.switchPath(target),
+    switchPathForConnection: (appConnectionId, target) =>
+      this.switchPathForConnection(appConnectionId, target),
+  });
   private currentPath: TransportPath = "relay";
-  private readonly messageHandlers = new Set<MessageHandler>();
-  private readonly pathChangeHandlers = new Set<PathChangeHandler>();
-  private readonly eventHandlers = new Set<TransportEventHandler>();
   private closed = false;
-  private peer: WebRtcPeerAdapter | null = null;
-  private detachPeerListeners: (() => void) | null = null;
-  private readonly peersByAppConnectionId = new Map<
-    string,
-    PeerRouteState
-  >();
-  private readonly appRoutes = new Map<string, AppRouteState>();
   private outboundQueue: QueuedSend[] | null = null;
-  /**
-   * 严格 P2P 模式下、currentPath !== "p2p" 时业务消息的暂存队列。
-   * - 升级到 p2p 后由 switchPath() flush；
-   * - forceClose / configureStrictP2p / close 时清空，由上层重建会话后再发。
-   */
-  private strictPendingQueue: QueuedSend[] = [];
   private switching = false;
   private downgradeHandler: DowngradeReasonHandler | null = null;
   private upgradeId: string | null = null;
   private strictP2p: boolean;
   private forceCloseHandler: ForceCloseHandler | null;
   private forceClosed = false;
-
-  // Ping/pong 心跳状态
-  private pingTimer: ReturnType<typeof setInterval> | null = null;
-  private pingSeq = 0;
-  private pendingPings = new Map<
-    number,
-    {
-      sentAt: number;
-      timeout: ReturnType<typeof setTimeout>;
-    }
-  >();
-  private pongTimeoutCount = 0;
-
-  // bufferedAmount 采样状态
-  private bufferedSampleTimer: ReturnType<typeof setInterval> | null = null;
-  private bufferedOverflowSeconds = 0;
-
-  // ICE disconnected grace
-  private iceDisconnectedTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     relayPath: AgentRelayPath,
@@ -218,7 +160,7 @@ export class AgentSessionTransport implements SessionTransport {
     this.forceClosed = false;
     this.detachP2pPeer();
     this.resetPathState();
-    this.strictPendingQueue = [];
+    this.strictGate.clearGlobalQueue();
   }
 
   configureStrictP2pForConnection(
@@ -226,7 +168,7 @@ export class AgentSessionTransport implements SessionTransport {
     strictP2p: boolean,
     onForceClose: ForceCloseHandler | null = null,
   ): void {
-    const route = this.getOrCreateAppRoute(appConnectionId);
+    const route = this.routeStore.getOrCreate(appConnectionId);
     route.strictP2p = strictP2p;
     route.forceCloseHandler = onForceClose;
     route.forceClosed = false;
@@ -237,7 +179,7 @@ export class AgentSessionTransport implements SessionTransport {
   }
 
   clearStrictP2pForConnection(appConnectionId: string): void {
-    const route = this.appRoutes.get(appConnectionId);
+    const route = this.routeStore.get(appConnectionId);
     if (!route) {
       return;
     }
@@ -248,7 +190,7 @@ export class AgentSessionTransport implements SessionTransport {
   }
 
   isStrictP2pForConnection(appConnectionId: string): boolean {
-    return this.appRoutes.get(appConnectionId)?.strictP2p === true;
+    return this.routeStore.get(appConnectionId)?.strictP2p === true;
   }
 
   send(
@@ -263,13 +205,21 @@ export class AgentSessionTransport implements SessionTransport {
     if (
       appConnectionId &&
       !options.strictBypass &&
-      this.shouldQueueStrictAppSend(appConnectionId, envelope)
+      this.strictGate.shouldQueueAppSend(
+        this.routeStore.get(appConnectionId),
+        envelope,
+      )
     ) {
-      this.queueStrictAppSend(appConnectionId, envelope, channel);
+      this.strictGate.queueAppSend(
+        appConnectionId,
+        this.routeStore.getOrCreate(appConnectionId),
+        envelope,
+        channel,
+      );
       return;
     }
     if (appConnectionId) {
-      const appRoute = this.appRoutes.get(appConnectionId);
+      const appRoute = this.routeStore.get(appConnectionId);
       if (appRoute?.outboundQueue) {
         appRoute.outboundQueue.push({ envelope, channel });
         return;
@@ -280,31 +230,14 @@ export class AgentSessionTransport implements SessionTransport {
       }
     }
     if (
-      this.strictP2p &&
-      this.currentPath !== "p2p" &&
-      !isStrictControlMessage(envelope.type)
+      this.strictGate.handleGlobalSend({
+        strictP2p: this.strictP2p,
+        currentPath: this.currentPath,
+        forceClosed: this.forceClosed,
+        envelope,
+        channel,
+      })
     ) {
-      if (this.forceClosed) {
-        this.emitEvent({
-          type: "strict_send_blocked",
-          envelope_type: envelope.type,
-        });
-        return;
-      }
-      // 暂存队列上限保护：超过 STRICT_PENDING_QUEUE_LIMIT 视作协商窗口异常，
-      // 直接 forceClose 让上层重建 session，避免后续 flush 触发 buffered_overflow。
-      if (this.strictPendingQueue.length >= STRICT_PENDING_QUEUE_LIMIT) {
-        const dropped = this.strictPendingQueue.length;
-        this.strictPendingQueue = [];
-        this.emitEvent({
-          type: "pending_drop",
-          reason: "queue_overflow",
-          count: dropped,
-        });
-        this.forceClose("strict_pending_overflow");
-        return;
-      }
-      this.strictPendingQueue.push({ envelope, channel });
       return;
     }
     if (this.outboundQueue) {
@@ -315,24 +248,15 @@ export class AgentSessionTransport implements SessionTransport {
   }
 
   onMessage(handler: MessageHandler): () => void {
-    this.messageHandlers.add(handler);
-    return () => {
-      this.messageHandlers.delete(handler);
-    };
+    return this.eventBus.onMessage(handler);
   }
 
   onPathChange(handler: PathChangeHandler): () => void {
-    this.pathChangeHandlers.add(handler);
-    return () => {
-      this.pathChangeHandlers.delete(handler);
-    };
+    return this.eventBus.onPathChange(handler);
   }
 
   onEvent(handler: TransportEventHandler): () => void {
-    this.eventHandlers.add(handler);
-    return () => {
-      this.eventHandlers.delete(handler);
-    };
+    return this.eventBus.onEvent(handler);
   }
 
   getCurrentPath(): TransportPath {
@@ -340,7 +264,7 @@ export class AgentSessionTransport implements SessionTransport {
   }
 
   getBufferedAmountForApp(appConnectionId: string): number {
-    const peer = this.peersByAppConnectionId.get(appConnectionId)?.peer;
+    const peer = this.peerRegistry.get(appConnectionId)?.peer;
     return peer?.getBufferedAmount("display") ?? 0;
   }
 
@@ -348,7 +272,7 @@ export class AgentSessionTransport implements SessionTransport {
     appConnectionId: string,
     bufferedAmount: number,
   ): void {
-    this.emitEvent({
+    this.eventBus.emitEvent({
       type: "display_frame_deferred",
       app_connection_id: appConnectionId,
       buffered_amount: bufferedAmount,
@@ -361,7 +285,7 @@ export class AgentSessionTransport implements SessionTransport {
    * `forceClose` 表示"strict 模式下 session 不可用"，会 emit force_close 并
    * 通知 forceCloseHandler 让 agentService 清理对应 mobile 的 session 状态。
    *
-   * 若 close 时 strictPendingQueue 非空，先发出 `pending_drop(reason="session_close")`
+   * 若 close 时 strict pending queue 非空，先发出 `pending_drop(reason="session_close")`
    * 让上层日志可见。
    */
   close(_reason: string): void {
@@ -370,18 +294,8 @@ export class AgentSessionTransport implements SessionTransport {
     }
     this.closed = true;
     this.detachP2pPeer();
-    if (this.strictPendingQueue.length > 0) {
-      const dropped = this.strictPendingQueue.length;
-      this.strictPendingQueue = [];
-      this.emitEvent({
-        type: "pending_drop",
-        reason: "session_close",
-        count: dropped,
-      });
-    }
-    this.messageHandlers.clear();
-    this.pathChangeHandlers.clear();
-    this.eventHandlers.clear();
+    this.strictGate.dropGlobalQueue("session_close");
+    this.eventBus.clear();
     this.outboundQueue = null;
   }
 
@@ -396,163 +310,40 @@ export class AgentSessionTransport implements SessionTransport {
       this.detachP2pPeer();
     }
     if (!appConnectionId) {
-      this.peer = peer;
       this.downgradeHandler = options.onDowngrade ?? null;
       this.upgradeId = options.upgradeId ?? null;
     }
-
-    const offMessage = peer.onDataMessage((data) => {
-      let decoded: unknown;
-      try {
-        decoded = JSON.parse(data);
-      } catch {
-        decoded = null;
-      }
-      const envelope = parseMessageEnvelope(decoded);
-      if (!envelope) {
-        return;
-      }
-      // ping/pong 是传输层内部消息，不进入业务分发。
-      if (envelope.type === "transport.ping") {
-        if (appConnectionId) {
-          this.handleIncomingPingForConnection(
-            appConnectionId,
-            envelope as MessageEnvelope<TransportPingPayload>,
-          );
-        } else {
-          this.handleIncomingPing(
-            envelope as MessageEnvelope<TransportPingPayload>,
-          );
-        }
-        return;
-      }
-      if (envelope.type === "transport.pong") {
-        if (appConnectionId) {
-          this.handleIncomingPongForConnection(
-            appConnectionId,
-            envelope as MessageEnvelope<TransportPongPayload>,
-          );
-        } else {
-          this.handleIncomingPong(
-            envelope as MessageEnvelope<TransportPongPayload>,
-          );
-        }
-        return;
-      }
-      this.dispatch(envelope);
-    });
-    const offState = peer.onStateChange((state) => {
-      if (state === "failed") {
-        if (appConnectionId) {
-          this.handleHealthDowngradeForConnection(appConnectionId, "ice_failed");
-        } else {
-          this.handleHealthDowngrade("ice_failed");
-        }
-        return;
-      }
-      if (state === "disconnected") {
-        if (appConnectionId) {
-          this.armIceDisconnectedTimerForConnection(appConnectionId);
-        } else {
-          this.armIceDisconnectedTimer();
-        }
-        return;
-      }
-      if (state === "connected") {
-        if (appConnectionId) {
-          this.clearIceDisconnectedTimerForConnection(appConnectionId);
-        } else {
-          this.clearIceDisconnectedTimer();
-        }
-        return;
-      }
-      if (state === "closed") {
-        const currentPath = appConnectionId
-          ? this.appRoutes.get(appConnectionId)?.currentPath
-          : this.currentPath;
-        if (currentPath === "p2p") {
-          if (appConnectionId) {
-            this.handleHealthDowngradeForConnection(
-              appConnectionId,
-              "peer_closed",
-            );
-          } else {
-            this.handleHealthDowngrade("peer_closed");
-          }
-        } else {
-          this.detachP2pPeer(appConnectionId);
-        }
-      }
-    });
-    const detach = () => {
-      offMessage();
-      offState();
-    };
-    if (appConnectionId) {
-      this.getOrCreateAppRoute(appConnectionId);
-      this.peersByAppConnectionId.set(appConnectionId, {
-        peer,
-        detach,
-        onDowngrade: options.onDowngrade ?? null,
-        upgradeId: options.upgradeId ?? null,
-      });
-    }
-    if (!appConnectionId) {
-      this.detachPeerListeners = detach;
-    }
+    this.peerRegistry.attach(peer, options);
   }
 
   detachP2pPeer(appConnectionId?: string): void {
     if (appConnectionId) {
-      const route = this.appRoutes.get(appConnectionId);
+      const route = this.routeStore.get(appConnectionId);
       if (route) {
-        this.stopPingLoopForRoute(route);
-        this.stopBufferedSamplerForRoute(route);
-        this.clearIceDisconnectedTimerForRoute(route);
+        this.healthMonitor.stopPingLoopForRoute(route);
+        this.healthMonitor.stopBufferedSamplerForRoute(route);
+        this.healthMonitor.clearIceDisconnectedTimerForRoute(route);
         route.currentPath = "relay";
         route.outboundQueue = null;
         route.switching = false;
       }
-      const entry = this.peersByAppConnectionId.get(appConnectionId);
-      if (entry) {
-        entry.detach();
-        try {
-          entry.peer.close();
-        } catch {
-          /* ignore */
-        }
-        this.peersByAppConnectionId.delete(appConnectionId);
-      }
-      if (this.peer === entry?.peer) {
-        this.peer = null;
+      const entry = this.peerRegistry.detach(appConnectionId);
+      if (this.peerRegistry.getLegacyPeer() === null && entry) {
         this.downgradeHandler = null;
         this.upgradeId = null;
       }
       return;
     }
-    this.stopPingLoop();
-    this.stopBufferedSampler();
-    this.clearIceDisconnectedTimer();
-    if (this.detachPeerListeners) {
-      this.detachPeerListeners();
-      this.detachPeerListeners = null;
+    this.healthMonitor.stopPingLoop();
+    this.healthMonitor.stopBufferedSampler();
+    this.healthMonitor.clearIceDisconnectedTimer();
+    this.peerRegistry.detach();
+    for (const route of this.routeStore.values()) {
+      this.healthMonitor.stopPingLoopForRoute(route);
+      this.healthMonitor.stopBufferedSamplerForRoute(route);
+      this.healthMonitor.clearIceDisconnectedTimerForRoute(route);
     }
-    this.peer = null;
-    for (const entry of this.peersByAppConnectionId.values()) {
-      entry.detach();
-      try {
-        entry.peer.close();
-      } catch {
-        /* ignore */
-      }
-    }
-    this.peersByAppConnectionId.clear();
-    for (const route of this.appRoutes.values()) {
-      this.stopPingLoopForRoute(route);
-      this.stopBufferedSamplerForRoute(route);
-      this.clearIceDisconnectedTimerForRoute(route);
-    }
-    this.appRoutes.clear();
+    this.routeStore.clear();
     this.downgradeHandler = null;
     this.upgradeId = null;
   }
@@ -561,7 +352,7 @@ export class AgentSessionTransport implements SessionTransport {
     if (this.closed || this.currentPath === target || this.switching) {
       return;
     }
-    if (target === "p2p" && !this.peer) {
+    if (target === "p2p" && !this.peerRegistry.getLegacyPeer()) {
       console.warn("[omniwork-agent-transport] cannot switch to p2p: no peer");
       return;
     }
@@ -577,10 +368,12 @@ export class AgentSessionTransport implements SessionTransport {
     try {
       await delay(DRAIN_DELAY_MS);
       this.currentPath = target;
-      for (const handler of this.pathChangeHandlers) {
-        handler(target);
-      }
-      this.emitEvent({ type: "path_change", from: previous, to: target });
+      this.eventBus.emitPathChange(target);
+      this.eventBus.emitEvent({
+        type: "path_change",
+        from: previous,
+        to: target,
+      });
       const queued = this.outboundQueue;
       this.outboundQueue = null;
       if (queued) {
@@ -589,19 +382,12 @@ export class AgentSessionTransport implements SessionTransport {
         }
       }
       if (target === "p2p") {
-        this.startPingLoop();
-        this.startBufferedSampler();
-        // strict 模式下业务消息暂存队列在 P2P 就绪后一次性 flush。
-        if (this.strictPendingQueue.length > 0) {
-          const pending = this.strictPendingQueue;
-          this.strictPendingQueue = [];
-          for (const item of pending) {
-            this.dispatchSend(item.envelope, item.channel);
-          }
-        }
+        this.healthMonitor.startPingLoop();
+        this.healthMonitor.startBufferedSampler();
+        this.strictGate.flushGlobalQueue();
       } else {
-        this.stopPingLoop();
-        this.stopBufferedSampler();
+        this.healthMonitor.stopPingLoop();
+        this.healthMonitor.stopBufferedSampler();
       }
     } finally {
       this.switching = false;
@@ -612,15 +398,18 @@ export class AgentSessionTransport implements SessionTransport {
     appConnectionId: string,
     target: TransportPath,
   ): Promise<void> {
-    const route = this.getOrCreateAppRoute(appConnectionId);
+    const route = this.routeStore.getOrCreate(appConnectionId);
     if (this.closed || route.currentPath === target || route.switching) {
       return;
     }
-    const appPeer = this.peersByAppConnectionId.get(appConnectionId);
+    const appPeer = this.peerRegistry.get(appConnectionId);
     if (target === "p2p" && !appPeer) {
-      console.warn("[omniwork-agent-transport] cannot switch app to p2p: no peer", {
-        app_connection_id: appConnectionId,
-      });
+      console.warn(
+        "[omniwork-agent-transport] cannot switch app to p2p: no peer",
+        {
+          app_connection_id: appConnectionId,
+        },
+      );
       return;
     }
     if (route.strictP2p && target === "relay") {
@@ -636,10 +425,12 @@ export class AgentSessionTransport implements SessionTransport {
     try {
       await delay(DRAIN_DELAY_MS);
       route.currentPath = target;
-      for (const handler of this.pathChangeHandlers) {
-        handler(target);
-      }
-      this.emitEvent({ type: "path_change", from: previous, to: target });
+      this.eventBus.emitPathChange(target);
+      this.eventBus.emitEvent({
+        type: "path_change",
+        from: previous,
+        to: target,
+      });
       const queued = route.outboundQueue;
       route.outboundQueue = null;
       if (queued) {
@@ -648,12 +439,12 @@ export class AgentSessionTransport implements SessionTransport {
         }
       }
       if (target === "p2p") {
-        this.startPingLoopForConnection(appConnectionId);
-        this.startBufferedSamplerForConnection(appConnectionId);
-        this.flushStrictAppQueue(appConnectionId);
+        this.healthMonitor.startPingLoopForConnection(appConnectionId);
+        this.healthMonitor.startBufferedSamplerForConnection(appConnectionId);
+        this.strictGate.flushAppQueue(this.routeStore.get(appConnectionId));
       } else {
-        this.stopPingLoopForRoute(route);
-        this.stopBufferedSamplerForRoute(route);
+        this.healthMonitor.stopPingLoopForRoute(route);
+        this.healthMonitor.stopBufferedSamplerForRoute(route);
       }
     } finally {
       route.switching = false;
@@ -666,10 +457,10 @@ export class AgentSessionTransport implements SessionTransport {
   ): void {
     const appConnectionId = getEnvelopeAppConnectionId(envelope);
     const appRoute = appConnectionId
-      ? this.appRoutes.get(appConnectionId)
+      ? this.routeStore.get(appConnectionId)
       : undefined;
     const appPeer = appConnectionId
-      ? this.peersByAppConnectionId.get(appConnectionId)
+      ? this.peerRegistry.get(appConnectionId)
       : undefined;
     if (appPeer && appRoute?.currentPath === "p2p") {
       appPeer.peer.send(
@@ -680,7 +471,7 @@ export class AgentSessionTransport implements SessionTransport {
     }
     if (appConnectionId) {
       if (appRoute?.strictP2p) {
-        this.emitEvent({
+        this.eventBus.emitEvent({
           type: "strict_send_blocked",
           envelope_type: envelope.type,
         });
@@ -690,8 +481,9 @@ export class AgentSessionTransport implements SessionTransport {
       this.relayPath.send(envelope);
       return;
     }
-    if (this.currentPath === "p2p" && this.peer) {
-      this.peer.send(
+    const legacyPeer = this.peerRegistry.getLegacyPeer();
+    if (this.currentPath === "p2p" && legacyPeer) {
+      legacyPeer.send(
         JSON.stringify(envelope),
         channelForP2pEnvelope(envelope, channel),
       );
@@ -701,8 +493,8 @@ export class AgentSessionTransport implements SessionTransport {
     // 降级竞态、forceClose 后还没复位 currentPath）时，绝不允许 fallback 到
     // relay——这会让"业务消息只走 DataChannel"的契约破产。直接发出 force_close
     // 并丢弃当前消息，由上层重建 session。
-    if (this.strictP2p && this.currentPath === "p2p" && !this.peer) {
-      this.emitEvent({
+    if (this.strictP2p && this.currentPath === "p2p" && !legacyPeer) {
+      this.eventBus.emitEvent({
         type: "strict_send_blocked",
         envelope_type: envelope.type,
       });
@@ -716,472 +508,7 @@ export class AgentSessionTransport implements SessionTransport {
     if (this.closed) {
       return;
     }
-    for (const handler of this.messageHandlers) {
-      handler(message);
-    }
-  }
-
-  private getOrCreateAppRoute(appConnectionId: string): AppRouteState {
-    const existing = this.appRoutes.get(appConnectionId);
-    if (existing) {
-      return existing;
-    }
-    const route: AppRouteState = {
-      currentPath: "relay",
-      strictP2p: false,
-      forceCloseHandler: null,
-      forceClosed: false,
-      pendingQueue: [],
-      switching: false,
-      outboundQueue: null,
-      pingTimer: null,
-      pingSeq: 0,
-      pendingPings: new Map(),
-      pongTimeoutCount: 0,
-      bufferedSampleTimer: null,
-      bufferedOverflowSeconds: 0,
-      iceDisconnectedTimer: null,
-    };
-    this.appRoutes.set(appConnectionId, route);
-    return route;
-  }
-
-  private shouldQueueStrictAppSend(
-    appConnectionId: string,
-    envelope: MessageEnvelope,
-  ): boolean {
-    const route = this.appRoutes.get(appConnectionId);
-    if (!route?.strictP2p || route.currentPath === "p2p") {
-      return false;
-    }
-    return !isStrictControlMessage(envelope.type);
-  }
-
-  private queueStrictAppSend(
-    appConnectionId: string,
-    envelope: MessageEnvelope,
-    channel?: P2pChannelKind,
-  ): void {
-    const route = this.getOrCreateAppRoute(appConnectionId);
-    if (route.forceClosed) {
-      this.emitEvent({
-        type: "strict_send_blocked",
-        envelope_type: envelope.type,
-      });
-      return;
-    }
-    if (route.pendingQueue.length >= STRICT_PENDING_QUEUE_LIMIT) {
-      const dropped = route.pendingQueue.length;
-      route.pendingQueue = [];
-      this.emitEvent({
-        type: "pending_drop",
-        reason: "queue_overflow",
-        count: dropped,
-      });
-      this.forceCloseConnection(appConnectionId, "strict_pending_overflow");
-      return;
-    }
-    route.pendingQueue.push({ envelope, channel });
-  }
-
-  private flushStrictAppQueue(appConnectionId: string): void {
-    const route = this.appRoutes.get(appConnectionId);
-    if (!route || route.pendingQueue.length === 0) {
-      return;
-    }
-    const pending = route.pendingQueue;
-    route.pendingQueue = [];
-    for (const item of pending) {
-      this.dispatchSend(item.envelope, item.channel);
-    }
-  }
-
-  // ---- ping/pong ----
-
-  private startPingLoop(): void {
-    if (this.pingTimer || !this.peer) {
-      return;
-    }
-    this.pongTimeoutCount = 0;
-    const interval = this.strictP2p
-      ? STRICT_PING_INTERVAL_MS
-      : PING_INTERVAL_MS;
-    const timer = setInterval(() => {
-      this.sendPing();
-    }, interval);
-    (timer as unknown as { unref?: () => void }).unref?.();
-    this.pingTimer = timer;
-  }
-
-  private stopPingLoop(): void {
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
-    }
-    for (const entry of this.pendingPings.values()) {
-      clearTimeout(entry.timeout);
-    }
-    this.pendingPings.clear();
-    this.pongTimeoutCount = 0;
-  }
-
-  private sendPing(): void {
-    if (!this.peer || this.currentPath !== "p2p") {
-      return;
-    }
-    const seq = ++this.pingSeq;
-    const sentAt = Date.now();
-    const envelope = createMessage<TransportPingPayload>("transport.ping", {
-      upgrade_id: this.upgradeId ?? undefined,
-      seq,
-      sent_at: new Date(sentAt).toISOString(),
-    });
-    try {
-      this.peer.send(JSON.stringify(envelope), "control");
-    } catch {
-      /* ignore: 下次 timeout 会触发降级 */
-    }
-    const timeoutMs = this.strictP2p ? STRICT_PING_TIMEOUT_MS : PING_TIMEOUT_MS;
-    const timeout = setTimeout(() => {
-      this.handlePongTimeout(seq);
-    }, timeoutMs);
-    (timeout as unknown as { unref?: () => void }).unref?.();
-    this.pendingPings.set(seq, { sentAt, timeout });
-  }
-
-  private handleIncomingPing(
-    envelope: MessageEnvelope<TransportPingPayload>,
-  ): void {
-    if (!this.peer || this.currentPath !== "p2p") {
-      return;
-    }
-    const reply = createMessage<TransportPongPayload>("transport.pong", {
-      upgrade_id: envelope.payload.upgrade_id,
-      seq: envelope.payload.seq,
-      sent_at: envelope.payload.sent_at,
-      received_at: new Date().toISOString(),
-    });
-    try {
-      this.peer.send(JSON.stringify(reply), "control");
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private handleIncomingPong(
-    envelope: MessageEnvelope<TransportPongPayload>,
-  ): void {
-    const seq = envelope.payload.seq;
-    const pending = this.pendingPings.get(seq);
-    if (!pending) {
-      return;
-    }
-    clearTimeout(pending.timeout);
-    this.pendingPings.delete(seq);
-    this.pongTimeoutCount = 0;
-    const rtt = Date.now() - pending.sentAt;
-    this.emitEvent({ type: "pong_received", seq, rtt_ms: rtt });
-  }
-
-  private handlePongTimeout(seq: number): void {
-    const pending = this.pendingPings.get(seq);
-    if (!pending) {
-      return;
-    }
-    this.pendingPings.delete(seq);
-    const timeoutMs = this.strictP2p ? STRICT_PING_TIMEOUT_MS : PING_TIMEOUT_MS;
-    const stallGraceMs = this.strictP2p
-      ? STRICT_PING_TIMER_STALL_GRACE_MS
-      : PING_TIMER_STALL_GRACE_MS;
-    if (Date.now() - pending.sentAt > timeoutMs + stallGraceMs) {
-      return;
-    }
-    this.pongTimeoutCount += 1;
-    this.emitEvent({
-      type: "ping_timeout",
-      seq,
-      count: this.pongTimeoutCount,
-    });
-    if (
-      this.pongTimeoutCount >=
-      (this.strictP2p ? STRICT_PING_TIMEOUT_THRESHOLD : PING_TIMEOUT_THRESHOLD)
-    ) {
-      this.handleHealthDowngrade("pong_timeout");
-    }
-  }
-
-  private startPingLoopForConnection(appConnectionId: string): void {
-    const route = this.getOrCreateAppRoute(appConnectionId);
-    if (route.pingTimer || !this.peersByAppConnectionId.has(appConnectionId)) {
-      return;
-    }
-    route.pongTimeoutCount = 0;
-    const interval = route.strictP2p
-      ? STRICT_PING_INTERVAL_MS
-      : PING_INTERVAL_MS;
-    const timer = setInterval(() => {
-      this.sendPingForConnection(appConnectionId);
-    }, interval);
-    (timer as unknown as { unref?: () => void }).unref?.();
-    route.pingTimer = timer;
-  }
-
-  private stopPingLoopForRoute(route: AppRouteState): void {
-    if (route.pingTimer) {
-      clearInterval(route.pingTimer);
-      route.pingTimer = null;
-    }
-    for (const entry of route.pendingPings.values()) {
-      clearTimeout(entry.timeout);
-    }
-    route.pendingPings.clear();
-    route.pongTimeoutCount = 0;
-  }
-
-  private sendPingForConnection(appConnectionId: string): void {
-    const route = this.appRoutes.get(appConnectionId);
-    const peer = this.peersByAppConnectionId.get(appConnectionId);
-    if (!route || !peer || route.currentPath !== "p2p") {
-      return;
-    }
-    const seq = ++route.pingSeq;
-    const sentAt = Date.now();
-    const envelope = createMessage<TransportPingPayload>("transport.ping", {
-      upgrade_id: peer.upgradeId ?? undefined,
-      seq,
-      sent_at: new Date(sentAt).toISOString(),
-    });
-    try {
-      peer.peer.send(JSON.stringify(envelope), "control");
-    } catch {
-      /* ignore: 下次 timeout 会触发降级 */
-    }
-    const timeoutMs = route.strictP2p
-      ? STRICT_PING_TIMEOUT_MS
-      : PING_TIMEOUT_MS;
-    const timeout = setTimeout(() => {
-      this.handlePongTimeoutForConnection(appConnectionId, seq);
-    }, timeoutMs);
-    (timeout as unknown as { unref?: () => void }).unref?.();
-    route.pendingPings.set(seq, { sentAt, timeout });
-  }
-
-  private handleIncomingPingForConnection(
-    appConnectionId: string,
-    envelope: MessageEnvelope<TransportPingPayload>,
-  ): void {
-    const route = this.appRoutes.get(appConnectionId);
-    const peer = this.peersByAppConnectionId.get(appConnectionId);
-    if (!route || !peer || route.currentPath !== "p2p") {
-      return;
-    }
-    const reply = createMessage<TransportPongPayload>("transport.pong", {
-      upgrade_id: envelope.payload.upgrade_id,
-      seq: envelope.payload.seq,
-      sent_at: envelope.payload.sent_at,
-      received_at: new Date().toISOString(),
-    });
-    try {
-      peer.peer.send(JSON.stringify(reply), "control");
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private handleIncomingPongForConnection(
-    appConnectionId: string,
-    envelope: MessageEnvelope<TransportPongPayload>,
-  ): void {
-    const route = this.appRoutes.get(appConnectionId);
-    if (!route) {
-      return;
-    }
-    const seq = envelope.payload.seq;
-    const pending = route.pendingPings.get(seq);
-    if (!pending) {
-      return;
-    }
-    clearTimeout(pending.timeout);
-    route.pendingPings.delete(seq);
-    route.pongTimeoutCount = 0;
-    const rtt = Date.now() - pending.sentAt;
-    this.emitEvent({ type: "pong_received", seq, rtt_ms: rtt });
-  }
-
-  private handlePongTimeoutForConnection(
-    appConnectionId: string,
-    seq: number,
-  ): void {
-    const route = this.appRoutes.get(appConnectionId);
-    if (!route) {
-      return;
-    }
-    const pending = route.pendingPings.get(seq);
-    if (!pending) {
-      return;
-    }
-    route.pendingPings.delete(seq);
-    const timeoutMs = route.strictP2p
-      ? STRICT_PING_TIMEOUT_MS
-      : PING_TIMEOUT_MS;
-    const stallGraceMs = route.strictP2p
-      ? STRICT_PING_TIMER_STALL_GRACE_MS
-      : PING_TIMER_STALL_GRACE_MS;
-    if (Date.now() - pending.sentAt > timeoutMs + stallGraceMs) {
-      return;
-    }
-    route.pongTimeoutCount += 1;
-    this.emitEvent({
-      type: "ping_timeout",
-      seq,
-      count: route.pongTimeoutCount,
-    });
-    if (
-      route.pongTimeoutCount >=
-      (route.strictP2p
-        ? STRICT_PING_TIMEOUT_THRESHOLD
-        : PING_TIMEOUT_THRESHOLD)
-    ) {
-      this.handleHealthDowngradeForConnection(appConnectionId, "pong_timeout");
-    }
-  }
-
-  // ---- bufferedAmount sampler ----
-
-  private startBufferedSampler(): void {
-    if (this.bufferedSampleTimer || !this.peer) {
-      return;
-    }
-    this.bufferedOverflowSeconds = 0;
-    const timer = setInterval(() => {
-      this.sampleBufferedAmount();
-    }, BUFFERED_AMOUNT_SAMPLE_INTERVAL_MS);
-    (timer as unknown as { unref?: () => void }).unref?.();
-    this.bufferedSampleTimer = timer;
-  }
-
-  private stopBufferedSampler(): void {
-    if (this.bufferedSampleTimer) {
-      clearInterval(this.bufferedSampleTimer);
-      this.bufferedSampleTimer = null;
-    }
-    this.bufferedOverflowSeconds = 0;
-  }
-
-  private sampleBufferedAmount(): void {
-    if (!this.peer) {
-      return;
-    }
-    const amount = this.peer.getBufferedAmount();
-    if (amount > BUFFERED_AMOUNT_LIMIT) {
-      this.bufferedOverflowSeconds += 1;
-      if (this.bufferedOverflowSeconds >= BUFFERED_AMOUNT_OVERFLOW_SECONDS) {
-        this.handleHealthDowngrade("buffered_overflow");
-      }
-    } else {
-      this.bufferedOverflowSeconds = 0;
-    }
-  }
-
-  private startBufferedSamplerForConnection(appConnectionId: string): void {
-    const route = this.getOrCreateAppRoute(appConnectionId);
-    if (
-      route.bufferedSampleTimer ||
-      !this.peersByAppConnectionId.has(appConnectionId)
-    ) {
-      return;
-    }
-    route.bufferedOverflowSeconds = 0;
-    const timer = setInterval(() => {
-      this.sampleBufferedAmountForConnection(appConnectionId);
-    }, BUFFERED_AMOUNT_SAMPLE_INTERVAL_MS);
-    (timer as unknown as { unref?: () => void }).unref?.();
-    route.bufferedSampleTimer = timer;
-  }
-
-  private stopBufferedSamplerForRoute(route: AppRouteState): void {
-    if (route.bufferedSampleTimer) {
-      clearInterval(route.bufferedSampleTimer);
-      route.bufferedSampleTimer = null;
-    }
-    route.bufferedOverflowSeconds = 0;
-  }
-
-  private sampleBufferedAmountForConnection(appConnectionId: string): void {
-    const route = this.appRoutes.get(appConnectionId);
-    const peer = this.peersByAppConnectionId.get(appConnectionId);
-    if (!route || !peer) {
-      return;
-    }
-    const amount = peer.peer.getBufferedAmount();
-    if (amount > BUFFERED_AMOUNT_LIMIT) {
-      route.bufferedOverflowSeconds += 1;
-      if (route.bufferedOverflowSeconds >= BUFFERED_AMOUNT_OVERFLOW_SECONDS) {
-        this.handleHealthDowngradeForConnection(
-          appConnectionId,
-          "buffered_overflow",
-        );
-      }
-    } else {
-      route.bufferedOverflowSeconds = 0;
-    }
-  }
-
-  // ---- ICE disconnected grace ----
-
-  private armIceDisconnectedTimer(): void {
-    if (this.iceDisconnectedTimer) {
-      return;
-    }
-    const graceMs = this.strictP2p
-      ? STRICT_ICE_DISCONNECTED_GRACE_MS
-      : ICE_DISCONNECTED_GRACE_MS;
-    const timer = setTimeout(() => {
-      this.iceDisconnectedTimer = null;
-      this.handleHealthDowngrade("ice_disconnected");
-    }, graceMs);
-    (timer as unknown as { unref?: () => void }).unref?.();
-    this.iceDisconnectedTimer = timer;
-  }
-
-  private clearIceDisconnectedTimer(): void {
-    if (this.iceDisconnectedTimer) {
-      clearTimeout(this.iceDisconnectedTimer);
-      this.iceDisconnectedTimer = null;
-    }
-  }
-
-  private armIceDisconnectedTimerForConnection(appConnectionId: string): void {
-    const route = this.getOrCreateAppRoute(appConnectionId);
-    if (route.iceDisconnectedTimer) {
-      return;
-    }
-    const graceMs = route.strictP2p
-      ? STRICT_ICE_DISCONNECTED_GRACE_MS
-      : ICE_DISCONNECTED_GRACE_MS;
-    const timer = setTimeout(() => {
-      route.iceDisconnectedTimer = null;
-      this.handleHealthDowngradeForConnection(
-        appConnectionId,
-        "ice_disconnected",
-      );
-    }, graceMs);
-    (timer as unknown as { unref?: () => void }).unref?.();
-    route.iceDisconnectedTimer = timer;
-  }
-
-  private clearIceDisconnectedTimerForConnection(appConnectionId: string): void {
-    const route = this.appRoutes.get(appConnectionId);
-    if (route) {
-      this.clearIceDisconnectedTimerForRoute(route);
-    }
-  }
-
-  private clearIceDisconnectedTimerForRoute(route: AppRouteState): void {
-    if (route.iceDisconnectedTimer) {
-      clearTimeout(route.iceDisconnectedTimer);
-      route.iceDisconnectedTimer = null;
-    }
+    this.eventBus.emitMessage(message);
   }
 
   /**
@@ -1198,111 +525,17 @@ export class AgentSessionTransport implements SessionTransport {
    * - 通过 downgradeHandler 让 coordinator 发出 `tunnel.upgrade.downgrade`
    *   给 Relay 用于 metrics + backoff（idempotent）
    * - emit `force_close` 事件 / detach peer / 完整 reset 路径状态
-   * - strictPendingQueue 非空时 emit `pending_drop(reason="force_close")`
+   * - strict pending queue 非空时 emit `pending_drop(reason="force_close")`
    * - 通知 forceCloseHandler 让 agentService 清理 mobile 关联会话
    *
    * 非 strict 模式调用本方法直接 no-op。多次调用幂等（forceClosed 标记）。
    */
   forceClose(reason: string): void {
-    if (!this.strictP2p) {
-      return;
-    }
-    if (this.forceClosed) {
-      return;
-    }
-    this.forceClosed = true;
-    const downgradeHandler = this.downgradeHandler;
-    const forceCloseHandler = this.forceCloseHandler;
-    this.emitEvent({ type: "force_close", reason });
-    // detach peer + 完整 reset 路径状态：让 transport 处于"刚创建未升级"
-    // 的初始态，避免下一轮 mobile 复连时 switchPath('p2p') 因 currentPath
-    // 残留为 "p2p" 而被 short-circuit、或 dispatchSend 落入"无 peer 的
-    // p2p path"分支。
-    this.detachP2pPeer();
-    this.resetPathState();
-    if (this.strictPendingQueue.length > 0) {
-      const dropped = this.strictPendingQueue.length;
-      this.strictPendingQueue = [];
-      this.emitEvent({
-        type: "pending_drop",
-        reason: "force_close",
-        count: dropped,
-      });
-    }
-    // strict 守门状态退出：本次 strict P2P 会话已经终结，transport 已回退到
-    // relay path（mobile 端会用新偏好重连）。若不重置，下一轮 mobile 连接
-    // 若选择 relay_only 偏好则不会触发 configureStrictP2p，残留的 strictP2p
-    // + forceClosed 会让 send() 把 auth.ok / session.list 等业务消息当成
-    // strict 期间需要暂存的非控制面消息，命中 strict_send_blocked 静默丢弃，
-    // 表现为 App 端永远收不到 auth.ok、UI 卡在 Connecting。下一轮若仍是
-    // prefer_p2p，propose 路径上的 configureStrictP2p 会重新置回 true。
-    this.strictP2p = false;
-    this.forceCloseHandler = null;
-    if (downgradeHandler) {
-      try {
-        downgradeHandler(reason);
-      } catch (error) {
-        console.warn(
-          "[omniwork-agent-transport] forceClose downgrade handler failed",
-          { error: (error as Error)?.message },
-        );
-      }
-    }
-    if (forceCloseHandler) {
-      try {
-        forceCloseHandler(reason);
-      } catch (error) {
-        console.warn("[omniwork-agent-transport] forceClose handler failed", {
-          error: (error as Error)?.message,
-        });
-      }
-    }
+    this.downgradeController.forceClose(reason);
   }
 
   forceCloseConnection(appConnectionId: string, reason: string): void {
-    const route = this.appRoutes.get(appConnectionId);
-    if (!route?.strictP2p || route.forceClosed) {
-      return;
-    }
-    route.forceClosed = true;
-    const peer = this.peersByAppConnectionId.get(appConnectionId);
-    const downgradeHandler = peer?.onDowngrade ?? null;
-    const forceCloseHandler = route.forceCloseHandler;
-    this.emitEvent({ type: "force_close", reason });
-    this.detachP2pPeer(appConnectionId);
-    const current = this.getOrCreateAppRoute(appConnectionId);
-    current.strictP2p = false;
-    current.forceCloseHandler = null;
-    current.forceClosed = false;
-    if (route.pendingQueue.length > 0) {
-      const dropped = route.pendingQueue.length;
-      route.pendingQueue = [];
-      this.emitEvent({
-        type: "pending_drop",
-        reason: "force_close",
-        count: dropped,
-      });
-    }
-    if (downgradeHandler) {
-      try {
-        downgradeHandler(reason);
-      } catch (error) {
-        console.warn(
-          "[omniwork-agent-transport] route forceClose downgrade handler failed",
-          { app_connection_id: appConnectionId, error: (error as Error)?.message },
-        );
-      }
-    }
-    if (forceCloseHandler) {
-      try {
-        forceCloseHandler(reason);
-      } catch (error) {
-        console.warn(
-          "[omniwork-agent-transport] route forceClose handler failed",
-          { app_connection_id: appConnectionId, error: (error as Error)?.message },
-        );
-      }
-    }
+    this.downgradeController.forceCloseConnection(appConnectionId, reason);
   }
 
   /**
@@ -1315,10 +548,12 @@ export class AgentSessionTransport implements SessionTransport {
     if (this.currentPath !== "relay") {
       const previous = this.currentPath;
       this.currentPath = "relay";
-      for (const handler of this.pathChangeHandlers) {
-        handler("relay");
-      }
-      this.emitEvent({ type: "path_change", from: previous, to: "relay" });
+      this.eventBus.emitPathChange("relay");
+      this.eventBus.emitEvent({
+        type: "path_change",
+        from: previous,
+        to: "relay",
+      });
     }
   }
 
@@ -1331,69 +566,17 @@ export class AgentSessionTransport implements SessionTransport {
   }
 
   private handleHealthDowngrade(reason: string): void {
-    if (this.currentPath !== "p2p") {
-      return;
-    }
-    // strict 模式：升级后任何健康异常都不能回退到 relay，必须 forceClose。
-    // forceClose 会经 downgradeHandler 让 coordinator 发出 tunnel.upgrade.downgrade
-    // 用于 metrics + backoff，并完成 detach / pending_drop / forceCloseHandler。
-    if (this.strictP2p) {
-      this.emitEvent({ type: "downgrade", reason });
-      this.forceClose(reason);
-      return;
-    }
-    const handler = this.downgradeHandler;
-    this.emitEvent({ type: "downgrade", reason });
-    void this.switchPath("relay");
-    this.detachP2pPeer();
-    if (handler) {
-      try {
-        handler(reason);
-      } catch (error) {
-        console.warn("[omniwork-agent-transport] downgrade handler failed", {
-          error: (error as Error)?.message,
-        });
-      }
-    }
+    this.downgradeController.handleHealthDowngrade(reason);
   }
 
   private handleHealthDowngradeForConnection(
     appConnectionId: string,
     reason: string,
   ): void {
-    const route = this.appRoutes.get(appConnectionId);
-    if (route?.currentPath !== "p2p") {
-      return;
-    }
-    this.emitEvent({ type: "downgrade", reason });
-    if (route.strictP2p) {
-      this.forceCloseConnection(appConnectionId, reason);
-      return;
-    }
-    const handler =
-      this.peersByAppConnectionId.get(appConnectionId)?.onDowngrade ?? null;
-    void this.switchPathForConnection(appConnectionId, "relay");
-    this.detachP2pPeer(appConnectionId);
-    if (handler) {
-      try {
-        handler(reason);
-      } catch (error) {
-        console.warn(
-          "[omniwork-agent-transport] route downgrade handler failed",
-          { app_connection_id: appConnectionId, error: (error as Error)?.message },
-        );
-      }
-    }
-  }
-
-  private emitEvent(event: TransportEvent): void {
-    for (const handler of this.eventHandlers) {
-      try {
-        handler(event);
-      } catch {
-        /* ignore */
-      }
-    }
+    this.downgradeController.handleHealthDowngradeForConnection(
+      appConnectionId,
+      reason,
+    );
   }
 }
 
@@ -1402,39 +585,4 @@ function delay(ms: number): Promise<void> {
     const timer = setTimeout(resolve, ms);
     (timer as unknown as { unref?: () => void }).unref?.();
   });
-}
-
-function getEnvelopeAppConnectionId(
-  envelope: MessageEnvelope,
-): string | undefined {
-  const payload = envelope.payload as { app_connection_id?: unknown };
-  return typeof payload?.app_connection_id === "string"
-    ? payload.app_connection_id
-    : undefined;
-}
-
-function channelForEnvelope(envelope: MessageEnvelope): P2pChannelKind {
-  switch (envelope.type) {
-    case "terminal.input":
-    case "terminal.resize":
-    case "terminal.stream.start":
-    case "terminal.stream.stop":
-      return "input";
-    case "terminal.frame":
-    case "terminal.stream.data":
-      return "display";
-    default:
-      return "control";
-  }
-}
-
-function channelForP2pEnvelope(
-  envelope: MessageEnvelope,
-  channel?: P2pChannelKind,
-): P2pChannelKind {
-  if (envelope.type === "e2e.message") {
-    // Current E2E replay protection requires a single strictly ordered stream.
-    return "control";
-  }
-  return channel ?? channelForEnvelope(envelope);
 }
