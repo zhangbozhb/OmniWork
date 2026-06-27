@@ -55,6 +55,7 @@
    - 如果 session cwd 位于 Git 仓库内，workspace path 提升为 Git root；否则使用 cwd 本身。workspace path 是稳定标识，展示名为空时使用路径最后一级目录。
    - `session.list` 下发 workspace 元数据，App 以 Workspace 作为一级项目对象；Workspace Detail 使用底部 Tab 展示 `Sessions` / `Git` / `Files`。
    - `Sessions` Tab 按 provider 分组，例如 OmniWork workspace 内展示 Codex、Claude、OpenCode 各自相关的 session。
+   - 进入 Workspace Detail 默认只展示 `Sessions` Tab，首次进入仅触发 `session.list` 刷新，不触发 files/git 的额外强刷新；`Files` / `Git` Tab 在用户打开对应 tab 时按缓存加载，只有用户显式刷新才强制刷新远端状态。
    - `Files` Tab 允许在 workspace 边界内浏览、预览文件，并对支持的 UTF-8 文本文件执行受控编辑；保存通过打开时的内容哈希做冲突检测，禁止通过相对路径越界。
    - `Git` Tab 仅当目标 workspace 是 Git 仓库时显示，能力限制为只读 `status` / `diff`，不提供 stage、commit、reset、push 等写操作。
 

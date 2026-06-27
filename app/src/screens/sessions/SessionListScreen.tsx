@@ -90,10 +90,6 @@ export interface SessionListScreenProps {
     relativePath: string,
   ): void;
   onRefreshWorkspaceGit(workspace: WorkspaceDefinition): void;
-  onPrefetchWorkspaceTab(
-    workspace: WorkspaceDefinition,
-    tab: "git" | "files",
-  ): void;
   onOpenDirectory(relativePath: string): void;
   onReadFile(relativePath: string): void;
   onEditFile(workspace: WorkspaceDefinition, relativePath: string): void;
@@ -154,7 +150,6 @@ export function SessionListScreen({
   onOpenWorkspaceGit,
   onRefreshWorkspaceFiles,
   onRefreshWorkspaceGit,
-  onPrefetchWorkspaceTab,
   onOpenDirectory,
   onReadFile,
   onEditFile,
@@ -371,41 +366,17 @@ export function SessionListScreen({
   function openWorkspace(workspace: WorkspaceDefinition): void {
     setSelectedWorkspace(workspace);
     setActiveWorkspaceTab("sessions");
-    if (refreshWorkspaceOnFirstEntry(workspace)) {
-      return;
-    }
-    prefetchAdjacentWorkspaceTabs(workspace, "sessions");
+    refreshSessionsOnFirstWorkspaceEntry(workspace);
   }
 
-  function refreshWorkspaceOnFirstEntry(
+  function refreshSessionsOnFirstWorkspaceEntry(
     workspace: WorkspaceDefinition,
-  ): boolean {
+  ): void {
     if (enteredWorkspacePathsRef.current.has(workspace.path)) {
-      return false;
+      return;
     }
     enteredWorkspacePathsRef.current.add(workspace.path);
     onRefreshSessions();
-    onRefreshWorkspaceFiles(workspace, "");
-    if (workspace.isGitRepository) {
-      onRefreshWorkspaceGit(workspace);
-    }
-    return true;
-  }
-
-  function prefetchAdjacentWorkspaceTabs(
-    workspace: WorkspaceDefinition,
-    tab: WorkspaceTab,
-  ): void {
-    const tabs = getWorkspaceTabs(workspace);
-    const currentIndex = tabs.indexOf(tab);
-    for (const adjacentTab of [
-      tabs[currentIndex - 1],
-      tabs[currentIndex + 1],
-    ]) {
-      if (adjacentTab === "git" || adjacentTab === "files") {
-        onPrefetchWorkspaceTab(workspace, adjacentTab);
-      }
-    }
   }
 
   function switchWorkspaceTab(
@@ -423,7 +394,6 @@ export function SessionListScreen({
     if (tab === "git" && workspace.isGitRepository) {
       onOpenWorkspaceGit(workspace);
     }
-    prefetchAdjacentWorkspaceTabs(workspace, tab);
   }
 
   function openWorkspaceTab(

@@ -1822,18 +1822,6 @@ function AppContent(): JSX.Element {
     requestWorkspaceGitStatus(workspace, { force: true });
   }
 
-  function handlePrefetchWorkspaceTab(
-    workspace: WorkspaceDefinition,
-    tab: "git" | "files",
-  ): void {
-    if (tab === "files") {
-      requestWorkspaceDirectory(workspace, "", { activate: false });
-    }
-    if (tab === "git") {
-      requestWorkspaceGitStatus(workspace);
-    }
-  }
-
   function handleOpenDirectory(relativePath: string): void {
     if (!selectedWorkspace) {
       return;
@@ -3025,7 +3013,6 @@ function AppContent(): JSX.Element {
                 onOpenWorkspaceGit={handleOpenWorkspaceGit}
                 onRefreshWorkspaceFiles={handleRefreshWorkspaceFiles}
                 onRefreshWorkspaceGit={handleRefreshWorkspaceGit}
-                onPrefetchWorkspaceTab={handlePrefetchWorkspaceTab}
                 onOpenDirectory={handleOpenDirectory}
                 onReadFile={handleReadFile}
                 onEditFile={handleOpenFileEditor}
