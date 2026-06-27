@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -10,6 +10,13 @@ import type {
   WorkspaceDefinition,
   WorkspaceGitStatus,
 } from "@omniwork/protocol-ts";
+import {
+  MAX_UNTRACKED_GIT_STAT_CONCURRENCY,
+  MAX_UNTRACKED_GIT_STAT_FILES,
+  countTextLines,
+  isLikelyBinary,
+  shouldCountUntrackedGitLines,
+} from "../files/fileTypePolicy.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,25 +36,33 @@ export class GitService {
 
     const [branchInfo, headSha, porcelain, unstagedStats, stagedStats] =
       await Promise.all([
-      runGit(workspace.path, ["status", "--short", "--branch"]),
-      runGit(workspace.path, ["rev-parse", "--short", "HEAD"]),
-      runGit(workspace.path, ["status", "--porcelain"]),
-      runGit(workspace.path, ["diff", "--numstat"]),
-      runGit(workspace.path, ["diff", "--cached", "--numstat"]),
-    ]);
+        runGit(workspace.path, ["status", "--short", "--branch"]),
+        runGit(workspace.path, ["rev-parse", "--short", "HEAD"]),
+        runGit(workspace.path, ["status", "--porcelain"]),
+        runGit(workspace.path, ["diff", "--numstat"]),
+        runGit(workspace.path, ["diff", "--cached", "--numstat"]),
+      ]);
     const unstagedFileStats = parseNumstat(unstagedStats);
     const stagedFileStats = parseNumstat(stagedStats);
     const parsedFiles = porcelain
       .split("\n")
       .filter(Boolean)
       .map(parseStatusLine);
-    const files = await Promise.all(
-      parsedFiles.map(async (file) => {
+    const untrackedStatPaths = new Set(
+      parsedFiles
+        .filter((file) => file.status === "untracked")
+        .slice(0, MAX_UNTRACKED_GIT_STAT_FILES)
+        .map((file) => file.path),
+    );
+    const files = await mapWithConcurrency(
+      parsedFiles,
+      MAX_UNTRACKED_GIT_STAT_CONCURRENCY,
+      async (file) => {
         const staged = stagedFileStats.get(file.path) ?? emptyStats();
         const unstaged =
-          file.status === "untracked"
+          file.status === "untracked" && untrackedStatPaths.has(file.path)
             ? await getUntrackedStats(workspace.path, file.path)
-            : unstagedFileStats.get(file.path) ?? emptyStats();
+            : (unstagedFileStats.get(file.path) ?? emptyStats());
         return {
           ...file,
           stagedAdditions: staged.additions,
@@ -57,7 +72,7 @@ export class GitService {
           additions: staged.additions + unstaged.additions,
           deletions: staged.deletions + unstaged.deletions,
         };
-      }),
+      },
     );
 
     const status: WorkspaceGitStatus = {
@@ -109,10 +124,9 @@ async function runGit(cwd: string, args: string[]): Promise<string> {
   return stdout;
 }
 
-function parseBranchLine(line: string): Pick<
-  WorkspaceGitStatus,
-  "branch" | "ahead" | "behind"
-> {
+function parseBranchLine(
+  line: string,
+): Pick<WorkspaceGitStatus, "branch" | "ahead" | "behind"> {
   const trimmed = line.replace(/^##\s*/, "");
   const [branchPart, trackingPart] = trimmed.split("...");
   const branch = branchPart || undefined;
@@ -245,17 +259,43 @@ async function getUntrackedStats(
 ): Promise<FileLineStats> {
   try {
     await assertPathInsideWorkspace(workspacePath, relativePath);
-    const content = await readFile(resolve(workspacePath, relativePath), "utf8");
+    const target = resolve(workspacePath, relativePath);
+    const stats = await lstat(target);
+    if (!shouldCountUntrackedGitLines(relativePath, stats)) {
+      return emptyStats();
+    }
+    const content = await readFile(target);
     if (content.length === 0) {
       return emptyStats();
     }
-    const additions = content.endsWith("\n")
-      ? content.split("\n").length - 1
-      : content.split("\n").length;
+    if (isLikelyBinary(content)) {
+      return emptyStats();
+    }
+    const additions = countTextLines(content);
     return { additions, deletions: 0 };
   } catch {
     return emptyStats();
   }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await mapper(items[index], index);
+      }
+    }),
+  );
+  return results;
 }
 
 async function assertPathInsideWorkspace(

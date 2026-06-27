@@ -11,23 +11,12 @@ import type {
   WorkspaceFileEntry,
 } from "@omniwork/protocol-ts";
 import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
-
-const IGNORED_DIRECTORIES = new Set([
-  ".git",
-  "node_modules",
-  "Pods",
-  "build",
-  "dist",
-  ".next",
-  ".turbo",
-]);
-const IGNORED_FILE_NAMES = new Set([
-  ".DS_Store",
-  ".DS+Store",
-  "Thumbs.db",
-  "Desktop.ini",
-]);
-const MAX_TEXT_FILE_BYTES = 1024 * 1024;
+import {
+  MAX_TEXT_FILE_BYTES,
+  isIgnoredDirectory,
+  isIgnoredEntryName,
+  isLikelyBinary,
+} from "./fileTypePolicy.ts";
 
 export class FileService {
   async list(
@@ -91,7 +80,7 @@ export class FileService {
     }
 
     const buffer = await readFile(filePath);
-    if (buffer.includes(0)) {
+    if (isLikelyBinary(buffer)) {
       return {
         workspacePath: workspace.path,
         relativePath: normalizeRelativePath(relativePath),
@@ -240,14 +229,6 @@ function isPathInside(path: string, parent: string): boolean {
     normalizedPath === normalizedParent ||
     normalizedPath.startsWith(`${normalizedParent}/`)
   );
-}
-
-function isIgnoredEntryName(name: string): boolean {
-  return IGNORED_FILE_NAMES.has(name);
-}
-
-function isIgnoredDirectory(name: string, type: WorkspaceFileEntry["type"]): boolean {
-  return type === "directory" && IGNORED_DIRECTORIES.has(name);
 }
 
 function isWorkspaceFileEntry(
