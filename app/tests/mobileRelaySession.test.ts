@@ -123,6 +123,49 @@ test("encodeForP2p does not send plaintext business messages before E2E is ready
   assert.equal(relaySession.encodeForP2p(input), null);
 });
 
+test("upgrade control dispatch is scoped to current app_connection_id", () => {
+  const { appSession } = createSessionPair();
+  const relaySession = createReadyRelaySession(appSession);
+  const received: MessageEnvelope[] = [];
+  relaySession.onMessage((message) => received.push(message));
+  const internals = relaySession as unknown as {
+    dispatchRelayUpgradeControl: (message: MessageEnvelope) => void;
+  };
+
+  internals.dispatchRelayUpgradeControl(
+    createMessage(
+      "tunnel.upgrade.propose",
+      {
+        upgrade_id: "upgrade_other",
+        app_connection_id: "conn_other",
+        ice_servers: [],
+        role: "offerer",
+        strict: true,
+      },
+      { device_id: pairing.deviceId },
+    ),
+  );
+  internals.dispatchRelayUpgradeControl(
+    createMessage(
+      "tunnel.upgrade.propose",
+      {
+        upgrade_id: "upgrade_self",
+        app_connection_id: "conn_app_1",
+        ice_servers: [],
+        role: "offerer",
+        strict: true,
+      },
+      { device_id: pairing.deviceId },
+    ),
+  );
+
+  assert.equal(received.length, 1);
+  assert.equal(
+    (received[0]?.payload as { app_connection_id?: string }).app_connection_id,
+    "conn_app_1",
+  );
+});
+
 test("onBusinessReady fires when E2E peer becomes ready", () => {
   const { appSession } = createSessionPair();
   const relaySession = createReadyRelaySession(appSession);

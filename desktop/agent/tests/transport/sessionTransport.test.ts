@@ -103,6 +103,19 @@ async function waitForSwitchPath(
   }
 }
 
+async function waitForSwitchPathForConnection(
+  transport: AgentSessionTransport,
+  appConnectionId: string,
+  target: "relay" | "p2p",
+): Promise<void> {
+  const keepAlive = setTimeout(() => {}, 1_000);
+  try {
+    await transport.switchPathForConnection(appConnectionId, target);
+  } finally {
+    clearTimeout(keepAlive);
+  }
+}
+
 // 1. send 转发到 relayPath
 {
   const relayPath = new MockRelayPath();
@@ -182,7 +195,7 @@ async function waitForSwitchPath(
     relayPath as unknown as import("../../src/transport/relayPath.ts").AgentRelayPath,
   );
   transport.attachP2pPeer(peer, { appConnectionId: "conn_app_1" });
-  await waitForSwitchPath(transport, "p2p");
+  await waitForSwitchPathForConnection(transport, "conn_app_1", "p2p");
   transport.send(
     createMessage(
       "e2e.message",
@@ -198,24 +211,63 @@ async function waitForSwitchPath(
   transport.close("test cleanup");
 }
 
-// 7. strict P2P 下带 app_connection_id 但 peer 缺失时不能 fallback Relay。
+// 7. per-app strict P2P 建链前，app-scoped 业务消息暂存，升级控制可 bypass。
+{
+  const relayPath = new MockRelayPath();
+  const peer = new MockPeer();
+  const transport = new AgentSessionTransport(
+    relayPath as unknown as import("../../src/transport/relayPath.ts").AgentRelayPath,
+  );
+  transport.configureStrictP2pForConnection("conn_app_strict", true);
+  transport.send(
+    createMessage(
+      "e2e.message",
+      { app_connection_id: "conn_app_strict", seq: 1, ciphertext: "payload" },
+      { device_id: "test" },
+    ),
+    "display",
+  );
+  assert.equal(relayPath.sent.length, 0);
+
+  transport.send(
+    createMessage(
+      "e2e.message",
+      { app_connection_id: "conn_app_strict", seq: 2, ciphertext: "control" },
+      { device_id: "test" },
+    ),
+    "control",
+    { strictBypass: true },
+  );
+  assert.equal(relayPath.sent.length, 1);
+
+  transport.attachP2pPeer(peer, { appConnectionId: "conn_app_strict" });
+  await waitForSwitchPathForConnection(transport, "conn_app_strict", "p2p");
+
+  assert.equal(peer.sent.length, 1);
+  assert.equal(peer.sent[0]?.channel, "control");
+  transport.close("test cleanup");
+}
+
+// 8. per-app strict peer 缺失时不 fallback Relay，且不影响其他 app peer。
 {
   const relayPath = new MockRelayPath();
   const peer = new MockPeer();
   const forceCloseReasons: string[] = [];
   const transport = new AgentSessionTransport(
     relayPath as unknown as import("../../src/transport/relayPath.ts").AgentRelayPath,
-    {
-      strictP2p: true,
-      onForceClose: (reason) => forceCloseReasons.push(reason),
-    },
   );
-  transport.attachP2pPeer(peer);
-  await waitForSwitchPath(transport, "p2p");
+  transport.configureStrictP2pForConnection(
+    "conn_app_strict",
+    true,
+    (reason) => forceCloseReasons.push(reason),
+  );
+  transport.attachP2pPeer(peer, { appConnectionId: "conn_app_other" });
+  await waitForSwitchPathForConnection(transport, "conn_app_other", "p2p");
+  transport.forceCloseConnection("conn_app_strict", "peer_missing");
   transport.send(
     createMessage(
-      "terminal.frame",
-      { app_connection_id: "missing_conn", data: "frame" },
+      "e2e.message",
+      { app_connection_id: "conn_app_other", seq: 1, ciphertext: "other" },
       { device_id: "test" },
     ),
     "display",
@@ -223,6 +275,7 @@ async function waitForSwitchPath(
 
   assert.equal(relayPath.sent.length, 0);
   assert.deepEqual(forceCloseReasons, ["peer_missing"]);
+  assert.equal(peer.sent.length, 1);
   transport.close("test cleanup");
 }
 

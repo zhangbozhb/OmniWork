@@ -924,6 +924,22 @@ export class AgentService {
         ) {
           return;
         }
+        if (payload.strict === true) {
+          this.transport?.configureStrictP2pForConnection(
+            payload.app_connection_id,
+            true,
+            (reason) => {
+              this.logger.warn("strict_p2p_disconnect", {
+                app_connection_id: payload.app_connection_id,
+                reason,
+              });
+            },
+          );
+        } else {
+          this.transport?.clearStrictP2pForConnection(
+            payload.app_connection_id,
+          );
+        }
         await this.getUpgradeCoordinator(payload.app_connection_id).propose(
           payload,
         );
@@ -1018,7 +1034,9 @@ export class AgentService {
           role: opts.role,
         }),
       sendControl: (envelope) =>
-        this.sendToAppByConnectionId(appConnectionId, envelope),
+        this.sendToAppByConnectionId(appConnectionId, envelope, undefined, {
+          strictBypass: true,
+        }),
       onSwitchPath: (path) => {
         this.appConnections.setPath(appConnectionId, path);
         if (path === "p2p") {
@@ -1034,14 +1052,10 @@ export class AgentService {
         } else {
           this.transport?.detachP2pPeer(appConnectionId);
         }
-        void this.transport?.switchPath(path);
+        void this.transport?.switchPathForConnection(appConnectionId, path);
       },
       onForceClose: (reason) => {
-        this.logger.warn("strict_p2p_disconnect", {
-          app_connection_id: appConnectionId,
-          reason,
-        });
-        this.transport?.detachP2pPeer(appConnectionId);
+        this.transport?.forceCloseConnection(appConnectionId, reason);
       },
     });
     coordinator.onEvent((event) => {
@@ -1943,6 +1957,7 @@ export class AgentService {
     appConnectionId: string,
     message: MessageEnvelope,
     channel?: P2pChannelKind,
+    options: { strictBypass?: boolean } = {},
   ): void {
     if (!this.transport) {
       this.logger.warn("cannot send without transport", {
@@ -1974,6 +1989,7 @@ export class AgentService {
           app_connection_id: appConnectionId,
         },
         channel,
+        options,
       );
       return;
     }
@@ -1996,6 +2012,7 @@ export class AgentService {
         device_id: this.config.deviceId,
       }),
       channel,
+      options,
     );
   }
 
