@@ -1,0 +1,29 @@
+desktop/agent/src/config/config.ts
+  s_a2c83aa28cd641::t_a914ec5d6e4775 3,125,312-344,346
+  h_f833b9c201e94e 218
+desktop/agent/tests/auth-key.test.ts
+  s_a2c83aa28cd641::t_1c65cf0c0b5df6 2-9,181-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e536d2592bff790c01433fc848d0557ba09bab9d",
+  "prompts": {},
+  "humans": {
+    "h_f833b9c201e94e": {
+      "author": "zhangbozhb <zhangbozhb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_a2c83aa28cd641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a3d6ed503f2901c2b7653d5",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": "zhangbozhb <zhangbozhb@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
