@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { homedir, hostname } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 import { DEFAULT_TERMINAL_SIZE } from "@omniwork/terminal-core";
 import {
@@ -122,7 +122,7 @@ export function loadAgentConfig(
     terminalProviders: resolveTerminalProviders(
       env,
       readDefaultTerminalProviderCommandOverrides(env),
-      options.commandExists ?? commandExists,
+      options.commandExists ?? createCommandExists(env),
     ),
     defaultCwd: env.OMNIWORK_DEFAULT_CWD ?? process.cwd(),
     appSupportDir,
@@ -205,9 +205,7 @@ function readDefaultTerminalProviderCommandOverrides(
     gemini: env.OMNIWORK_GEMINI_COMMAND ?? "gemini",
     trae: env.OMNIWORK_TRAE_COMMAND ?? "traecli",
     "trae-cn":
-      env.OMNIWORK_TRAE_CN_COMMAND ??
-      env.OMNIWORK_TRAECN_COMMAND ??
-      "traecli",
+      env.OMNIWORK_TRAE_CN_COMMAND ?? env.OMNIWORK_TRAECN_COMMAND ?? "traecli",
   };
 }
 
@@ -216,7 +214,9 @@ function resolveTerminalProviders(
   commandOverrides: Record<string, string>,
   isCommandAvailable: (command: string) => boolean,
 ): TerminalProviderDefinition[] {
-  const configuredProviders = parseTerminalProviders(env.OMNIWORK_TERMINAL_PROVIDERS);
+  const configuredProviders = parseTerminalProviders(
+    env.OMNIWORK_TERMINAL_PROVIDERS,
+  );
   const providers =
     configuredProviders.length > 0
       ? configuredProviders
@@ -309,15 +309,41 @@ function isTerminalProviderAvailable(
   return executable ? isCommandAvailable(executable) : false;
 }
 
-function commandExists(command: string): boolean {
-  try {
-    execFileSync("/bin/sh", ["-c", `command -v -- ${shellQuote(command)}`], {
-      stdio: "ignore",
-    });
-    return true;
-  } catch {
-    return false;
+function createCommandExists(
+  env: NodeJS.ProcessEnv,
+): (command: string) => boolean {
+  const commandEnv = {
+    ...env,
+    PATH: commandSearchPath(env.PATH),
+  };
+  return (command: string): boolean => {
+    try {
+      execFileSync("/bin/sh", ["-c", `command -v -- ${shellQuote(command)}`], {
+        env: commandEnv,
+        stdio: "ignore",
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
+function commandSearchPath(path: string | undefined): string {
+  const paths = new Set(
+    (path ?? process.env.PATH ?? "")
+      .split(delimiter)
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+  for (const fallback of [
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    join(homedir(), ".local", "bin"),
+  ]) {
+    paths.add(fallback);
   }
+  return [...paths].join(delimiter);
 }
 
 function firstShellWord(command: string): string | undefined {

@@ -1,5 +1,12 @@
 import { strict as assert } from "node:assert";
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -171,6 +178,31 @@ assert.equal(
     ?.defaultCommand,
   "claudecode",
 );
+{
+  const binDir = join(dir, "bin");
+  await mkdir(binDir);
+  for (const command of ["codex", "claude", "gemini", "traecli"]) {
+    const commandPath = join(binDir, command);
+    await writeFile(commandPath, "#!/bin/sh\nexit 0\n");
+    await chmod(commandPath, 0o755);
+  }
+  const providers = loadAgentConfig({
+    ...configEnv,
+    PATH: binDir,
+  }).terminalProviders;
+  assert.deepEqual(
+    providers.map((provider) => provider.kind),
+    ["codex", "claude", "gemini", "trae", "trae-cn", "terminal"],
+  );
+  assert.equal(
+    providers.find((provider) => provider.kind === "trae")?.defaultCommand,
+    "traecli",
+  );
+  assert.equal(
+    providers.find((provider) => provider.kind === "trae-cn")?.defaultCommand,
+    "traecli",
+  );
+}
 {
   const providers = loadAgentConfig(
     {
