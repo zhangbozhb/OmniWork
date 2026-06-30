@@ -11,7 +11,6 @@ import type {
   TerminalSession,
   MessageEnvelope,
   WorkspaceDefinition,
-  AgentAppMessage,
 } from "@omniwork/protocol-ts";
 import { createMessage } from "@omniwork/protocol-ts";
 import type {
@@ -36,6 +35,8 @@ import { useSessionController } from "../features/sessions/useSessionController"
 import { useTerminalController } from "../features/terminal/useTerminalController";
 import { useWorkspaceController } from "../features/workspaces/useWorkspaceController";
 import { useAgentMessageController } from "../features/agent/useAgentMessageController";
+import type { LocalAgentMessageRecord } from "../features/agent/agentMessageStore";
+import type { MessageDetailReason } from "../screens/messages/AgentMessageDetailScreen";
 import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
 
 function isWorkbenchView(view: AppView): boolean {
@@ -59,6 +60,12 @@ export default function App(): JSX.Element {
 function AppContent(): JSX.Element {
   const { t } = useTranslation();
   const [view, setView] = useState<AppView>("pairing");
+  const [agentMessageRefreshRevealToken, setAgentMessageRefreshRevealToken] =
+    useState(0);
+  const [agentMessageDetail, setAgentMessageDetail] = useState<{
+    record: LocalAgentMessageRecord;
+    reason?: MessageDetailReason;
+  } | null>(null);
   const pendingAutoOpenSessionsRef = useRef(false);
   const viewRef = useRef<AppView>("pairing");
   const selectedSessionRef = useRef<TerminalSession | null>(null);
@@ -389,36 +396,99 @@ function AppContent(): JSX.Element {
     );
   }
 
-  function openAgentMessageTarget(message: AgentAppMessage): void {
-    const session = sessions.find(
-      (candidate) => candidate.session_id === message.session_id,
-    );
-    if (session) {
-      setSelectedSession(session);
-      const workspace = getSessionFilesWorkspace(session, workspaces);
-      setSelectedWorkspace(workspace);
-      setView("terminal");
-      if (connectionStatus === "authenticated" && pairing) {
-        requestTerminalSnapshot(pairing.deviceId, session);
-      }
-      if (message.action) {
-        handleMarkAgentMessageHandled(message.id);
-      }
+  function openAgentMessageTarget(record: LocalAgentMessageRecord): void {
+    const message = record.message;
+    const target = resolveAgentMessageOpenTarget(message);
+    if (target.kind === "detail") {
+      setAgentMessageDetail({
+        record,
+        reason: target.reason,
+      });
+      setView("messageDetail");
       return;
     }
+
+    openAgentMessageSession(message.id, target.session, Boolean(message.action));
+  }
+
+  function openAgentMessageSession(
+    messageId: string,
+    session: TerminalSession,
+    markHandled: boolean,
+  ): void {
+    setAgentMessageDetail(null);
+    setSelectedSession(session);
+    const workspace = getSessionFilesWorkspace(session, workspaces);
+    setSelectedWorkspace(workspace);
+    setView("terminal");
+    if (connectionStatus === "authenticated" && pairing) {
+      requestTerminalSnapshot(pairing.deviceId, session);
+    }
+    if (markHandled) {
+      handleMarkAgentMessageHandled(messageId);
+    }
+  }
+
+  function resolveAgentMessageOpenTarget(
+    message: LocalAgentMessageRecord["message"],
+  ):
+    | { kind: "session"; session: TerminalSession }
+    | { kind: "detail"; reason: MessageDetailReason } {
+    const sessionId = message.action?.session_id ?? message.session_id;
+    if (!sessionId) {
+      return { kind: "detail", reason: "missing_session_id" };
+    }
+    const session = sessions.find(
+      (candidate) => candidate.session_id === sessionId,
+    );
+    if (!session) {
+      return { kind: "detail", reason: "session_not_found" };
+    }
+    const capabilities = getSessionCapabilities(session, {
+      closing: closingSessionIds.includes(session.session_id),
+      killing: killingSessionIds.includes(session.session_id),
+    });
+    if (!capabilities.canOpen) {
+      return { kind: "detail", reason: "session_unavailable" };
+    }
+    return { kind: "session", session };
+  }
+
+  function handleBackAgentMessageDetail(): void {
+    setAgentMessageDetail(null);
     setView("messages");
+  }
+
+  function handleOpenAgentMessageDetailSession(): void {
+    if (!agentMessageDetail) {
+      return;
+    }
+    const target = resolveAgentMessageOpenTarget(
+      agentMessageDetail.record.message,
+    );
+    if (target.kind !== "session") {
+      setAgentMessageDetail({
+        record: agentMessageDetail.record,
+        reason: target.reason,
+      });
+      return;
+    }
+    openAgentMessageSession(
+      agentMessageDetail.record.message.id,
+      target.session,
+      Boolean(agentMessageDetail.record.message.action),
+    );
   }
 
   function handleChangePrimaryTab(
     nextView: PrimaryTabView,
     event: PrimaryTabPressEvent,
   ): void {
-    if (nextView === "messages" && event.doubleTap) {
-      setView(nextView);
-      void handleRefreshAgentMessages();
-      return;
-    }
     setView(nextView);
+    if (nextView === "messages" && event.doubleTap) {
+      setAgentMessageRefreshRevealToken((token) => token + 1);
+      void handleRefreshAgentMessages();
+    }
   }
 
   function handleOpenSession(session: TerminalSession): void {
@@ -529,6 +599,10 @@ function AppContent(): JSX.Element {
     });
   }
 
+  const agentMessageDetailTarget = agentMessageDetail
+    ? resolveAgentMessageOpenTarget(agentMessageDetail.record.message)
+    : null;
+
   const routerProps = buildAppRouterProps({
     t,
     view,
@@ -559,6 +633,7 @@ function AppContent(): JSX.Element {
     connectionMessage,
     agentMessages,
     agentMessagesRefreshing,
+    agentMessageRefreshRevealToken,
     agentMessageEditing,
     selectedAgentMessageIds,
     agentNotificationSettings,
@@ -573,6 +648,15 @@ function AppContent(): JSX.Element {
     handleClearSelectedAgentMessages,
     handleDeleteAgentMessage,
     handleDeleteSelectedAgentMessages,
+    agentMessageDetail: agentMessageDetail?.record ?? null,
+    agentMessageDetailReason:
+      agentMessageDetailTarget?.kind === "detail"
+        ? agentMessageDetailTarget.reason
+        : undefined,
+    agentMessageDetailCanOpenSession:
+      agentMessageDetailTarget?.kind === "session",
+    handleBackAgentMessageDetail,
+    handleOpenAgentMessageDetailSession,
     transportPreference,
     terminalTextSize,
     language,

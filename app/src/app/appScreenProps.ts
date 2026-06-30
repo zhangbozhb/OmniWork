@@ -8,6 +8,9 @@ type PairingScreenProps = AppRouterProps["pairingScreenProps"];
 type DeviceListScreenProps = AppRouterProps["deviceListScreenProps"];
 type AgentMessageInboxScreenProps =
   AppRouterProps["agentMessageInboxScreenProps"];
+type AgentMessageDetailScreenProps = NonNullable<
+  AppRouterProps["agentMessageDetailScreenProps"]
+>;
 type SettingsScreenProps = AppRouterProps["settingsScreenProps"];
 type SecuritySettingsScreenProps =
   AppRouterProps["securitySettingsScreenProps"];
@@ -62,6 +65,7 @@ type BuildAppRouterPropsOptions = {
   connectionMessage: DeviceListScreenProps["connectionMessage"];
   agentMessages: AgentMessageInboxScreenProps["messages"];
   agentMessagesRefreshing: AgentMessageInboxScreenProps["refreshing"];
+  agentMessageRefreshRevealToken: AgentMessageInboxScreenProps["refreshRevealToken"];
   agentMessageEditing: AgentMessageInboxScreenProps["editing"];
   selectedAgentMessageIds: AgentMessageInboxScreenProps["selectedMessageIds"];
   agentNotificationSettings: {
@@ -78,6 +82,11 @@ type BuildAppRouterPropsOptions = {
   handleClearSelectedAgentMessages: AgentMessageInboxScreenProps["onClearSelection"];
   handleDeleteAgentMessage: AgentMessageInboxScreenProps["onDeleteMessage"];
   handleDeleteSelectedAgentMessages: AgentMessageInboxScreenProps["onDeleteSelected"];
+  agentMessageDetail: AgentMessageDetailScreenProps["record"] | null;
+  agentMessageDetailReason: AgentMessageDetailScreenProps["reason"];
+  agentMessageDetailCanOpenSession: AgentMessageDetailScreenProps["canOpenSession"];
+  handleBackAgentMessageDetail: AgentMessageDetailScreenProps["onBack"];
+  handleOpenAgentMessageDetailSession: AgentMessageDetailScreenProps["onOpenSession"];
   transportPreference: ConnectionPreferenceScreenProps["transportPreference"];
   terminalTextSize: SettingsScreenProps["terminalTextSize"];
   language: SettingsScreenProps["language"];
@@ -173,6 +182,7 @@ export function buildAppRouterProps(
     agentMessageInboxScreenProps: {
       messages: o.agentMessages,
       refreshing: o.agentMessagesRefreshing,
+      refreshRevealToken: o.agentMessageRefreshRevealToken,
       editing: o.agentMessageEditing,
       selectedMessageIds: o.selectedAgentMessageIds,
       onRefresh: o.handleRefreshAgentMessages,
@@ -186,6 +196,16 @@ export function buildAppRouterProps(
       onDeleteMessage: o.handleDeleteAgentMessage,
       onDeleteSelected: o.handleDeleteSelectedAgentMessages,
     },
+    agentMessageDetailScreenProps: o.agentMessageDetail
+      ? {
+          record: o.agentMessageDetail,
+          reason: o.agentMessageDetailReason,
+          canOpenSession: o.agentMessageDetailCanOpenSession,
+          onBack: o.handleBackAgentMessageDetail,
+          onOpenSession: o.handleOpenAgentMessageDetailSession,
+          onMarkHandled: o.handleMarkAgentMessageHandled,
+        }
+      : undefined,
     settingsScreenProps: {
       terminalTextSize: o.terminalTextSize,
       language: o.language,

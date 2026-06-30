@@ -5,6 +5,7 @@ import type { AppView } from "./appTypes";
 import { PairingScreen } from "../screens/pairing/PairingScreen";
 import { DeviceListScreen } from "../screens/devices/DeviceListScreen";
 import { AgentMessageInboxScreen } from "../screens/messages/AgentMessageInboxScreen";
+import { AgentMessageDetailScreen } from "../screens/messages/AgentMessageDetailScreen";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { SecuritySettingsScreen } from "../screens/security/SecuritySettingsScreen";
 import { ConnectionPreferenceScreen } from "../screens/settings/ConnectionPreferenceScreen";
@@ -19,8 +20,9 @@ type AppRouterProps = {
   view: AppView;
   pairingScreenProps: ComponentProps<typeof PairingScreen>;
   deviceListScreenProps: ComponentProps<typeof DeviceListScreen>;
-  agentMessageInboxScreenProps: ComponentProps<
-    typeof AgentMessageInboxScreen
+  agentMessageInboxScreenProps: ComponentProps<typeof AgentMessageInboxScreen>;
+  agentMessageDetailScreenProps?: ComponentProps<
+    typeof AgentMessageDetailScreen
   >;
   settingsScreenProps: ComponentProps<typeof SettingsScreen>;
   securitySettingsScreenProps: ComponentProps<typeof SecuritySettingsScreen>;
@@ -41,6 +43,7 @@ export function AppRouter({
   pairingScreenProps,
   deviceListScreenProps,
   agentMessageInboxScreenProps,
+  agentMessageDetailScreenProps,
   settingsScreenProps,
   securitySettingsScreenProps,
   connectionPreferenceScreenProps,
@@ -64,6 +67,16 @@ export function AppRouter({
   if (view === "messages") {
     return <AgentMessageInboxScreen {...agentMessageInboxScreenProps} />;
   }
+  if (view === "messageDetail" && agentMessageDetailScreenProps) {
+    return (
+      <>
+        <AgentMessageInboxScreen {...agentMessageInboxScreenProps} />
+        <View style={styles.fullScreenOverlay}>
+          <AgentMessageDetailScreen {...agentMessageDetailScreenProps} />
+        </View>
+      </>
+    );
+  }
   if (view === "settings") {
     return <SettingsScreen {...settingsScreenProps} />;
   }
@@ -71,9 +84,7 @@ export function AppRouter({
     return <SecuritySettingsScreen {...securitySettingsScreenProps} />;
   }
   if (view === "connectionPreference") {
-    return (
-      <ConnectionPreferenceScreen {...connectionPreferenceScreenProps} />
-    );
+    return <ConnectionPreferenceScreen {...connectionPreferenceScreenProps} />;
   }
   if (!isWorkbenchRoute(view)) {
     return null;
@@ -129,6 +140,10 @@ const styles = StyleSheet.create({
   fullScreenPage: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "#101417",
+  },
+  fullScreenOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "transparent",
   },
   presentedBackdrop: {
     ...StyleSheet.absoluteFillObject,

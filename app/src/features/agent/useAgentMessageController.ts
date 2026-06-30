@@ -37,7 +37,7 @@ type UseAgentMessageControllerOptions = {
   getCurrentView(): AppView;
   sendToRelay(message: MessageEnvelope): void;
   setConnectionMessage(message: string): void;
-  onOpenMessageTarget(message: AgentAppMessage): void;
+  onOpenMessageTarget(record: LocalAgentMessageRecord): void;
 };
 
 export function useAgentMessageController({
@@ -198,10 +198,15 @@ export function useAgentMessageController({
       return agentMessagesRefreshRef.current;
     }
     setAgentMessagesRefreshing(true);
-    const refresh = loadAgentMessages().finally(() => {
-      agentMessagesRefreshRef.current = null;
-      setAgentMessagesRefreshing(false);
-    });
+    const refresh = Promise.all([
+      loadAgentMessages(),
+      delay(MIN_AGENT_MESSAGE_REFRESH_MS),
+    ])
+      .then(() => undefined)
+      .finally(() => {
+        agentMessagesRefreshRef.current = null;
+        setAgentMessagesRefreshing(false);
+      });
     agentMessagesRefreshRef.current = refresh;
     return refresh;
   }
@@ -228,7 +233,7 @@ export function useAgentMessageController({
       return;
     }
     handleMarkAgentMessageRead(record.message.id);
-    onOpenMessageTarget(record.message);
+    onOpenMessageTarget(record);
   }
 
   function handleChangeAgentMessageEditing(editing: boolean): void {
@@ -364,4 +369,12 @@ export function useAgentMessageController({
     handleAgentMessage,
     handleAgentNotificationSettings,
   };
+}
+
+const MIN_AGENT_MESSAGE_REFRESH_MS = 450;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

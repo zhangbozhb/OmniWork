@@ -1,4 +1,11 @@
-import { type JSX, type ReactNode, useMemo, useRef, useState } from "react";
+import {
+  type JSX,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Animated,
   FlatList,
@@ -19,6 +26,7 @@ import { colors, radii, spacing, typography } from "../../ui/theme";
 export interface AgentMessageInboxScreenProps {
   messages: LocalAgentMessageRecord[];
   refreshing: boolean;
+  refreshRevealToken: number;
   editing: boolean;
   selectedMessageIds: Set<string>;
   onRefresh(): Promise<void> | void;
@@ -33,9 +41,21 @@ export interface AgentMessageInboxScreenProps {
   onDeleteSelected(): void;
 }
 
+type AgentMessageListItem =
+  | {
+      kind: "header";
+      id: string;
+      title: string;
+    }
+  | {
+      kind: "message";
+      record: LocalAgentMessageRecord;
+    };
+
 export function AgentMessageInboxScreen({
   messages,
   refreshing,
+  refreshRevealToken,
   editing,
   selectedMessageIds,
   onRefresh,
@@ -51,11 +71,12 @@ export function AgentMessageInboxScreen({
 }: AgentMessageInboxScreenProps): JSX.Element {
   const { t } = useTranslation();
   const [swipeGestureActive, setSwipeGestureActive] = useState(false);
+  const listRef = useRef<FlatList<AgentMessageListItem>>(null);
   const allSelected =
     messages.length > 0 && selectedMessageIds.size === messages.length;
   const pending = messages.filter((record) => isPending(record));
   const recent = messages.filter((record) => !isPending(record));
-  const sections = [
+  const sections: AgentMessageListItem[] = [
     ...(pending.length
       ? [
           {
@@ -72,9 +93,15 @@ export function AgentMessageInboxScreen({
     ...recent.map((record) => ({ kind: "message" as const, record })),
   ];
 
-  function handleRefresh(): void {
-    void onRefresh();
+  function revealRefreshControl(): void {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }
+
+  useEffect(() => {
+    if (refreshRevealToken > 0 && !editing) {
+      revealRefreshControl();
+    }
+  }, [editing, refreshRevealToken]);
 
   return (
     <View style={styles.screen}>
@@ -122,14 +149,18 @@ export function AgentMessageInboxScreen({
       ) : null}
 
       <FlatList
+        ref={listRef}
         contentContainerStyle={[styles.list, editing && styles.listEditing]}
         data={sections}
         scrollEnabled={!swipeGestureActive}
         refreshControl={
           <RefreshControl
+            enabled={!editing && !swipeGestureActive}
             refreshing={refreshing}
             tintColor={colors.success}
-            onRefresh={handleRefresh}
+            onRefresh={() => {
+              void onRefresh();
+            }}
           />
         }
         keyExtractor={(item) =>

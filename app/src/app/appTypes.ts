@@ -10,6 +10,7 @@ export type AppView =
   | "pairing"
   | "devices"
   | "messages"
+  | "messageDetail"
   | "settings"
   | "securitySettings"
   | "connectionPreference"

@@ -63,12 +63,18 @@
   "messages": {
     "eyebrow": "Agent Inbox",
     "title": "Agent Messages",
+    "detailTitle": "Message Details",
     "pending": "Pending",
     "recent": "Recent",
     "emptyTitle": "No Agent messages",
     "emptyText": "Approval, failure, and completion messages from Codex, Claude Code, and other Agents will appear here.",
     "markRead": "Read",
     "markHandled": "Handled",
+    "handled": "Handled",
+    "unhandled": "Unhandled",
+    "noSummary": "No body content.",
+    "openSession": "Open Session",
+    "targetUnavailable": "Could not open the linked session",
     "edit": "Edit",
     "done": "Done",
     "selectAll": "Select All",
@@ -79,6 +85,20 @@
     "deleteSelectedMessage": "This only removes them from this app inbox.",
     "open": "Open",
     "later": "Later",
+    "reason": {
+      "missing_session_id": "This message has no linked session.",
+      "session_not_found": "The linked session no longer exists or has not synced to the app.",
+      "session_unavailable": "The linked session cannot be opened right now."
+    },
+    "fields": {
+      "createdAt": "Created",
+      "receivedAt": "Received",
+      "workspace": "Workspace",
+      "session": "Session",
+      "surface": "Terminal window",
+      "action": "Action",
+      "status": "Status"
+    },
     "priority": {
       "low": "Low",
       "normal": "Normal",
