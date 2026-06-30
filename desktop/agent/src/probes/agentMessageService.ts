@@ -245,6 +245,7 @@ export class AgentMessageService {
       session_id: event.session_id,
       surface_id: event.surface_id,
       workspace_id: event.workspace_id,
+      workspace_path: event.workspace_path,
       message_kind: mapping.kind,
       title: event.title ?? mapping.title,
       summary: event.summary,
@@ -255,6 +256,7 @@ export class AgentMessageService {
         session_id: event.session_id,
         surface_id: event.surface_id,
         workspace_id: event.workspace_id,
+        workspace_path: event.workspace_path,
       },
       created_at: event.created_at,
     };

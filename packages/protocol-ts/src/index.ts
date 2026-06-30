@@ -1009,6 +1009,7 @@ export interface AgentAppMessage {
   session_id: string;
   surface_id?: string;
   workspace_id?: string;
+  workspace_path?: string;
   message_kind: AgentAppMessageKind;
   title: string;
   summary?: string;
@@ -1018,6 +1019,7 @@ export interface AgentAppMessage {
     session_id?: string;
     surface_id?: string;
     workspace_id?: string;
+    workspace_path?: string;
   };
   created_at: string;
   delivered_at?: string;

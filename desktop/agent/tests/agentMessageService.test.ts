@@ -14,6 +14,7 @@ function probeEvent(overrides: Partial<AgentProbeEvent>): AgentProbeEvent {
     probe_id: "codex-hooks",
     session_id: "sess-1",
     surface_id: "surface_sess-1_terminal",
+    workspace_path: "/tmp/project",
     event_type: "agent.approval_required",
     severity: "warning",
     title: "Codex needs approval",
@@ -42,7 +43,9 @@ test("AgentMessageService converts actionable probe events to app messages", () 
   assert.equal(message?.priority, "high");
   assert.equal(message?.action?.type, "open_approval");
   assert.equal(message?.surface_id, "surface_sess-1_terminal");
+  assert.equal(message?.workspace_path, "/tmp/project");
   assert.equal(message?.action?.surface_id, "surface_sess-1_terminal");
+  assert.equal(message?.action?.workspace_path, "/tmp/project");
   assert.equal(service.list().length, 1);
   assert.equal(pushed.length, 1);
 });

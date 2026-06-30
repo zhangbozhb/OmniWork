@@ -18,12 +18,13 @@ import type {
   AppSessionTransport,
   AppView,
   ConnectionStatus,
+  PrimaryTabView,
 } from "./appTypes";
 import { getHeaderSubtitle, isPrimaryTabView } from "./appPresentation";
 import { handleAppRelayMessage } from "./appRelayMessageHandler";
 import { buildAppRouterProps } from "./appScreenProps";
 import { AppRouter } from "./AppRouter";
-import { AppShell } from "./AppShell";
+import { AppShell, type PrimaryTabPressEvent } from "./AppShell";
 import { useTransportController } from "./useTransportController";
 import { usePreferenceController } from "./usePreferenceController";
 import { useAppLifecycleController } from "./useAppLifecycleController";
@@ -286,15 +287,26 @@ function AppContent(): JSX.Element {
     agentMessages,
     agentUnreadCount,
     agentMessageBanner,
+    agentMessagesRefreshing,
+    agentMessageEditing,
+    selectedAgentMessageIds,
     dismissAgentMessageBanner,
     handleChangeAgentNotifications,
     handleRefreshAgentMessages,
     handleMarkAgentMessageRead,
     handleMarkAgentMessageHandled,
+    handleChangeAgentMessageEditing,
+    handleToggleAgentMessageSelected,
+    handleSelectAllAgentMessages,
+    handleClearSelectedAgentMessages,
+    handleDeleteAgentMessage,
+    handleDeleteSelectedAgentMessages,
     handleOpenAgentMessage,
     handleAgentMessage,
     handleAgentNotificationSettings,
   } = useAgentMessageController({
+    t,
+    confirm,
     getPairing: () => pairingRef.current,
     getConnectionStatus: () => connectionStatus,
     getAppConnectionId,
@@ -395,6 +407,18 @@ function AppContent(): JSX.Element {
       return;
     }
     setView("messages");
+  }
+
+  function handleChangePrimaryTab(
+    nextView: PrimaryTabView,
+    event: PrimaryTabPressEvent,
+  ): void {
+    if (nextView === "messages" && event.doubleTap) {
+      setView(nextView);
+      void handleRefreshAgentMessages();
+      return;
+    }
+    setView(nextView);
   }
 
   function handleOpenSession(session: TerminalSession): void {
@@ -534,12 +558,21 @@ function AppContent(): JSX.Element {
     connectionPath,
     connectionMessage,
     agentMessages,
+    agentMessagesRefreshing,
+    agentMessageEditing,
+    selectedAgentMessageIds,
     agentNotificationSettings,
     handleChangeAgentNotifications,
     handleRefreshAgentMessages,
     handleOpenAgentMessage,
     handleMarkAgentMessageRead,
     handleMarkAgentMessageHandled,
+    handleChangeAgentMessageEditing,
+    handleToggleAgentMessageSelected,
+    handleSelectAllAgentMessages,
+    handleClearSelectedAgentMessages,
+    handleDeleteAgentMessage,
+    handleDeleteSelectedAgentMessages,
     transportPreference,
     terminalTextSize,
     language,
@@ -629,7 +662,7 @@ function AppContent(): JSX.Element {
         onCancel: handleEncryptedPairingCancel,
       }}
       onContentTouchStart={updateLastInteraction}
-      onChangeTab={setView}
+      onChangeTab={handleChangePrimaryTab}
       onDismissAgentMessageBanner={dismissAgentMessageBanner}
       onOpenAgentMessageBanner={(record) => {
         dismissAgentMessageBanner();

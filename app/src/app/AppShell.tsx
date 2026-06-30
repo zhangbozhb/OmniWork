@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from "react";
+import { type JSX, type ReactNode, useRef } from "react";
 import {
   Modal,
   Pressable,
@@ -36,9 +36,13 @@ type AppShellProps = {
   agentMessageBanner?: LocalAgentMessageRecord;
   encryptedPairingModal: EncryptedPairingModalProps;
   onContentTouchStart(): void;
-  onChangeTab(view: PrimaryTabView): void;
+  onChangeTab(view: PrimaryTabView, event: PrimaryTabPressEvent): void;
   onDismissAgentMessageBanner(): void;
   onOpenAgentMessageBanner(record: LocalAgentMessageRecord): void;
+};
+
+export type PrimaryTabPressEvent = {
+  doubleTap: boolean;
 };
 
 export function AppShell({
@@ -102,6 +106,8 @@ const PRIMARY_TABS: ReadonlyArray<{
   { icon: "settings", value: "settings" },
 ];
 
+const TAB_DOUBLE_TAP_MS = 360;
+
 function PrimaryTabBar({
   activeView,
   unreadMessages,
@@ -109,9 +115,29 @@ function PrimaryTabBar({
 }: {
   activeView: PrimaryTabView;
   unreadMessages: number;
-  onChange(view: PrimaryTabView): void;
+  onChange(view: PrimaryTabView, event: PrimaryTabPressEvent): void;
 }): JSX.Element {
   const { t } = useTranslation();
+  const lastPressRef = useRef<{
+    timestamp: number;
+    view: PrimaryTabView | null;
+  }>({
+    timestamp: 0,
+    view: null,
+  });
+
+  function handlePress(nextView: PrimaryTabView): void {
+    const now = Date.now();
+    const doubleTap =
+      lastPressRef.current.view === nextView &&
+      now - lastPressRef.current.timestamp <= TAB_DOUBLE_TAP_MS;
+    lastPressRef.current = {
+      timestamp: now,
+      view: nextView,
+    };
+    onChange(nextView, { doubleTap });
+  }
+
   return (
     <View style={styles.tabBar} accessibilityRole="tablist">
       {PRIMARY_TABS.map((tab) => {
@@ -129,7 +155,7 @@ function PrimaryTabBar({
               selected && styles.tabButtonActive,
               pressed && styles.tabButtonPressed,
             ]}
-            onPress={() => onChange(tab.value)}
+            onPress={() => handlePress(tab.value)}
           >
             <View style={styles.tabIconWrap}>
               <Icon name={tab.icon} color={tintColor} size={20} />

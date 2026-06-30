@@ -61,6 +61,9 @@ type BuildAppRouterPropsOptions = {
   connectionPath: DeviceListScreenProps["connectionPath"];
   connectionMessage: DeviceListScreenProps["connectionMessage"];
   agentMessages: AgentMessageInboxScreenProps["messages"];
+  agentMessagesRefreshing: AgentMessageInboxScreenProps["refreshing"];
+  agentMessageEditing: AgentMessageInboxScreenProps["editing"];
+  selectedAgentMessageIds: AgentMessageInboxScreenProps["selectedMessageIds"];
   agentNotificationSettings: {
     enabled: SettingsScreenProps["agentNotificationsEnabled"];
   };
@@ -69,6 +72,12 @@ type BuildAppRouterPropsOptions = {
   handleOpenAgentMessage: AgentMessageInboxScreenProps["onOpenMessage"];
   handleMarkAgentMessageRead: AgentMessageInboxScreenProps["onMarkRead"];
   handleMarkAgentMessageHandled: AgentMessageInboxScreenProps["onMarkHandled"];
+  handleChangeAgentMessageEditing: AgentMessageInboxScreenProps["onChangeEditing"];
+  handleToggleAgentMessageSelected: AgentMessageInboxScreenProps["onToggleSelected"];
+  handleSelectAllAgentMessages: AgentMessageInboxScreenProps["onSelectAll"];
+  handleClearSelectedAgentMessages: AgentMessageInboxScreenProps["onClearSelection"];
+  handleDeleteAgentMessage: AgentMessageInboxScreenProps["onDeleteMessage"];
+  handleDeleteSelectedAgentMessages: AgentMessageInboxScreenProps["onDeleteSelected"];
   transportPreference: ConnectionPreferenceScreenProps["transportPreference"];
   terminalTextSize: SettingsScreenProps["terminalTextSize"];
   language: SettingsScreenProps["language"];
@@ -163,10 +172,19 @@ export function buildAppRouterProps(
     },
     agentMessageInboxScreenProps: {
       messages: o.agentMessages,
+      refreshing: o.agentMessagesRefreshing,
+      editing: o.agentMessageEditing,
+      selectedMessageIds: o.selectedAgentMessageIds,
       onRefresh: o.handleRefreshAgentMessages,
       onOpenMessage: o.handleOpenAgentMessage,
       onMarkRead: o.handleMarkAgentMessageRead,
       onMarkHandled: o.handleMarkAgentMessageHandled,
+      onChangeEditing: o.handleChangeAgentMessageEditing,
+      onToggleSelected: o.handleToggleAgentMessageSelected,
+      onSelectAll: o.handleSelectAllAgentMessages,
+      onClearSelection: o.handleClearSelectedAgentMessages,
+      onDeleteMessage: o.handleDeleteAgentMessage,
+      onDeleteSelected: o.handleDeleteSelectedAgentMessages,
     },
     settingsScreenProps: {
       terminalTextSize: o.terminalTextSize,

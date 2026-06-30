@@ -16,6 +16,8 @@ export interface AgentMessageStore {
   listMessages(limit?: number): Promise<LocalAgentMessageRecord[]>;
   markRead(messageId: string): Promise<LocalAgentMessageRecord | undefined>;
   markHandled(messageId: string): Promise<LocalAgentMessageRecord | undefined>;
+  dismissMessage(messageId: string): Promise<LocalAgentMessageRecord | undefined>;
+  dismissMessages(messageIds: string[]): Promise<void>;
   unreadCount(): Promise<number>;
 }
 
@@ -49,6 +51,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
           event_type TEXT,
           priority TEXT,
           workspace_id TEXT,
+          workspace_path TEXT,
           session_id TEXT,
           surface_id TEXT,
           created_at TEXT NOT NULL,
@@ -59,6 +62,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
         )
       `,
     );
+    ensureColumn(sqlite, "workspace_path TEXT");
     sqlite.execute(
       DB_NAME,
       "CREATE INDEX IF NOT EXISTS idx_agent_messages_created_at ON agent_messages(created_at)",
@@ -92,6 +96,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
           event_type,
           priority,
           workspace_id,
+          workspace_path,
           session_id,
           surface_id,
           created_at,
@@ -100,9 +105,10 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
           handled_at,
           dismissed_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
         ON CONFLICT(message_id) DO UPDATE SET
-          payload_json = excluded.payload_json
+          payload_json = excluded.payload_json,
+          workspace_path = excluded.workspace_path
       `,
       [
         message.id,
@@ -111,6 +117,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
         message.message_kind,
         message.priority,
         message.workspace_id ?? null,
+        message.workspace_path ?? null,
         message.session_id,
         message.surface_id ?? null,
         message.created_at,
@@ -133,6 +140,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
       `
         SELECT payload_json, received_at, read_at, handled_at, dismissed_at
         FROM agent_messages
+        WHERE dismissed_at IS NULL
         ORDER BY created_at DESC, message_id DESC
         LIMIT ?
       `,
@@ -172,11 +180,39 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
     return this.getMessage(messageId);
   }
 
+  async dismissMessage(
+    messageId: string,
+  ): Promise<LocalAgentMessageRecord | undefined> {
+    await this.initialize();
+    const dismissedAt = new Date().toISOString();
+    quickSQLite().execute(
+      DB_NAME,
+      "UPDATE agent_messages SET dismissed_at = COALESCE(dismissed_at, ?) WHERE message_id = ?",
+      [dismissedAt, messageId],
+    );
+    return this.getMessage(messageId);
+  }
+
+  async dismissMessages(messageIds: string[]): Promise<void> {
+    await this.initialize();
+    const ids = normalizeMessageIds(messageIds);
+    if (!ids.length) {
+      return;
+    }
+    const dismissedAt = new Date().toISOString();
+    const placeholders = ids.map(() => "?").join(", ");
+    quickSQLite().execute(
+      DB_NAME,
+      `UPDATE agent_messages SET dismissed_at = COALESCE(dismissed_at, ?) WHERE message_id IN (${placeholders})`,
+      [dismissedAt, ...ids],
+    );
+  }
+
   async unreadCount(): Promise<number> {
     await this.initialize();
     const result = quickSQLite().execute(
       DB_NAME,
-      "SELECT COUNT(*) AS count FROM agent_messages WHERE read_at IS NULL",
+      "SELECT COUNT(*) AS count FROM agent_messages WHERE read_at IS NULL AND dismissed_at IS NULL",
     );
     const row = result.rows?.item(0) as { count?: number } | undefined;
     return Number(row?.count ?? 0);
@@ -220,7 +256,9 @@ class AsyncStorageAgentMessageStore implements AgentMessageStore {
   }
 
   async listMessages(limit = DEFAULT_LIMIT): Promise<LocalAgentMessageRecord[]> {
-    return (await this.readAll()).slice(0, normalizeLimit(limit));
+    return (await this.readAll())
+      .filter((record) => !record.dismissed_at)
+      .slice(0, normalizeLimit(limit));
   }
 
   async markRead(
@@ -243,8 +281,35 @@ class AsyncStorageAgentMessageStore implements AgentMessageStore {
     }));
   }
 
+  async dismissMessage(
+    messageId: string,
+  ): Promise<LocalAgentMessageRecord | undefined> {
+    const dismissedAt = new Date().toISOString();
+    return this.update(messageId, (record) => ({
+      ...record,
+      dismissed_at: record.dismissed_at ?? dismissedAt,
+    }));
+  }
+
+  async dismissMessages(messageIds: string[]): Promise<void> {
+    const ids = new Set(normalizeMessageIds(messageIds));
+    if (!ids.size) {
+      return;
+    }
+    const dismissedAt = new Date().toISOString();
+    const records = await this.readAll();
+    const nextRecords = records.map((record) =>
+      ids.has(record.message.id)
+        ? { ...record, dismissed_at: record.dismissed_at ?? dismissedAt }
+        : record,
+    );
+    await this.writeAll(nextRecords);
+  }
+
   async unreadCount(): Promise<number> {
-    return (await this.readAll()).filter((record) => !record.read_at).length;
+    return (await this.readAll()).filter(
+      (record) => !record.read_at && !record.dismissed_at,
+    ).length;
   }
 
   private async update(
@@ -302,6 +367,17 @@ function quickSQLite(): QuickSQLiteApi {
   return module.QuickSQLite;
 }
 
+function ensureColumn(sqlite: QuickSQLiteApi, columnDefinition: string): void {
+  try {
+    sqlite.execute(
+      DB_NAME,
+      `ALTER TABLE agent_messages ADD COLUMN ${columnDefinition}`,
+    );
+  } catch {
+    // Existing installs may already have the column.
+  }
+}
+
 function parseRow(row: unknown): LocalAgentMessageRecord[] {
   const value = row as {
     payload_json?: string;
@@ -333,4 +409,8 @@ function normalizeLimit(limit: number): number {
     return DEFAULT_LIMIT;
   }
   return Math.min(limit, 500);
+}
+
+function normalizeMessageIds(messageIds: string[]): string[] {
+  return [...new Set(messageIds.filter(Boolean))];
 }

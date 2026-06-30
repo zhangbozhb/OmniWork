@@ -912,6 +912,7 @@ export const agentAppMessageSchema = z
     session_id: z.string().min(1),
     surface_id: z.string().min(1).optional(),
     workspace_id: z.string().min(1).optional(),
+    workspace_path: z.string().min(1).optional(),
     message_kind: agentAppMessageKindSchema,
     title: z.string().min(1),
     summary: z.string().optional(),
@@ -927,6 +928,7 @@ export const agentAppMessageSchema = z
         session_id: z.string().min(1).optional(),
         surface_id: z.string().min(1).optional(),
         workspace_id: z.string().min(1).optional(),
+        workspace_path: z.string().min(1).optional(),
       })
       .strict()
       .optional(),

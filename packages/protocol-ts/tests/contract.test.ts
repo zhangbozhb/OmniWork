@@ -369,6 +369,7 @@ describe("agent message payload schemas", () => {
       provider: "codex",
       session_id: "sess_1",
       surface_id: "surface_sess_1_terminal",
+      workspace_path: "/tmp/project",
       message_kind: "approval",
       title: "Codex needs approval",
       summary: "npm test",
@@ -377,6 +378,7 @@ describe("agent message payload schemas", () => {
         type: "open_approval",
         session_id: "sess_1",
         surface_id: "surface_sess_1_terminal",
+        workspace_path: "/tmp/project",
       },
       created_at: new Date().toISOString(),
     };
