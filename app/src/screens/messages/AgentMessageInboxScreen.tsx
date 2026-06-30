@@ -104,31 +104,36 @@ function MessageRow({
   const handled = Boolean(record.handled_at);
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={message.title}
-      style={({ pressed }) => [
-        styles.messageCard,
-        unread && styles.messageCardUnread,
-        pressed && styles.pressed,
-      ]}
-      onPress={() => onOpenMessage(record)}
-    >
-      <View style={styles.messageHeader}>
-        <View style={styles.providerPill}>
-          <Text style={styles.providerText}>{providerLabel(message.provider)}</Text>
+    <View style={[styles.messageCard, unread && styles.messageCardUnread]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={message.title}
+        style={({ pressed }) => [
+          styles.messageOpenArea,
+          pressed && styles.pressed,
+        ]}
+        onPress={() => onOpenMessage(record)}
+      >
+        <View style={styles.messageHeader}>
+          <View style={styles.providerPill}>
+            <Text style={styles.providerText}>
+              {providerLabel(message.provider)}
+            </Text>
+          </View>
+          <Text style={styles.timeText}>
+            {relativeTime(message.created_at)}
+          </Text>
         </View>
-        <Text style={styles.timeText}>{relativeTime(message.created_at)}</Text>
-      </View>
-      <View style={styles.messageTitleRow}>
-        {unread ? <View style={styles.unreadDot} /> : null}
-        <Text style={styles.messageTitle}>{message.title}</Text>
-      </View>
-      {message.summary ? (
-        <Text numberOfLines={2} style={styles.messageSummary}>
-          {message.summary}
-        </Text>
-      ) : null}
+        <View style={styles.messageTitleRow}>
+          {unread ? <View style={styles.unreadDot} /> : null}
+          <Text style={styles.messageTitle}>{message.title}</Text>
+        </View>
+        {message.summary ? (
+          <Text numberOfLines={2} style={styles.messageSummary}>
+            {message.summary}
+          </Text>
+        ) : null}
+      </Pressable>
       <View style={styles.messageFooter}>
         <Text style={[styles.statusText, priorityStyle(message)]}>
           {t(`messages.priority.${message.priority}`)}
@@ -158,7 +163,7 @@ function MessageRow({
           ) : null}
         </View>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -258,6 +263,9 @@ const styles = StyleSheet.create({
   messageCardUnread: {
     borderColor: colors.success,
     backgroundColor: colors.surfaceRaised,
+  },
+  messageOpenArea: {
+    gap: spacing.sm,
   },
   messageHeader: {
     flexDirection: "row",
