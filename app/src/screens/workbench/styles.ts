@@ -1,0 +1,550 @@
+import { StyleSheet } from "react-native";
+
+import { colors, radii, spacing, typography } from "../../ui/theme";
+
+export const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
+  },
+  toolbarTitleArea: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  backButton: {
+    minHeight: 40,
+    width: 40,
+    paddingHorizontal: 0,
+    borderRadius: 20,
+  },
+  toolbarIconButton: {
+    minHeight: 40,
+    width: 44,
+    paddingHorizontal: 0,
+    borderRadius: radii.md,
+  },
+  toolbarTitle: {
+    color: colors.textPrimary,
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  toolbarMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  secondaryButton: {
+    minHeight: 38,
+    minWidth: 86,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderColor: "#34424c",
+    borderWidth: 1,
+  },
+  primaryText: {
+    color: colors.successText,
+    ...typography.action,
+  },
+  secondaryText: {
+    color: colors.textSecondary,
+    fontWeight: "700",
+  },
+  disabled: {
+    opacity: 0.55,
+  },
+  list: {
+    gap: spacing.xl,
+    paddingBottom: 84,
+  },
+  listStretch: {
+    flexGrow: 1,
+  },
+  providerSection: {
+    gap: spacing.md,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  sectionTitleArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    color: colors.textPrimary,
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  sectionMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  defaultBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  sectionDescription: {
+    color: colors.textDim,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+    maxWidth: 420,
+  },
+  sectionCreateButton: {
+    minHeight: 40,
+    width: 40,
+    paddingHorizontal: 0,
+    borderRadius: radii.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.success,
+  },
+  workspaceList: {
+    gap: spacing.md,
+  },
+  workspaceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+  },
+  workspaceRowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.successSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  workspaceRowIconText: {
+    color: colors.success,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  workspaceRowContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  workspaceRowTitleLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  workspaceRowName: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: "700",
+    flexShrink: 1,
+  },
+  gitDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+  },
+  workspaceRowPath: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  workspaceRowMeta: {
+    color: colors.textDim,
+    fontSize: 13,
+    fontWeight: "700",
+    minWidth: 20,
+    textAlign: "right",
+  },
+  workspaceDetail: {
+    gap: spacing.lg,
+  },
+  workspacePager: {
+    flex: 1,
+    width: "100%",
+  },
+  workspacePagerContent: {
+    flexGrow: 1,
+  },
+  workspaceTabPane: {
+    flex: 1,
+    gap: spacing.lg,
+  },
+  webHiddenWorkspaceTabPane: {
+    display: "none",
+  },
+  workspaceTabScrollContent: {
+    flexGrow: 1,
+    gap: spacing.lg,
+    paddingBottom: 84,
+  },
+  workspaceHeroTitle: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  workspaceHeroActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  workspaceHeroActionButton: {
+    minHeight: 40,
+    minWidth: 108,
+  },
+  providerSessionGroup: {
+    gap: spacing.md,
+  },
+  sessionsEmptyState: {
+    alignItems: "center",
+    gap: spacing.lg,
+    paddingVertical: spacing.xl,
+  },
+  emptyCreateButton: {
+    minHeight: 40,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.xl,
+  },
+  sessionsList: {
+    gap: spacing.lg,
+  },
+  sessionGroup: {
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
+  },
+  sessionGroupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surfaceRaised,
+  },
+  sessionGroupLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  sessionGroupAdd: {
+    width: 28,
+    height: 28,
+    minHeight: 28,
+    paddingHorizontal: 0,
+    borderRadius: 14,
+  },
+  sessionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    borderTopColor: colors.borderSubtle,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  sessionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  sessionRowContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  sessionRowTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  sessionRowMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  sessionRowMore: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+  },
+  sessionRowMoreText: {
+    color: colors.textDim,
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  sectionActionButton: {
+    minHeight: 40,
+    minWidth: 126,
+    borderRadius: radii.pill,
+  },
+  workspaceTabBar: {
+    alignSelf: "center",
+    flexDirection: "row",
+    gap: 4,
+    marginBottom: spacing.sm,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.pill,
+    padding: 3,
+    backgroundColor: "rgba(17, 24, 29, 0.82)",
+  },
+  workspaceTabButton: {
+    minHeight: 36,
+    minWidth: 82,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    backgroundColor: "transparent",
+  },
+  workspaceTabButtonActive: {
+    borderColor: colors.success,
+    backgroundColor: "rgba(32, 211, 145, 0.14)",
+  },
+  empty: {
+    color: colors.textMuted,
+    borderColor: colors.borderSubtle,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    fontSize: 13,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  unavailableReason: {
+    color: colors.warning,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: spacing.sm,
+  },
+  closeText: {
+    color: colors.danger,
+    fontWeight: "800",
+  },
+  killSessionText: {
+    color: colors.danger,
+    fontWeight: "800",
+  },
+  attachHint: {
+    color: colors.success,
+    fontWeight: "800",
+  },
+  manageHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+  manageDetails: {
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  detailRow: {
+    gap: 3,
+  },
+  detailLabel: {
+    color: colors.textDim,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  detailValue: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  manageActions: {
+    gap: spacing.sm,
+  },
+  manageActionButton: {
+    minHeight: 40,
+  },
+  manageDangerRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  manageDangerButton: {
+    flex: 1,
+    minHeight: 38,
+  },
+  floatingCreateButton: {
+    position: "absolute",
+    right: spacing.xl,
+    bottom: spacing.xl,
+    width: 52,
+    height: 52,
+    minHeight: 52,
+    paddingHorizontal: 0,
+    borderRadius: 26,
+    shadowColor: colors.success,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+  },
+  modalAvoidingView: {
+    flex: 1,
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 22,
+    backgroundColor: "rgba(0, 0, 0, 0.58)",
+  },
+  modalDismissLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalCard: {
+    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  modalTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  modalDescription: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  cwdInput: {
+    minHeight: 48,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.background,
+  },
+  workspacePicker: {
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  workspaceChip: {
+    minWidth: 104,
+    maxWidth: 156,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    alignItems: "center",
+    backgroundColor: colors.surfaceRaised,
+  },
+  workspaceChipSelected: {
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
+  },
+  workspaceChipText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  workspaceChipTextSelected: {
+    color: colors.success,
+  },
+  workspaceChipMeta: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: spacing.md,
+    marginTop: spacing.xs,
+  },
+  modalSecondaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalPrimaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.success,
+  },
+  providerStack: {
+    gap: spacing.md,
+  },
+  providerPreferencesList: {
+    flexGrow: 0,
+  },
+  providerRow: {
+    borderColor: colors.borderSubtle,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  providerRowHidden: {
+    opacity: 0.62,
+  },
+  providerInfo: {
+    gap: spacing.xs,
+  },
+  providerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  providerTitle: {
+    color: colors.textPrimary,
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  providerSummary: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  providerActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  providerActionButton: {
+    minHeight: 36,
+    width: 36,
+    paddingHorizontal: 0,
+    borderRadius: radii.pill,
+  },
+  providerDefaultActive: {
+    backgroundColor: colors.successSoft,
+  },
+});
