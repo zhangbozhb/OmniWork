@@ -20,15 +20,21 @@ export interface TraeHookPayload {
   source?: unknown;
   prompt?: unknown;
   tool_name?: unknown;
+  tool_use_id?: unknown;
   tool_input?: unknown;
   tool_response?: unknown;
+  error?: unknown;
+  title?: unknown;
   message?: unknown;
   notification_type?: unknown;
   trigger?: unknown;
+  compact_summary?: unknown;
   permission_mode?: unknown;
   reason?: unknown;
   agent_id?: unknown;
   agent_type?: unknown;
+  transcript_path?: unknown;
+  agent_transcript_path?: unknown;
 }
 
 export function normalizeTraeHookPayload(
@@ -226,7 +232,9 @@ function summaryFromHook(
   const trigger = readString(payload.trigger);
   const message = readString(payload.message);
   const reason = readString(payload.reason);
+  const error = readString(payload.error);
   const notificationType = readString(payload.notification_type);
+  const compactSummary = readString(payload.compact_summary);
   const toolInput = readToolInputSummary(payload.tool_input);
 
   if (hookName === "UserPromptSubmit") {
@@ -242,10 +250,10 @@ function summaryFromHook(
     return truncate(message ?? notificationType, 240);
   }
   if (hookName === "PermissionDenied" || hookName === "PostToolUseFailure") {
-    return truncate(reason ?? message ?? toolInput, 240);
+    return truncate(reason ?? error ?? message ?? toolInput, 240);
   }
   if (hookName === "PreCompact" || hookName === "PostCompact") {
-    return trigger ? `trigger: ${trigger}` : undefined;
+    return trigger ? `trigger: ${trigger}` : truncate(compactSummary, 240);
   }
   if (toolInput) {
     return truncate(toolInput, 240);
@@ -283,12 +291,18 @@ function sanitizePayload(payload: TraeHookPayload): Record<string, unknown> {
     workspace_path: readString(payload.workspace_path),
     source: readString(payload.source),
     tool_name: readString(payload.tool_name),
+    tool_use_id: readString(payload.tool_use_id),
+    error: readString(payload.error),
+    title: readString(payload.title),
     notification_type: readString(payload.notification_type),
     trigger: readString(payload.trigger),
+    compact_summary: readString(payload.compact_summary),
     permission_mode: readString(payload.permission_mode),
     reason: readString(payload.reason),
     agent_id: readString(payload.agent_id),
     agent_type: readString(payload.agent_type),
+    transcript_path: readString(payload.transcript_path),
+    agent_transcript_path: readString(payload.agent_transcript_path),
   };
 }
 
@@ -302,10 +316,15 @@ function hookEventId(
     provider,
     hookName,
     sessionId,
+    toolUseId: readString(payload.tool_use_id),
     toolName: readString(payload.tool_name),
     source: readString(payload.source),
     trigger: readString(payload.trigger),
     reason: readString(payload.reason),
+    prompt: readString(payload.prompt),
+    message: readString(payload.message),
+    error: readString(payload.error),
+    compactSummary: readString(payload.compact_summary),
   });
   return createHash("sha256").update(stable).digest("hex").slice(0, 32);
 }

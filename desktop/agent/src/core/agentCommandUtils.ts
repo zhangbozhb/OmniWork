@@ -27,6 +27,33 @@ export function isClaudeTerminalProvider(terminalProvider: {
   );
 }
 
+export function resolveTraeTerminalProvider(terminalProvider: {
+  kind: string;
+  command: string;
+}): "trae" | "trae-cn" | null {
+  if (
+    terminalProvider.kind === "trae-cn" ||
+    terminalProvider.kind === "trae_cn"
+  ) {
+    return "trae-cn";
+  }
+  if (
+    terminalProvider.kind === "trae" ||
+    terminalProvider.kind === "traex" ||
+    terminalProvider.kind === "coco"
+  ) {
+    return "trae";
+  }
+  const command = firstShellWord(terminalProvider.command);
+  if (command === "traecli" || command === "trae-agent" || command === "ta") {
+    return "trae";
+  }
+  if (command === "coco") {
+    return "trae";
+  }
+  return null;
+}
+
 function firstShellWord(command: string): string | undefined {
   const trimmed = command.trim();
   if (!trimmed) {

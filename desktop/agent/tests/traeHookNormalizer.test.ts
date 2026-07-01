@@ -29,13 +29,14 @@ test("normalizeTraeHookPayload maps Trae approval hooks", () => {
   assert.equal(event.source.kind, "cli-hook");
 });
 
-test("normalizeTraeHookPayload accepts traecli yaml event aliases", () => {
+test("normalizeTraeHookPayload accepts traecli snake_case event aliases", () => {
   const event = normalizeTraeHookPayload("trae-cn", {
     conversation_id: "conv-1",
     event: "post_tool_use_failure",
     cwd: "/tmp/project",
     tool_name: "Write",
-    reason: "permission denied",
+    tool_use_id: "tool-1",
+    error: "permission denied",
   });
 
   assert.ok(event);
@@ -46,6 +47,7 @@ test("normalizeTraeHookPayload accepts traecli yaml event aliases", () => {
   assert.equal(event.severity, "critical");
   assert.equal(event.title, "Trae CN failed Write");
   assert.equal(event.summary, "permission denied");
+  assert.equal(event.payload?.tool_use_id, "tool-1");
 });
 
 test("normalizeTraeHookPayload maps notification hooks", () => {
@@ -84,4 +86,23 @@ test("normalizeTraeProbeProvider canonicalizes local Trae aliases", () => {
   assert.equal(normalizeTraeProbeProvider("coco"), "trae");
   assert.equal(normalizeTraeProbeProvider("trae_cn"), "trae-cn");
   assert.equal(normalizeTraeProbeProvider("codex"), null);
+});
+
+test("normalizeTraeHookPayload includes tool_use_id in stable ids", () => {
+  const base = {
+    session_id: "sess-1",
+    event: "post_tool_use",
+    tool_name: "Bash",
+  };
+
+  assert.notEqual(
+    normalizeTraeHookPayload("trae", {
+      ...base,
+      tool_use_id: "tool-1",
+    })?.id,
+    normalizeTraeHookPayload("trae", {
+      ...base,
+      tool_use_id: "tool-2",
+    })?.id,
+  );
 });

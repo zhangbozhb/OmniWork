@@ -267,17 +267,12 @@ export class AgentService {
         printPairingDetailsWithoutRelay(this.config, this.keyRecord);
       }
 
-      await this.probeRuntime.prepareTerminalProvider({
-        kind: "codex",
-        command: process.env.OMNIWORK_CODEX_COMMAND ?? "codex",
-      });
-      await this.probeRuntime.prepareTerminalProvider({
-        kind: "claude",
-        command:
-          process.env.OMNIWORK_CLAUDE_COMMAND ??
-          process.env.OMNIWORK_CLAUDECODE_COMMAND ??
-          "claude",
-      });
+      for (const terminalProvider of this.terminalProviders.providers()) {
+        await this.probeRuntime.prepareTerminalProvider({
+          kind: terminalProvider.kind,
+          command: terminalProvider.defaultCommand,
+        });
+      }
 
       const tmuxAvailable = await this.tmux.isAvailable();
       if (!tmuxAvailable) {

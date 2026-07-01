@@ -9,8 +9,13 @@ import { enrichProbeEventWithSessions } from "../probes/agentProbeEnrichment.ts"
 import { ensureClaudeHooksInstalled } from "../probes/claudeHookInstaller.ts";
 import { ensureCodexHooksInstalled } from "../probes/codexHookInstaller.ts";
 import {
+  ensureTraeFamilyHooksInstalled,
+  type TraeHookInstallProvider,
+} from "../probes/traeHookInstaller.ts";
+import {
   isClaudeTerminalProvider,
   isCodexTerminalProvider,
+  resolveTraeTerminalProvider,
 } from "./agentCommandUtils.ts";
 
 interface AgentProbeRuntimeOptions {
@@ -105,6 +110,11 @@ export class AgentProbeRuntime {
     }
     if (isClaudeTerminalProvider(terminalProvider)) {
       await this.prepareClaudeTerminalProvider();
+      return;
+    }
+    const traeProvider = resolveTraeTerminalProvider(terminalProvider);
+    if (traeProvider) {
+      await this.prepareTraeTerminalProvider(traeProvider);
     }
   }
 
@@ -173,6 +183,38 @@ export class AgentProbeRuntime {
       });
     } catch (error) {
       this.logger.warn("claude hooks auto install failed", {
+        error: String(error),
+      });
+    }
+  }
+
+  private async prepareTraeTerminalProvider(
+    provider: TraeHookInstallProvider,
+  ): Promise<void> {
+    try {
+      const results = await ensureTraeFamilyHooksInstalled({
+        provider,
+        receiverUrl: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
+        sessionKeyPath: this.config.sessionKeyPath,
+      });
+      for (const result of results) {
+        if (!result.installed) {
+          this.logger.warn("trae hooks auto install skipped", {
+            hooks_path: result.hooksPath,
+            provider: result.provider,
+            reason: result.reason,
+          });
+          continue;
+        }
+        this.logger.info("trae hooks auto install checked", {
+          hooks_path: result.hooksPath,
+          provider: result.provider,
+          changed: result.changed,
+        });
+      }
+    } catch (error) {
+      this.logger.warn("trae hooks auto install failed", {
+        provider,
         error: String(error),
       });
     }
