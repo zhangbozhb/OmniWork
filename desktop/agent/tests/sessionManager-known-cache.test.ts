@@ -179,4 +179,42 @@ function terminalProviders(): TerminalProviderRegistry {
   assert.equal(manager.getKnownBySurfaceId(created.primary_surface_id), undefined);
 }
 
+// Codex app_server runtime 创建结构化 Agent surface，不应启动 tmux 会话。
+{
+  const store = await newStore();
+  let tmuxCreateCalls = 0;
+  const tmux = {
+    async listSessions(): Promise<TmuxSessionInfo[]> {
+      return [];
+    },
+    async createSession(): Promise<{ serverPid: number; sessionUid: string }> {
+      tmuxCreateCalls += 1;
+      return { serverPid: 5252, sessionUid: "$2" };
+    },
+  } as unknown as TmuxManager;
+  const manager = new SessionManager(
+    store,
+    tmux,
+    terminalProviders(),
+    undefined,
+    { cwd: "/tmp", terminalSize: { cols: 80, rows: 24 } },
+  );
+
+  const created = await manager.create({
+    terminal_provider_kind: "codex",
+    runtime_preference: "app_server",
+    cwd: "/tmp/project",
+  });
+
+  assert.equal(tmuxCreateCalls, 0);
+  assert.equal(created.runtime?.kind, "app_server");
+  assert.equal(created.runtime?.capabilities.terminal_io, false);
+  assert.equal(created.primary_surface_id.endsWith("_agent"), true);
+  assert.equal(created.surfaces[0]?.kind, "agent");
+  assert.equal(manager.getKnownBySurfaceId(created.primary_surface_id)?.session_id, created.session_id);
+
+  const listed = await manager.list();
+  assert.equal(listed.some((session) => session.session_id === created.session_id), true);
+}
+
 console.log("sessionManager-known-cache tests passed");

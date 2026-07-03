@@ -477,6 +477,49 @@ export const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 2,
   },
+  runtimeSection: {
+    gap: spacing.sm,
+  },
+  runtimeSectionTitle: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  runtimeOption: {
+    gap: 6,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surfaceRaised,
+  },
+  runtimeOptionSelected: {
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
+  },
+  runtimeOptionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  runtimeOptionTitle: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  runtimeOptionBadge: {
+    color: colors.success,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  runtimeOptionSummary: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   modalActions: {
     flexDirection: "row",
     gap: spacing.md,

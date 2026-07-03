@@ -149,3 +149,83 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
   ]);
   assert.deepEqual(startedSessionIds, [running.session_id]);
 });
+
+test("SessionRequestHandler does not start terminal stream for app_server sessions", async () => {
+  const context: TestDispatchContext = {
+    appConnectionId: "app-1",
+    trustedE2E: true,
+  };
+  const sent: Array<MessageEnvelope> = [];
+  const snapshots: MessageEnvelope[] = [];
+  const subscribers: Array<{ sessionId: string; appConnectionId: string }> = [];
+  const startedSessionIds: string[] = [];
+  const running = fakeSession({
+    primary_surface_id: "surface_sess_created_agent",
+    surfaces: [
+      {
+        surface_id: "surface_sess_created_agent",
+        session_id: "sess_created",
+        kind: "agent",
+        title: "Codex 1",
+        status: "active",
+        provider: "codex",
+      },
+    ],
+    runtime: {
+      kind: "app_server",
+      label: "app server",
+      description: "Structured Agent runtime.",
+      capabilities: {
+        terminal_io: false,
+        persistent_resume: true,
+        reconnect_control: true,
+        native_approval: true,
+        structured_timeline: true,
+        diff_view: true,
+      },
+    },
+  });
+  const sessionManager = {
+    async create(): Promise<TerminalSession> {
+      return running;
+    },
+  } as unknown as SessionManager;
+  const terminalFramePusher = {
+    addSubscriber(sessionId: string, appConnectionId: string): void {
+      subscribers.push({ sessionId, appConnectionId });
+    },
+    start(sessionId: string): void {
+      startedSessionIds.push(sessionId);
+    },
+  } as unknown as TerminalFramePusher;
+
+  const handler = new SessionRequestHandler({
+    deviceId: "device-1",
+    defaultCwd: "/tmp",
+    terminalProviders: new TerminalProviderRegistry({
+      providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+    }),
+    workspaces: {} as WorkspaceManager,
+    sessionManager,
+    terminalFramePusher,
+    sendToApp(_nextContext, message): void {
+      sent.push(message);
+    },
+    async handleTerminalSnapshot(message): Promise<void> {
+      snapshots.push(message);
+    },
+  });
+
+  await handler.handleCreate(
+    createMessage("session.create", {
+      terminal_provider_kind: "codex",
+      runtime_preference: "app_server",
+    }),
+    context,
+  );
+
+  assert.equal(sent.filter((message) => message.type === "session.status").length, 1);
+  assert.deepEqual(snapshots, []);
+  assert.deepEqual(subscribers, []);
+  assert.deepEqual(startedSessionIds, []);
+});

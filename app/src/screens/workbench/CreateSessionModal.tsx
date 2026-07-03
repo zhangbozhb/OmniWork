@@ -19,7 +19,10 @@ import type {
 import { Button, Card } from "../../ui/components";
 import { getWorkspaceDisplayName } from "./workbenchModel";
 import { styles } from "./styles";
-import type { CreatableTerminalProviderKind } from "./workbenchTypes";
+import type {
+  CreatableTerminalProviderKind,
+  RuntimePreference,
+} from "./workbenchTypes";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -29,6 +32,7 @@ export function CreateSessionModal({
   createCwd,
   createWorkspacePath,
   createTerminalProviderKind,
+  createRuntimePreference,
   creatableProviders,
   workspaces,
   creating,
@@ -37,6 +41,7 @@ export function CreateSessionModal({
   onChangeCwd,
   onSelectWorkspace,
   onSelectProvider,
+  onSelectRuntime,
   onConfirm,
 }: {
   visible: boolean;
@@ -44,6 +49,7 @@ export function CreateSessionModal({
   createCwd: string;
   createWorkspacePath?: string;
   createTerminalProviderKind: CreatableTerminalProviderKind;
+  createRuntimePreference: RuntimePreference;
   creatableProviders: readonly TerminalProviderDefinition[];
   workspaces: readonly WorkspaceDefinition[];
   creating: boolean;
@@ -52,8 +58,31 @@ export function CreateSessionModal({
   onChangeCwd(value: string): void;
   onSelectWorkspace(workspace: WorkspaceDefinition): void;
   onSelectProvider(providerKind: CreatableTerminalProviderKind): void;
+  onSelectRuntime(runtime: RuntimePreference): void;
   onConfirm(): void;
 }): JSX.Element {
+  const appServerAvailable = createTerminalProviderKind === "codex";
+  const runtimeOptions: Array<{
+    kind: RuntimePreference;
+    title: string;
+    summary: string;
+  }> = [
+    {
+      kind: "tmux",
+      title: t("workspaces.runtime.tmux.title"),
+      summary: t("workspaces.runtime.tmux.summary"),
+    },
+    ...(appServerAvailable
+      ? [
+          {
+            kind: "app_server" as const,
+            title: t("workspaces.runtime.appServer.title"),
+            summary: t("workspaces.runtime.appServer.summary"),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <Modal
       transparent
@@ -156,6 +185,39 @@ export function CreateSessionModal({
                   style={styles.cwdInput}
                 />
               ) : null}
+              <View style={styles.runtimeSection}>
+                <Text style={styles.runtimeSectionTitle}>
+                  {t("workspaces.runtime.title")}
+                </Text>
+                {runtimeOptions.map((option) => {
+                  const selected = option.kind === createRuntimePreference;
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      key={option.kind}
+                      style={[
+                        styles.runtimeOption,
+                        selected && styles.runtimeOptionSelected,
+                      ]}
+                      onPress={() => onSelectRuntime(option.kind)}
+                    >
+                      <View style={styles.runtimeOptionHeader}>
+                        <Text style={styles.runtimeOptionTitle}>
+                          {option.title}
+                        </Text>
+                        {selected ? (
+                          <Text style={styles.runtimeOptionBadge}>
+                            {t("common.default")}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Text style={styles.runtimeOptionSummary}>
+                        {option.summary}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
               <View style={styles.modalActions}>
                 <Button
                   icon="close"

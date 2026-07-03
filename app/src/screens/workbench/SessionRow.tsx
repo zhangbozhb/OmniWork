@@ -32,6 +32,8 @@ export function SessionRow({
     killing,
   });
   const statusColors = getStatusColors(capabilities.statusTone);
+  const runtimeLabel =
+    session.runtime?.label ?? (session.tmux_session_name ? "tmux terminal" : "");
 
   return (
     <Pressable
@@ -49,6 +51,7 @@ export function SessionRow({
         <Text numberOfLines={1} style={styles.sessionRowMeta}>
           {formatRelativeTime(session.last_active_at, t)}
           {external ? " · ext" : ""}
+          {runtimeLabel ? ` · ${runtimeLabel}` : ""}
         </Text>
       </View>
       <Pressable

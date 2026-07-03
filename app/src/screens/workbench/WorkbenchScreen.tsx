@@ -55,6 +55,7 @@ import { WorkspacePager } from "./WorkspacePager";
 import { WorkspaceTabBar } from "./WorkspaceTabBar";
 import type {
   CreatableTerminalProviderKind,
+  RuntimePreference,
   TerminalProviderGroup,
   WorkspaceTab,
 } from "./workbenchTypes";
@@ -83,6 +84,7 @@ export interface WorkbenchScreenProps {
   onRefreshSessions(): void;
   onCreateSession(input: {
     cwd: string;
+    runtimePreference: RuntimePreference;
     terminalProviderKind: CreatableTerminalProviderKind;
     workspacePath?: string;
   }): void;
@@ -189,6 +191,8 @@ export function WorkbenchScreen({
     useState<CreatableTerminalProviderKind>(
       preferredCreateTerminalProviderKind,
     );
+  const [createRuntimePreference, setCreateRuntimePreference] =
+    useState<RuntimePreference>("tmux");
   const [renamingSession, setRenamingSession] =
     useState<TerminalSession | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
@@ -280,6 +284,15 @@ export function WorkbenchScreen({
   ]);
 
   useEffect(() => {
+    if (
+      createRuntimePreference === "app_server" &&
+      createTerminalProviderKind !== "codex"
+    ) {
+      setCreateRuntimePreference("tmux");
+    }
+  }, [createRuntimePreference, createTerminalProviderKind]);
+
+  useEffect(() => {
     setProviderPreferences((current) =>
       normalizeProviderPreferences(current, providers),
     );
@@ -315,6 +328,7 @@ export function WorkbenchScreen({
     const workspace = preferredWorkspace ?? workspaces[0];
     setCreateWorkspacePath(workspace?.path);
     setCreateCwd(workspace?.path ?? defaultCwd);
+    setCreateRuntimePreference("tmux");
     setCreateWorkspaceLocked(lockedWorkspace);
     setCreateModalVisible(true);
   }
@@ -331,6 +345,7 @@ export function WorkbenchScreen({
           ? createWorkspacePath
           : cwd,
       terminalProviderKind: createTerminalProviderKind,
+      runtimePreference: createRuntimePreference,
       workspacePath: createWorkspacePath,
     });
   }
@@ -566,6 +581,7 @@ export function WorkbenchScreen({
             setCreateWorkspacePath(undefined);
             setCreateCwd("");
             setCreateTerminalProviderKind(preferredCreateTerminalProviderKind);
+            setCreateRuntimePreference("tmux");
             setCreateModalVisible(true);
           }}
         >
@@ -579,6 +595,7 @@ export function WorkbenchScreen({
         createCwd={createCwd}
         createWorkspacePath={createWorkspacePath}
         createTerminalProviderKind={createTerminalProviderKind}
+        createRuntimePreference={createRuntimePreference}
         creatableProviders={creatableProviders}
         workspaces={workspaces}
         creating={creating}
@@ -593,6 +610,7 @@ export function WorkbenchScreen({
           setCreateCwd(workspace.path);
         }}
         onSelectProvider={setCreateTerminalProviderKind}
+        onSelectRuntime={setCreateRuntimePreference}
         onConfirm={confirmCreateSession}
       />
 

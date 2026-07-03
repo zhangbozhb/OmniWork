@@ -25,6 +25,7 @@
 - [useAppLockController](../app/src/features/app-lock/useAppLockController.tsx)：集中维护 app lock 配置加载、手势设置/解锁/重置、安全设置状态与 app lock screen 渲染；App 层只提供 reset 后清业务数据的回调。
 - [useAgentMessageController](../app/src/features/agent/useAgentMessageController.ts)：集中维护 agent message store、未读数、banner、通知设置与 delivered 回执；App 层只保留点击消息后定位 session/workspace 的跨域导航。
 - [useSessionController](../app/src/features/sessions/useSessionController.ts)：集中维护 session/provider/workspace 摘要状态、session 创建/关闭/重命名/kill 操作，以及 `session.list` / `session.status` 的状态应用；终端 surface frame 清理由 terminal controller 基于 `session.list` 返回的 surface 集合执行。
+- 创建会话已显式展示 `runtime_preference`：`tmux` / `terminal` / `app_server`。当前默认支持 `tmux`；Codex 支持创建 `app_server` 结构化会话；`terminal` 先由 App 展示为不可用选项，后续是否可选由 Agent 下发能力决定。
 - [useTerminalController](../app/src/features/terminal/useTerminalController.ts)：集中维护 terminal frame/stream/snapshot 状态、输入与 resize 请求、P2P snapshot 节流、进入终端页的 stream start/stop，以及 terminal 协议 payload 应用；App 层只保留打开 Files overlay、terminal error 后路由回退等跨域编排。
 - [useWorkspaceController](../app/src/features/workspaces/useWorkspaceController.ts) + [workspaceCache](../app/src/features/workspaces/workspaceCache.ts) / [workspaceKeys](../app/src/features/workspaces/workspaceKeys.ts)：集中维护 workspace files/git 本地缓存、请求 handler、协议 payload 应用方法与 cache key 编解码，避免 `App.tsx` 和 workspace 子屏重复定义。
 
@@ -164,6 +165,16 @@ RuntimeBinding
 ```
 
 运行在 tmux 里的 Codex / Claude Code TUI 仍然属于 `TerminalSurface`。此时 Desktop Agent 操作的是字符流、按键和终端画面，不拥有 thread、turn、approval、diff 等结构化语义。
+
+### Runtime 选择
+
+创建会话时 App 必须显式提示用户选择运行方式，默认值为 `tmux`：
+
+- `tmux`：持久终端运行时，真实 TUI 在 tmux 中运行。适合长任务和 Codex TUI，App 断开后可重连恢复控制。
+- `terminal`：直连终端 / direct PTY。App 短暂断开且 Agent 仍持有 PTY 时通常可继续控制；如果 Agent 重启、退出或 PTY 断开，则会话可能无法恢复。当前实现尚未开放。
+- `app_server`：结构化 Agent runtime。用于原生进度、Diff 和审批按钮，仅在 provider 支持且由 Agent 管理 app-server 时可用。当前 Codex 已可创建 app_server 会话；完整 thread timeline 与审批执行仍按 app-server adapter 后续能力逐步接入。
+
+App 可以展示所有运行方式，但 enabled / disabled 与原因必须来自 Agent 能力，不能根据 provider 名称自行推断。会话列表和终端页必须展示实际 runtime，避免用户进入后才发现交付形态不同。
 
 ### AgentSurface
 

@@ -773,6 +773,19 @@ describe("session payload schemas", () => {
     last_active_at: new Date().toISOString(),
     terminal_size: { cols: 80, rows: 24 },
     tmux_session_name: "omni-1",
+    runtime: {
+      kind: "tmux",
+      label: "tmux terminal",
+      description: "Persistent terminal runtime.",
+      capabilities: {
+        terminal_io: true,
+        persistent_resume: true,
+        reconnect_control: true,
+        native_approval: false,
+        structured_timeline: false,
+        diff_view: false,
+      },
+    },
   };
 
   it("terminalSessionSchema accepts all SUPPORTED_SESSION_STATUSES", () => {
@@ -822,6 +835,7 @@ describe("session payload schemas", () => {
     sessionCreatePayloadSchema.parse({});
     sessionCreatePayloadSchema.parse({
       terminal_provider_kind: "codex",
+      runtime_preference: "tmux",
       cwd: "/tmp",
       terminal_size: { cols: 80, rows: 24 },
     });

@@ -98,6 +98,9 @@ export class SessionRequestHandler {
     if (session.status !== "running" && session.status !== "detached") {
       return;
     }
+    if (session.runtime?.capabilities.terminal_io === false) {
+      return;
+    }
 
     await this.options.handleTerminalSnapshot(
       {
@@ -186,6 +189,9 @@ export class SessionRequestHandler {
         },
       ),
     );
+    if (session.runtime?.capabilities.terminal_io === false) {
+      return;
+    }
     if (context) {
       this.options.terminalFramePusher.addSubscriber(
         session.session_id,

@@ -32,15 +32,16 @@ export function getSessionCapabilities(
   const status = session.status;
   const attachableExternal = external && !registered;
   const operational = status === "running" || status === "detached";
+  const terminalIo = session.runtime?.capabilities.terminal_io ?? true;
   const unavailableReason = getUnavailableReason(session, pending);
 
   return {
     canOpen: !pendingAction && (operational || attachableExternal),
-    canInput: !pendingAction && registered && status === "running",
-    canResize: !pendingAction && registered && status === "running",
+    canInput: !pendingAction && registered && status === "running" && terminalIo,
+    canResize: !pendingAction && registered && status === "running" && terminalIo,
     canClose: !pendingAction && registered && status !== "archived",
     canKill:
-      !pendingAction && status !== "archived" && status !== "exited",
+      !pendingAction && terminalIo && status !== "archived" && status !== "exited",
     interactive: !pendingAction && registered && status === "running",
     pending: pendingAction,
     primaryActionLabel: getPrimaryActionLabel(session, pending),

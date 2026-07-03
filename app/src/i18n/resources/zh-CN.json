@@ -353,6 +353,21 @@
       "other": "其他",
       "otherSummary": "未匹配到已配置 Terminal provider 的现有 tmux 会话"
     },
+    "runtime": {
+      "title": "运行方式",
+      "tmux": {
+        "title": "tmux 终端模式",
+        "summary": "默认。运行真实 TUI，可在后台持续执行，App 重连后仍可恢复控制。"
+      },
+      "terminal": {
+        "title": "terminal 直连模式",
+        "summary": "轻量直连终端，适合短任务。App 短暂断开且 Agent 仍在运行时通常可继续控制；如果 Agent 或 PTY 退出，则可能无法恢复控制。"
+      },
+      "appServer": {
+        "title": "app_server 结构化模式",
+        "summary": "原生 Agent 体验，支持结构化进度、Diff 和审批按钮；仅在 Provider 支持且由 Agent 管理 app server 时可用。"
+      }
+    },
     "time": {
       "justNow": "刚刚",
       "minutesAgo": "{{count}} 分钟前",

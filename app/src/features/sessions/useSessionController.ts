@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
   MessageEnvelope,
   SessionListPayload,
+  SessionRuntimeKind,
   TerminalProviderDefinition,
   TerminalProviderKind,
   TerminalResizePayload,
@@ -37,6 +38,7 @@ type Confirm = (options: ConfirmOptions) => Promise<boolean>;
 
 type CreateSessionInput = {
   cwd: string;
+  runtimePreference: SessionRuntimeKind;
   terminalProviderKind: TerminalProviderKind;
   workspacePath?: string;
 };
@@ -149,6 +151,7 @@ export function useSessionController({
     sendToRelay(
       createSessionRequest(pairing.deviceId, {
         cwd: input.cwd,
+        runtime_preference: input.runtimePreference,
         workspace_path: input.workspacePath,
         terminal_provider_kind: input.terminalProviderKind,
         terminal_size: computeInitialTerminalSize(terminalTextSize),
@@ -315,7 +318,12 @@ export function useSessionController({
       const capabilities = getSessionCapabilities(session);
       if (capabilities.canOpen) {
         setSelectedSession(session);
-        setView("terminal");
+        if (session.runtime?.kind === "app_server") {
+          setConnectionMessage(`${session.title} app_server session is ready.`);
+          setView("workbench");
+        } else {
+          setView("terminal");
+        }
       } else {
         setConnectionMessage(
           capabilities.unavailableReason ??

@@ -565,6 +565,29 @@ export const sessionStatusSchema = z.enum([...SUPPORTED_SESSION_STATUSES] as [
 ]);
 
 export const sessionOriginSchema = z.enum(["managed", "external"]);
+const sessionRuntimeKindSchema = z.enum(["tmux", "terminal", "app_server"]);
+
+const sessionRuntimeCapabilitiesSchema = z
+  .object({
+    terminal_io: z.boolean(),
+    persistent_resume: z.boolean(),
+    reconnect_control: z.boolean(),
+    native_approval: z.boolean(),
+    structured_timeline: z.boolean(),
+    diff_view: z.boolean(),
+  })
+  .strict();
+
+const sessionRuntimeDefinitionSchema = z
+  .object({
+    kind: sessionRuntimeKindSchema,
+    label: z.string().min(1),
+    description: z.string(),
+    capabilities: sessionRuntimeCapabilitiesSchema,
+    risk_notice: z.string().optional(),
+    unavailable_reason: z.string().optional(),
+  })
+  .strict();
 
 const surfaceDefinitionSchema = z
   .object({
@@ -592,6 +615,7 @@ export const terminalSessionSchema = z
     last_active_at: isoDateTime,
     terminal_size: terminalSizeSchema,
     tmux_session_name: z.string().min(1),
+    runtime: sessionRuntimeDefinitionSchema.optional(),
     tmux_server_pid: z.number().int().positive().optional(),
     tmux_session_uid: z.string().min(1).optional(),
     workspace_path: z.string().optional(),
@@ -636,6 +660,7 @@ export const sessionListPayloadSchema = z
 export const sessionCreatePayloadSchema = z
   .object({
     terminal_provider_kind: z.string().min(1).optional(),
+    runtime_preference: sessionRuntimeKindSchema.optional(),
     title: z.string().optional(),
     cwd: z.string().optional(),
     workspace_path: z.string().optional(),

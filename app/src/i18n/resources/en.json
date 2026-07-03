@@ -353,6 +353,21 @@
       "other": "Other",
       "otherSummary": "Existing tmux sessions that do not match a configured Terminal provider"
     },
+    "runtime": {
+      "title": "Runtime",
+      "tmux": {
+        "title": "tmux terminal mode",
+        "summary": "Default. Runs the real TUI in tmux, keeps working in the background, and can be controlled again after reconnect."
+      },
+      "terminal": {
+        "title": "terminal direct mode",
+        "summary": "Lightweight direct terminal for short-lived work. If the App disconnects while the Agent keeps running, control usually resumes; if the Agent or PTY exits, control may be lost."
+      },
+      "appServer": {
+        "title": "app_server structured mode",
+        "summary": "Native Agent experience for structured progress, diff, and approval buttons. Available only when the provider supports an Agent-managed app server."
+      }
+    },
     "time": {
       "justNow": "just now",
       "minutesAgo": "{{count}}m ago",

@@ -1,9 +1,11 @@
 import type {
   AgentCapability,
+  SessionRuntimeKind,
   TerminalProviderKind,
 } from "@omniwork/protocol-ts";
 
 export type CreatableTerminalProviderKind = TerminalProviderKind;
+export type RuntimePreference = SessionRuntimeKind;
 export type WorkspaceTab = "sessions" | "git" | "files";
 
 export type TerminalProviderGroup = {

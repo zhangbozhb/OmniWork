@@ -4,6 +4,8 @@ import type {
   TerminalSession,
   TerminalProviderKind,
   SessionCreatePayload,
+  SessionRuntimeDefinition,
+  SessionRuntimeKind,
   SurfaceDefinition,
   TerminalSize,
   WorkspaceDefinition,
@@ -211,12 +213,19 @@ export class SessionManager {
     payload: SessionCreatePayload = {},
     onStatus?: SessionStatusListener,
   ): Promise<TerminalSession> {
+    const runtimePreference = payload.runtime_preference ?? "tmux";
     const sessionId = `sess_${randomUUID()}`;
     const tmuxSessionName = toTmuxSessionName(sessionId);
     const now = new Date().toISOString();
     const terminalProvider = this.terminalProviders.get(
       payload.terminal_provider_kind,
     );
+    if (runtimePreference !== "tmux" && runtimePreference !== "app_server") {
+      throw new Error(runtimeUnavailableReason(runtimePreference));
+    }
+    if (runtimePreference === "app_server" && terminalProvider.kind !== "codex") {
+      throw new Error("app_server runtime is currently supported for Codex only");
+    }
     const resolvedWorkspace = this.workspaces
       ? await this.workspaces.resolveCreateCwd(payload)
       : { cwd: payload.cwd ?? this.defaults.cwd, workspace: undefined };
@@ -234,15 +243,28 @@ export class SessionManager {
 
     const created: TerminalSession = {
       session_id: sessionId,
-      primary_surface_id: primarySurfaceId,
-      surfaces: [
-        createTerminalSurface({
-          sessionId,
-          title,
-          status: "created",
-          provider: terminalProvider.kind,
-        }),
-      ],
+      primary_surface_id:
+        runtimePreference === "app_server"
+          ? toAgentSurfaceId(sessionId)
+          : primarySurfaceId,
+      surfaces:
+        runtimePreference === "app_server"
+          ? [
+              createAgentSurface({
+                sessionId,
+                title,
+                status: "created",
+                provider: terminalProvider.kind,
+              }),
+            ]
+          : [
+              createTerminalSurface({
+                sessionId,
+                title,
+                status: "created",
+                provider: terminalProvider.kind,
+              }),
+            ],
       terminal_provider_kind: terminalProvider.kind,
       terminal_provider_label: terminalProvider.displayName,
       title,
@@ -253,6 +275,10 @@ export class SessionManager {
       last_active_at: now,
       terminal_size: size,
       tmux_session_name: tmuxSessionName,
+      runtime:
+        runtimePreference === "app_server"
+          ? appServerRuntimeDefinition()
+          : tmuxRuntimeDefinition(),
       workspace_path: resolvedWorkspace.workspace?.path,
       workspace_name: resolvedWorkspace.workspace?.name,
       git_repository: resolvedWorkspace.workspace?.isGitRepository,
@@ -265,13 +291,24 @@ export class SessionManager {
     await onStatus?.(created);
 
     const starting = {
-      ...withTerminalSurfaceStatus(created, "starting"),
+      ...withPrimarySurfaceStatus(created, "starting"),
       status: "starting" as const,
       last_active_at: new Date().toISOString(),
     };
     await this.store.upsert(starting);
     this.upsertKnownSession(starting);
     await onStatus?.(starting);
+
+    if (runtimePreference === "app_server") {
+      const running = {
+        ...withPrimarySurfaceStatus(starting, "running"),
+        status: "running" as const,
+        last_active_at: new Date().toISOString(),
+      };
+      await this.store.upsert(running);
+      this.upsertKnownSession(running);
+      return running;
+    }
 
     try {
       const identity = await this.tmux.createSession({
@@ -282,7 +319,7 @@ export class SessionManager {
       });
 
       const running = {
-        ...withTerminalSurfaceStatus(starting, "running"),
+        ...withPrimarySurfaceStatus(starting, "running"),
         status: "running" as const,
         last_active_at: new Date().toISOString(),
         // 用 tmux 真实分配的强 ID 绑定，让后续 reconcile 能识别
@@ -391,7 +428,7 @@ export class SessionManager {
 
     if (session.origin === "external" && !session.registered) {
       const attached = {
-        ...withTerminalSurfaceStatus(session, "running"),
+        ...withPrimarySurfaceStatus(session, "running"),
         status: "running" as const,
         last_active_at: new Date().toISOString(),
         registered: true,
@@ -464,6 +501,7 @@ export class SessionManager {
       last_active_at: session.createdAt,
       terminal_size: this.defaults.terminalSize,
       tmux_session_name: session.name,
+      runtime: tmuxRuntimeDefinition(),
       tmux_server_pid: session.serverPid || undefined,
       tmux_session_uid: session.sessionUid || undefined,
       origin: "external",
@@ -541,6 +579,10 @@ export function toTerminalSurfaceId(sessionId: string): string {
   return `surface_${sessionId}_terminal`;
 }
 
+function toAgentSurfaceId(sessionId: string): string {
+  return `surface_${sessionId}_agent`;
+}
+
 function createTerminalSurface(input: {
   sessionId: string;
   title: string;
@@ -557,7 +599,23 @@ function createTerminalSurface(input: {
   };
 }
 
-function withTerminalSurfaceStatus(
+function createAgentSurface(input: {
+  sessionId: string;
+  title: string;
+  status: TerminalSession["status"];
+  provider: string;
+}): SurfaceDefinition {
+  return {
+    surface_id: toAgentSurfaceId(input.sessionId),
+    session_id: input.sessionId,
+    kind: "agent",
+    title: input.title,
+    status: toSurfaceStatus(input.status),
+    provider: input.provider,
+  };
+}
+
+function withPrimarySurfaceStatus(
   session: TerminalSession,
   status: TerminalSession["status"],
 ): TerminalSession {
@@ -581,6 +639,51 @@ function toSurfaceStatus(
     return "detached";
   }
   return "active";
+}
+
+function tmuxRuntimeDefinition(): SessionRuntimeDefinition {
+  return {
+    kind: "tmux",
+    label: "tmux terminal",
+    description:
+      "Persistent terminal runtime. The session can keep running in the background and can be reattached after App reconnects.",
+    capabilities: {
+      terminal_io: true,
+      persistent_resume: true,
+      reconnect_control: true,
+      native_approval: false,
+      structured_timeline: false,
+      diff_view: false,
+    },
+  };
+}
+
+function appServerRuntimeDefinition(): SessionRuntimeDefinition {
+  return {
+    kind: "app_server",
+    label: "app server",
+    description:
+      "Structured Agent runtime managed by OmniWork Agent for Codex progress, diff, and native approval surfaces.",
+    capabilities: {
+      terminal_io: false,
+      persistent_resume: true,
+      reconnect_control: true,
+      native_approval: true,
+      structured_timeline: true,
+      diff_view: true,
+    },
+  };
+}
+
+function runtimeUnavailableReason(runtime: SessionRuntimeKind): string {
+  switch (runtime) {
+    case "terminal":
+      return "terminal runtime is not enabled in this Agent yet; use tmux for persistent terminal sessions";
+    case "app_server":
+      return "app_server runtime is not enabled in this Agent yet; use tmux until the Agent-managed app-server path is available";
+    case "tmux":
+      return "tmux runtime is unavailable";
+  }
 }
 
 function compareSessionsByRecentTime(
@@ -632,6 +735,12 @@ function classifyOrphanSession(
   // 未登记的 external 条目本来就不会进入 store；这里防御性兜底，
   // 避免外部上游写入异常数据时被这条逻辑误删。
   if (session.registered === false) {
+    return null;
+  }
+
+  // app_server 等非 tmux runtime 没有 tmux binding，不应参与 tmux orphan
+  // 清理；它们的生命周期由对应 runtime adapter 管理。
+  if (session.runtime?.kind && session.runtime.kind !== "tmux") {
     return null;
   }
 

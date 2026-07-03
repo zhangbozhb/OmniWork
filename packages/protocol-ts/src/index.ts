@@ -603,6 +603,25 @@ export function isCreatableTerminalProviderKind(
 export type SessionOrigin = "managed" | "external";
 export type SurfaceKind = "terminal" | "agent" | "file" | "diff";
 export type SurfaceStatus = "active" | "detached" | "ended";
+export type SessionRuntimeKind = "tmux" | "terminal" | "app_server";
+
+export interface SessionRuntimeCapabilities {
+  terminal_io: boolean;
+  persistent_resume: boolean;
+  reconnect_control: boolean;
+  native_approval: boolean;
+  structured_timeline: boolean;
+  diff_view: boolean;
+}
+
+export interface SessionRuntimeDefinition {
+  kind: SessionRuntimeKind;
+  label: string;
+  description: string;
+  capabilities: SessionRuntimeCapabilities;
+  risk_notice?: string;
+  unavailable_reason?: string;
+}
 
 export interface SurfaceDefinition {
   surface_id: string;
@@ -627,6 +646,7 @@ export interface TerminalSession {
   last_active_at: string;
   terminal_size: TerminalSize;
   tmux_session_name: string;
+  runtime?: SessionRuntimeDefinition;
   /**
    * tmux server 进程 pid（`#{pid}`）。tmux server 重启后会重置，因此可以
    * 把 (tmux_server_pid, tmux_session_uid) 当作"同一进程窗口"的强 ID。
@@ -667,6 +687,7 @@ export const SESSION_FIELDS = [
   "last_active_at",
   "terminal_size",
   "tmux_session_name",
+  "runtime",
   "tmux_server_pid",
   "tmux_session_uid",
   "workspace_path",
@@ -704,6 +725,7 @@ export interface SessionListPayload {
 
 export interface SessionCreatePayload {
   terminal_provider_kind?: TerminalProviderKind;
+  runtime_preference?: SessionRuntimeKind;
   title?: string;
   cwd?: string;
   workspace_path?: string;

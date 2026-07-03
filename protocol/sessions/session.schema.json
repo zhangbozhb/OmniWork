@@ -123,6 +123,69 @@
     "tmux_session_name": {
       "type": "string"
     },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "kind",
+        "label",
+        "description",
+        "capabilities"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "tmux",
+            "terminal",
+            "app_server"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "object",
+          "required": [
+            "terminal_io",
+            "persistent_resume",
+            "reconnect_control",
+            "native_approval",
+            "structured_timeline",
+            "diff_view"
+          ],
+          "properties": {
+            "terminal_io": {
+              "type": "boolean"
+            },
+            "persistent_resume": {
+              "type": "boolean"
+            },
+            "reconnect_control": {
+              "type": "boolean"
+            },
+            "native_approval": {
+              "type": "boolean"
+            },
+            "structured_timeline": {
+              "type": "boolean"
+            },
+            "diff_view": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "risk_notice": {
+          "type": "string"
+        },
+        "unavailable_reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "tmux_server_pid": {
       "type": "integer",
       "minimum": 1

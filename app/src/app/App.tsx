@@ -420,6 +420,14 @@ function AppContent(): JSX.Element {
     setSelectedSession(session);
     const workspace = getSessionFilesWorkspace(session, workspaces);
     setSelectedWorkspace(workspace);
+    if (session.runtime?.kind === "app_server") {
+      setConnectionMessage(`${session.title} app_server session is ready.`);
+      setView("workbench");
+      if (markHandled) {
+        handleMarkAgentMessageHandled(messageId);
+      }
+      return;
+    }
     setView("terminal");
     if (connectionStatus === "authenticated" && pairing) {
       requestTerminalSnapshot(pairing.deviceId, session);
@@ -508,6 +516,11 @@ function AppContent(): JSX.Element {
     }
 
     setSelectedSession(session);
+    if (session.runtime?.kind === "app_server") {
+      setConnectionMessage(`${session.title} app_server session is ready.`);
+      setView("workbench");
+      return;
+    }
     setView("terminal");
     if (pairing) {
       sendToRelay(

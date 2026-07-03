@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import type {
   TerminalSession,
   TerminalProviderKind,
+  SessionRuntimeDefinition,
 } from "@omniwork/protocol-ts";
 import { formatLocalTimestamp } from "../telemetry/logger.ts";
 
@@ -212,7 +213,25 @@ function normalizeSession(session: TerminalSession): TerminalSession {
     terminal_provider_kind: terminalProviderKind,
     terminal_provider_label:
       session.terminal_provider_label ?? terminalProviderKind,
+    runtime: session.runtime ?? tmuxRuntimeDefinition(),
     origin: session.origin ?? "managed",
     registered: session.registered ?? true,
+  };
+}
+
+function tmuxRuntimeDefinition(): SessionRuntimeDefinition {
+  return {
+    kind: "tmux",
+    label: "tmux terminal",
+    description:
+      "Persistent terminal runtime. The session can keep running in the background and can be reattached after App reconnects.",
+    capabilities: {
+      terminal_io: true,
+      persistent_resume: true,
+      reconnect_control: true,
+      native_approval: false,
+      structured_timeline: false,
+      diff_view: false,
+    },
   };
 }

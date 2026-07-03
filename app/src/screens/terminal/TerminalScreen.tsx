@@ -171,6 +171,11 @@ export function TerminalScreen({
   });
   const agentStatus = getAgentStatusPresentation(connectionStatus);
   const terminalProviderLabel = session.terminal_provider_label || session.terminal_provider_kind;
+  const runtimeLabel = session.runtime?.label ?? "tmux terminal";
+  const runtimeNotice =
+    session.runtime?.risk_notice ??
+    session.runtime?.description ??
+    t("workspaces.runtime.tmux.summary");
   const hasDraft = draft.trim().length > 0;
   const canHideKeyboard =
     (keyboardVisible || terminalInputEnabled) && !hasDraft;
@@ -480,6 +485,13 @@ export function TerminalScreen({
                 : t("terminal.showInput")}
             </Button>
           </View>
+        </View>
+      ) : null}
+
+      {!focusMode ? (
+        <View style={styles.runtimeNotice}>
+          <Text style={styles.runtimeNoticeTitle}>{runtimeLabel}</Text>
+          <Text style={styles.runtimeNoticeText}>{runtimeNotice}</Text>
         </View>
       ) : null}
 
@@ -824,6 +836,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+  },
+  runtimeNotice: {
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surfaceRaised,
+  },
+  runtimeNoticeTitle: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  runtimeNoticeText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
   },
   textSizeButton: {
     width: 38,
