@@ -106,6 +106,32 @@
       "critical": "Critical"
     }
   },
+  "agentSession": {
+    "status": "Status",
+    "ready": "Agent session is ready",
+    "waitingForEvents": "Waiting for Codex events from the connected computer.",
+    "timeline": "Timeline",
+    "conversation": "Conversation",
+    "activity": "Activity",
+    "activityCount": "{{count}} events",
+    "activityOnly": "Codex is working. Progress events are grouped under Activity; text replies will appear in the conversation.",
+    "activityLabels": {
+      "command": "Command",
+      "files": "File changes",
+      "tool": "Tool call",
+      "plan": "Plan",
+      "thinking": "Thinking",
+      "webSearch": "Web search",
+      "code": "Code changes",
+      "completed": "Completed"
+    },
+    "emptyTitle": "No conversation messages yet",
+    "emptyText": "After you send a prompt, your message and Codex text replies appear here. Commands, code changes, and tool calls are grouped under Activity.",
+    "composerTitle": "Prompt composer",
+    "composerPlaceholder": "Ask Codex to work on this session...",
+    "send": "Send",
+    "delivered": "Delivered"
+  },
   "devices": {
     "refreshing": "Refreshing...",
     "releaseToRefresh": "Release to refresh",
@@ -365,7 +391,7 @@
       },
       "appServer": {
         "title": "app_server structured mode",
-        "summary": "Native Agent experience for structured progress, diff, and approval buttons. Available only when the provider supports an Agent-managed app server."
+        "summary": "Structured Codex conversation powered by the Codex SDK, with basic message, progress, and result events. Approval and diff details will be added later."
       }
     },
     "time": {

@@ -41,6 +41,7 @@ export function createAppSessionTransport(
           ? [TERMINAL_STREAM_CAPABILITY_V1]
           : []),
         "agent.message.inbox.sqlite",
+        "agent.surface.event",
       ],
     },
   });

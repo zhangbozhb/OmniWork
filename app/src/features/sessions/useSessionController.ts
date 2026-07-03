@@ -320,7 +320,7 @@ export function useSessionController({
         setSelectedSession(session);
         if (session.runtime?.kind === "app_server") {
           setConnectionMessage(`${session.title} app_server session is ready.`);
-          setView("workbench");
+          setView("agentSession");
         } else {
           setView("terminal");
         }

@@ -1,5 +1,6 @@
 import type {
   AgentAppMessage,
+  AgentSurfaceEventPayload,
   AgentNotificationSettingsPayload,
   AuthFailedPayload,
   FilesListPayload,
@@ -35,6 +36,10 @@ export type AppMessageHandlers = {
   onGitStatus(payload: GitStatusPayload, message: MessageEnvelope): void;
   onGitDiff(payload: GitDiffPayload, message: MessageEnvelope): void;
   onAgentMessage(payload: AgentAppMessage, message: MessageEnvelope): void;
+  onAgentSurfaceEvent(
+    payload: AgentSurfaceEventPayload,
+    message: MessageEnvelope,
+  ): void;
   onAgentNotificationSettings(
     payload: AgentNotificationSettingsPayload,
     message: MessageEnvelope,
@@ -114,6 +119,12 @@ export function dispatchAppMessage(
       break;
     case "agent.message":
       handlers.onAgentMessage(message.payload as AgentAppMessage, message);
+      break;
+    case "agent.surface.event":
+      handlers.onAgentSurfaceEvent(
+        message.payload as AgentSurfaceEventPayload,
+        message,
+      );
       break;
     case "agent.notification.settings.get":
     case "agent.notification.settings.set":

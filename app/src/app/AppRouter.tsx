@@ -10,6 +10,7 @@ import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { SecuritySettingsScreen } from "../screens/security/SecuritySettingsScreen";
 import { ConnectionPreferenceScreen } from "../screens/settings/ConnectionPreferenceScreen";
 import { WorkbenchScreen } from "../screens/workbench/WorkbenchScreen";
+import { AgentSessionScreen } from "../screens/agent/AgentSessionScreen";
 import { GitStatusScreen } from "../screens/workspaces/GitStatusScreen";
 import { TerminalScreen } from "../screens/terminal/TerminalScreen";
 import { FileBrowserScreen } from "../screens/workspaces/FileBrowserScreen";
@@ -30,6 +31,7 @@ type AppRouterProps = {
     typeof ConnectionPreferenceScreen
   >;
   workbenchScreenProps: ComponentProps<typeof WorkbenchScreen>;
+  agentSessionScreenProps?: ComponentProps<typeof AgentSessionScreen>;
   gitReviewScreenProps?: ComponentProps<typeof GitStatusScreen>;
   terminalScreenProps?: ComponentProps<typeof TerminalScreen>;
   terminalFilesScreenProps?: ComponentProps<typeof FileBrowserScreen>;
@@ -48,6 +50,7 @@ export function AppRouter({
   securitySettingsScreenProps,
   connectionPreferenceScreenProps,
   workbenchScreenProps,
+  agentSessionScreenProps,
   gitReviewScreenProps,
   terminalScreenProps,
   terminalFilesScreenProps,
@@ -98,6 +101,11 @@ export function AppRouter({
           <GitStatusScreen {...gitReviewScreenProps} />
         </View>
       ) : null}
+      {view === "agentSession" && agentSessionScreenProps ? (
+        <View style={styles.fullScreenPage}>
+          <AgentSessionScreen {...agentSessionScreenProps} />
+        </View>
+      ) : null}
       {(view === "terminal" || view === "terminalFiles") &&
       terminalScreenProps ? (
         <View style={styles.fullScreenPage}>
@@ -129,6 +137,7 @@ export function AppRouter({
 function isWorkbenchRoute(view: AppView): boolean {
   return (
     view === "workbench" ||
+    view === "agentSession" ||
     view === "gitReview" ||
     view === "terminal" ||
     view === "terminalFiles" ||

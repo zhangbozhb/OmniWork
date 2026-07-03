@@ -1,9 +1,11 @@
+import { createMessageId } from "@omniwork/protocol-ts";
 import type {
   AgentMessageAckPayload,
   AgentMessageDeliveredPayload,
   AgentMessageListRequestPayload,
   AgentMessageReadRequestPayload,
   AgentNotificationSettingsPayload,
+  AgentPromptSubmitPayload,
   AppConnectionGoodbyePayload,
   AppConnectionHeartbeatPayload,
   AuthVerifyPayload,
@@ -50,6 +52,7 @@ interface AgentMessageDispatcherOptions {
   terminalRequests: TerminalRequestHandler;
   terminalStreamPusher: TerminalStreamPusher;
   inbox: AgentInboxHandler;
+  submitAgentPrompt?(payload: AgentPromptSubmitPayload): void;
 }
 
 export class AgentMessageDispatcher {
@@ -298,6 +301,14 @@ export class AgentMessageDispatcher {
           dispatchContext,
         );
         break;
+      case "agent.prompt.submit":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.handlePromptSubmit(
+          message as MessageEnvelope<AgentPromptSubmitPayload>,
+        );
+        break;
       case "agent.notification.settings.get":
         if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
           return;
@@ -398,5 +409,37 @@ export class AgentMessageDispatcher {
       context,
       trustedE2E,
     );
+  }
+
+  private handlePromptSubmit(
+    message: MessageEnvelope<AgentPromptSubmitPayload>,
+  ): void {
+    const createdAt = message.payload.created_at ?? new Date().toISOString();
+    this.options.security.send({
+      ...message,
+      id: createMessageId(),
+      type: "agent.surface.event",
+      session_id: message.payload.session_id,
+      surface_id: message.payload.surface_id,
+      payload: {
+        session_id: message.payload.session_id,
+        surface_id: message.payload.surface_id,
+        provider: "codex",
+        event_id: createMessageId(),
+        event_type: "agent.user_prompt_submitted",
+        title: "User prompt submitted",
+        summary: message.payload.prompt,
+        payload: {
+          prompt: message.payload.prompt,
+          delivery_status: "delivered_to_agent",
+        },
+        source: {
+          kind: "process",
+          raw_event_id: message.id,
+        },
+        created_at: createdAt,
+      },
+    });
+    this.options.submitAgentPrompt?.(message.payload);
   }
 }

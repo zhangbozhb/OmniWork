@@ -14,6 +14,8 @@ export function isE2EBusinessMessage(type: string): boolean {
     type.startsWith("git.") ||
     type.startsWith("codex.") ||
     type.startsWith("agent.message") ||
+    type.startsWith("agent.surface.") ||
+    type.startsWith("agent.prompt.") ||
     type.startsWith("agent.notification.") ||
     type.startsWith("app.connection.") ||
     type.startsWith("tunnel.upgrade.")

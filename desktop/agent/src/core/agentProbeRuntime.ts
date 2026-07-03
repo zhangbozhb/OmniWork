@@ -1,4 +1,7 @@
-import type { AgentProbeEvent } from "@omniwork/protocol-ts";
+import type {
+  AgentProbeEvent,
+  AgentSurfaceEventPayload,
+} from "@omniwork/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
 import type { Logger } from "../telemetry/logger.ts";
 import type { SessionKeyRecord } from "../auth-key/authKey.ts";
@@ -24,6 +27,7 @@ interface AgentProbeRuntimeOptions {
   agentMessages: AgentMessageService;
   sessionManager: SessionManager;
   getKeyRecord(): SessionKeyRecord;
+  onSurfaceEvent?(event: AgentSurfaceEventPayload): void;
 }
 
 export class AgentProbeRuntime {
@@ -32,6 +36,7 @@ export class AgentProbeRuntime {
   private readonly agentMessages: AgentMessageService;
   private readonly sessionManager: SessionManager;
   private readonly getKeyRecord: () => SessionKeyRecord;
+  private readonly onSurfaceEvent?: (event: AgentSurfaceEventPayload) => void;
   private receiver: AgentHookReceiver | null = null;
 
   constructor(options: AgentProbeRuntimeOptions) {
@@ -40,6 +45,7 @@ export class AgentProbeRuntime {
     this.agentMessages = options.agentMessages;
     this.sessionManager = options.sessionManager;
     this.getKeyRecord = options.getKeyRecord;
+    this.onSurfaceEvent = options.onSurfaceEvent;
   }
 
   async start(): Promise<void> {
@@ -64,6 +70,7 @@ export class AgentProbeRuntime {
           },
         );
         const message = this.agentMessages.publishProbeEvent(enrichedEvent);
+        this.publishSurfaceEvent(enrichedEvent);
         if (message) {
           this.logger.info("agent probe event accepted", {
             provider: enrichedEvent.provider,
@@ -120,6 +127,7 @@ export class AgentProbeRuntime {
 
   publishLocalProbeEvent(event: AgentProbeEvent): void {
     const message = this.agentMessages.publishProbeEvent(event);
+    this.publishSurfaceEvent(event);
     if (message) {
       this.logger.info("local probe event accepted", {
         provider: event.provider,
@@ -138,6 +146,24 @@ export class AgentProbeRuntime {
       event,
       await this.sessionManager.list(),
     );
+  }
+
+  private publishSurfaceEvent(event: AgentProbeEvent): void {
+    if (!event.surface_id || event.source.kind !== "app-server") {
+      return;
+    }
+    this.onSurfaceEvent?.({
+      session_id: event.session_id,
+      surface_id: event.surface_id,
+      provider: event.provider,
+      event_id: event.id,
+      event_type: event.event_type,
+      title: event.title ?? "Agent event",
+      summary: event.summary,
+      payload: event.payload,
+      source: event.source,
+      created_at: event.created_at,
+    });
   }
 
   private async prepareCodexTerminalProvider(): Promise<void> {

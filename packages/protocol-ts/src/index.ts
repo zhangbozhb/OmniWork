@@ -93,6 +93,8 @@ export type MessageType =
   | "agent.message.read"
   | "agent.message.ack"
   | "agent.message.delivered"
+  | "agent.surface.event"
+  | "agent.prompt.submit"
   | "agent.notification.settings.get"
   | "agent.notification.settings.set"
   | "tunnel.upgrade.propose"
@@ -986,6 +988,7 @@ export type AgentProbeSeverity =
 
 export type AgentProbeSourceKind =
   | "app-server"
+  | "sdk"
   | "cli-hook"
   | "pty"
   | "tmux"
@@ -1011,6 +1014,29 @@ export interface AgentProbeEvent {
     raw_event_id?: string;
   };
   created_at: string;
+}
+
+export interface AgentSurfaceEventPayload {
+  session_id: string;
+  surface_id: string;
+  provider: string;
+  event_id: string;
+  event_type: AgentProbeEventType;
+  title: string;
+  summary?: string;
+  payload?: Record<string, unknown>;
+  source?: {
+    kind: AgentProbeSourceKind;
+    raw_event_id?: string;
+  };
+  created_at: string;
+}
+
+export interface AgentPromptSubmitPayload {
+  session_id: string;
+  surface_id: string;
+  prompt: string;
+  created_at?: string;
 }
 
 export type AgentAppMessageKind =

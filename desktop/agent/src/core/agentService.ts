@@ -1,4 +1,9 @@
-import type { AgentAppMessage, MessageEnvelope } from "@omniwork/protocol-ts";
+import { createMessage } from "@omniwork/protocol-ts";
+import type {
+  AgentAppMessage,
+  AgentSurfaceEventPayload,
+  MessageEnvelope,
+} from "@omniwork/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
 import {
   createAgentInstanceId,
@@ -10,6 +15,7 @@ import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { TerminalBridge } from "../pty-bridge/terminalBridge.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
 import { Logger } from "../telemetry/logger.ts";
+import { CodexSdkSurfaceAdapter } from "../agent-surface/codex/codexSdkSurfaceAdapter.ts";
 import {
   createPairingQrDetails,
   printPairingDetailsWithoutRelay,
@@ -55,6 +61,7 @@ export class AgentService {
   private readonly terminalRequests: TerminalRequestHandler;
   private readonly inbox: AgentInboxHandler;
   private readonly probeRuntime: AgentProbeRuntime;
+  private readonly codexSdkSurfaceAdapter: CodexSdkSurfaceAdapter;
   private readonly adminRuntime: AgentAdminRuntime;
   private readonly dispatcher: AgentMessageDispatcher;
   private readonly relayController: AgentRelayController;
@@ -107,6 +114,12 @@ export class AgentService {
       agentMessages: this.agentMessages,
       sessionManager: this.sessionManager,
       getKeyRecord: () => this.requireKeyRecord(),
+      onSurfaceEvent: (event) => this.broadcastAgentSurfaceEvent(event),
+    });
+    this.codexSdkSurfaceAdapter = new CodexSdkSurfaceAdapter({
+      logger: this.logger,
+      getSession: (sessionId) => this.sessionManager.get(sessionId),
+      onSurfaceEvent: (event) => this.broadcastAgentSurfaceEvent(event),
     });
     this.security = new AgentAppSecurityGateway({
       config,
@@ -219,6 +232,12 @@ export class AgentService {
       terminalRequests: this.terminalRequests,
       terminalStreamPusher: this.terminalStreamPusher,
       inbox: this.inbox,
+      submitAgentPrompt: (payload) =>
+        this.codexSdkSurfaceAdapter.submitPrompt({
+          sessionId: payload.session_id,
+          surfaceId: payload.surface_id,
+          prompt: payload.prompt,
+        }),
     });
     this.relayController = new AgentRelayController({
       config,
@@ -315,6 +334,16 @@ export class AgentService {
 
   private broadcastAgentMessage(message: AgentAppMessage): void {
     this.security.broadcastAgentMessage(message);
+  }
+
+  private broadcastAgentSurfaceEvent(event: AgentSurfaceEventPayload): void {
+    this.security.send(
+      createMessage("agent.surface.event", event, {
+        device_id: this.config.deviceId,
+        session_id: event.session_id,
+        surface_id: event.surface_id,
+      }),
+    );
   }
 
   private requireKeyRecord(): SessionKeyRecord {

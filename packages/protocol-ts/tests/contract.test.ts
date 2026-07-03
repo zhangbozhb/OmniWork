@@ -406,6 +406,31 @@ describe("agent message payload schemas", () => {
     );
     assert.ok(
       parseMessageEnvelope(
+        createMessage("agent.surface.event", {
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          provider: "codex",
+          event_id: "event_1",
+          event_type: "agent.thinking",
+          title: "Codex is running",
+          summary: "Working on the current turn.",
+          source: { kind: "app-server", raw_event_id: "raw_1" },
+          created_at: new Date().toISOString(),
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.prompt.submit", {
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          prompt: "Run the tests",
+          created_at: new Date().toISOString(),
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
         createMessage("agent.notification.settings.set", {
           enabled: true,
           min_priority: "critical",

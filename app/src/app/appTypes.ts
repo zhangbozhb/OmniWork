@@ -15,6 +15,7 @@ export type AppView =
   | "securitySettings"
   | "connectionPreference"
   | "workbench"
+  | "agentSession"
   | "gitReview"
   | "terminalFiles"
   | "fileEditor"

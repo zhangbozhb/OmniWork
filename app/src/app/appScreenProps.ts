@@ -17,6 +17,9 @@ type SecuritySettingsScreenProps =
 type ConnectionPreferenceScreenProps =
   AppRouterProps["connectionPreferenceScreenProps"];
 type WorkbenchScreenProps = AppRouterProps["workbenchScreenProps"];
+type AgentSessionScreenProps = NonNullable<
+  AppRouterProps["agentSessionScreenProps"]
+>;
 type GitReviewScreenProps = NonNullable<AppRouterProps["gitReviewScreenProps"]>;
 type TerminalScreenProps = NonNullable<AppRouterProps["terminalScreenProps"]>;
 type TerminalFilesScreenProps = NonNullable<
@@ -116,6 +119,11 @@ type BuildAppRouterPropsOptions = {
   gitReviewScope: GitReviewScreenProps["initialScope"];
   selectedWorkspace: TerminalFilesScreenProps["workspace"] | null | undefined;
   selectedSession: TerminalScreenProps["session"] | null;
+  agentSurfaceEventsBySurfaceId: Record<
+    string,
+    AgentSessionScreenProps["events"]
+  >;
+  handleAgentPromptSubmit: AgentSessionScreenProps["onSubmitPrompt"];
   selectedFrame: TerminalScreenProps["frame"];
   selectedSessionCapabilities: SessionCapabilities | null | undefined;
   terminalStreamChunk: TerminalScreenProps["streamChunk"] | null;
@@ -279,6 +287,18 @@ export function buildAppRouterProps(
       onRenameSession: o.handleRenameSession,
       onKillTerminalSession: o.handleKillTerminalSession,
     },
+    agentSessionScreenProps:
+      o.view === "agentSession" && selectedSession
+        ? {
+            session: selectedSession,
+            events:
+              o.agentSurfaceEventsBySurfaceId[
+                selectedSession.primary_surface_id
+              ] ?? [],
+            onBack: () => o.setView("workbench"),
+            onSubmitPrompt: o.handleAgentPromptSubmit,
+          }
+        : undefined,
     gitReviewScreenProps:
       o.view === "gitReview" && selectedWorkspace
         ? {

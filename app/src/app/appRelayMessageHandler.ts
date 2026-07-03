@@ -57,6 +57,9 @@ type AppRelayMessageHandlerContext = {
   handleAgentMessage(
     payload: Parameters<AppMessageHandlers["onAgentMessage"]>[0],
   ): void;
+  applyAgentSurfaceEvent(
+    payload: Parameters<AppMessageHandlers["onAgentSurfaceEvent"]>[0],
+  ): void;
   handleAgentNotificationSettings(
     payload: Parameters<AppMessageHandlers["onAgentNotificationSettings"]>[0],
   ): void;
@@ -155,6 +158,9 @@ export function handleAppRelayMessage(
     },
     onAgentMessage(payload) {
       context.handleAgentMessage(payload);
+    },
+    onAgentSurfaceEvent(payload) {
+      context.applyAgentSurfaceEvent(payload);
     },
     onAgentNotificationSettings(payload) {
       context.handleAgentNotificationSettings(payload);

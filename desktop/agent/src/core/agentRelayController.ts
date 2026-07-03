@@ -244,6 +244,7 @@ export class AgentRelayController {
             "git.read",
             "agent.message",
             "agent.message.inbox.sqlite",
+            "agent.surface.event",
             "agent.notification.settings",
             "agent.probe.codex",
             "agent.probe.codex.app_server",

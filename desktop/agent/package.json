@@ -15,6 +15,7 @@
     "@omniwork/protocol-ts": "workspace:*",
     "@omniwork/relay-client": "workspace:*",
     "@omniwork/terminal-core": "workspace:*",
+    "@openai/codex-sdk": "0.142.5",
     "@roamhq/wrtc": "^0.8.0",
     "qrcode-terminal": "^0.12.0"
   },

@@ -106,6 +106,32 @@
       "critical": "紧急"
     }
   },
+  "agentSession": {
+    "status": "状态",
+    "ready": "Agent 会话已就绪",
+    "waitingForEvents": "正在等待连接电脑上的 Codex 事件。",
+    "timeline": "时间线",
+    "conversation": "对话",
+    "activity": "活动",
+    "activityCount": "{{count}} 条",
+    "activityOnly": "Codex 正在处理，过程事件已收进活动区；有文本回复后会显示在对话里。",
+    "activityLabels": {
+      "command": "命令",
+      "files": "文件变更",
+      "tool": "工具调用",
+      "plan": "计划",
+      "thinking": "思考中",
+      "webSearch": "网页搜索",
+      "code": "代码变更",
+      "completed": "已完成"
+    },
+    "emptyTitle": "暂无对话消息",
+    "emptyText": "发送 Prompt 后，你的消息和 Codex 的文本回复会显示在这里；命令、代码变更和工具调用会收进活动区。",
+    "composerTitle": "Prompt 输入",
+    "composerPlaceholder": "让 Codex 继续处理这个会话...",
+    "send": "发送",
+    "delivered": "已送达"
+  },
   "devices": {
     "refreshing": "刷新中...",
     "releaseToRefresh": "松开刷新",
@@ -365,7 +391,7 @@
       },
       "appServer": {
         "title": "app_server 结构化模式",
-        "summary": "原生 Agent 体验，支持结构化进度、Diff 和审批按钮；仅在 Provider 支持且由 Agent 管理 app server 时可用。"
+        "summary": "Codex SDK 驱动的结构化对话体验，支持基础消息、进度和结果回吐；审批和 Diff 详情后续接入。"
       }
     },
     "time": {

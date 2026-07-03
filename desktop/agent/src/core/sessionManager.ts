@@ -661,16 +661,16 @@ function tmuxRuntimeDefinition(): SessionRuntimeDefinition {
 function appServerRuntimeDefinition(): SessionRuntimeDefinition {
   return {
     kind: "app_server",
-    label: "app server",
+    label: "Codex SDK",
     description:
-      "Structured Agent runtime managed by OmniWork Agent for Codex progress, diff, and native approval surfaces.",
+      "Structured Codex runtime managed by OmniWork Agent through the Codex SDK for mobile timeline conversations.",
     capabilities: {
       terminal_io: false,
-      persistent_resume: true,
+      persistent_resume: false,
       reconnect_control: true,
-      native_approval: true,
+      native_approval: false,
       structured_timeline: true,
-      diff_view: true,
+      diff_view: false,
     },
   };
 }

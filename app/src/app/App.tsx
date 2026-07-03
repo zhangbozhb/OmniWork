@@ -1,10 +1,4 @@
-import {
-  type JSX,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type JSX, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -35,6 +29,7 @@ import { useSessionController } from "../features/sessions/useSessionController"
 import { useTerminalController } from "../features/terminal/useTerminalController";
 import { useWorkspaceController } from "../features/workspaces/useWorkspaceController";
 import { useAgentMessageController } from "../features/agent/useAgentMessageController";
+import { useAgentSurfaceController } from "../features/agent/useAgentSurfaceController";
 import type { LocalAgentMessageRecord } from "../features/agent/agentMessageStore";
 import type { MessageDetailReason } from "../screens/messages/AgentMessageDetailScreen";
 import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
@@ -42,6 +37,7 @@ import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
 function isWorkbenchView(view: AppView): boolean {
   return (
     view === "workbench" ||
+    view === "agentSession" ||
     view === "terminal" ||
     view === "terminalFiles" ||
     view === "fileEditor" ||
@@ -232,6 +228,12 @@ function AppContent(): JSX.Element {
   });
 
   const {
+    agentSurfaceEventsBySurfaceId,
+    applyAgentSurfaceEvent,
+    clearAgentSurfaceEvents,
+  } = useAgentSurfaceController();
+
+  const {
     selectedFrame,
     terminalStreamChunk,
     handleTerminalInput,
@@ -357,6 +359,9 @@ function AppContent(): JSX.Element {
     if (view === "terminal") {
       return selectedSession?.title ?? t("app.titles.terminal");
     }
+    if (view === "agentSession") {
+      return selectedSession?.title ?? t("agentSession.ready");
+    }
     if (view === "terminalFiles") return t("workspaces.tabs.files");
     if (view === "workbench") return t("app.titles.workspaces");
     if (view === "connectionPreference") return t("app.titles.connectionMode");
@@ -408,7 +413,11 @@ function AppContent(): JSX.Element {
       return;
     }
 
-    openAgentMessageSession(message.id, target.session, Boolean(message.action));
+    openAgentMessageSession(
+      message.id,
+      target.session,
+      Boolean(message.action),
+    );
   }
 
   function openAgentMessageSession(
@@ -422,7 +431,7 @@ function AppContent(): JSX.Element {
     setSelectedWorkspace(workspace);
     if (session.runtime?.kind === "app_server") {
       setConnectionMessage(`${session.title} app_server session is ready.`);
-      setView("workbench");
+      setView("agentSession");
       if (markHandled) {
         handleMarkAgentMessageHandled(messageId);
       }
@@ -518,7 +527,7 @@ function AppContent(): JSX.Element {
     setSelectedSession(session);
     if (session.runtime?.kind === "app_server") {
       setConnectionMessage(`${session.title} app_server session is ready.`);
-      setView("workbench");
+      setView("agentSession");
       return;
     }
     setView("terminal");
@@ -551,8 +560,7 @@ function AppContent(): JSX.Element {
 
   function shouldRefreshWorkbenchOnConnection(): boolean {
     return (
-      pendingAutoOpenSessionsRef.current ||
-      isWorkbenchView(viewRef.current)
+      pendingAutoOpenSessionsRef.current || isWorkbenchView(viewRef.current)
     );
   }
 
@@ -572,6 +580,7 @@ function AppContent(): JSX.Element {
     clearSessionState({ clearDefaultCwd: true, clearCreating: true });
     clearWorkspaceState();
     clearTerminalState();
+    clearAgentSurfaceEvents();
   }
 
   function handleRelayMessage(
@@ -603,6 +612,7 @@ function AppContent(): JSX.Element {
       applyGitStatus,
       applyGitDiff,
       handleAgentMessage,
+      applyAgentSurfaceEvent,
       handleAgentNotificationSettings,
       applyTerminalSnapshot,
       applyTerminalFrame,
@@ -610,6 +620,28 @@ function AppContent(): JSX.Element {
       applyTerminalStreamData,
       applyTerminalStreamError,
     });
+  }
+
+  function handleAgentPromptSubmit(prompt: string): void {
+    if (!pairing || !selectedSession || connectionStatus !== "authenticated") {
+      return;
+    }
+    sendToRelay(
+      createMessage(
+        "agent.prompt.submit",
+        {
+          session_id: selectedSession.session_id,
+          surface_id: selectedSession.primary_surface_id,
+          prompt,
+          created_at: new Date().toISOString(),
+        },
+        {
+          device_id: pairing.deviceId,
+          session_id: selectedSession.session_id,
+          surface_id: selectedSession.primary_surface_id,
+        },
+      ),
+    );
   }
 
   const agentMessageDetailTarget = agentMessageDetail
@@ -699,6 +731,8 @@ function AppContent(): JSX.Element {
     gitReviewScope,
     selectedWorkspace,
     selectedSession,
+    agentSurfaceEventsBySurfaceId,
+    handleAgentPromptSubmit,
     selectedFrame,
     selectedSessionCapabilities,
     terminalStreamChunk,
@@ -738,13 +772,17 @@ function AppContent(): JSX.Element {
     <AppShell
       title={title}
       subtitle={
-        canUseWorkspace ? getHeaderSubtitle(view, pairings.length, pairing, t) : undefined
+        canUseWorkspace
+          ? getHeaderSubtitle(view, pairings.length, pairing, t)
+          : undefined
       }
       showHeader={showHeader}
       showPrimaryTabs={!appLockScreen && showPrimaryTabs}
       activeTab={view}
       unreadMessages={agentUnreadCount}
-      agentMessageBanner={!appLockScreen ? (agentMessageBanner ?? undefined) : undefined}
+      agentMessageBanner={
+        !appLockScreen ? (agentMessageBanner ?? undefined) : undefined
+      }
       encryptedPairingModal={{
         visible: Boolean(pendingEncryptedPairingLink),
         password: encryptedPairingPassword,
@@ -766,7 +804,7 @@ function AppContent(): JSX.Element {
         handleOpenAgentMessage(record);
       }}
     >
-          <AppRouter {...routerProps} />
+      <AppRouter {...routerProps} />
     </AppShell>
   );
 }

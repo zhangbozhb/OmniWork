@@ -87,6 +87,8 @@ export const messageTypeSchema = z.enum([
   "agent.message.read",
   "agent.message.ack",
   "agent.message.delivered",
+  "agent.surface.event",
+  "agent.prompt.submit",
   "agent.notification.settings.get",
   "agent.notification.settings.set",
   "tunnel.upgrade.propose",
@@ -963,6 +965,36 @@ export const agentAppMessageSchema = z
   })
   .strict();
 
+const agentSurfaceEventPayloadSchema = z
+  .object({
+    session_id: z.string().min(1),
+    surface_id: z.string().min(1),
+    provider: z.string().min(1),
+    event_id: z.string().min(1),
+    event_type: z.string().min(1),
+    title: z.string().min(1),
+    summary: z.string().optional(),
+    payload: z.record(z.unknown()).optional(),
+    source: z
+      .object({
+        kind: z.string().min(1),
+        raw_event_id: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    created_at: isoDateTime,
+  })
+  .strict();
+
+const agentPromptSubmitPayloadSchema = z
+  .object({
+    session_id: z.string().min(1),
+    surface_id: z.string().min(1),
+    prompt: z.string().min(1),
+    created_at: isoDateTime.optional(),
+  })
+  .strict();
+
 export const agentMessageListRequestPayloadSchema = z
   .object({
     session_id: z.string().min(1).optional(),
@@ -1089,6 +1121,8 @@ const payloadSchemaByType = {
     agentMessageAckResultPayloadSchema,
   ]),
   "agent.message.delivered": agentMessageDeliveredPayloadSchema,
+  "agent.surface.event": agentSurfaceEventPayloadSchema,
+  "agent.prompt.submit": agentPromptSubmitPayloadSchema,
   "agent.notification.settings.get": z.union([
     emptyPayloadSchema,
     agentNotificationSettingsPayloadSchema,
