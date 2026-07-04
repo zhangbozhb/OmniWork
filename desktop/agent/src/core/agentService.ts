@@ -43,6 +43,10 @@ import type {
   AgentRelayRuntimeStatus,
 } from "./agentRuntimeTypes.ts";
 
+export interface AgentServiceOptions {
+  onShutdownRequested?(reason: string): void;
+}
+
 export class AgentService {
   private readonly logger = new Logger("omniwork-agent");
   private readonly tmux = new TmuxManager();
@@ -71,9 +75,11 @@ export class AgentService {
   private agentInstanceId = "";
   private readonly logTransport =
     (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
+  private readonly onShutdownRequested?: (reason: string) => void;
 
-  constructor(config: AgentConfig) {
+  constructor(config: AgentConfig, options: AgentServiceOptions = {}) {
     this.config = config;
+    this.onShutdownRequested = options.onShutdownRequested;
     this.agentMessages = new AgentMessageService({
       store: new AgentMessageStore(config.sessionStorePath),
       onMessage: (message) => this.broadcastAgentMessage(message),
@@ -150,7 +156,8 @@ export class AgentService {
       workspaces: this.workspaces,
       listWorkspaces: async () =>
         (await this.sessionManager.listWithWorkspaces()).workspaces,
-      sendToApp: (context, message) => this.security.sendToApp(context, message),
+      sendToApp: (context, message) =>
+        this.security.sendToApp(context, message),
     });
     this.terminalFramePusher = new TerminalFramePusher({
       deviceId: config.deviceId,
@@ -159,9 +166,9 @@ export class AgentService {
       sessionManager: this.sessionManager,
       terminalBridge: this.terminalBridge,
       getBufferedAmountForApp: (appConnectionId) =>
-        this.relayController.getTransport()?.getBufferedAmountForApp(
-          appConnectionId,
-        ) ?? 0,
+        this.relayController
+          .getTransport()
+          ?.getBufferedAmountForApp(appConnectionId) ?? 0,
       emitDisplayFrameDeferred: (appConnectionId, bufferedAmount) =>
         this.relayController
           .getTransport()
@@ -199,7 +206,8 @@ export class AgentService {
       terminalStreamPusher: this.terminalStreamPusher,
       getSessionRequests: () => this.sessionRequests,
       send: (message) => this.security.send(message),
-      sendToApp: (context, message) => this.security.sendToApp(context, message),
+      sendToApp: (context, message) =>
+        this.security.sendToApp(context, message),
       publishLocalProbeEvent: (event) =>
         this.probeRuntime.publishLocalProbeEvent(event),
     });
@@ -210,7 +218,8 @@ export class AgentService {
       workspaces: this.workspaces,
       sessionManager: this.sessionManager,
       terminalFramePusher: this.terminalFramePusher,
-      sendToApp: (context, message) => this.security.sendToApp(context, message),
+      sendToApp: (context, message) =>
+        this.security.sendToApp(context, message),
       prepareTerminalProvider: (terminalProvider) =>
         this.probeRuntime.prepareTerminalProvider(terminalProvider),
       handleTerminalSnapshot: (message, context) =>
@@ -220,7 +229,8 @@ export class AgentService {
       deviceId: config.deviceId,
       logger: this.logger,
       agentMessages: this.agentMessages,
-      sendToApp: (context, message) => this.security.sendToApp(context, message),
+      sendToApp: (context, message) =>
+        this.security.sendToApp(context, message),
     });
     this.dispatcher = new AgentMessageDispatcher({
       config,
@@ -252,6 +262,13 @@ export class AgentService {
       onRelayUnavailable: () => {
         this.security.clearRelayAppConnectionState();
         this.tunnelUpgrade.clear();
+      },
+      onRelayShutdownRequested: (reason) => {
+        this.logger.error("stopping agent after relay shutdown request", {
+          reason,
+        });
+        this.stop();
+        this.onShutdownRequested?.(reason);
       },
     });
     this.adminRuntime = new AgentAdminRuntime({

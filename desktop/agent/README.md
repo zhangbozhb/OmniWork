@@ -9,7 +9,10 @@ TypeScript/Node.js 桌面端 Agent for managing Terminal provider TUI sessions.
 - Persists a local `dev_` device ID in `~/.omniwork/agent.json`, with `sha256(deviceId + sha256(ip + hostname))` checksum validation. On macOS, the agent also uses Keychain when it is safely available.
 - Uses `0600` file permissions and `0700` parent directory permissions.
 - Requires `OMNIWORK_RELAY_URL` and fails fast when it is missing.
-- Reconnects to Relay with exponential backoff unless Relay explicitly rejects the Agent.
+- Reconnects to Relay with exponential backoff. The only Relay-driven path that
+  stops the local Agent service and exits the Agent process is WebSocket close
+  `4404` with reason `agent_disabled` or `ip_banned`, which is reserved for an
+  explicit operator disable or IP-ban action.
 - Manages configured Terminal provider TUI sessions through `tmux` once tmux is installed.
 - Persists user-edited session titles through the `session.rename` protocol message.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.

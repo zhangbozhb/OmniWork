@@ -2,12 +2,34 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import {
+  RELAY_AGENT_DISABLED_CLOSE_REASON,
+  RELAY_AGENT_IP_BANNED_CLOSE_REASON,
+  RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+} from "@omniwork/protocol-ts";
+import {
   classifyRelayClose,
   isTerminalRelayConnectionError,
   nextRelayReconnectDelayMs,
   relayReconnectAttemptLimitLabel,
   shouldLimitRelayReconnectAttempt,
 } from "../src/core/relayReconnectPolicy.ts";
+
+test("classifyRelayClose treats relay shutdown code as shutdown", () => {
+  assert.equal(
+    classifyRelayClose({
+      code: RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+      reason: RELAY_AGENT_DISABLED_CLOSE_REASON,
+    }),
+    "shutdown",
+  );
+  assert.equal(
+    classifyRelayClose({
+      code: RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+      reason: RELAY_AGENT_IP_BANNED_CLOSE_REASON,
+    }),
+    "shutdown",
+  );
+});
 
 test("classifyRelayClose treats explicit relay policy close as terminal", () => {
   assert.equal(

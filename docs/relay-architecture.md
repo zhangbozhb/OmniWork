@@ -125,6 +125,8 @@ App                       Relay                       Agent
 | `OMNIWORK_UPGRADE_ICE_SERVERS_JSON`    | `[{"urls":"stun:stun.l.google.com:19302"}]` | propose 环节下发的 ICE servers                                                                          |
 | `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS`    | `3000`                                      | 鉴权完成到 propose 的稳定窗口                                                                           |
 | `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF` | `true`                                      | 是否尊重 App `mobile.connect.transport_preference`；`false` 时 Relay 全部按 `auto` 处理（运维回滚开关） |
+| `OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS` | `3300000`                                | Relay WebSocket ping 间隔；默认 55 分钟，需低于 Nginx/LB 空闲超时                                      |
+| `OMNIWORK_RELAY_WS_PONG_TIMEOUT_MS`    | `30000`                                     | Relay 等待 pong 的超时时间；超时后关闭 socket 并清理 RuntimeTopology                                   |
 
 客户端可观测开关：
 

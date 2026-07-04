@@ -13,7 +13,14 @@ process.once("SIGINT", stopAndExit);
 process.once("SIGTERM", stopAndExit);
 
 try {
-  service = new AgentService(loadAgentConfig());
+  service = new AgentService(loadAgentConfig(), {
+    onShutdownRequested: (reason) => {
+      console.info("[omniwork-agent] exiting after relay shutdown request", {
+        reason,
+      });
+      process.exit(0);
+    },
+  });
   await service.start();
 } catch (error: unknown) {
   console.error("[omniwork-agent] fatal", error);

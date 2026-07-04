@@ -1,4 +1,9 @@
-import type { AgentHelloPayload, MessageEnvelope } from "@omniwork/protocol-ts";
+import {
+  RELAY_AGENT_DISABLED_CLOSE_REASON,
+  RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+  type AgentHelloPayload,
+  type MessageEnvelope,
+} from "@omniwork/protocol-ts";
 
 import type { RelayServerConfig } from "../config.ts";
 import { RelayAdminController } from "../relayAdminController.ts";
@@ -32,7 +37,10 @@ export class AgentAdmission {
         message.payload.agent_instance_id,
       )
     ) {
-      connection.socket.close(4403, "agent_disabled");
+      connection.socket.close(
+        RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+        RELAY_AGENT_DISABLED_CLOSE_REASON,
+      );
       return;
     }
     if (this.options.config.auth.mode === "email_link") {

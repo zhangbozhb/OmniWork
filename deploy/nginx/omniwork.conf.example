@@ -29,6 +29,11 @@ server {
         # Overwrite any client-supplied X-Forwarded-For for GeoIP, IP bans,
         # and auth rate limiting.
         proxy_set_header X-Forwarded-For $remote_addr;
+        # Relay sends WebSocket ping frames every 3300s by default.
+        # Keep the proxy timeout above that interval so Nginx does not close
+        # idle Agent connections before Relay can prove liveness.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 
     location /healthz {

@@ -41,6 +41,7 @@ interface AgentRelayControllerOptions {
   e2eSupport(): typeof E2E_SUPPORT_V1;
   onMessage(message: MessageEnvelope): Promise<void>;
   onRelayUnavailable(): void;
+  onRelayShutdownRequested(reason: string): void;
 }
 
 export class AgentRelayController {
@@ -54,6 +55,7 @@ export class AgentRelayController {
   private readonly e2eSupport: () => typeof E2E_SUPPORT_V1;
   private readonly onMessage: (message: MessageEnvelope) => Promise<void>;
   private readonly onRelayUnavailable: () => void;
+  private readonly onRelayShutdownRequested: (reason: string) => void;
   private relay: AgentRelayClient | null = null;
   private transport: AgentSessionTransport | null = null;
   private reconnectAttempts = 0;
@@ -76,6 +78,7 @@ export class AgentRelayController {
     this.e2eSupport = options.e2eSupport;
     this.onMessage = options.onMessage;
     this.onRelayUnavailable = options.onRelayUnavailable;
+    this.onRelayShutdownRequested = options.onRelayShutdownRequested;
   }
 
   start(): void {
@@ -329,7 +332,18 @@ export class AgentRelayController {
     };
     this.cleanupRelayResources(this.relay, this.transport);
     this.onRelayUnavailable();
-    if (classifyRelayClose(event) === "terminal") {
+    const classification = classifyRelayClose(event);
+    if (classification === "shutdown") {
+      const reason = event.reason ?? "relay_shutdown";
+      this.logger.error("relay requested agent service shutdown", {
+        code: event.code,
+        reason,
+      });
+      this.updateStatus("stopped");
+      this.onRelayShutdownRequested(reason);
+      return;
+    }
+    if (classification === "terminal") {
       this.logger.error("relay explicitly rejected agent connection", {
         code: event.code,
         reason: event.reason ?? "",

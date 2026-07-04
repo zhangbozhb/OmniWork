@@ -47,6 +47,10 @@ export interface RelayServerConfig {
     refillPerSecond: number;
     blockMs: number;
   };
+  websocket: {
+    keepaliveIntervalMs: number;
+    pongTimeoutMs: number;
+  };
   admin: {
     host: string;
     port: number;
@@ -185,6 +189,16 @@ export function loadRelayServerConfig(
         1,
       ),
       blockMs: parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS, 60_000),
+    },
+    websocket: {
+      keepaliveIntervalMs: parseNumber(
+        env.OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS,
+        3_300_000,
+      ),
+      pongTimeoutMs: parseNumber(
+        env.OMNIWORK_RELAY_WS_PONG_TIMEOUT_MS,
+        30_000,
+      ),
     },
     admin: {
       host: adminHost,

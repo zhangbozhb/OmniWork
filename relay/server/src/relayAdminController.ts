@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import {
+  RELAY_AGENT_DISABLED_CLOSE_REASON,
+  RELAY_AGENT_IP_BANNED_CLOSE_REASON,
+  RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+} from "@omniwork/protocol-ts";
+
 import { RelayAdminAuth, type RelayAdminStartupToken } from "./adminAuth.ts";
 import {
   readRelayAdminAsset,
@@ -406,7 +412,10 @@ export class RelayAdminController {
         connection.agentInstanceId === agentInstanceId,
     );
     for (const agent of agents) {
-      agent.socket.close(4403, "agent_disabled");
+      agent.socket.close(
+        RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+        RELAY_AGENT_DISABLED_CLOSE_REASON,
+      );
       this.unregister(agent);
       const mobiles = [
         ...(this.mobilesByDevice.get(agent.deviceId ?? "") ?? new Set()),
@@ -424,7 +433,14 @@ export class RelayAdminController {
     this.persistPermanentRule("ip_ban", ip, rule);
     for (const connection of [...this.connections.values()]) {
       if (connection.remoteIp === ip) {
-        connection.socket.close(4403, "ip_banned");
+        if (connection.role === "agent") {
+          connection.socket.close(
+            RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+            RELAY_AGENT_IP_BANNED_CLOSE_REASON,
+          );
+        } else {
+          connection.socket.close(4403, "ip_banned");
+        }
         this.unregister(connection);
       }
     }

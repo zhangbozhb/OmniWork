@@ -3,8 +3,7 @@ export const E2E_PROTOCOL_VERSION = 1 as const;
 export const INNER_PROTOCOL_VERSION = 1 as const;
 export const NOISE_SUITE_NNPSK0_V1 =
   "Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s" as const;
-export const E2E_NOISE_NNPSK0_CAPABILITY_V1 =
-  "e2e.noise.nnpsk0.v1" as const;
+export const E2E_NOISE_NNPSK0_CAPABILITY_V1 = "e2e.noise.nnpsk0.v1" as const;
 export const ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1 =
   "business.encrypted-only.v1" as const;
 export const PLAINTEXT_BUSINESS_CAPABILITY_V1 =
@@ -12,6 +11,9 @@ export const PLAINTEXT_BUSINESS_CAPABILITY_V1 =
 export const TERMINAL_STREAM_CAPABILITY_V1 = "terminal.stream.v1" as const;
 export const PAIRING_LINK_SCHEME = "omniwork" as const;
 export const PAIRING_LINK_HOST = "pair" as const;
+export const RELAY_AGENT_SHUTDOWN_CLOSE_CODE = 4404 as const;
+export const RELAY_AGENT_DISABLED_CLOSE_REASON = "agent_disabled" as const;
+export const RELAY_AGENT_IP_BANNED_CLOSE_REASON = "ip_banned" as const;
 
 /**
  * Agent 启动期 session store 的"应当被持久化保留"的 status 白名单。

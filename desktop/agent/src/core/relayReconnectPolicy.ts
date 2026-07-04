@@ -1,4 +1,9 @@
 import type { RelayCloseEvent } from "@omniwork/relay-client";
+import {
+  RELAY_AGENT_DISABLED_CLOSE_REASON,
+  RELAY_AGENT_IP_BANNED_CLOSE_REASON,
+  RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+} from "@omniwork/protocol-ts";
 
 export type RelayConnectionStatus =
   | "idle"
@@ -8,7 +13,7 @@ export type RelayConnectionStatus =
   | "terminal_error"
   | "stopped";
 
-export type RelayCloseClassification = "retryable" | "terminal";
+export type RelayCloseClassification = "retryable" | "terminal" | "shutdown";
 
 export const TERMINAL_RELAY_CLOSE_REASONS = [
   "agent_disabled",
@@ -21,6 +26,10 @@ export const TERMINAL_RELAY_CLOSE_REASONS = [
 const terminalReasonSet = new Set<string>(TERMINAL_RELAY_CLOSE_REASONS);
 
 const terminalCloseCodes = new Set([1008, 4001, 4003, 4401, 4403]);
+const shutdownReasonSet = new Set<string>([
+  RELAY_AGENT_DISABLED_CLOSE_REASON,
+  RELAY_AGENT_IP_BANNED_CLOSE_REASON,
+]);
 
 const legacyTerminalTextKeywords = [
   "unauthorized",
@@ -38,6 +47,12 @@ const legacyTerminalTextKeywords = [
 export function classifyRelayClose(
   event: RelayCloseEvent,
 ): RelayCloseClassification {
+  if (
+    event.code === RELAY_AGENT_SHUTDOWN_CLOSE_CODE &&
+    shutdownReasonSet.has(event.reason ?? "")
+  ) {
+    return "shutdown";
+  }
   if (event.code !== undefined && terminalCloseCodes.has(event.code)) {
     return "terminal";
   }

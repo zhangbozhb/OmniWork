@@ -118,6 +118,12 @@ would let direct clients influence Relay GeoIP, IP-ban, and auth rate-limit
 attribution. Relay should run with `OMNIWORK_RELAY_ADMIN_TRUST_PROXY=true` only
 when Nginx connects from an IP in `OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS`.
 
+Relay sends WebSocket ping frames every 3300 seconds by default
+(`OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS=3300000`) and closes sockets that do
+not answer with pong within 30 seconds. Keep Nginx `proxy_read_timeout` above
+the ping interval; the example config uses `3600s` so idle Agent connections are
+checked by Relay instead of being silently dropped by the proxy first.
+
 ## Admin Web Source
 
 Admin HTML lives under `relay/server/admin-web` and is shared by both

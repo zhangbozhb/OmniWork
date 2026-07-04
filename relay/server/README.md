@@ -163,6 +163,34 @@ consume the bucket, so frequent reconnects and transport-preference switches
 are not throttled. A successful `auth.ok` also resets the bucket so subsequent
 attempts are not affected by past failures.
 
+### WebSocket keepalive
+
+Relay actively probes every Agent/App WebSocket with ping frames to avoid stale
+RuntimeTopology entries when a reverse proxy or load balancer silently drops an
+idle connection:
+
+- `OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS` (default `3300000`): ping interval.
+  This is 55 minutes, intended to sit below a 1 hour Nginx `proxy_read_timeout`.
+- `OMNIWORK_RELAY_WS_PONG_TIMEOUT_MS` (default `30000`): how long Relay waits
+  for pong before closing the socket and unregistering the connection.
+
+If Nginx fronts Relay, keep `proxy_read_timeout` above the ping interval. The
+deployment example uses `3600s`.
+
+### Agent shutdown close code
+
+Relay uses WebSocket close code `4404` only when it intentionally asks the
+Desktop Agent service to stop and exit its process. Reason `agent_disabled`
+means an operator disabled the active Agent instance; reason `ip_banned` means
+an operator banned the Agent's source IP. Ordinary disconnects, keepalive
+timeouts, and generic policy rejections use other close codes and must not stop
+the Agent process.
+
+IP bans are enforced by the ingress access-control guard before the connection
+enters App/Agent business routing. Banned Mobile/App upgrades are rejected with
+`403 ip_banned`; banned Agent upgrades complete the WebSocket only long enough
+to deliver `4404 / ip_banned`, so the Agent can exit intentionally.
+
 ### P2P upgrade orchestrator
 
 The relay coordinates optional WebRTC DataChannel upgrades between the App and

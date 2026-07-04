@@ -34,6 +34,7 @@ import { logRelayEvent, logUpgradeEvent } from "./relayLog.ts";
 import { AppAgentChannel } from "./app-agent/channel.ts";
 import { AppAdmission } from "./app-agent/appAdmission.ts";
 import { AppAuthBridge } from "./app-agent/authBridge.ts";
+import { evaluateRelayIngressAccess } from "./ingress/accessControl.ts";
 import {
   createRelayObservation,
   parseRelayEndpoint,
@@ -194,11 +195,6 @@ export class RelayServer {
         trustProxy: this.config.admin.trustProxy,
         trustedProxyIps: this.config.admin.trustedProxyIps,
       });
-      const activeBan = this.admin.activeIpBan(remoteIp.ip);
-      if (activeBan) {
-        rejectWebSocketUpgrade(socket as Socket, "ip_banned", 403);
-        return;
-      }
       if (endpoint !== "agent" && endpoint !== "mobile") {
         rejectWebSocketUpgrade(
           socket as Socket,
@@ -206,8 +202,31 @@ export class RelayServer {
         );
         return;
       }
+      const access = evaluateRelayIngressAccess({
+        endpoint,
+        remoteIp: remoteIp.ip,
+        activeIpBan: (ip) => this.admin.activeIpBan(ip),
+      });
+      if (!access.ok) {
+        if (access.websocketClose) {
+          acceptWebSocket(request, socket as Socket)?.close(
+            access.websocketClose.code,
+            access.websocketClose.reason,
+          );
+        } else {
+          rejectWebSocketUpgrade(
+            socket as Socket,
+            access.reason,
+            access.statusCode,
+          );
+        }
+        return;
+      }
 
-      const connection = acceptWebSocket(request, socket as Socket);
+      const connection = acceptWebSocket(request, socket as Socket, {
+        keepaliveIntervalMs: this.config.websocket.keepaliveIntervalMs,
+        pongTimeoutMs: this.config.websocket.pongTimeoutMs,
+      });
       if (connection) {
         const user =
           endpoint === "mobile" && this.config.auth.mode === "email_link"

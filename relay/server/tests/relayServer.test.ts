@@ -8,6 +8,9 @@ import {
   createMessage,
   E2E_SUPPORT_V1,
   PROTOCOL_SUPPORT_V1,
+  RELAY_AGENT_DISABLED_CLOSE_REASON,
+  RELAY_AGENT_IP_BANNED_CLOSE_REASON,
+  RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
   type MessageEnvelope,
   type AppInfoPayload,
   type TunnelUpgradeOfferPayload,
@@ -47,6 +50,8 @@ import type {
   assert.equal(config.admin.webEnabled, false);
   assert.equal(config.admin.host, "127.0.0.1");
   assert.equal(config.admin.port, 8788);
+  assert.equal(config.websocket.keepaliveIntervalMs, 3_300_000);
+  assert.equal(config.websocket.pongTimeoutMs, 30_000);
 }
 
 {
@@ -56,6 +61,17 @@ import type {
   });
 
   assert.equal(config.admin.webEnabled, true);
+}
+
+{
+  const config = loadRelayServerConfig({
+    OMNIWORK_RELAY_HOST: "127.0.0.1",
+    OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS: "1000",
+    OMNIWORK_RELAY_WS_PONG_TIMEOUT_MS: "2000",
+  });
+
+  assert.equal(config.websocket.keepaliveIntervalMs, 1000);
+  assert.equal(config.websocket.pongTimeoutMs, 2000);
 }
 
 {
@@ -73,7 +89,10 @@ import type {
     config.state.deviceStatusDbPath,
     "/tmp/omniwork-relay-runtime/relay-device-status.sqlite",
   );
-  assert.equal(config.auth.dbPath, "/tmp/omniwork-relay-runtime/relay-auth.sqlite");
+  assert.equal(
+    config.auth.dbPath,
+    "/tmp/omniwork-relay-runtime/relay-auth.sqlite",
+  );
 }
 
 {
@@ -351,7 +370,7 @@ type TestAgentConnection = TestRelayConnection & {
       devicesSnapshot(): {
         summary: {
           device_count: number;
-            active_device_count: number;
+          active_device_count: number;
           agent_count: number;
           app_count: number;
           link_count: number;
@@ -482,8 +501,8 @@ type TestAgentConnection = TestRelayConnection & {
   });
 
   assert.deepEqual(agent.socket.closed[0], {
-    code: 4403,
-    reason: "agent_disabled",
+    code: RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+    reason: RELAY_AGENT_DISABLED_CLOSE_REASON,
   });
   assert.deepEqual(mobile.socket.closed[0], {
     code: 4403,
@@ -495,7 +514,10 @@ type TestAgentConnection = TestRelayConnection & {
 {
   const server = createServer();
   const agent = createAgentConnection("conn_agent_revoked", "device_revoked");
-  const mobile = createMobileConnection("conn_mobile_revoked", "device_revoked");
+  const mobile = createMobileConnection(
+    "conn_mobile_revoked",
+    "device_revoked",
+  );
   const other = createAgentConnection("conn_agent_other", "device_other");
   const internals = server as unknown as {
     connections: Map<string, TestAgentConnection | TestRelayConnection>;
@@ -523,6 +545,8 @@ type TestAgentConnection = TestRelayConnection & {
   const server = createServer();
   const agent = createAgentConnection("conn_agent_banned_ip", "device_ip");
   agent.remoteIp = "203.0.113.10";
+  const mobile = createMobileConnection("conn_mobile_banned_ip", "device_ip");
+  mobile.remoteIp = "203.0.113.10";
   const internals = server as unknown as {
     connections: Map<string, unknown>;
     admin: {
@@ -530,6 +554,7 @@ type TestAgentConnection = TestRelayConnection & {
     };
   };
   internals.connections.set(agent.id, agent);
+  internals.connections.set(mobile.id, mobile);
 
   internals.admin.banIp("203.0.113.10", {
     id: "rule-2",
@@ -537,6 +562,10 @@ type TestAgentConnection = TestRelayConnection & {
   });
 
   assert.deepEqual(agent.socket.closed[0], {
+    code: RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+    reason: RELAY_AGENT_IP_BANNED_CLOSE_REASON,
+  });
+  assert.deepEqual(mobile.socket.closed[0], {
     code: 4403,
     reason: "ip_banned",
   });

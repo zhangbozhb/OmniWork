@@ -292,16 +292,17 @@ App 通过平台 WebRTC adapter 参与 P2P 升级：iOS / Android 使用 `react-
 
 | 变量名                       | 使用方                | Relay 路径         | 必填/示例                                                                       |
 | ---------------------------- | --------------------- | ------------------ | ------------------------------------------------------------------------------- |
-| `OMNIWORK_RELAY_URL`         | 桌面端 Agent 自连        | `/relay/ws/agent`  | 必填，缺失时 Agent 启动失败；示例：`wss://relay.company.example/relay/ws/agent` |
+| `OMNIWORK_RELAY_URL`         | 桌面端 Agent 自连     | `/relay/ws/agent`  | 必填，缺失时 Agent 启动失败；示例：`wss://relay.company.example/relay/ws/agent` |
 | `OMNIWORK_DEFAULT_RELAY_URL` | Native App 出厂默认值 | `/relay/ws/mobile` | 可选；未注入时依赖用户输入或配对 URL                                            |
 | `OMNIWORK_WEB_RELAY_URL`     | Web App 运行时配置    | `/relay/ws/mobile` | 生产部署时写入 `omniwork-config.js`                                             |
 
 配对二维码还会携带可选的 `display_name`。桌面端 Agent 默认使用当前 `hostname` 去掉末尾 `.local` 后的值，便于 App 设备列表区分多台 电脑；如需覆盖可设置 `OMNIWORK_AGENT_DISPLAY_NAME`。
 
-桌面端 Agent 连接 Relay 失败时会按指数退避 + jitter 重试。默认作为常驻进程无限重连，避免 Relay 重启、网络抖动或临时不可达导致 Agent 退出；本地 admin 服务会先启动，Relay 连接会以 `connecting/reconnecting/connected/terminal_error` 状态独立推进。Relay 连接断开后，Agent 会立即把已观察到的 App 连接标记为 `disconnected/unavailable`，避免本地 admin 继续展示旧连接为在线。如果 Relay 明确拒绝连接（例如鉴权失败、禁用设备、IP ban、策略拒绝），Agent 会进入 `terminal_error`，保留本地 admin 可诊断能力，并以较慢频率继续探测 Relay，避免一次拒绝导致进程退出：
+桌面端 Agent 连接 Relay 失败时会按指数退避 + jitter 重试。默认作为常驻进程无限重连，避免 Relay 重启、网络抖动或临时不可达导致 Agent 退出；本地 admin 服务会先启动，Relay 连接会以 `connecting/reconnecting/connected/terminal_error` 状态独立推进。Relay 连接断开后，Agent 会立即把已观察到的 App 连接标记为 `disconnected/unavailable`，避免本地 admin 继续展示旧连接为在线。如果 Relay 明确拒绝连接（例如鉴权失败、禁用设备、IP ban、策略拒绝），Agent 会进入 `terminal_error`，保留本地 admin 可诊断能力，并以较
+慢频率继续探测 Relay，避免一次拒绝导致进程退出。唯一例外是 Relay 使用 WebSocket close `4404` 且 reason 为 `agent_disabled` 或 `ip_banned` 显式要求关闭服务；这通常来自运维主动禁用当前 Agent 实例或封禁其来源 IP，Agent 会停止本地服务并退出进程，而不是重连：
 
-| 变量名                                            | 使用方    | 默认值  | 说明                                                         |
-| ------------------------------------------------- | --------- | ------- | ------------------------------------------------------------ |
+| 变量名                                            | 使用方       | 默认值  | 说明                                                         |
+| ------------------------------------------------- | ------------ | ------- | ------------------------------------------------------------ |
 | `OMNIWORK_AGENT_RELAY_RECONNECT_FOREVER`          | 桌面端 Agent | `true`  | 普通断线/临时连接失败时是否无限重连；不影响 Relay 主动拒绝   |
 | `OMNIWORK_AGENT_RELAY_RECONNECT_MAX_ATTEMPTS`     | 桌面端 Agent | `8`     | `RECONNECT_FOREVER=false` 时的连续重连最大次数；`0` 表示无限 |
 | `OMNIWORK_AGENT_RELAY_RECONNECT_INITIAL_DELAY_MS` | 桌面端 Agent | `1000`  | 首次重试延迟，后续按指数退避                                 |
@@ -323,7 +324,8 @@ flowchart TD
     E --> J{Relay close}
     J -->|Retryable close| K[Mark App links disconnected/unavailable]
     K --> F
-    J -->|1008/4403/auth/ip ban| G
+    J -->|1008/4403/auth policy| G
+    J -->|4404/agent_disabled or ip_banned| I
 
     style B fill:#bbdefb,color:#0d47a1
     style E fill:#c8e6c9,color:#1a5e20
@@ -355,6 +357,9 @@ sequenceDiagram
         Relay-->>Agent: close 1008/4403 or auth/ip policy
         Agent->>Agent: relay_status = terminal_error
         Agent->>Agent: keep admin alive and retry slowly
+    else shutdown requested
+        Relay-->>Agent: close 4404/agent_disabled or ip_banned
+        Agent->>Agent: stop local service and exit process
     end
 
     Relay-->>Agent: retryable close after connected
@@ -369,8 +374,8 @@ Agent Web 后台的连接统计以 Agent 关键链路为准：新版 App 必须�
 
 连接状态超时可通过以下变量调整：
 
-| 变量名                                    | 使用方    | 默认值  | 说明                                        |
-| ----------------------------------------- | --------- | ------- | ------------------------------------------- |
+| 变量名                                    | 使用方       | 默认值  | 说明                                        |
+| ----------------------------------------- | ------------ | ------- | ------------------------------------------- |
 | `OMNIWORK_AGENT_CONNECTION_HEARTBEAT_MS`  | 桌面端 Agent | `10000` | 超过该时间未收到消息后连接可能进入 idle     |
 | `OMNIWORK_AGENT_CONNECTION_STALE_MS`      | 桌面端 Agent | `30000` | 超过该时间未收到消息后连接进入 stale        |
 | `OMNIWORK_AGENT_CONNECTION_DISCONNECT_MS` | 桌面端 Agent | `90000` | 超过该时间未收到消息后连接进入 disconnected |

@@ -5,18 +5,30 @@ import type { Socket } from "node:net";
 type MessageHandler = (message: string) => void;
 type CloseHandler = () => void;
 
+export interface WebSocketConnectionOptions {
+  keepaliveIntervalMs?: number;
+  pongTimeoutMs?: number;
+}
+
 export class WebSocketConnection {
   private readonly socket: Socket;
+  private readonly keepaliveIntervalMs: number;
+  private readonly pongTimeoutMs: number;
   private buffer = Buffer.alloc(0);
   private closed = false;
+  private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+  private pongTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly messageHandlers = new Set<MessageHandler>();
   private readonly closeHandlers = new Set<CloseHandler>();
 
-  constructor(socket: Socket) {
+  constructor(socket: Socket, options: WebSocketConnectionOptions = {}) {
     this.socket = socket;
+    this.keepaliveIntervalMs = options.keepaliveIntervalMs ?? 0;
+    this.pongTimeoutMs = options.pongTimeoutMs ?? 30_000;
     socket.on("data", (chunk) => this.handleData(chunk));
     socket.on("close", () => this.handleClose());
     socket.on("error", () => this.handleClose());
+    this.startKeepalive();
   }
 
   onMessage(handler: MessageHandler): () => void {
@@ -33,7 +45,7 @@ export class WebSocketConnection {
     if (this.closed) {
       return;
     }
-    this.socket.write(encodeFrame(Buffer.from(message, "utf8"), 0x1));
+    this.writeFrame(Buffer.from(message, "utf8"), 0x1);
   }
 
   close(code = 1000, reason = "closing"): void {
@@ -44,7 +56,7 @@ export class WebSocketConnection {
     const payload = Buffer.alloc(2 + reasonBytes.length);
     payload.writeUInt16BE(code, 0);
     reasonBytes.copy(payload, 2);
-    this.socket.write(encodeFrame(payload, 0x8));
+    this.writeFrame(payload, 0x8);
     this.socket.end();
     this.handleClose();
   }
@@ -64,7 +76,11 @@ export class WebSocketConnection {
         return;
       }
       if (frame.opcode === 0x9) {
-        this.socket.write(encodeFrame(frame.payload, 0xA));
+        this.writeFrame(frame.payload, 0xA);
+        continue;
+      }
+      if (frame.opcode === 0xA) {
+        this.markPongReceived();
         continue;
       }
       if (frame.opcode !== 0x1) {
@@ -83,13 +99,70 @@ export class WebSocketConnection {
       return;
     }
     this.closed = true;
+    this.stopKeepalive();
     for (const handler of this.closeHandlers) {
       handler();
     }
   }
+
+  private startKeepalive(): void {
+    if (this.keepaliveIntervalMs <= 0 || this.keepaliveTimer) {
+      return;
+    }
+    this.keepaliveTimer = setInterval(() => {
+      this.sendPing();
+    }, this.keepaliveIntervalMs);
+    this.keepaliveTimer.unref?.();
+  }
+
+  private stopKeepalive(): void {
+    if (this.keepaliveTimer) {
+      clearInterval(this.keepaliveTimer);
+      this.keepaliveTimer = null;
+    }
+    this.clearPongTimeout();
+  }
+
+  private sendPing(): void {
+    if (this.closed) {
+      return;
+    }
+    if (this.pongTimeoutTimer) {
+      return;
+    }
+    this.writeFrame(Buffer.alloc(0), 0x9);
+    this.pongTimeoutTimer = setTimeout(() => {
+      this.close(1001, "pong timeout");
+    }, this.pongTimeoutMs);
+    this.pongTimeoutTimer.unref?.();
+  }
+
+  private markPongReceived(): void {
+    this.clearPongTimeout();
+  }
+
+  private clearPongTimeout(): void {
+    if (this.pongTimeoutTimer) {
+      clearTimeout(this.pongTimeoutTimer);
+      this.pongTimeoutTimer = null;
+    }
+  }
+
+  private writeFrame(payload: Buffer, opcode: number): void {
+    try {
+      this.socket.write(encodeFrame(payload, opcode));
+    } catch {
+      this.socket.destroy();
+      this.handleClose();
+    }
+  }
 }
 
-export function acceptWebSocket(request: IncomingMessage, socket: Socket): WebSocketConnection | null {
+export function acceptWebSocket(
+  request: IncomingMessage,
+  socket: Socket,
+  options: WebSocketConnectionOptions = {},
+): WebSocketConnection | null {
   const key = request.headers["sec-websocket-key"];
   if (typeof key !== "string") {
     socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
@@ -111,7 +184,7 @@ export function acceptWebSocket(request: IncomingMessage, socket: Socket): WebSo
     ].join("\r\n"),
   );
 
-  return new WebSocketConnection(socket);
+  return new WebSocketConnection(socket, options);
 }
 
 interface DecodedFrame {
