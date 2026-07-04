@@ -472,6 +472,7 @@
       let selectedConnection = null;
       let selectedDevice = null;
       let worldLandRendered = false;
+      let csrfToken = null;
       const qs = (id) => document.getElementById(id);
       function adminBase() {
         return document.documentElement.dataset.adminBase || "/admin/";
@@ -490,6 +491,10 @@
           { "content-type": "application/json" },
           options.headers || {},
         );
+        const method = (options.method || "GET").toUpperCase();
+        if (method !== "GET" && !headers["x-csrf-token"]) {
+          headers["x-csrf-token"] = await ensureCsrfToken();
+        }
         const res = await fetch(
           path,
           Object.assign({}, options, { headers, credentials: "same-origin" }),
@@ -501,6 +506,21 @@
         }
         if (!res.ok) throw new Error(body.error || "request_failed");
         return body;
+      }
+      async function ensureCsrfToken() {
+        if (csrfToken) return csrfToken;
+        const res = await fetch("/admin/api/me", {
+          headers: { "content-type": "application/json" },
+          credentials: "same-origin",
+        });
+        const body = await res.json();
+        if (res.status === 401) {
+          location.href = adminLogin();
+          throw new Error("unauthorized");
+        }
+        if (!res.ok) throw new Error(body.error || "request_failed");
+        csrfToken = body.csrf_token;
+        return csrfToken;
       }
       function td(value) {
         return (

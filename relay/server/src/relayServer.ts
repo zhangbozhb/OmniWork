@@ -34,7 +34,12 @@ import { logRelayEvent, logUpgradeEvent } from "./relayLog.ts";
 import { AppAgentChannel } from "./app-agent/channel.ts";
 import { AppAdmission } from "./app-agent/appAdmission.ts";
 import { AppAuthBridge } from "./app-agent/authBridge.ts";
-import { evaluateRelayIngressAccess } from "./ingress/accessControl.ts";
+import { RelayAuthExecutor } from "./auth/executor.ts";
+import { RelayAuthGuard } from "./auth/guard.ts";
+import { AgentControlPolicy } from "./auth/policies/agentControlPolicy.ts";
+import { AgentEmailLinkPolicy } from "./auth/policies/agentEmailLinkPolicy.ts";
+import { IpBanPolicy } from "./auth/policies/ipBanPolicy.ts";
+import { MobileEmailLinkPolicy } from "./auth/policies/mobileEmailLinkPolicy.ts";
 import {
   createRelayObservation,
   parseRelayEndpoint,
@@ -77,6 +82,8 @@ export class RelayServer {
   private readonly e2e: RelayE2EController;
   private readonly authLimiter: TokenBucketLimiter;
   private readonly orchestrator: RelayUpgradeOrchestrator;
+  private readonly authGuard: RelayAuthGuard;
+  private readonly authExecutor: RelayAuthExecutor;
 
   constructor(config: RelayServerConfig) {
     this.config = config;
@@ -123,6 +130,40 @@ export class RelayServer {
       state: this.state,
       unregister: (connection) => this.topology.unregister(connection),
     });
+    this.authGuard = new RelayAuthGuard({
+      policies: {
+        relayWsUpgrade: [
+          new IpBanPolicy({
+            activeIpBan: (ip) => this.admin.activeIpBan(ip),
+          }),
+        ],
+        agentHello: [
+          new AgentControlPolicy({
+            activeDisabledAgentInstance: (agentInstanceId) =>
+              this.admin.activeDisabledAgentInstance(agentInstanceId),
+          }),
+          new AgentEmailLinkPolicy({
+            config,
+            getDevice: (deviceId) => this.userAuthStore.getDevice(deviceId),
+            rememberNonce: (deviceId, nonce, ttlMs) =>
+              this.userAuthStore.rememberNonce(deviceId, nonce, ttlMs),
+            markDeviceSeen: (deviceId) =>
+              this.userAuthStore.markDeviceSeen(deviceId),
+          }),
+        ],
+        mobileConnect: [
+          new MobileEmailLinkPolicy({
+            config,
+            authenticateUserToken: (token) =>
+              this.userAuth.authenticateToken(token),
+            getDevice: (deviceId) => this.userAuthStore.getDevice(deviceId),
+          }),
+        ],
+      },
+    });
+    this.authExecutor = new RelayAuthExecutor({
+      send: (connection, message) => this.send(connection, message),
+    });
     this.appAgentChannel = new AppAgentChannel({
       config,
       topology: this.topology,
@@ -145,18 +186,17 @@ export class RelayServer {
       getAgent: (deviceId) => this.primaryAgentByDevice.get(deviceId),
     });
     this.agentAdmission = new AgentAdmission({
-      config,
-      admin: this.admin,
+      authGuard: this.authGuard,
+      authExecutor: this.authExecutor,
       topology: this.topology,
       state: this.state,
-      userAuthStore: this.userAuthStore,
     });
     this.appAdmission = new AppAdmission({
       config,
+      authGuard: this.authGuard,
+      authExecutor: this.authExecutor,
       topology: this.topology,
       state: this.state,
-      userAuth: this.userAuth,
-      userAuthStore: this.userAuthStore,
       pendingAuth: this.pendingAuth,
       send: (connection, message) => this.send(connection, message),
     });
@@ -202,24 +242,16 @@ export class RelayServer {
         );
         return;
       }
-      const access = evaluateRelayIngressAccess({
+      const authDecision = this.authGuard.authorize({
+        surface: "relay_ws_upgrade",
         endpoint,
         remoteIp: remoteIp.ip,
-        activeIpBan: (ip) => this.admin.activeIpBan(ip),
       });
-      if (!access.ok) {
-        if (access.websocketClose) {
-          acceptWebSocket(request, socket as Socket)?.close(
-            access.websocketClose.code,
-            access.websocketClose.reason,
-          );
-        } else {
-          rejectWebSocketUpgrade(
-            socket as Socket,
-            access.reason,
-            access.statusCode,
-          );
-        }
+      if (!authDecision.ok) {
+        this.authExecutor.execute(authDecision, {
+          request,
+          socket: socket as Socket,
+        });
         return;
       }
 

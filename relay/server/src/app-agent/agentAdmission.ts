@@ -1,24 +1,19 @@
 import {
-  RELAY_AGENT_DISABLED_CLOSE_REASON,
-  RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
   type AgentHelloPayload,
   type MessageEnvelope,
 } from "@omniwork/protocol-ts";
 
-import type { RelayServerConfig } from "../config.ts";
-import { RelayAdminController } from "../relayAdminController.ts";
+import { RelayAuthExecutor } from "../auth/executor.ts";
+import { RelayAuthGuard } from "../auth/guard.ts";
 import { RuntimeTopology } from "../runtime/topology.ts";
-import { verifyRelayDeviceSignature } from "../relayDeviceSignature.ts";
 import type { RelayStateStore } from "../relayStateStore.ts";
-import type { RelayUserAuthStore } from "../relayUserAuthStore.ts";
 import type { RelayConnection } from "../relayTypes.ts";
 
 export interface AgentAdmissionOptions {
-  config: RelayServerConfig;
-  admin: RelayAdminController;
+  authGuard: RelayAuthGuard;
+  authExecutor: RelayAuthExecutor;
   topology: RuntimeTopology;
   state: RelayStateStore;
-  userAuthStore: RelayUserAuthStore;
 }
 
 export class AgentAdmission {
@@ -32,46 +27,15 @@ export class AgentAdmission {
     connection: RelayConnection,
     message: MessageEnvelope<AgentHelloPayload>,
   ): void {
-    if (
-      this.options.admin.activeDisabledAgentInstance(
-        message.payload.agent_instance_id,
-      )
-    ) {
-      connection.socket.close(
-        RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
-        RELAY_AGENT_DISABLED_CLOSE_REASON,
-      );
+    const decision = this.options.authGuard.authorize({
+      surface: "agent_hello",
+      message,
+    });
+    if (!decision.ok) {
+      this.options.authExecutor.execute(decision, { connection });
       return;
     }
-    if (this.options.config.auth.mode === "email_link") {
-      const device = this.options.userAuthStore.getDevice(
-        message.payload.device_id,
-      );
-      if (!device || device.revoked_at) {
-        connection.socket.close(4403, "device_not_registered");
-        return;
-      }
-      const verified = verifyRelayDeviceSignature({
-        publicKey: device.public_key,
-        hello: message.payload,
-        skewMs: this.options.config.auth.nonceTtlMs,
-      });
-      if (!verified.ok) {
-        connection.socket.close(4403, verified.reason);
-        return;
-      }
-      const nonceOk = this.options.userAuthStore.rememberNonce(
-        message.payload.device_id,
-        message.payload.relay_auth?.nonce ?? "",
-        this.options.config.auth.nonceTtlMs,
-      );
-      if (!nonceOk) {
-        connection.socket.close(4403, "replayed_nonce");
-        return;
-      }
-      connection.userId = device.user_id;
-      this.options.userAuthStore.markDeviceSeen(device.id);
-    }
+    connection.userId = decision.subject?.userId;
     connection.role = "agent";
     connection.state = "registered_agent";
     connection.deviceId = message.payload.device_id;

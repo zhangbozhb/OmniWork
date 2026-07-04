@@ -7,6 +7,9 @@ import {
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
 } from "@omniwork/protocol-ts";
 
+import { RelayAuthExecutor } from "./auth/executor.ts";
+import { RelayAuthGuard } from "./auth/guard.ts";
+import { AdminHttpPolicy } from "./auth/policies/adminHttpPolicy.ts";
 import { RelayAdminAuth, type RelayAdminStartupToken } from "./adminAuth.ts";
 import {
   readRelayAdminAsset,
@@ -42,6 +45,8 @@ export class RelayAdminController {
   private readonly disabledAgentInstances = new Map<string, ControlRule>();
   private readonly ipBans = new Map<string, ControlRule>();
   private readonly auth: RelayAdminAuth;
+  private readonly authGuard: RelayAuthGuard;
+  private readonly authExecutor: RelayAuthExecutor;
   private readonly controlStore: AdminControlStore;
   private readonly unregister: (connection: RelayConnection) => void;
 
@@ -52,6 +57,19 @@ export class RelayAdminController {
     this.mobilesByDevice = options.mobilesByDevice;
     this.unregister = options.unregister;
     this.auth = new RelayAdminAuth(options.config.admin);
+    this.authGuard = new RelayAuthGuard({
+      policies: {
+        adminHttp: [
+          new AdminHttpPolicy({
+            isAdminHttps: (request) => this.isHttpsRequest(request),
+            authenticateAdmin: (request) => this.auth.authenticate(request),
+          }),
+        ],
+      },
+    });
+    this.authExecutor = new RelayAuthExecutor({
+      send: () => {},
+    });
     this.controlStore = new AdminControlStore(
       options.config.admin.controlsDbPath,
     );
@@ -125,12 +143,13 @@ export class RelayAdminController {
   }
 
   private handleWeb(request: IncomingMessage, response: ServerResponse): void {
-    if (!this.isHttpsRequest(request)) {
-      this.writeJson(response, 403, { error: "admin_https_required" });
-      return;
-    }
-    if (!this.auth.authenticate(request)) {
-      this.writeHtml(response, renderRelayAdminLoginPage());
+    const decision = this.authorizeAdminHttp(request, "/", "GET", true, false);
+    if (!decision.ok) {
+      if (decision.reason === "unauthorized") {
+        this.writeHtml(response, renderRelayAdminLoginPage());
+      } else {
+        this.authExecutor.execute(decision, { response });
+      }
       return;
     }
     this.writeHtml(response, renderRelayAdminPage());
@@ -141,12 +160,15 @@ export class RelayAdminController {
     response: ServerResponse,
     pathname: string,
   ): void {
-    if (!this.isHttpsRequest(request)) {
-      this.writeJson(response, 403, { error: "admin_https_required" });
-      return;
-    }
-    if (!this.auth.authenticate(request)) {
-      this.writeJson(response, 401, { error: "unauthorized" });
+    const decision = this.authorizeAdminHttp(
+      request,
+      pathname,
+      "GET",
+      true,
+      false,
+    );
+    if (!decision.ok) {
+      this.authExecutor.execute(decision, { response });
       return;
     }
     const assetName = decodeURIComponent(
@@ -169,12 +191,20 @@ export class RelayAdminController {
     response: ServerResponse,
     url: URL,
   ): Promise<void> {
-    if (!this.isHttpsRequest(request)) {
-      this.writeJson(response, 403, { error: "admin_https_required" });
+    const method = request.method ?? "GET";
+    const isLogin = method === "POST" && url.pathname === "/api/login";
+    const preLoginDecision = this.authorizeAdminHttp(
+      request,
+      url.pathname,
+      method,
+      !isLogin,
+      false,
+    );
+    if (!preLoginDecision.ok) {
+      this.authExecutor.execute(preLoginDecision, { response });
       return;
     }
 
-    const method = request.method ?? "GET";
     if (method === "POST" && url.pathname === "/api/login") {
       const body = await readJsonBody(request);
       const token =
@@ -198,7 +228,20 @@ export class RelayAdminController {
       return;
     }
 
-    const session = this.auth.authenticate(request);
+    const session = preLoginDecision.subject?.adminSession;
+    if (method !== "GET") {
+      const csrfDecision = this.authorizeAdminHttp(
+        request,
+        url.pathname,
+        method,
+        true,
+        true,
+      );
+      if (!csrfDecision.ok) {
+        this.authExecutor.execute(csrfDecision, { response });
+        return;
+      }
+    }
     if (!session) {
       this.writeJson(response, 401, { error: "unauthorized" });
       return;
@@ -398,6 +441,23 @@ export class RelayAdminController {
         controls_db: this.config.admin.controlsDbPath,
       },
     };
+  }
+
+  private authorizeAdminHttp(
+    request: IncomingMessage,
+    pathname: string,
+    method: string,
+    requireSession: boolean,
+    requireCsrf: boolean,
+  ) {
+    return this.authGuard.authorize({
+      surface: "admin_http",
+      request,
+      pathname,
+      method,
+      requireSession,
+      requireCsrf,
+    });
   }
 
   private disableAgentInstance(

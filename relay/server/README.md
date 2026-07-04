@@ -186,10 +186,17 @@ an operator banned the Agent's source IP. Ordinary disconnects, keepalive
 timeouts, and generic policy rejections use other close codes and must not stop
 the Agent process.
 
-IP bans are enforced by the ingress access-control guard before the connection
-enters App/Agent business routing. Banned Mobile/App upgrades are rejected with
-`403 ip_banned`; banned Agent upgrades complete the WebSocket only long enough
-to deliver `4404 / ip_banned`, so the Agent can exit intentionally.
+IP bans are enforced through the `RelayAuthGuard` policy chain before the
+connection enters App/Agent business routing. Banned Mobile/App upgrades are
+rejected with `403 ip_banned`; banned Agent upgrades complete the WebSocket only
+long enough to deliver `4404 / ip_banned`, so the Agent can exit intentionally.
+
+`RelayAuthGuard` is the Relay-local auth orchestrator, not the rule container.
+Stable policy modules own the concrete checks: IP bans, Agent instance disable,
+`email_link` Agent device lookup/revoke, device signature and nonce replay
+checks, plus Mobile user session and device ownership checks. Admission modules
+consume the guard decision and then only advance connection state or create the
+App pairing challenge.
 
 ### P2P upgrade orchestrator
 
@@ -211,7 +218,7 @@ OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF=true
 - `OMNIWORK_UPGRADE_DEVICE_BLOCKLIST`: comma-separated device IDs that must
   never upgrade.
 - `OMNIWORK_UPGRADE_ICE_SERVERS_JSON`: JSON array of `{ urls, username?,
-  credential? }` sent to clients in `tunnel.upgrade.propose`.
+credential? }` sent to clients in `tunnel.upgrade.propose`.
 - `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS` (default `3000`): stable window between
   mobile auth success and the propose.
 - `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF` (`true`/`false`, default `true`):
@@ -263,7 +270,7 @@ Operational endpoints:
 - `GET /admin/api/traffic-map` — map-ready location and flow aggregates for the
   Admin traffic board. Nodes are aggregated location buckets, not individual
   Agent/App connections. Flow edges are aggregated by `from_location_id ->
-  to_location_id`, with link/device counts and transport-path distribution.
+to_location_id`, with link/device counts and transport-path distribution.
   Node area represents active connection count; directional bytes are counted
   from Relay ingress so App-to-Agent and Agent-to-App traffic are not
   double-counted. Relay resolves public IPs with the bundled local GeoIP

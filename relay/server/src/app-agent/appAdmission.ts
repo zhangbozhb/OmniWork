@@ -9,11 +9,11 @@ import {
 } from "@omniwork/protocol-ts";
 
 import type { RelayServerConfig } from "../config.ts";
+import { RelayAuthExecutor } from "../auth/executor.ts";
+import { RelayAuthGuard } from "../auth/guard.ts";
 import { RuntimeTopology } from "../runtime/topology.ts";
 import { appInfoFromMobileConnect } from "./payload.ts";
 import type { RelayStateStore } from "../relayStateStore.ts";
-import { RelayUserAuthController } from "../relayUserAuthController.ts";
-import type { RelayUserAuthStore } from "../relayUserAuthStore.ts";
 import type {
   PendingAuth,
   RelayConnection,
@@ -21,10 +21,10 @@ import type {
 
 export interface AppAdmissionOptions {
   config: RelayServerConfig;
+  authGuard: RelayAuthGuard;
+  authExecutor: RelayAuthExecutor;
   topology: RuntimeTopology;
   state: RelayStateStore;
-  userAuth: RelayUserAuthController;
-  userAuthStore: RelayUserAuthStore;
   pendingAuth: Map<string, PendingAuth>;
   send(connection: RelayConnection, message: MessageEnvelope): void;
 }
@@ -41,35 +41,17 @@ export class AppAdmission {
     message: MessageEnvelope<MobileConnectPayload>,
   ): void {
     const deviceId = message.payload.device_id;
-    if (this.options.config.auth.mode === "email_link") {
-      const user = this.options.userAuth.authenticateToken(
-        message.payload.session_token,
-      );
-      const device = this.options.userAuthStore.getDevice(deviceId);
-      const userId = user?.id ?? connection.userId;
-      if (
-        !userId ||
-        !device ||
-        device.revoked_at ||
-        device.user_id !== userId
-      ) {
-        connection.authState = "failed";
-        this.options.send(
-          connection,
-          createMessage<AuthFailedPayload>(
-            "auth.failed",
-            {
-              reason: "malformed_proof",
-              connection_id: connection.id,
-              retry_after_ms: 2000,
-            },
-            { device_id: deviceId },
-          ),
-        );
-        return;
-      }
-      connection.userId = userId;
+    const decision = this.options.authGuard.authorize({
+      surface: "mobile_connect",
+      message,
+      connectionUserId: connection.userId,
+    });
+    if (!decision.ok) {
+      connection.authState = "failed";
+      this.options.authExecutor.execute(decision, { connection });
+      return;
     }
+    connection.userId = decision.subject?.userId ?? connection.userId;
     const agent = this.options.topology.getPrimaryAgent(deviceId);
     connection.role = "mobile";
     connection.state = "mobile_connected";
