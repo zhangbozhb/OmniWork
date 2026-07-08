@@ -680,24 +680,19 @@ Claude Code hook 到 Probe Event 的默认映射：
 | `Stop` | `agent.completed` | 可进入 App 内消息，系统 Push 可选 |
 | `SessionEnd` | `agent.exited` | 本地记录 |
 
-Trae / Trae-CN hook 到 Probe Event 的默认映射与 Claude Code 保持一致，并额外兼容 `traecli.yaml` 中的 snake_case 事件名：
+Trae / Trae-CN hook 到 Probe Event 的默认映射遵循 TRAE 官方 hooks schema，并额外兼容官方事件名的 snake_case 写法。审批、文档审查和完成通知通过 `Notification.notification_type` 区分：
 
 | Trae Hook | AgentProbeEvent | 默认处理 |
 |---|---|---|
 | `SessionStart` / `session_start` | `agent.started` | 可进入 App 内消息，不系统 Push |
 | `UserPromptSubmit` / `user_prompt_submit` | `agent.user_prompt_submitted` | 本地记录，默认不发 App |
 | `PreToolUse` / `pre_tool_use` | `agent.tool_call_started` | 本地记录，默认不发 App |
-| `PermissionRequest` / `permission_request` | `agent.approval_required` | 可进入 App 内消息，可系统 Push |
-| `PermissionDenied` / `permission_denied` | `agent.failed` | 可进入 App 内消息，可系统 Push |
 | `PostToolUse` / `post_tool_use` | `agent.tool_call_finished` | 本地记录 |
-| `PostToolUseFailure` / `post_tool_use_failure` | `agent.failed` | 可进入 App 内消息，可系统 Push |
-| `Notification` / `notification` | `agent.waiting_user_input` | 可进入 App 内消息，可系统 Push |
-| `PreCompact` / `pre_compact` | `agent.compaction_started` | 本地记录 |
-| `PostCompact` / `post_compact` | `agent.compaction_finished` | 本地记录 |
-| `SubagentStart` / `subagent_start` | `agent.subagent_started` | App 内消息可选 |
-| `SubagentStop` / `subagent_stop` | `agent.subagent_completed` | App 内消息可选 |
+| `Notification` / `notification` + `permission_prompt` | `agent.approval_required` | 可进入 App 内消息，可系统 Push |
+| `Notification` / `notification` + `document_review` | `agent.approval_required` | 可进入 App 内消息，可系统 Push |
+| `Notification` / `notification` + `idle_prompt` | `agent.completed` | 可进入 App 内消息，系统 Push 可选 |
+| `Notification` / `notification` + 其他类型 | `agent.waiting_user_input` | 可进入 App 内消息，可系统 Push |
 | `Stop` / `stop` | `agent.completed` | 可进入 App 内消息，系统 Push 可选 |
-| `SessionEnd` / `session_end` | `agent.exited` | 本地记录 |
 
 Codex hook 到 Probe Event 的默认映射：
 
@@ -754,9 +749,9 @@ Trae 与 Trae-CN 当前按 Coding Agent Probe 接入，不按完整 `AgentSurfac
 
 本机调研到的组织方式：
 
-- `~/.trae/hooks.json` 与 `~/.trae-cn/hooks.json`：均为 `version + hooks` 结构，当前包含 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`。
-- `~/.trae/traecli.toml`：声明 `features.hooks = true`，并覆盖 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`PermissionRequest`、`Notification`、`SessionEnd`、`Stop`、`PreCompact`、`PostCompact`、`SubagentStart`、`SubagentStop`。
-- `~/.trae/traecli.yaml`：使用 snake_case event 名称，例如 `user_prompt_submit`、`post_tool_use_failure`、`permission_request`、`session_end`、`subagent_start`。
+- `~/.trae/hooks.json` 与 `~/.trae-cn/hooks.json`：均为 `version + hooks` 结构，当前仅自动安装 TRAE 官方事件 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Notification`、`Stop`。
+- `~/.trae/traecli.toml` / `~/.trae/traecli.yaml`：只按 TRAE 官方事件 schema 读取；历史调研中的 `PermissionRequest`、`PostToolUseFailure`、`PermissionDenied`、`PreCompact`、`PostCompact`、`SubagentStart`、`SubagentStop`、`SessionEnd` 不再作为 TRAE 事件安装或归一化。
+- `~/.trae/traecli.yaml`：兼容官方事件的 snake_case 名称，例如 `user_prompt_submit`、`post_tool_use`、`notification`、`stop`。
 - `~/.trae-cn/builtin_skills`、`~/.trae-cn/skills`、`~/.trae/skills`：采用 `SKILL.md + references/scripts/assets` 的能力包组织。
 - `~/.trae/agents`：采用 markdown frontmatter `name/description` 加角色、输入、输出约束的 agent 定义。
 - `~/.trae-cn/mcps/.../tools/*.json`：按 workspace/session/agent scope 存放 MCP server metadata 与 tool schema。

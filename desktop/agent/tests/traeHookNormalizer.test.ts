@@ -6,15 +6,13 @@ import {
   normalizeTraeProbeProvider,
 } from "../src/probes/traeHookNormalizer.ts";
 
-test("normalizeTraeHookPayload maps Trae approval hooks", () => {
+test("normalizeTraeHookPayload maps Trae permission notifications", () => {
   const event = normalizeTraeHookPayload("trae", {
     session_id: "sess-1",
-    hook_event_name: "PermissionRequest",
+    hook_event_name: "Notification",
     workspace_path: "/tmp/project",
-    tool_name: "Bash",
-    tool_input: {
-      command: "pnpm test",
-    },
+    notification_type: "permission_prompt",
+    message: "Approve Bash?",
   });
 
   assert.ok(event);
@@ -24,29 +22,32 @@ test("normalizeTraeHookPayload maps Trae approval hooks", () => {
   assert.equal(event.workspace_path, "/tmp/project");
   assert.equal(event.event_type, "agent.approval_required");
   assert.equal(event.severity, "warning");
-  assert.equal(event.title, "Trae needs approval for Bash");
-  assert.equal(event.summary, "pnpm test");
+  assert.equal(event.title, "Trae needs approval");
+  assert.equal(event.summary, "Approve Bash?");
+  assert.equal(event.payload?.notification_type, "permission_prompt");
   assert.equal(event.source.kind, "cli-hook");
 });
 
-test("normalizeTraeHookPayload accepts traecli snake_case event aliases", () => {
+test("normalizeTraeHookPayload accepts official snake_case event aliases", () => {
   const event = normalizeTraeHookPayload("trae-cn", {
     conversation_id: "conv-1",
-    event: "post_tool_use_failure",
+    event: "post_tool_use",
     cwd: "/tmp/project",
-    tool_name: "Write",
+    llm_tool_name: "Write",
     tool_use_id: "tool-1",
-    error: "permission denied",
+    tool_input: {
+      file_path: "/tmp/project/README.md",
+    },
   });
 
   assert.ok(event);
   assert.equal(event.provider, "trae-cn");
   assert.equal(event.probe_id, "trae-cn-hooks");
   assert.equal(event.session_id, "conv-1");
-  assert.equal(event.event_type, "agent.failed");
-  assert.equal(event.severity, "critical");
-  assert.equal(event.title, "Trae CN failed Write");
-  assert.equal(event.summary, "permission denied");
+  assert.equal(event.event_type, "agent.tool_call_finished");
+  assert.equal(event.severity, "info");
+  assert.equal(event.title, "Trae CN finished Write");
+  assert.equal(event.summary, "/tmp/project/README.md");
   assert.equal(event.payload?.tool_use_id, "tool-1");
 });
 
@@ -65,6 +66,38 @@ test("normalizeTraeHookPayload maps notification hooks", () => {
   assert.equal(event.payload?.notification_type, "input_required");
 });
 
+test("normalizeTraeHookPayload maps idle notifications as completed", () => {
+  const event = normalizeTraeHookPayload("trae-cn", {
+    session_id: "sess-1",
+    hook_event_name: "Notification",
+    message: "Trae finished the task",
+    notification_type: "idle_prompt",
+  });
+
+  assert.ok(event);
+  assert.equal(event.event_type, "agent.completed");
+  assert.equal(event.severity, "notice");
+  assert.equal(event.title, "Trae CN completed");
+  assert.equal(event.summary, "Trae finished the task");
+});
+
+test("normalizeTraeHookPayload preserves Trae Stop payload fields", () => {
+  const event = normalizeTraeHookPayload("trae", {
+    session_id: "sess-1",
+    hook_event_name: "Stop",
+    last_assistant_message: "Done",
+    loop_count: 2,
+    stop_hook_active: true,
+  });
+
+  assert.ok(event);
+  assert.equal(event.event_type, "agent.completed");
+  assert.equal(event.summary, "Done");
+  assert.equal(event.payload?.last_assistant_message, "Done");
+  assert.equal(event.payload?.loop_count, 2);
+  assert.equal(event.payload?.stop_hook_active, true);
+});
+
 test("normalizeTraeHookPayload ignores unsupported or incomplete payloads", () => {
   assert.equal(
     normalizeTraeHookPayload("trae", {
@@ -75,7 +108,8 @@ test("normalizeTraeHookPayload ignores unsupported or incomplete payloads", () =
   );
   assert.equal(
     normalizeTraeHookPayload("trae-cn", {
-      hook_event_name: "Stop",
+        hook_event_name: "PermissionRequest",
+        session_id: "sess-1",
     }),
     null,
   );
@@ -88,21 +122,20 @@ test("normalizeTraeProbeProvider canonicalizes local Trae aliases", () => {
   assert.equal(normalizeTraeProbeProvider("codex"), null);
 });
 
-test("normalizeTraeHookPayload includes tool_use_id in stable ids", () => {
+test("normalizeTraeHookPayload includes Stop summaries in stable ids", () => {
   const base = {
     session_id: "sess-1",
-    event: "post_tool_use",
-    tool_name: "Bash",
+    event: "stop",
   };
 
   assert.notEqual(
     normalizeTraeHookPayload("trae", {
       ...base,
-      tool_use_id: "tool-1",
+      last_assistant_message: "Done 1",
     })?.id,
     normalizeTraeHookPayload("trae", {
       ...base,
-      tool_use_id: "tool-2",
+      last_assistant_message: "Done 2",
     })?.id,
   );
 });

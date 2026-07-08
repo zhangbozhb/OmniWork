@@ -67,44 +67,26 @@ const MANAGED_TRAE_HOOK_EVENTS: ManagedTraeHookEvent[] = [
     matcher: "*",
   },
   {
-    name: "PermissionRequest",
-    matcher: "*",
-  },
-  {
     name: "PostToolUse",
-    matcher: "*",
-  },
-  {
-    name: "PostToolUseFailure",
-    matcher: "*",
-  },
-  {
-    name: "PermissionDenied",
     matcher: "*",
   },
   {
     name: "Notification",
   },
   {
-    name: "PreCompact",
-  },
-  {
-    name: "PostCompact",
-  },
-  {
-    name: "SubagentStart",
-    matcher: "*",
-  },
-  {
-    name: "SubagentStop",
-    matcher: "*",
-  },
-  {
     name: "Stop",
   },
-  {
-    name: "SessionEnd",
-  },
+];
+
+const DEPRECATED_TRAE_HOOK_EVENTS = [
+  "PermissionRequest",
+  "PostToolUseFailure",
+  "PermissionDenied",
+  "PreCompact",
+  "PostCompact",
+  "SubagentStart",
+  "SubagentStop",
+  "SessionEnd",
 ];
 
 export async function ensureTraeFamilyHooksInstalled(
@@ -152,6 +134,25 @@ export async function ensureTraeHooksInstalled(
   }
 
   let changed = false;
+    for (const eventName of DEPRECATED_TRAE_HOOK_EVENTS) {
+      const currentGroups = Array.isArray(hooks[eventName])
+        ? (hooks[eventName] as unknown[])
+        : [];
+      if (currentGroups.length === 0) {
+        continue;
+      }
+      const cleanup = cleanupOmniWorkHookCommands(currentGroups, "");
+      if (!cleanup.changed) {
+        continue;
+      }
+      changed = true;
+      if (cleanup.groups.length > 0) {
+        hooks[eventName] = cleanup.groups;
+      } else {
+        delete hooks[eventName];
+      }
+    }
+
   for (const [eventName, group] of omniworkHooks) {
     const currentGroups = Array.isArray(hooks[eventName])
       ? (hooks[eventName] as unknown[])

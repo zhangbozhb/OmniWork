@@ -30,9 +30,12 @@ test("ensureTraeHooksInstalled creates hooks.json with OmniWork hooks", async ()
   assert.equal(parsed.hooks.SessionStart.length, 1);
   assert.equal(parsed.hooks.UserPromptSubmit.length, 1);
   assert.equal(parsed.hooks.PreToolUse[0].matcher, "*");
-  assert.equal(parsed.hooks.PermissionRequest[0].matcher, "*");
-  assert.equal(parsed.hooks.PostToolUseFailure[0].matcher, "*");
-  assert.equal(parsed.hooks.SessionEnd.length, 1);
+  assert.equal(parsed.hooks.PostToolUse[0].matcher, "*");
+  assert.equal(parsed.hooks.Notification.length, 1);
+  assert.equal(parsed.hooks.Stop.length, 1);
+  assert.equal(parsed.hooks.PermissionRequest, undefined);
+  assert.equal(parsed.hooks.PostToolUseFailure, undefined);
+  assert.equal(parsed.hooks.SessionEnd, undefined);
   assert.match(
     parsed.hooks.SessionStart[0].hooks[0].command,
     /OMNIWORK_AGENT_HOOK_SOURCE='trae-cn'/u,
@@ -79,7 +82,7 @@ test("ensureTraeHooksInstalled preserves existing hooks and is idempotent", asyn
   assert.equal(parsed.other, true);
   assert.equal(parsed.hooks.Stop.length, 2);
   assert.equal(parsed.hooks.Stop[0].hooks[0].command, "echo existing");
-  assert.equal(countManagedCommands(parsed), 14);
+  assert.equal(countManagedCommands(parsed), 6);
 });
 
 test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () => {
@@ -113,6 +116,30 @@ test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () =
             ],
           },
         ],
+        PermissionRequest: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "node /deprecated/path/omniwork-agent-hook.mjs",
+              },
+              {
+                type: "command",
+                command: "echo keep user approval hook",
+              },
+            ],
+          },
+        ],
+        SessionEnd: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "node /deprecated/session/omniwork-agent-hook.mjs",
+              },
+            ],
+          },
+        ],
       },
     }),
   );
@@ -137,6 +164,19 @@ test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () =
     JSON.stringify(parsed),
     /\/other\/old\/path\/omniwork-agent-hook\.mjs/u,
   );
+  assert.doesNotMatch(
+    JSON.stringify(parsed),
+    /\/deprecated\/path\/omniwork-agent-hook\.mjs/u,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(parsed),
+    /\/deprecated\/session\/omniwork-agent-hook\.mjs/u,
+  );
+  assert.equal(
+    parsed.hooks.PermissionRequest[0].hooks[0].command,
+    "echo keep user approval hook",
+  );
+  assert.equal(parsed.hooks.SessionEnd, undefined);
   assert.match(
     parsed.hooks.UserPromptSubmit[0].hooks[0].command,
     /OMNIWORK_AGENT_HOOK_SOURCE='trae'/u,
@@ -164,10 +204,10 @@ test("ensureTraeFamilyHooksInstalled installs every detected Trae hooks file", a
   });
 
   assert.equal(results.length, 2);
-  assert.deepEqual(
-    results.map((result) => result.provider).sort(),
-    ["trae", "trae-cn"],
-  );
+  assert.deepEqual(results.map((result) => result.provider).sort(), [
+    "trae",
+    "trae-cn",
+  ]);
 
   const trae = JSON.parse(
     await readFile(join(dir, ".trae", "hooks.json"), "utf8"),
