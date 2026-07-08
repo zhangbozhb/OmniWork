@@ -8,7 +8,7 @@ TypeScript/Node.js 桌面端 Agent for managing Terminal provider TUI sessions.
 - Saves the key to `~/Library/Application Support/OmniWork/agent/session-key.json`.
 - Persists a local `dev_` device ID in `~/.omniwork/agent.json`, with `sha256(deviceId + sha256(ip + hostname))` checksum validation. On macOS, the agent also uses Keychain when it is safely available.
 - Uses `0600` file permissions and `0700` parent directory permissions.
-- Requires `OMNIWORK_RELAY_URL` and fails fast when it is missing.
+- Reads convention-based YAML configuration; `relay.url` is required unless Relay device credentials already provide it.
 - Reconnects to Relay with exponential backoff. The only Relay-driven path that
   stops the local Agent service and exits the Agent process is WebSocket close
   `4404` with reason `agent_disabled` or `ip_banned`, which is reserved for an
@@ -27,22 +27,44 @@ TypeScript/Node.js 桌面端 Agent for managing Terminal provider TUI sessions.
 node --experimental-strip-types src/main.ts
 ```
 
-Useful environment variables:
+By convention, the Agent looks for `config.yml` in this order:
 
-```sh
-OMNIWORK_RELAY_URL=wss://relay.company.example/relay/ws/agent
-OMNIWORK_DEVICE_ID=my-desktop
-OMNIWORK_AGENT_DISPLAY_NAME="Alice DesktopBook"
-OMNIWORK_AGENT_IDENTITY_PATH=/Users/me/.omniwork/agent.json
-OMNIWORK_CODEX_COMMAND=codex
-OMNIWORK_CLAUDE_COMMAND=claude
-OMNIWORK_CLAUDECODE_COMMAND=claudecode
-OMNIWORK_GEMINI_COMMAND=gemini
-OMNIWORK_TRAE_COMMAND=traecli
-OMNIWORK_TRAE_CN_COMMAND=traecli
-OMNIWORK_DEFAULT_CWD=/Users/me/Code
-OMNIWORK_APP_SUPPORT_DIR=/tmp/omniwork-agent
-OMNIWORK_TERMINAL_STREAM_ENABLED=false
+```text
+1. Explicit path from OMNIWORK_AGENT_CONFIG_PATH
+2. config.yml next to the running omniwork-agent program
+3. System global config:
+   - macOS: ~/Library/Application Support/OmniWork/agent/config.yml
+   - Linux: ${XDG_CONFIG_HOME:-~/.config}/omniwork/agent/config.yml
+   - Windows: %APPDATA%/OmniWork/agent/config.yml
+```
+
+Set `OMNIWORK_AGENT_CONFIG_PATH` only when you need to point the Agent at a
+different config file. The config is intentionally sparse: omitted fields use
+safe local defaults. See `config.example.yml` for a fully annotated template.
+
+Example config:
+
+```yml
+relay:
+  url: wss://relay.company.example/relay/ws/agent
+
+agent:
+  deviceId: my-desktop
+  displayName: Alice DesktopBook
+  identityPath: /Users/me/.omniwork/agent.json
+  requireE2e: true
+
+paths:
+  defaultCwd: /Users/me/Code
+
+terminal:
+  streamEnabled: false
+  commands:
+    codex: codex
+    claude: claude
+    gemini: gemini
+    trae: traecli
+    trae-cn: traecli
 ```
 
 Keychain is macOS-only and does not need a user-facing switch. On macOS, the
@@ -51,36 +73,27 @@ checks; if the keychain is missing, locked, or otherwise unavailable, it
 silently falls back to the local identity file. On other platforms the agent
 uses `~/.omniwork/agent.json`.
 
-`OMNIWORK_TERMINAL_PROVIDERS` is the primary way to choose and extend terminal
-providers. When it is unset, the 桌面端 Agent falls back to the default Codex,
-Claude, Gemini, Trae, and Trae CN presets. The `OMNIWORK_CODEX_COMMAND`,
-`OMNIWORK_CLAUDE_COMMAND`, `OMNIWORK_CLAUDECODE_COMMAND`,
-`OMNIWORK_GEMINI_COMMAND`, `OMNIWORK_TRAE_COMMAND`, and
-`OMNIWORK_TRAE_CN_COMMAND` variables only override those fallback preset
-commands. `OMNIWORK_CLAUDECODE_COMMAND` is an alias for environments where the
-Claude Code executable or wrapper is named `claudecode`; internally the Probe
-provider remains `claude-code`. Trae and Trae CN Probe events are kept as
-separate providers: `trae` and `trae-cn`.
+`terminal.providers` is the primary way to choose and extend terminal providers.
+When it is unset, the 桌面端 Agent falls back to the default Codex, Claude,
+Gemini, Trae, and Trae CN presets. `terminal.commands` only overrides those
+fallback preset commands. Trae and Trae CN Probe events are kept as separate
+providers: `trae` and `trae-cn`.
 
 Example custom provider set:
 
-```sh
-OMNIWORK_TERMINAL_PROVIDERS='[
-  {
-    "kind": "codex",
-    "displayName": "Codex",
-    "command": "codex",
-    "capability": "codex.cli",
-    "summary": "OpenAI Codex CLI TUI session"
-  },
-  {
-    "kind": "opencode",
-    "displayName": "OpenCode",
-    "command": "opencode",
-    "capability": "opencode.cli",
-    "summary": "OpenCode CLI TUI session"
-  }
-]'
+```yml
+terminal:
+  providers:
+    - kind: codex
+      displayName: Codex
+      command: codex
+      capability: codex.cli
+      summary: OpenAI Codex CLI TUI session
+    - kind: opencode
+      displayName: OpenCode
+      command: opencode
+      capability: opencode.cli
+      summary: OpenCode CLI TUI session
 ```
 
 Provider metadata is sent to the App through `agent.hello` and `session.list`,
@@ -101,7 +114,8 @@ The command generates an Ed25519 key pair and stores `relayUrl`, Relay-owned
 `deviceId`, and the local private key in
 `<OMNIWORK_APP_SUPPORT_DIR>/relay-device.json`. Later Agent starts read that file
 automatically. `OMNIWORK_RELAY_URL`, `OMNIWORK_DEVICE_ID`, and
-`OMNIWORK_AGENT_RELAY_DEVICE_PRIVATE_KEY` can still override the stored values.
+`OMNIWORK_AGENT_RELAY_DEVICE_PRIVATE_KEY` remain supported as legacy fallbacks
+when the same values are not present in `config.yml`.
 If no stored key or private-key environment variable is present, the Agent keeps
 the legacy hello format for relays running with `OMNIWORK_RELAY_AUTH_MODE=none`.
 

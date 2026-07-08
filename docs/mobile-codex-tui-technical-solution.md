@@ -45,7 +45,7 @@
 
 3. **Terminal Provider 元数据层**
    - `packages/protocol-ts` 定义 `TerminalProviderDefinition`、`terminal_provider_kind`、能力标识等共享协议类型，并提供默认 presets 作为 fallback。
-   - 桌面端 Agent 通过 `OMNIWORK_TERMINAL_PROVIDERS` 配置实际启用的 provider、展示名、能力标识和命令，例如用户可直接增加 `opencode`。
+   - 桌面端 Agent 通过 `config.yml` 的 `terminal.providers` 配置实际启用的 provider、展示名、能力标识和命令，例如用户可直接增加 `opencode`。
    - 桌面端 Agent 的 Terminal Provider Registry 从配置化 provider 列表创建终端启动命令，并通过 `agent.hello` / `session.list` 下发给 App。
    - App 会话列表按 桌面端 Agent 下发的 provider 分组展示，并在创建会话时传递 `terminal_provider_kind`。
    - 未识别的外部 tmux 会话归入 `other`，只展示和附加，不作为可创建 provider。

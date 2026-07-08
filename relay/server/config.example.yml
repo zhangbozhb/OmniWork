@@ -1,0 +1,106 @@
+# OmniWork Relay Server example config.
+#
+# Lookup order:
+# 1. Explicit path from OMNIWORK_RELAY_CONFIG_PATH.
+# 2. config.yml next to the running relay server program.
+# 3. System global config:
+#    - macOS: ~/Library/Application Support/OmniWork/relay/config.yml
+#    - Linux: ${XDG_CONFIG_HOME:-~/.config}/omniwork/relay/config.yml
+#    - Windows: %APPDATA%/OmniWork/relay/config.yml
+#
+# Copy this file to one of the lookup locations and name it config.yml.
+
+server:
+  host: 127.0.0.1
+  port: 8787
+  deviceId: omniwork-relay
+
+  # Loopback hosts allow plaintext ws:// by default. Non-loopback hosts must
+  # explicitly set this to true after confirming business payloads are protected
+  # by App-Agent E2E.
+  allowPlaintextWs: true
+
+  # Legacy compatibility flag. Per-Agent business security mode is declared in
+  # agent.hello; the relay can carry both encrypted-only and plaintext-allowed
+  # agents in the same process.
+  requireE2E: true
+
+paths:
+  # Defaults to .omniwork-relay under the process cwd.
+  runtimeDir: .omniwork-relay
+
+authRateLimit:
+  capacity: 5
+  refillPerSecond: 1
+  blockMs: 60000
+
+websocket:
+  # 55 minutes, intended to sit below a 1 hour reverse proxy idle timeout.
+  keepaliveIntervalMs: 3300000
+  pongTimeoutMs: 30000
+
+admin:
+  host: 127.0.0.1
+  port: 8788
+  webEnabled: false
+  requireHttps: true
+
+  # Token/session storage defaults to paths.runtimeDir.
+  # tokenDir: .omniwork-relay
+  tokenRotateMs: 3600000
+  sessionTtlMs: 1800000
+
+  # Enable only when the admin listener is behind a trusted reverse proxy.
+  trustProxy: false
+  trustedProxyIps:
+    - 127.0.0.1
+    - ::1
+
+  # Defaults to <paths.runtimeDir>/admin-controls.sqlite.
+  # controlsDbPath: .omniwork-relay/admin-controls.sqlite
+  agentDisableDefaultMs: 86400000
+  ipBanDefaultMs: 86400000
+
+state:
+  # Defaults to <paths.runtimeDir>/relay-device-status.sqlite.
+  # deviceStatusDbPath: .omniwork-relay/relay-device-status.sqlite
+  deviceStatusRetentionMs: 604800000
+  deviceStatusFlushIntervalMs: 5000
+  sweepIntervalMs: 30000
+  pendingAuthTtlMs: 60000
+  appContextTtlMs: 16000
+
+auth:
+  # none keeps current local/internal behavior. email_link enables user/device
+  # ownership checks and requires publicBaseUrl + mail.from.
+  mode: none
+  # publicBaseUrl: https://relay.example.com
+  # dbPath defaults to <paths.runtimeDir>/relay-auth.sqlite.
+  # dbPath: .omniwork-relay/relay-auth.sqlite
+
+  emailLinkTtlMs: 900000
+  sessionTtlMs: 2592000000
+  deviceEnrollmentTtlMs: 300000
+  nonceTtlMs: 300000
+  emailRateLimitPerHour: 3
+  ipRateLimitPerHour: 10
+  maxDevicesPerUser: 10
+
+  mail:
+    provider: console
+    # from: OmniWork <no-reply@example.com>
+    # smtp:
+    #   host: smtp.example.com
+    #   port: 587
+    #   secure: false
+    #   user: smtp-user
+    #   pass: smtp-password
+
+upgrade:
+  enabled: true
+  rolloutPercent: 100
+  deviceBlocklist: []
+  iceServers:
+    - urls: stun:stun.l.google.com:19302
+  proposeDelayMs: 3000
+  respectClientPreference: true

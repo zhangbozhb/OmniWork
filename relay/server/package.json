@@ -13,10 +13,12 @@
   },
   "dependencies": {
     "@omniwork/protocol-ts": "workspace:*",
-    "geoip-lite": "^2.0.3"
+    "geoip-lite": "^2.0.3",
+    "js-yaml": "^5.2.1"
   },
   "devDependencies": {
     "@types/geoip-lite": "^1.4.4",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.19.19",
     "typescript": "^5.8.0"
   }

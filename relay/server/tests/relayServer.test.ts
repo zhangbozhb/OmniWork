@@ -1,7 +1,9 @@
 import { strict as assert } from "node:assert";
 import { existsSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import type { IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -15,7 +17,10 @@ import {
   type AppInfoPayload,
   type TunnelUpgradeOfferPayload,
 } from "@omniwork/protocol-ts";
-import { loadRelayServerConfig } from "../src/config.ts";
+import {
+  defaultRelayConfigSearchPaths,
+  loadRelayServerConfig,
+} from "../src/config.ts";
 import { RelayServer, resolveRemoteIp } from "../src/relayServer.ts";
 import { RelayStateStore } from "../src/relayStateStore.ts";
 import {
@@ -50,8 +55,98 @@ import type {
   assert.equal(config.admin.webEnabled, false);
   assert.equal(config.admin.host, "127.0.0.1");
   assert.equal(config.admin.port, 8788);
+  assert.equal(config.configPath, undefined);
   assert.equal(config.websocket.keepaliveIntervalMs, 3_300_000);
   assert.equal(config.websocket.pongTimeoutMs, 30_000);
+}
+
+{
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-relay-config-"));
+  const programDir = join(dir, "program");
+  const globalDir = join(dir, "global");
+  await mkdir(programDir, { recursive: true });
+  await mkdir(globalDir, { recursive: true });
+  const programConfigPath = join(programDir, "config.yml");
+  const globalConfigPath = join(globalDir, "config.yml");
+  await writeFile(
+    programConfigPath,
+    `
+server:
+  host: 127.0.0.1
+  port: 18888
+  deviceId: program-relay
+admin:
+  port: 18889
+websocket:
+  keepaliveIntervalMs: 1111
+  pongTimeoutMs: 2222
+upgrade:
+  rolloutPercent: 25
+  deviceBlocklist:
+    - blocked-device
+  iceServers:
+    - urls: stun:program.example:19302
+`,
+  );
+  await writeFile(
+    globalConfigPath,
+    `
+server:
+  host: 127.0.0.1
+  port: 28888
+  deviceId: global-relay
+admin:
+  port: 28889
+`,
+  );
+
+  assert.deepEqual(defaultRelayConfigSearchPaths({}, programDir), [
+    programConfigPath,
+    defaultRelayConfigSearchPaths()[1],
+  ]);
+
+  const programConfig = loadRelayServerConfig(
+    {},
+    {
+      programDir,
+      globalConfigPath,
+    },
+  );
+  assert.equal(programConfig.configPath, programConfigPath);
+  assert.equal(programConfig.port, 18888);
+  assert.equal(programConfig.deviceId, "program-relay");
+  assert.equal(programConfig.websocket.keepaliveIntervalMs, 1111);
+  assert.equal(programConfig.websocket.pongTimeoutMs, 2222);
+  assert.equal(programConfig.upgrade.rolloutPercent, 25);
+  assert.equal(
+    programConfig.upgrade.deviceBlocklist.has("blocked-device"),
+    true,
+  );
+  assert.deepEqual(programConfig.upgrade.iceServers, [
+    { urls: "stun:program.example:19302" },
+  ]);
+
+  const explicitConfig = loadRelayServerConfig(
+    {
+      OMNIWORK_RELAY_CONFIG_PATH: globalConfigPath,
+    },
+    {
+      programDir,
+    },
+  );
+  assert.equal(explicitConfig.configPath, globalConfigPath);
+  assert.equal(explicitConfig.port, 28888);
+  assert.equal(explicitConfig.deviceId, "global-relay");
+
+  const globalConfig = loadRelayServerConfig(
+    {},
+    {
+      programDir: join(dir, "missing-program"),
+      globalConfigPath,
+    },
+  );
+  assert.equal(globalConfig.configPath, globalConfigPath);
+  assert.equal(globalConfig.port, 28888);
 }
 
 {

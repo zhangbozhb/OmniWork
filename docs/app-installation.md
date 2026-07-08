@@ -286,27 +286,34 @@ App 通过平台 WebRTC adapter 参与 P2P 升级：iOS / Android 使用 `react-
 - iOS/Android 真机可以访问 Relay。
 - 移动端交付物是 APK/IPA 安装包；Web 端交付物是静态 SPA，不作为 PWA 或扫码入口。
 
-### Relay URL 环境变量约定
+### Relay URL 配置约定
 
-桌面端 Agent 与 App 各自读取独立的 Relay URL，分别指向 Relay 的 `/relay/ws/agent` 与 `/relay/ws/mobile` 两个 pool；二者不可混用：
+桌面端 Agent 与 App 各自读取独立的 Relay URL，分别指向 Relay 的 `/relay/ws/agent` 与 `/relay/ws/mobile` 两个 pool；二者不可混用。桌面端 Agent 按约定读取 `config.yml`，查找顺序为：显式 `OMNIWORK_AGENT_CONFIG_PATH`、程序所在目录、系统全局目录（macOS 为 `~/Library/Application Support/OmniWork/agent/config.yml`，Linux 为 `${XDG_CONFIG_HOME:-~/.config}/omniwork/agent/config.yml`，Windows 为 `%APPDATA%/OmniWork/agent/config.yml`）：
 
-| 变量名                       | 使用方                | Relay 路径         | 必填/示例                                                                       |
+```yml
+relay:
+  url: wss://relay.company.example/relay/ws/agent
+agent:
+  displayName: Alice DesktopBook
+```
+
+| 配置项 / 变量名              | 使用方                | Relay 路径         | 必填/示例                                                                       |
 | ---------------------------- | --------------------- | ------------------ | ------------------------------------------------------------------------------- |
-| `OMNIWORK_RELAY_URL`         | 桌面端 Agent 自连     | `/relay/ws/agent`  | 必填，缺失时 Agent 启动失败；示例：`wss://relay.company.example/relay/ws/agent` |
+| `relay.url`                  | 桌面端 Agent 自连     | `/relay/ws/agent`  | 必填，缺失且未注册设备凭证时 Agent 启动失败；示例：`wss://relay.company.example/relay/ws/agent` |
 | `OMNIWORK_DEFAULT_RELAY_URL` | Native App 出厂默认值 | `/relay/ws/mobile` | 可选；未注入时依赖用户输入或配对 URL                                            |
 | `OMNIWORK_WEB_RELAY_URL`     | Web App 运行时配置    | `/relay/ws/mobile` | 生产部署时写入 `omniwork-config.js`                                             |
 
-配对二维码还会携带可选的 `display_name`。桌面端 Agent 默认使用当前 `hostname` 去掉末尾 `.local` 后的值，便于 App 设备列表区分多台 电脑；如需覆盖可设置 `OMNIWORK_AGENT_DISPLAY_NAME`。
+配对二维码还会携带可选的 `display_name`。桌面端 Agent 默认使用当前 `hostname` 去掉末尾 `.local` 后的值，便于 App 设备列表区分多台 电脑；如需覆盖可设置 `agent.displayName`。
 
 桌面端 Agent 连接 Relay 失败时会按指数退避 + jitter 重试。默认作为常驻进程无限重连，避免 Relay 重启、网络抖动或临时不可达导致 Agent 退出；本地 admin 服务会先启动，Relay 连接会以 `connecting/reconnecting/connected/terminal_error` 状态独立推进。Relay 连接断开后，Agent 会立即把已观察到的 App 连接标记为 `disconnected/unavailable`，避免本地 admin 继续展示旧连接为在线。如果 Relay 明确拒绝连接（例如鉴权失败、禁用设备、IP ban、策略拒绝），Agent 会进入 `terminal_error`，保留本地 admin 可诊断能力，并以较
 慢频率继续探测 Relay，避免一次拒绝导致进程退出。唯一例外是 Relay 使用 WebSocket close `4404` 且 reason 为 `agent_disabled` 或 `ip_banned` 显式要求关闭服务；这通常来自运维主动禁用当前 Agent 实例或封禁其来源 IP，Agent 会停止本地服务并退出进程，而不是重连：
 
-| 变量名                                            | 使用方       | 默认值  | 说明                                                         |
-| ------------------------------------------------- | ------------ | ------- | ------------------------------------------------------------ |
-| `OMNIWORK_AGENT_RELAY_RECONNECT_FOREVER`          | 桌面端 Agent | `true`  | 普通断线/临时连接失败时是否无限重连；不影响 Relay 主动拒绝   |
-| `OMNIWORK_AGENT_RELAY_RECONNECT_MAX_ATTEMPTS`     | 桌面端 Agent | `8`     | `RECONNECT_FOREVER=false` 时的连续重连最大次数；`0` 表示无限 |
-| `OMNIWORK_AGENT_RELAY_RECONNECT_INITIAL_DELAY_MS` | 桌面端 Agent | `1000`  | 首次重试延迟，后续按指数退避                                 |
-| `OMNIWORK_AGENT_RELAY_RECONNECT_MAX_DELAY_MS`     | 桌面端 Agent | `30000` | 单次重试最大延迟                                             |
+| 配置项                            | 使用方       | 默认值  | 说明                                                         |
+| --------------------------------- | ------------ | ------- | ------------------------------------------------------------ |
+| `relayReconnect.forever`          | 桌面端 Agent | `true`  | 普通断线/临时连接失败时是否无限重连；不影响 Relay 主动拒绝   |
+| `relayReconnect.maxAttempts`      | 桌面端 Agent | `8`     | `forever=false` 时的连续重连最大次数；`0` 表示无限           |
+| `relayReconnect.initialDelayMs`   | 桌面端 Agent | `1000`  | 首次重试延迟，后续按指数退避                                 |
+| `relayReconnect.maxDelayMs`       | 桌面端 Agent | `30000` | 单次重试最大延迟                                             |
 
 重连状态流程：
 
@@ -372,15 +379,15 @@ sequenceDiagram
 
 Agent Web 后台的连接统计以 Agent 关键链路为准：新版 App 必须在 `mobile.connect` 和 `auth.proof` 中携带 `app_info.instance_id` / `app_info.runtime_id`，且 `auth.proof` 会把这两个字段绑定进签名输入；Relay 只负责转发，Agent 在 `auth.verify` 校验成功后创建连接记录。Admin 侧以持久的 `app_info.instance_id` 作为逻辑 App 身份；同一个 App 刷新或重连产生新的 `runtime_id` / `app_connection_id` 时，只替换当前传输实例并清理旧 E2E/P2P 状态，不新增一条逻辑连接。Agent 会按逻辑 App 连接累计连接次数、消息数、估算流量和当前连接方式，并在 Admin 中按 `app_info.instance_id` 聚合设备级统计。App 自报信息集中在 `app_info.device` 与 `app_info.app`：设备名、平台、系统类型、系统版本使用 `app_info.device`，App 名称、版本和能力使用 `app_info.app`。内网 IP 不直接进入协议；App 仅上报 `app_info.device.private_network_hash`，计算方式是所有内网 IP 字符串排序后用 `,` 拼接，再做裸 SHA-256。连接环境信息统一记录为 `observations[]`：Relay 可以记录接入层看到的 remote IP / `X-Forwarded-For`，App 自报的设备信息与内网 IP hash 会作为 `source="app"` 的观察值进入 Agent，Agent 或 P2P 层也只能追加内网 IP hash。Admin 只展示这些控制面观察值，不从业务 payload 中推断连接环境。业务入站/出站、E2E ready、成功解密消息和传输路径切换会继续刷新连接状态。`app.connection.heartbeat` / `app.connection.goodbye` 仅补充心跳和主动断开状态，不作为连接创建入口。
 
-连接状态超时可通过以下变量调整：
+连接状态超时可通过 `config.yml` 调整：
 
-| 变量名                                    | 使用方       | 默认值  | 说明                                        |
-| ----------------------------------------- | ------------ | ------- | ------------------------------------------- |
-| `OMNIWORK_AGENT_CONNECTION_HEARTBEAT_MS`  | 桌面端 Agent | `10000` | 超过该时间未收到消息后连接可能进入 idle     |
-| `OMNIWORK_AGENT_CONNECTION_STALE_MS`      | 桌面端 Agent | `30000` | 超过该时间未收到消息后连接进入 stale        |
-| `OMNIWORK_AGENT_CONNECTION_DISCONNECT_MS` | 桌面端 Agent | `90000` | 超过该时间未收到消息后连接进入 disconnected |
+| 配置项                      | 使用方       | 默认值  | 说明                                        |
+| --------------------------- | ------------ | ------- | ------------------------------------------- |
+| `connection.heartbeatMs`    | 桌面端 Agent | `10000` | 超过该时间未收到消息后连接可能进入 idle     |
+| `connection.staleMs`        | 桌面端 Agent | `30000` | 超过该时间未收到消息后连接进入 stale        |
+| `connection.disconnectMs`   | 桌面端 Agent | `90000` | 超过该时间未收到消息后连接进入 disconnected |
 
-> 配对二维码中的 `relay_url` 由 Agent 端基于 `OMNIWORK_RELAY_URL` 推导（自动改写为兄弟路径 `/relay/ws/mobile`），手机扫码后会覆盖 App 的默认值；`display_name` 会随扫码导入并保存，旧二维码没有该字段时 App 回退展示 `device_id`。
+> 配对二维码中的 `relay_url` 由 Agent 端基于 `relay.url` 推导（自动改写为兄弟路径 `/relay/ws/mobile`），手机扫码后会覆盖 App 的默认值；`display_name` 会随扫码导入并保存，旧二维码没有该字段时 App 回退展示 `device_id`。
 
 ## 环境说明
 

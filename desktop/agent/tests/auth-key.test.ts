@@ -19,7 +19,9 @@ import {
   verifyProof,
 } from "../src/auth-key/authKey.ts";
 import {
+  defaultAgentConfigSearchPaths,
   defaultAgentDisplayName,
+  defaultAgentConfigPath,
   loadAgentConfig,
   type AgentConfig,
 } from "../src/config/config.ts";
@@ -117,7 +119,12 @@ assert.equal(defaultAgentDisplayName("work-mac.LOCAL"), "work-mac");
 
 assert.throws(
   () => loadAgentConfig({ OMNIWORK_DEVICE_ID: "" }),
-  /OMNIWORK_RELAY_URL is required/,
+  /relay.url is required/,
+);
+
+assert.equal(
+  defaultAgentConfigPath("/tmp/omniwork-agent"),
+  "/tmp/omniwork-agent/config.yml",
 );
 
 {
@@ -125,6 +132,7 @@ assert.throws(
     OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
     OMNIWORK_DEVICE_ID: "mac-1",
   });
+    assert.equal(config.configPath, undefined);
   assert.equal(config.relayReconnectForever, true);
   assert.equal(config.relayReconnectMaxAttempts, 8);
   assert.ok(config.displayName.length > 0);
@@ -137,6 +145,152 @@ assert.throws(
     OMNIWORK_AGENT_DISPLAY_NAME: "Alice MacBook",
   });
   assert.equal(config.displayName, "Alice MacBook");
+}
+
+{
+  const yamlConfigPath = join(dir, "agent-config.yml");
+  await writeFile(
+    yamlConfigPath,
+    `
+relay:
+  url: wss://yaml-relay.example/relay/ws/agent
+agent:
+  version: yaml-test
+  deviceId: yaml-device
+  displayName: YAML Desktop
+  requireE2e: false
+admin:
+  enabled: false
+  port: 18000
+probe:
+  enabled: false
+connection:
+  heartbeatMs: 11000
+  staleMs: 31000
+  disconnectMs: 91000
+relayReconnect:
+  forever: false
+  maxAttempts: 3
+  initialDelayMs: 1500
+  maxDelayMs: 45000
+terminal:
+  streamEnabled: true
+  size:
+    cols: 120
+    rows: 40
+  providers:
+    - kind: opencode
+      displayName: OpenCode
+      command: opencode
+      summary: OpenCode YAML session
+paths:
+  appSupportDir: ${dir}
+  defaultCwd: ${dir}
+`,
+  );
+  const config = loadAgentConfig(
+    {
+      OMNIWORK_RELAY_URL: "wss://env-relay.example/relay/ws/agent",
+    },
+    {
+      configPath: yamlConfigPath,
+      commandExists: (command) => command === "opencode",
+    },
+  );
+    assert.equal(config.configPath, yamlConfigPath);
+  assert.equal(config.relayUrl, "wss://yaml-relay.example/relay/ws/agent");
+  assert.equal(config.agentVersion, "yaml-test");
+  assert.equal(config.deviceId, "yaml-device");
+  assert.equal(config.displayName, "YAML Desktop");
+  assert.equal(config.adminEnabled, false);
+  assert.equal(config.adminPort, 18000);
+  assert.equal(config.agentProbeEnabled, false);
+  assert.equal(config.connectionHeartbeatMs, 11000);
+  assert.equal(config.connectionStaleMs, 31000);
+  assert.equal(config.connectionDisconnectMs, 91000);
+  assert.equal(config.relayReconnectForever, false);
+  assert.equal(config.relayReconnectMaxAttempts, 3);
+  assert.equal(config.relayReconnectInitialDelayMs, 1500);
+  assert.equal(config.relayReconnectMaxDelayMs, 45000);
+  assert.equal(config.terminalStreamEnabled, true);
+  assert.deepEqual(config.terminalSize, { cols: 120, rows: 40 });
+  assert.equal(config.businessSecurityMode, "plaintext_allowed");
+  assert.deepEqual(
+    config.terminalProviders.map((provider) => provider.kind),
+    ["opencode", "terminal"],
+  );
+  assert.equal(
+    config.terminalProviders.find((provider) => provider.kind === "opencode")
+      ?.summary,
+    "OpenCode YAML session",
+  );
+}
+
+{
+  const programDir = join(dir, "program-dir");
+  const globalDir = join(dir, "global-dir");
+  await mkdir(programDir);
+  await mkdir(globalDir);
+  const programConfigPath = join(programDir, "config.yml");
+  const globalConfigPath = join(globalDir, "config.yml");
+  await writeFile(
+    programConfigPath,
+    "relay:\n  url: wss://program.example/relay/ws/agent\nagent:\n  deviceId: program-device\n",
+  );
+  await writeFile(
+    globalConfigPath,
+    "relay:\n  url: wss://global.example/relay/ws/agent\nagent:\n  deviceId: global-device\n",
+  );
+
+  assert.deepEqual(defaultAgentConfigSearchPaths({}, programDir), [
+    programConfigPath,
+    defaultAgentConfigPath(),
+  ]);
+
+  const programConfig = loadAgentConfig(
+    {},
+    {
+      programDir,
+      globalConfigPath,
+      commandExists: () => false,
+    },
+  );
+    assert.equal(programConfig.configPath, programConfigPath);
+  assert.equal(programConfig.relayUrl, "wss://program.example/relay/ws/agent");
+  assert.equal(programConfig.deviceId, "program-device");
+
+  await writeFile(
+    programConfigPath,
+    "relay:\n  url: wss://explicit.example/relay/ws/agent\nagent:\n  deviceId: explicit-device\n",
+  );
+  const explicitConfig = loadAgentConfig(
+    {
+      OMNIWORK_AGENT_CONFIG_PATH: programConfigPath,
+    },
+    {
+      programDir: join(dir, "missing-program-dir"),
+      globalConfigPath,
+      commandExists: () => false,
+    },
+  );
+  assert.equal(
+    explicitConfig.relayUrl,
+    "wss://explicit.example/relay/ws/agent",
+  );
+    assert.equal(explicitConfig.configPath, programConfigPath);
+  assert.equal(explicitConfig.deviceId, "explicit-device");
+
+  const globalConfig = loadAgentConfig(
+    {},
+    {
+      programDir: join(dir, "missing-program-dir"),
+      globalConfigPath,
+      commandExists: () => false,
+    },
+  );
+    assert.equal(globalConfig.configPath, globalConfigPath);
+  assert.equal(globalConfig.relayUrl, "wss://global.example/relay/ws/agent");
+  assert.equal(globalConfig.deviceId, "global-device");
 }
 
 {

@@ -67,18 +67,22 @@ bundle is not tied to a hard-coded relay or CDN domain.
 
 ## Relay Runtime
 
-Recommended production environment:
+Recommended production `config.yml`:
 
-```bash
-OMNIWORK_RELAY_HOST=127.0.0.1
-OMNIWORK_RELAY_PORT=8787
-OMNIWORK_RELAY_ADMIN_HOST=127.0.0.1
-OMNIWORK_RELAY_ADMIN_PORT=8788
-OMNIWORK_RELAY_REQUIRE_E2E=true
-OMNIWORK_RELAY_ADMIN_REQUIRE_HTTPS=true
-OMNIWORK_RELAY_ADMIN_WEB_ENABLED=false
-OMNIWORK_RELAY_ADMIN_TRUST_PROXY=true
-OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS=127.0.0.1,::1
+```yml
+server:
+  host: 127.0.0.1
+  port: 8787
+  requireE2E: true
+admin:
+  host: 127.0.0.1
+  port: 8788
+  requireHttps: true
+  webEnabled: false
+  trustProxy: true
+  trustedProxyIps:
+    - 127.0.0.1
+    - ::1
 ```
 
 Start the relay with:
@@ -107,22 +111,21 @@ to the server's Nginx configuration directory and replace:
 
 The public server block must only expose the business listener (`/relay/ws/`)
 and public static assets. Admin web and `/admin/api/` belong on the separate
-admin server block, which proxies to `OMNIWORK_RELAY_ADMIN_HOST` /
-`OMNIWORK_RELAY_ADMIN_PORT` and should be restricted to localhost, VPN, or an
+admin server block, which proxies to `admin.host` / `admin.port` and should be restricted to localhost, VPN, or an
 operator network.
 
 Nginx must overwrite `X-Forwarded-For` with `$remote_addr` for both the public
 business WebSocket route and the private admin API route. Do not use
 `$proxy_add_x_forwarded_for` here: that appends any client-supplied header and
 would let direct clients influence Relay GeoIP, IP-ban, and auth rate-limit
-attribution. Relay should run with `OMNIWORK_RELAY_ADMIN_TRUST_PROXY=true` only
-when Nginx connects from an IP in `OMNIWORK_RELAY_ADMIN_TRUSTED_PROXY_IPS`.
+attribution. Relay should run with `admin.trustProxy: true` only when Nginx
+connects from an IP in `admin.trustedProxyIps`.
 
 Relay sends WebSocket ping frames every 3300 seconds by default
-(`OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS=3300000`) and closes sockets that do
-not answer with pong within 30 seconds. Keep Nginx `proxy_read_timeout` above
-the ping interval; the example config uses `3600s` so idle Agent connections are
-checked by Relay instead of being silently dropped by the proxy first.
+(`websocket.keepaliveIntervalMs: 3300000`) and closes sockets that do not answer
+with pong within 30 seconds. Keep Nginx `proxy_read_timeout` above the ping
+interval; the example config uses `3600s` so idle Agent connections are checked
+by Relay instead of being silently dropped by the proxy first.
 
 ## Admin Web Source
 

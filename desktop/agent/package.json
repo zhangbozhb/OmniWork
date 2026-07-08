@@ -17,9 +17,11 @@
     "@omniwork/terminal-core": "workspace:*",
     "@openai/codex-sdk": "0.142.5",
     "@roamhq/wrtc": "^0.8.0",
+    "js-yaml": "^5.2.1",
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.19.19",
     "typescript": "^5.8.0"
   },
@@ -29,6 +31,7 @@
   },
   "files": [
     "bin/",
+    "config.example.yml",
     "src/",
     "static/",
     "README.md"

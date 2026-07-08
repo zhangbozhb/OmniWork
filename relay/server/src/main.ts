@@ -1,5 +1,9 @@
 import { RelayServer } from "./relayServer.ts";
-import { loadRelayServerConfig, RelayConfigError } from "./config.ts";
+import {
+  loadRelayServerConfig,
+  RelayConfigError,
+  type RelayServerConfig,
+} from "./config.ts";
 
 function main(): void {
   let config;
@@ -19,6 +23,7 @@ function main(): void {
     return;
   }
 
+  logConfigSource(config);
   const server = new RelayServer(config);
   server.start().catch((error: unknown) => {
     console.error("[omniwork-relay] fatal", error);
@@ -27,3 +32,13 @@ function main(): void {
 }
 
 main();
+
+function logConfigSource(config: RelayServerConfig): void {
+  if (config.configPath) {
+    console.info("[omniwork-relay] using config file", {
+      config_path: config.configPath,
+    });
+    return;
+  }
+  console.info("[omniwork-relay] no config file found; using default config");
+}

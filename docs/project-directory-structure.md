@@ -290,7 +290,7 @@ desktop/
 - `webRtcPeerAdapter.ts`：基于 `@roamhq/wrtc` 的 PeerConnection 封装，含 default 解包以兼容 Node ESM。
 - `relayPath.ts`、`index.ts`：通用 path 抽象与导出。
 
-`terminal-provider/`：终端 provider 适配（`terminalProviderRegistry.ts`），支持 Codex / Claude / Gemini 三种 CLI provider；通过 `OMNIWORK_TERMINAL_PROVIDERS` 与 `OMNIWORK_{CODEX,CLAUDE,GEMINI}_COMMAND` 选择具体命令。
+`terminal-provider/`：终端 provider 适配（`terminalProviderRegistry.ts`），支持 Codex / Claude / Gemini 等 CLI provider；桌面端 Agent 通过 `config.yml` 的 `terminal.providers` 选择 provider，通过 `terminal.commands` 覆盖默认命令。
 
 `pty-bridge/`：PTY 读写、terminal frame 编码、resize、snapshot、慢客户端降级。
 
