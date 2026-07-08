@@ -30,17 +30,20 @@ node --experimental-strip-types src/main.ts
 By convention, the Agent looks for `config.yml` in this order:
 
 ```text
-1. Explicit path from OMNIWORK_AGENT_CONFIG_PATH
-2. config.yml next to the running omniwork-agent program
-3. System global config:
+1. Explicit path from --config / -c
+2. config.yml in the current working directory
+3. config.yml next to the running omniwork-agent program
+4. config.yml in the desktop/agent package root
+5. System global config:
    - macOS: ~/Library/Application Support/OmniWork/agent/config.yml
    - Linux: ${XDG_CONFIG_HOME:-~/.config}/omniwork/agent/config.yml
    - Windows: %APPDATA%/OmniWork/agent/config.yml
 ```
 
-Set `OMNIWORK_AGENT_CONFIG_PATH` only when you need to point the Agent at a
-different config file. The config is intentionally sparse: omitted fields use
-safe local defaults. See `config.example.yml` for a fully annotated template.
+Use `omniwork-agent --config /path/to/config.yml` when you need to point the
+Agent at a specific config file for one launch. The config is intentionally
+sparse: omitted fields use safe local defaults. See `config.example.yml` for a
+fully annotated template.
 
 Example config:
 

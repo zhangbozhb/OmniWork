@@ -111,7 +111,9 @@ const DEFAULT_ICE_SERVERS_JSON = '[{"urls":"stun:stun.l.google.com:19302"}]';
 
 export interface RelayServerConfigLoadOptions {
   configPath?: string;
+  cwd?: string;
   globalConfigPath?: string;
+  packageRoot?: string;
   programDir?: string;
 }
 
@@ -126,7 +128,12 @@ export function loadRelayServerConfig(
     env.OMNIWORK_RELAY_HOST ??
     "127.0.0.1";
   const allowPlaintextWs = parseBoolean(
-    readConfigBoolean(rawConfig, isLoopbackHost(host), "server", "allowPlaintextWs"),
+    readConfigBoolean(
+      rawConfig,
+      isLoopbackHost(host),
+      "server",
+      "allowPlaintextWs",
+    ),
     isLoopbackHost(host),
   );
   const requireE2E = parseBoolean(
@@ -236,15 +243,15 @@ export function loadRelayServerConfig(
   }
 
   return {
-      configPath: configFile.path,
+    configPath: configFile.path,
     host,
     port,
-      deviceId:
-        readConfigString(rawConfig, "server", "deviceId") ??
-        env.OMNIWORK_DEVICE_ID ??
-        "omniwork-relay",
-      allowPlaintextWs: finalAllowPlaintextWs,
-      requireE2E: finalRequireE2E,
+    deviceId:
+      readConfigString(rawConfig, "server", "deviceId") ??
+      env.OMNIWORK_DEVICE_ID ??
+      "omniwork-relay",
+    allowPlaintextWs: finalAllowPlaintextWs,
+    requireE2E: finalRequireE2E,
     protocolVersion: 1,
     minProtocolVersion: 1,
     authRateLimit: {
@@ -260,7 +267,12 @@ export function loadRelayServerConfig(
     },
     websocket: {
       keepaliveIntervalMs:
-        readConfigNumber(rawConfig, 3_300_000, "websocket", "keepaliveIntervalMs") ??
+        readConfigNumber(
+          rawConfig,
+          3_300_000,
+          "websocket",
+          "keepaliveIntervalMs",
+        ) ??
         parseNumber(env.OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS, 3_300_000),
       pongTimeoutMs:
         readConfigNumber(rawConfig, 30_000, "websocket", "pongTimeoutMs") ??
@@ -275,7 +287,8 @@ export function loadRelayServerConfig(
       ),
       tokenDir:
         readConfigString(rawConfig, "admin", "tokenDir") ??
-        optionalNonEmpty(env.OMNIWORK_RELAY_ADMIN_TOKEN_DIR) ?? runtimeDir,
+        optionalNonEmpty(env.OMNIWORK_RELAY_ADMIN_TOKEN_DIR) ??
+        runtimeDir,
       tokenRotateMs:
         readConfigNumber(rawConfig, 3_600_000, "admin", "tokenRotateMs") ??
         parseNumber(env.OMNIWORK_RELAY_ADMIN_TOKEN_ROTATE_MS, 3_600_000),
@@ -300,7 +313,12 @@ export function loadRelayServerConfig(
         optionalNonEmpty(env.OMNIWORK_RELAY_ADMIN_CONTROLS_DB_PATH) ??
         join(runtimeDir, "admin-controls.sqlite"),
       agentDisableDefaultMs:
-        readConfigNumber(rawConfig, 86_400_000, "admin", "agentDisableDefaultMs") ??
+        readConfigNumber(
+          rawConfig,
+          86_400_000,
+          "admin",
+          "agentDisableDefaultMs",
+        ) ??
         parseNumber(env.OMNIWORK_RELAY_AGENT_DISABLE_DEFAULT_MS, 86_400_000),
       ipBanDefaultMs:
         readConfigNumber(rawConfig, 86_400_000, "admin", "ipBanDefaultMs") ??
@@ -312,10 +330,20 @@ export function loadRelayServerConfig(
         optionalNonEmpty(env.OMNIWORK_RELAY_DEVICE_STATUS_DB_PATH) ??
         join(runtimeDir, "relay-device-status.sqlite"),
       deviceStatusRetentionMs:
-        readConfigNumber(rawConfig, 604_800_000, "state", "deviceStatusRetentionMs") ??
+        readConfigNumber(
+          rawConfig,
+          604_800_000,
+          "state",
+          "deviceStatusRetentionMs",
+        ) ??
         parseNumber(env.OMNIWORK_RELAY_DEVICE_STATUS_RETENTION_MS, 604_800_000),
       deviceStatusFlushIntervalMs:
-        readConfigNumber(rawConfig, 5000, "state", "deviceStatusFlushIntervalMs") ??
+        readConfigNumber(
+          rawConfig,
+          5000,
+          "state",
+          "deviceStatusFlushIntervalMs",
+        ) ??
         parseNumber(env.OMNIWORK_RELAY_DEVICE_STATUS_FLUSH_INTERVAL_MS, 5000),
       sweepIntervalMs:
         readConfigNumber(rawConfig, 30_000, "state", "sweepIntervalMs") ??
@@ -390,7 +418,12 @@ export function loadRelayServerConfig(
         readConfigNumber(rawConfig, 3000, "upgrade", "proposeDelayMs") ??
         parseNumber(env.OMNIWORK_UPGRADE_PROPOSE_DELAY_MS, 3000),
       respectClientPreference: parseBoolean(
-        readConfigBoolean(rawConfig, true, "upgrade", "respectClientPreference"),
+        readConfigBoolean(
+          rawConfig,
+          true,
+          "upgrade",
+          "respectClientPreference",
+        ),
         parseBoolean(env.OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF, true),
       ),
     },
@@ -400,8 +433,15 @@ export function loadRelayServerConfig(
 export function defaultRelayConfigSearchPaths(
   env: NodeJS.ProcessEnv = process.env,
   programDir = defaultRelayProgramDir(),
+  packageRoot = defaultRelayPackageRoot(),
+  cwd = process.cwd(),
 ): string[] {
-  return [join(programDir, "config.yml"), defaultGlobalRelayConfigPath(env)];
+  return uniquePaths([
+    join(cwd, "config.yml"),
+    join(programDir, "config.yml"),
+    join(packageRoot, "config.yml"),
+    defaultGlobalRelayConfigPath(env),
+  ]);
 }
 
 export function defaultGlobalRelayConfigPath(
@@ -437,25 +477,35 @@ function defaultRelayProgramDir(): string {
   return dirname(process.argv[1] ?? fileURLToPath(import.meta.url));
 }
 
+function defaultRelayPackageRoot(): string {
+  return fileURLToPath(new URL("..", import.meta.url));
+}
+
 function resolveRelayConfigPath(
   env: NodeJS.ProcessEnv,
   options: RelayServerConfigLoadOptions,
 ): { path?: string; required: boolean } {
-  const explicitPath = options.configPath ?? env.OMNIWORK_RELAY_CONFIG_PATH;
+  const explicitPath = options.configPath;
   if (explicitPath) {
     return { path: explicitPath, required: true };
   }
   const searchPaths = defaultRelayConfigSearchPaths(
     env,
     options.programDir ?? defaultRelayProgramDir(),
+    options.packageRoot ?? defaultRelayPackageRoot(),
+    options.cwd ?? process.cwd(),
   );
   if (options.globalConfigPath) {
-    searchPaths[1] = options.globalConfigPath;
+    searchPaths[searchPaths.length - 1] = options.globalConfigPath;
   }
   return {
     path: searchPaths.find((path) => existsSync(path)),
     required: false,
   };
+}
+
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths)];
 }
 
 function readRelayConfigFile(

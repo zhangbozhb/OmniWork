@@ -27,16 +27,19 @@ pnpm verify:relay
 Relay reads `config.yml` in this order:
 
 ```text
-1. Explicit path from OMNIWORK_RELAY_CONFIG_PATH
-2. config.yml next to the running relay server program
-3. System global config:
+1. Explicit path from --config / -c
+2. config.yml in the current working directory
+3. config.yml next to the running relay server program
+4. config.yml in the relay/server package root
+5. System global config:
    - macOS: ~/Library/Application Support/OmniWork/relay/config.yml
    - Linux: ${XDG_CONFIG_HOME:-~/.config}/omniwork/relay/config.yml
    - Windows: %APPDATA%/OmniWork/relay/config.yml
 ```
 
 The config is intentionally sparse: omitted fields use safe local defaults.
-See `config.example.yml` for a fully annotated template. A minimal local config:
+Use `pnpm relay:start -- --config /path/to/config.yml` for a one-off explicit
+config path. See `config.example.yml` for a fully annotated template. A minimal local config:
 
 ```yml
 server:

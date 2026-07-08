@@ -1,9 +1,11 @@
 # OmniWork Desktop Agent example config.
 #
 # Lookup order:
-# 1. Explicit path from OMNIWORK_AGENT_CONFIG_PATH.
-# 2. config.yml next to the running omniwork-agent program.
-# 3. System global config:
+# 1. Explicit path from --config / -c.
+# 2. config.yml in the current working directory.
+# 3. config.yml next to the running omniwork-agent program.
+# 4. config.yml in the desktop/agent package root.
+# 5. System global config:
 #    - macOS: ~/Library/Application Support/OmniWork/agent/config.yml
 #    - Linux: ${XDG_CONFIG_HOME:-~/.config}/omniwork/agent/config.yml
 #    - Windows: %APPDATA%/OmniWork/agent/config.yml
@@ -12,7 +14,7 @@
 
 relay:
   # Required unless relay-device.json already contains a relayUrl.
-  url: wss://relay.company.example/relay/ws/agent
+  url: "wss://relay.company.example/relay/ws/agent"
 
   # Optional. Defaults to <paths.appSupportDir>/relay-device.json.
   # deviceCredentialsPath: /Users/me/Library/Application Support/OmniWork/agent/relay-device.json
@@ -22,9 +24,6 @@ relay:
   # devicePrivateKey: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 
 agent:
-  # Optional. Defaults to package/runtime version.
-  version: 0.1.0
-
   # Optional. If omitted, the agent uses relay device credentials, then the
   # local persisted identity file.
   # deviceId: my-desktop

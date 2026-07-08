@@ -25,6 +25,7 @@ import {
   loadAgentConfig,
   type AgentConfig,
 } from "../src/config/config.ts";
+import { parseAgentConfigPathArgv } from "../src/config/configArgs.ts";
 import { createPairingQrDetails } from "../src/pairing/pairingQr.ts";
 import {
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
@@ -53,6 +54,17 @@ assert.equal(
 assert.equal(verifyProof(key, nonce, appInfo, `${proof}x`), false);
 
 const dir = await mkdtemp(join(tmpdir(), "omniwork-agent-"));
+const isolatedConfigOptions = {
+  programDir: join(dir, "isolated-program"),
+  packageRoot: join(dir, "isolated-package"),
+  globalConfigPath: join(dir, "isolated-global-config.yml"),
+};
+function loadIsolatedAgentConfig(
+  env: NodeJS.ProcessEnv,
+  options: Parameters<typeof loadAgentConfig>[1] = {},
+): AgentConfig {
+  return loadAgentConfig(env, { ...isolatedConfigOptions, ...options });
+}
 const path = join(dir, "nested", "session-key.json");
 const record = await createAndPersistSessionKey({
   path,
@@ -118,7 +130,7 @@ assert.equal(defaultAgentDisplayName("work-mac.local"), "work-mac");
 assert.equal(defaultAgentDisplayName("work-mac.LOCAL"), "work-mac");
 
 assert.throws(
-  () => loadAgentConfig({ OMNIWORK_DEVICE_ID: "" }),
+  () => loadIsolatedAgentConfig({ OMNIWORK_DEVICE_ID: "" }),
   /relay.url is required/,
 );
 
@@ -126,20 +138,38 @@ assert.equal(
   defaultAgentConfigPath("/tmp/omniwork-agent"),
   "/tmp/omniwork-agent/config.yml",
 );
+assert.equal(
+  parseAgentConfigPathArgv(["--config", "/tmp/agent.yml"]),
+  "/tmp/agent.yml",
+);
+assert.equal(
+  parseAgentConfigPathArgv(["--config=/tmp/agent.yml"]),
+  "/tmp/agent.yml",
+);
+assert.equal(
+  parseAgentConfigPathArgv(["-c", "/tmp/agent.yml"]),
+  "/tmp/agent.yml",
+);
+assert.throws(
+  () => parseAgentConfigPathArgv(["--config"]),
+  /requires a config file path/,
+);
 
 {
-  const config = loadAgentConfig({
+  const config = loadIsolatedAgentConfig({
     OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
     OMNIWORK_DEVICE_ID: "mac-1",
+    OMNIWORK_AGENT_VERSION: "env-version",
   });
-    assert.equal(config.configPath, undefined);
+  assert.equal(config.configPath, undefined);
+  assert.equal(config.agentVersion, "0.1.0");
   assert.equal(config.relayReconnectForever, true);
   assert.equal(config.relayReconnectMaxAttempts, 8);
   assert.ok(config.displayName.length > 0);
 }
 
 {
-  const config = loadAgentConfig({
+  const config = loadIsolatedAgentConfig({
     OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
     OMNIWORK_DEVICE_ID: "mac-1",
     OMNIWORK_AGENT_DISPLAY_NAME: "Alice MacBook",
@@ -155,7 +185,6 @@ assert.equal(
 relay:
   url: wss://yaml-relay.example/relay/ws/agent
 agent:
-  version: yaml-test
   deviceId: yaml-device
   displayName: YAML Desktop
   requireE2e: false
@@ -197,9 +226,9 @@ paths:
       commandExists: (command) => command === "opencode",
     },
   );
-    assert.equal(config.configPath, yamlConfigPath);
+  assert.equal(config.configPath, yamlConfigPath);
   assert.equal(config.relayUrl, "wss://yaml-relay.example/relay/ws/agent");
-  assert.equal(config.agentVersion, "yaml-test");
+  assert.equal(config.agentVersion, "0.1.0");
   assert.equal(config.deviceId, "yaml-device");
   assert.equal(config.displayName, "YAML Desktop");
   assert.equal(config.adminEnabled, false);
@@ -227,35 +256,70 @@ paths:
 }
 
 {
+  const cwd = join(dir, "cwd");
   const programDir = join(dir, "program-dir");
+  const packageRoot = join(dir, "package-root");
   const globalDir = join(dir, "global-dir");
+  await mkdir(cwd);
   await mkdir(programDir);
+  await mkdir(packageRoot);
   await mkdir(globalDir);
+  const cwdConfigPath = join(cwd, "config.yml");
   const programConfigPath = join(programDir, "config.yml");
+  const packageConfigPath = join(packageRoot, "config.yml");
   const globalConfigPath = join(globalDir, "config.yml");
+  await writeFile(
+    cwdConfigPath,
+    "relay:\n  url: wss://cwd.example/relay/ws/agent\nagent:\n  deviceId: cwd-device\n",
+  );
   await writeFile(
     programConfigPath,
     "relay:\n  url: wss://program.example/relay/ws/agent\nagent:\n  deviceId: program-device\n",
+  );
+  await writeFile(
+    packageConfigPath,
+    "relay:\n  url: wss://package.example/relay/ws/agent\nagent:\n  deviceId: package-device\n",
   );
   await writeFile(
     globalConfigPath,
     "relay:\n  url: wss://global.example/relay/ws/agent\nagent:\n  deviceId: global-device\n",
   );
 
-  assert.deepEqual(defaultAgentConfigSearchPaths({}, programDir), [
-    programConfigPath,
-    defaultAgentConfigPath(),
-  ]);
+  assert.deepEqual(
+    defaultAgentConfigSearchPaths({}, programDir, packageRoot, cwd),
+    [
+      cwdConfigPath,
+      programConfigPath,
+      packageConfigPath,
+      defaultAgentConfigPath(),
+    ],
+  );
+
+  const cwdConfig = loadAgentConfig(
+    {},
+    {
+      programDir,
+      packageRoot,
+      globalConfigPath,
+      cwd,
+      commandExists: () => false,
+    },
+  );
+  assert.equal(cwdConfig.configPath, cwdConfigPath);
+  assert.equal(cwdConfig.relayUrl, "wss://cwd.example/relay/ws/agent");
+  assert.equal(cwdConfig.deviceId, "cwd-device");
 
   const programConfig = loadAgentConfig(
     {},
     {
       programDir,
+      packageRoot,
       globalConfigPath,
+      cwd: join(dir, "missing-cwd"),
       commandExists: () => false,
     },
   );
-    assert.equal(programConfig.configPath, programConfigPath);
+  assert.equal(programConfig.configPath, programConfigPath);
   assert.equal(programConfig.relayUrl, "wss://program.example/relay/ws/agent");
   assert.equal(programConfig.deviceId, "program-device");
 
@@ -264,12 +328,13 @@ paths:
     "relay:\n  url: wss://explicit.example/relay/ws/agent\nagent:\n  deviceId: explicit-device\n",
   );
   const explicitConfig = loadAgentConfig(
+    {},
     {
-      OMNIWORK_AGENT_CONFIG_PATH: programConfigPath,
-    },
-    {
+      configPath: programConfigPath,
       programDir: join(dir, "missing-program-dir"),
+      packageRoot,
       globalConfigPath,
+      cwd: join(dir, "missing-cwd"),
       commandExists: () => false,
     },
   );
@@ -277,24 +342,40 @@ paths:
     explicitConfig.relayUrl,
     "wss://explicit.example/relay/ws/agent",
   );
-    assert.equal(explicitConfig.configPath, programConfigPath);
+  assert.equal(explicitConfig.configPath, programConfigPath);
   assert.equal(explicitConfig.deviceId, "explicit-device");
+
+  const packageConfig = loadAgentConfig(
+    {},
+    {
+      programDir: join(dir, "missing-program-dir"),
+      packageRoot,
+      globalConfigPath,
+      cwd: join(dir, "missing-cwd"),
+      commandExists: () => false,
+    },
+  );
+  assert.equal(packageConfig.configPath, packageConfigPath);
+  assert.equal(packageConfig.relayUrl, "wss://package.example/relay/ws/agent");
+  assert.equal(packageConfig.deviceId, "package-device");
 
   const globalConfig = loadAgentConfig(
     {},
     {
       programDir: join(dir, "missing-program-dir"),
+      packageRoot: join(dir, "missing-package-root"),
       globalConfigPath,
+      cwd: join(dir, "missing-cwd"),
       commandExists: () => false,
     },
   );
-    assert.equal(globalConfig.configPath, globalConfigPath);
+  assert.equal(globalConfig.configPath, globalConfigPath);
   assert.equal(globalConfig.relayUrl, "wss://global.example/relay/ws/agent");
   assert.equal(globalConfig.deviceId, "global-device");
 }
 
 {
-  const config = loadAgentConfig({
+  const config = loadIsolatedAgentConfig({
     OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
     OMNIWORK_DEVICE_ID: "mac-1",
     OMNIWORK_AGENT_RELAY_RECONNECT_FOREVER: "false",
@@ -309,18 +390,18 @@ const configEnv = {
   OMNIWORK_AGENT_IDENTITY_IP: "10.0.0.2",
 };
 assert.match(
-  loadAgentConfig({ ...configEnv, OMNIWORK_DEVICE_ID: "" }).deviceId,
+  loadIsolatedAgentConfig({ ...configEnv, OMNIWORK_DEVICE_ID: "" }).deviceId,
   /^dev_[0-9a-f]{16}$/,
 );
 assert.equal(
-  loadAgentConfig({
+  loadIsolatedAgentConfig({
     ...configEnv,
     OMNIWORK_DEVICE_ID: "custom-device",
   }).deviceId,
   "custom-device",
 );
 assert.equal(
-  loadAgentConfig(
+  loadIsolatedAgentConfig(
     {
       ...configEnv,
       OMNIWORK_CLAUDECODE_COMMAND: "claudecode",
@@ -340,7 +421,7 @@ assert.equal(
     await writeFile(commandPath, "#!/bin/sh\nexit 0\n");
     await chmod(commandPath, 0o755);
   }
-  const providers = loadAgentConfig({
+  const providers = loadIsolatedAgentConfig({
     ...configEnv,
     PATH: binDir,
   }).terminalProviders;
@@ -358,7 +439,7 @@ assert.equal(
   );
 }
 {
-  const providers = loadAgentConfig(
+  const providers = loadIsolatedAgentConfig(
     {
       ...configEnv,
       OMNIWORK_TRAE_COMMAND: "traecli",
@@ -379,7 +460,7 @@ assert.equal(
   );
 }
 assert.deepEqual(
-  loadAgentConfig(
+  loadIsolatedAgentConfig(
     {
       ...configEnv,
       OMNIWORK_TERMINAL_PROVIDERS: JSON.stringify([
@@ -414,7 +495,7 @@ assert.deepEqual(
   ],
 );
 assert.deepEqual(
-  loadAgentConfig(
+  loadIsolatedAgentConfig(
     {
       ...configEnv,
       OMNIWORK_TERMINAL_PROVIDERS: JSON.stringify([

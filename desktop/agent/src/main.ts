@@ -1,4 +1,5 @@
 import { loadAgentConfig, type AgentConfig } from "./config/config.ts";
+import { parseAgentConfigPathArgv } from "./config/configArgs.ts";
 import { AgentService } from "./core/agentService.ts";
 
 let service: AgentService | null = null;
@@ -13,7 +14,9 @@ process.once("SIGINT", stopAndExit);
 process.once("SIGTERM", stopAndExit);
 
 try {
-  const config = loadAgentConfig();
+  const config = loadAgentConfig(process.env, {
+    configPath: parseAgentConfigPathArgv(process.argv.slice(2)),
+  });
   logConfigSource(config);
   service = new AgentService(config, {
     onShutdownRequested: (reason) => {

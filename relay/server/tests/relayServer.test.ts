@@ -62,12 +62,29 @@ import type {
 
 {
   const dir = await mkdtemp(join(tmpdir(), "omniwork-relay-config-"));
+  const cwd = join(dir, "cwd");
   const programDir = join(dir, "program");
+  const packageRoot = join(dir, "package");
   const globalDir = join(dir, "global");
+  await mkdir(cwd, { recursive: true });
   await mkdir(programDir, { recursive: true });
+  await mkdir(packageRoot, { recursive: true });
   await mkdir(globalDir, { recursive: true });
+  const cwdConfigPath = join(cwd, "config.yml");
   const programConfigPath = join(programDir, "config.yml");
+  const packageConfigPath = join(packageRoot, "config.yml");
   const globalConfigPath = join(globalDir, "config.yml");
+  await writeFile(
+    cwdConfigPath,
+    `
+server:
+  host: 127.0.0.1
+  port: 17888
+  deviceId: cwd-relay
+admin:
+  port: 17889
+`,
+  );
   await writeFile(
     programConfigPath,
     `
@@ -89,6 +106,17 @@ upgrade:
 `,
   );
   await writeFile(
+    packageConfigPath,
+    `
+server:
+  host: 127.0.0.1
+  port: 19888
+  deviceId: package-relay
+admin:
+  port: 19889
+`,
+  );
+  await writeFile(
     globalConfigPath,
     `
 server:
@@ -100,15 +128,35 @@ admin:
 `,
   );
 
-  assert.deepEqual(defaultRelayConfigSearchPaths({}, programDir), [
-    programConfigPath,
-    defaultRelayConfigSearchPaths()[1],
-  ]);
+  assert.deepEqual(
+    defaultRelayConfigSearchPaths({}, programDir, packageRoot, cwd),
+    [
+      cwdConfigPath,
+      programConfigPath,
+      packageConfigPath,
+      defaultRelayConfigSearchPaths()[3],
+    ],
+  );
+
+  const cwdConfig = loadRelayServerConfig(
+    {},
+    {
+      cwd,
+      programDir,
+      packageRoot,
+      globalConfigPath,
+    },
+  );
+  assert.equal(cwdConfig.configPath, cwdConfigPath);
+  assert.equal(cwdConfig.port, 17888);
+  assert.equal(cwdConfig.deviceId, "cwd-relay");
 
   const programConfig = loadRelayServerConfig(
     {},
     {
+      cwd: join(dir, "missing-cwd"),
       programDir,
+      packageRoot,
       globalConfigPath,
     },
   );
@@ -127,21 +175,37 @@ admin:
   ]);
 
   const explicitConfig = loadRelayServerConfig(
+    {},
     {
-      OMNIWORK_RELAY_CONFIG_PATH: globalConfigPath,
-    },
-    {
+      configPath: globalConfigPath,
+      cwd,
       programDir,
+      packageRoot,
     },
   );
   assert.equal(explicitConfig.configPath, globalConfigPath);
   assert.equal(explicitConfig.port, 28888);
   assert.equal(explicitConfig.deviceId, "global-relay");
 
+  const packageConfig = loadRelayServerConfig(
+    {},
+    {
+      cwd: join(dir, "missing-cwd"),
+      programDir: join(dir, "missing-program"),
+      packageRoot,
+      globalConfigPath,
+    },
+  );
+  assert.equal(packageConfig.configPath, packageConfigPath);
+  assert.equal(packageConfig.port, 19888);
+  assert.equal(packageConfig.deviceId, "package-relay");
+
   const globalConfig = loadRelayServerConfig(
     {},
     {
+      cwd: join(dir, "missing-cwd"),
       programDir: join(dir, "missing-program"),
+      packageRoot: join(dir, "missing-package"),
       globalConfigPath,
     },
   );

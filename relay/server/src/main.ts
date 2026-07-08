@@ -4,11 +4,14 @@ import {
   RelayConfigError,
   type RelayServerConfig,
 } from "./config.ts";
+import { parseRelayConfigPathArgv } from "./configArgs.ts";
 
 function main(): void {
   let config;
   try {
-    config = loadRelayServerConfig();
+    config = loadRelayServerConfig(process.env, {
+      configPath: parseRelayConfigPathArgv(process.argv.slice(2)),
+    });
   } catch (error) {
     if (error instanceof RelayConfigError) {
       console.error(error.message);

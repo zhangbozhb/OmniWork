@@ -56,7 +56,9 @@ export interface AgentConfig {
 export interface AgentConfigLoadOptions {
   commandExists?: (command: string) => boolean;
   configPath?: string;
+  cwd?: string;
   globalConfigPath?: string;
+  packageRoot?: string;
   programDir?: string;
 }
 
@@ -88,10 +90,7 @@ export function loadAgentConfig(
 
   return {
     configPath: configFile.path,
-    agentVersion:
-      readConfigString(rawConfig, "agent", "version") ??
-      env.OMNIWORK_AGENT_VERSION ??
-      "0.1.0",
+    agentVersion: defaultAgentVersion(),
     deviceId: resolveDeviceId(rawConfig, env, relayDeviceCredentials),
     hostname: host,
     displayName: resolveAgentDisplayName(rawConfig, env, host),
@@ -240,11 +239,32 @@ export function defaultAgentConfigPath(
   return join(appSupportDir, "config.yml");
 }
 
+function defaultAgentVersion(): string {
+  try {
+    const packageJson = JSON.parse(
+      readFileSync(
+        fileURLToPath(new URL("../../package.json", import.meta.url)),
+        "utf8",
+      ),
+    ) as { version?: unknown };
+    return readNonEmptyString(packageJson.version) ?? "0.1.0";
+  } catch {
+    return "0.1.0";
+  }
+}
+
 export function defaultAgentConfigSearchPaths(
   env: NodeJS.ProcessEnv = process.env,
   programDir = defaultAgentProgramDir(),
+  packageRoot = defaultAgentPackageRoot(),
+  cwd = process.cwd(),
 ): string[] {
-  return [join(programDir, "config.yml"), defaultGlobalAgentConfigPath(env)];
+  return uniquePaths([
+    join(cwd, "config.yml"),
+    join(programDir, "config.yml"),
+    join(packageRoot, "config.yml"),
+    defaultGlobalAgentConfigPath(env),
+  ]);
 }
 
 export function defaultGlobalAgentConfigPath(
@@ -271,6 +291,10 @@ export function defaultGlobalAgentConfigPath(
 
 function defaultAgentProgramDir(): string {
   return dirname(process.argv[1] ?? fileURLToPath(import.meta.url));
+}
+
+function defaultAgentPackageRoot(): string {
+  return fileURLToPath(new URL("../..", import.meta.url));
 }
 
 function defaultAgentAppSupportDir(): string {
@@ -333,7 +357,7 @@ function resolveAgentConfigPath(
   env: NodeJS.ProcessEnv,
   options: AgentConfigLoadOptions,
 ): { path?: string; required: boolean } {
-  const explicitPath = options.configPath ?? env.OMNIWORK_AGENT_CONFIG_PATH;
+  const explicitPath = options.configPath;
   if (explicitPath) {
     return { path: explicitPath, required: true };
   }
@@ -341,14 +365,20 @@ function resolveAgentConfigPath(
   const searchPaths = defaultAgentConfigSearchPaths(
     env,
     options.programDir ?? defaultAgentProgramDir(),
+    options.packageRoot ?? defaultAgentPackageRoot(),
+    options.cwd ?? process.cwd(),
   );
   if (options.globalConfigPath) {
-    searchPaths[1] = options.globalConfigPath;
+    searchPaths[searchPaths.length - 1] = options.globalConfigPath;
   }
   return {
     path: searchPaths.find((path) => existsSync(path)),
     required: false,
   };
+}
+
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths)];
 }
 
 function readAgentConfigFile(

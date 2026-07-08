@@ -288,7 +288,7 @@ App 通过平台 WebRTC adapter 参与 P2P 升级：iOS / Android 使用 `react-
 
 ### Relay URL 配置约定
 
-桌面端 Agent 与 App 各自读取独立的 Relay URL，分别指向 Relay 的 `/relay/ws/agent` 与 `/relay/ws/mobile` 两个 pool；二者不可混用。桌面端 Agent 按约定读取 `config.yml`，查找顺序为：显式 `OMNIWORK_AGENT_CONFIG_PATH`、程序所在目录、系统全局目录（macOS 为 `~/Library/Application Support/OmniWork/agent/config.yml`，Linux 为 `${XDG_CONFIG_HOME:-~/.config}/omniwork/agent/config.yml`，Windows 为 `%APPDATA%/OmniWork/agent/config.yml`）：
+桌面端 Agent 与 App 各自读取独立的 Relay URL，分别指向 Relay 的 `/relay/ws/agent` 与 `/relay/ws/mobile` 两个 pool；二者不可混用。桌面端 Agent 按约定读取 `config.yml`，查找顺序为：显式 `--config` / `-c`、当前目录、程序所在目录、`desktop/agent` package 根目录、系统全局目录（macOS 为 `~/Library/Application Support/OmniWork/agent/config.yml`，Linux 为 `${XDG_CONFIG_HOME:-~/.config}/omniwork/agent/config.yml`，Windows 为 `%APPDATA%/OmniWork/agent/config.yml`）：
 
 ```yml
 relay:

@@ -18,3 +18,5 @@ app/ios/Pods
 app/android/.gradle
 app/ios/build
 app/android/build
+config.yml
+.omniwork-relay
