@@ -2,7 +2,6 @@ import { createMessage } from "@omniwork/protocol-ts";
 import type {
   AgentAppMessage,
   AgentSurfaceEventPayload,
-  MessageEnvelope,
 } from "@omniwork/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
 import {
@@ -292,7 +291,6 @@ export class AgentService {
       });
 
       this.logger.info("generated temporary session key", {
-        key_id: this.keyRecord.key_id,
         key_path: this.config.sessionKeyPath,
         agent_instance_id: this.keyRecord.agent_instance_id,
       });

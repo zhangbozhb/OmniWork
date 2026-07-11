@@ -12,7 +12,6 @@ test("AppConnectionRegistry creates connections from authenticated relay links",
 
   const connection = registry.acceptAuthenticatedConnection({
     relayConnectionId: "relay-app-1",
-    keyId: "key-1",
     appInfo: {
       instance_id: "app-instance-1",
       runtime_id: "runtime-1",
@@ -57,7 +56,6 @@ test("AppConnectionRegistry records authenticated connection metadata", () => {
 
   const connection = registry.acceptAuthenticatedConnection({
     relayConnectionId: "relay-app-1",
-    keyId: "key-1",
     appInfo: {
       instance_id: "app-instance-1",
       runtime_id: "runtime-1",
@@ -87,7 +85,6 @@ test("AppConnectionRegistry collapses reconnects from the same app instance", ()
 
   const first = registry.acceptAuthenticatedConnection({
     relayConnectionId: "relay-app-1",
-    keyId: "key-1",
     appInfo: {
       instance_id: "app-instance-1",
       runtime_id: "runtime-1",
@@ -99,7 +96,6 @@ test("AppConnectionRegistry collapses reconnects from the same app instance", ()
 
   const result = registry.acceptAuthenticatedConnectionDetailed({
     relayConnectionId: "relay-app-2",
-    keyId: "key-1",
     appInfo: {
       instance_id: "app-instance-1",
       runtime_id: "runtime-2",
@@ -146,7 +142,6 @@ test("AppConnectionRegistry upgrades authenticated connections to e2e", () => {
 
   registry.acceptAuthenticatedConnection({
     relayConnectionId: "relay-app-1",
-    keyId: "key-1",
     appInfo: {
       instance_id: "app-instance-1",
       runtime_id: "runtime-1",
@@ -177,7 +172,6 @@ test("AppConnectionRegistry aggregates device-level stats", () => {
 
   registry.acceptAuthenticatedConnection({
     relayConnectionId: "relay-app-1",
-    keyId: "key-1",
     appInfo: {
       instance_id: "app-instance-1",
       runtime_id: "runtime-1",
@@ -236,7 +230,6 @@ test("AppConnectionRegistry marks relay-backed connections unavailable", () => {
 
   registry.acceptAuthenticatedConnection({
     relayConnectionId: "relay-app-1",
-    keyId: "key-1",
     appInfo: {
       instance_id: "app-instance-1",
       runtime_id: "runtime-1",

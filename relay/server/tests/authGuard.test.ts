@@ -363,7 +363,6 @@ function createAgentHello(
     v: 1,
     device_id: "device-1",
     agent_instance_id: "agent-1",
-    key_id: "key-1",
     protocol: PROTOCOL_SUPPORT_V1,
     e2e: E2E_SUPPORT_V1,
     hostname: "host",
@@ -380,7 +379,6 @@ function createMobileConnect(
   return {
     v: 1,
     device_id: "device-1",
-    key_id: "key-1",
     app_info: {
       instance_id: "app-instance",
       runtime_id: "app-runtime",

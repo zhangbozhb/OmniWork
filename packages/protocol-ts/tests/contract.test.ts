@@ -99,7 +99,6 @@ describe("messageEnvelopeSchema", () => {
     const envelope = createMessage("mobile.connect", {
       v: PROTOCOL_VERSION,
       device_id: "device-1",
-      key_id: "key-1",
       protocol: PROTOCOL_SUPPORT_V1,
       e2e: E2E_SUPPORT_V1,
     });
@@ -161,7 +160,6 @@ describe("default terminal providers", () => {
 describe("auth payload schemas", () => {
   it("validates auth.verify and auth.ok happy path", () => {
     authVerifyPayloadSchema.parse({
-      key_id: "k1",
       nonce: "n1",
       app_info: {
         instance_id: "app-1",
@@ -216,7 +214,6 @@ describe("agent hello security mode", () => {
       v: PROTOCOL_VERSION,
       device_id: "device-1",
       agent_instance_id: "agent-1",
-      key_id: "key-1",
       relay_auth: {
         method: "device_signature",
         timestamp: Date.now(),
@@ -238,7 +235,6 @@ describe("agent hello security mode", () => {
       v: PROTOCOL_VERSION,
       device_id: "device-1",
       agent_instance_id: "agent-1",
-      key_id: "key-1",
       protocol: PROTOCOL_SUPPORT_V1,
       e2e: { ...E2E_SUPPORT_V1, required: false },
       business_security_mode: "plaintext_allowed",
@@ -254,7 +250,6 @@ describe("agent hello security mode", () => {
       v: PROTOCOL_VERSION,
       device_id: "device-1",
       agent_instance_id: "agent-1",
-      key_id: "key-1",
       protocol: PROTOCOL_SUPPORT_V1,
       e2e: E2E_SUPPORT_V1,
       hostname: "mac",
@@ -272,7 +267,6 @@ describe("e2e v1 schemas", () => {
       e2e_version: E2E_PROTOCOL_VERSION,
       app_connection_id: "conn_app_1",
       handshake_id: "hs_1",
-      key_id: "sha256:8f2b7d62d9b0",
       suite: NOISE_SUITE_NNPSK0_V1,
       app_protocol: {
         outer_v: PROTOCOL_SUPPORT_V1.current,
@@ -289,7 +283,6 @@ describe("e2e v1 schemas", () => {
       e2e_version: E2E_PROTOCOL_VERSION,
       app_connection_id: "conn_app_1",
       handshake_id: "hs_1",
-      key_id: "sha256:8f2b7d62d9b0",
       suite: "Noise_XX_25519_ChaChaPoly_BLAKE2s",
       app_protocol: {
         outer_v: PROTOCOL_VERSION,
@@ -457,7 +450,6 @@ describe("app client metadata payload schemas", () => {
       createMessage("mobile.connect", {
         v: PROTOCOL_VERSION,
         device_id: "device-1",
-        key_id: "key-1",
         app_info: {
           instance_id: "app-1",
           runtime_id: "runtime-1",
@@ -551,7 +543,6 @@ describe("pairing link round-trip", () => {
     device_id: "mac-host-01",
     display_name: "Mac Host 01",
     key: "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
-    key_id: "sha256:8f2b7d62d9b0",
   } as const;
 
   it("encodes and decodes all fields losslessly", () => {
@@ -561,16 +552,11 @@ describe("pairing link round-trip", () => {
     assert.deepEqual(parsed, samplePayload);
   });
 
-  it("decodes payload without optional display_name and key_id", () => {
-    const {
-      display_name: _displayName,
-      key_id: _keyId,
-      ...minimal
-    } = samplePayload;
+    it("decodes payload without optional display_name", () => {
+      const { display_name: _displayName, ...minimal } = samplePayload;
     const link = createPairingLink(minimal);
     const parsed = parsePairingLink(link);
     assert.equal(parsed?.display_name, undefined);
-    assert.equal(parsed?.key_id, undefined);
     assert.equal(parsed?.relay_url, minimal.relay_url);
     assert.equal(parsed?.device_id, minimal.device_id);
     assert.equal(parsed?.key, minimal.key);

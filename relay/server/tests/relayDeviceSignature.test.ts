@@ -16,7 +16,6 @@ const hello: AgentHelloPayload = {
   v: 1,
   device_id: "device-1",
   agent_instance_id: "agent-1",
-  key_id: "key-1",
   relay_auth: {
     method: "device_signature",
     timestamp,

@@ -18,7 +18,6 @@ const pairing = {
   relayUrl: "wss://relay.test",
   deviceId: "mac_test",
   key: "test-pairing-key-32-bytes",
-  keyId: "key_test",
   appInstanceId: "app_test_1",
 };
 
@@ -29,7 +28,6 @@ function createSessionPair(): {
   const context = {
     pairingKey: pairing.key,
     deviceId: pairing.deviceId,
-    keyId: pairing.keyId,
     agentInstanceId: "agent_test",
     appConnectionId: "conn_app_1",
     handshakeId: "hs_test",

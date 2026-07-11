@@ -3,15 +3,14 @@ import type { AppInfoPayload, MobileConnectPayload } from "@omniwork/protocol-ts
 import type { RelayAppInfo } from "../relayTypes.ts";
 
 /**
- * 构造 auth.proof 限流键：(key_id, device_id, remote_ip)。
+ * 构造 auth.proof 限流键：(device_id, remote_ip)。
  * 任一字段缺失时使用 "_" 占位，确保未携带身份的连接也会被限流。
  */
 export function buildAuthRateLimitKey(
-  keyId: string | undefined,
   deviceId: string | undefined,
   remoteIp: string | undefined,
 ): string {
-  return [keyId ?? "_", deviceId ?? "_", remoteIp ?? "_"].join("|");
+  return [deviceId ?? "_", remoteIp ?? "_"].join("|");
 }
 
 export function appInfoFromMobileConnect(

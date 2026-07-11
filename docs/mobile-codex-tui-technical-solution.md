@@ -289,7 +289,7 @@ flowchart LR
 - WebSocket 传输，业务消息强制 App-Agent E2E 加密。
 - MVP 不接入 SSO / OIDC。
 - App 使用 32 字符临时 key 的 HMAC proof 完成连接授权。
-- 桌面端 Agent 使用 `agent.hello` 注册 `device_id`、`agent_instance_id`、`key_id`。
+- 桌面端 Agent 使用 `agent.hello` 注册 `device_id`、`agent_instance_id`。
 - PostgreSQL 存设备、Agent 实例、审计元数据。
 - Redis 用于在线状态、临时路由、分布式锁。
 - OpenTelemetry 做 trace / metrics。
@@ -408,7 +408,7 @@ e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 
 ```text
 ws://relay.example/relay/ws/agent 或 wss://relay.example/relay/ws/agent
-agent.hello: device_id + agent_instance_id + key_id
+agent.hello: device_id + agent_instance_id
 e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 ```
 
@@ -665,7 +665,7 @@ MVP 不接入 SSO / OIDC / 持久设备绑定。
 - Relay 将 proof 转发给 桌面端 Agent。
 - 桌面端 Agent 使用本地 key 校验 proof。
 - Relay 不保存完整 key。
-- 审计只记录 `key_id`，不记录 key。
+- 审计只记录 `device_id`、`agent_instance_id`、`app_connection_id` 等非密钥上下文，不记录 key。
 - App 收到 `auth.failed` 时立即关闭 relay 连接，并按 [auth-key-design.md](./auth-key-design.md) 的「App 收到 `auth.failed` 后的具体清理动作」清除本地失效 pairing 与会话状态，引导用户重新扫码或输入新的临时 key。
 
 ### 授权
@@ -673,7 +673,7 @@ MVP 不接入 SSO / OIDC / 持久设备绑定。
 授权判断：
 
 ```text
-device_id + agent_instance_id + key_id + key_proof
+device_id + agent_instance_id + app_connection_id + key_proof
 ```
 
 默认策略：
@@ -694,7 +694,7 @@ device_id + agent_instance_id + key_id + key_proof
 - approval allow / deny。
 - Agent 版本。
 - Codex 版本。
-- `key_id`。
+- `app_connection_id`。
 - 来源 IP / 网络区域。
 
 终端内容审计：
@@ -731,7 +731,7 @@ device_id + agent_instance_id + key_id + key_proof
 | 桌面端 Agent     | TypeScript + Node.js LTS + tmux-manager/pty-bridge | node-pty 或极薄 native addon | Rust/Swift 承载 Agent 业务     |
 | 中继             | Go / Rust WebSocket Relay                          | Node.js Relay                | 通用远控网关                   |
 | 认证             | 32 字符临时 key + HMAC challenge                   | 演进 SSO / OIDC              | 静态持久共享密码               |
-| Agent 设备认证   | agent.hello + key_id + proof 校验                  | 演进 mTLS / signed bearer    | 无认证 WebSocket               |
+| Agent 设备认证   | agent.hello + HMAC proof 校验                      | 演进 mTLS / signed bearer    | 无认证 WebSocket               |
 | key 存储         | `session-key.json`，0600 权限                      | 演进 Keychain 存持久凭证     | 仓库内明文配置                 |
 | 通知             | APNs / FCM / 公司统一推送                          | 公司内部调试通道             | WebSocket 长久在线             |
 

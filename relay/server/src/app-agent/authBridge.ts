@@ -38,7 +38,6 @@ export class AppAuthBridge {
   ): void {
     const pending = this.options.pendingAuth.get(connection.id);
     const limiterKey = buildAuthRateLimitKey(
-      message.payload.key_id,
       pending?.deviceId ?? connection.deviceId,
       connection.remoteIp,
     );
@@ -46,7 +45,6 @@ export class AppAuthBridge {
     if (this.options.authLimiter.isBlocked(limiterKey)) {
       logRelayEvent({
         event: "auth.rate_limit",
-        key_id: message.payload.key_id,
         device_id: pending?.deviceId ?? connection.deviceId,
         remote_ip: connection.remoteIp,
       });
@@ -71,7 +69,6 @@ export class AppAuthBridge {
     if (
       !pending ||
       message.payload.nonce !== pending.nonce ||
-      message.payload.key_id !== pending.keyId ||
       message.payload.app_info.instance_id !== pending.appInfo.instanceId ||
       message.payload.app_info.runtime_id !== pending.appInfo.runtimeId
     ) {
@@ -120,7 +117,6 @@ export class AppAuthBridge {
       createMessage(
         "auth.verify",
         {
-          key_id: message.payload.key_id,
           nonce: message.payload.nonce,
           app_info: appInfoToPayload(pending.appInfo),
           proof: message.payload.proof,
@@ -146,7 +142,6 @@ export class AppAuthBridge {
       return;
     }
 
-    const pending = this.options.pendingAuth.get(mobile.id);
     this.options.pendingAuth.delete(mobile.id);
     if (message.type === "auth.ok") {
       const okPayload = message.payload as AuthOkPayload;
@@ -159,7 +154,7 @@ export class AppAuthBridge {
       this.options.state.authenticateApp(mobile, connection);
       // 鉴权成功后释放限流计数，避免合法重连被旧失败拖累。
       this.options.authLimiter.reset(
-        buildAuthRateLimitKey(pending?.keyId, mobile.deviceId, mobile.remoteIp),
+        buildAuthRateLimitKey(mobile.deviceId, mobile.remoteIp),
       );
       if (mobile.deviceId) {
         this.options.topology.addMobileToDevice(mobile.deviceId, mobile);
@@ -176,7 +171,7 @@ export class AppAuthBridge {
       // agent 端确认 key 不匹配 → 这才是真实的鉴权失败，计入限流；
       // 避免合法 proof 被一并消耗 token 触发 60s 误封禁。
       this.options.authLimiter.consume(
-        buildAuthRateLimitKey(pending?.keyId, mobile.deviceId, mobile.remoteIp),
+        buildAuthRateLimitKey(mobile.deviceId, mobile.remoteIp),
       );
     }
 

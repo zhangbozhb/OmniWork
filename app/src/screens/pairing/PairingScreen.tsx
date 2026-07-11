@@ -45,7 +45,6 @@ export function PairingScreen({
     initialPairing?.displayName ?? "",
   );
   const [key, setKey] = useState(initialPairing?.key ?? "");
-  const [keyId, setKeyId] = useState(initialPairing?.keyId ?? "");
   const [scannerVisible, setScannerVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // RN `Alert.alert` 在 web 上是 no-op，用本地 inline 错误兜底，避免用户在
@@ -57,7 +56,6 @@ export function PairingScreen({
     setDeviceId(initialPairing?.deviceId ?? "");
     setDisplayName(initialPairing?.displayName ?? "");
     setKey(initialPairing?.key ?? "");
-    setKeyId(initialPairing?.keyId ?? "");
     setLocalError(undefined);
   }, [initialPairing]);
 
@@ -93,7 +91,6 @@ export function PairingScreen({
         deviceId: deviceId.trim(),
         displayName: displayName.trim() || undefined,
         key: trimmedKey,
-        keyId: keyId.trim() || undefined,
         appInstanceId: initialPairing?.appInstanceId ?? createAppInstanceId(),
       });
     } finally {
@@ -114,7 +111,6 @@ export function PairingScreen({
     setDeviceId(pairing.deviceId);
     setDisplayName(pairing.displayName ?? "");
     setKey(pairing.key);
-    setKeyId(pairing.keyId ?? "");
     setScannerVisible(false);
     setLocalError(undefined);
     setSubmitting(true);

@@ -127,7 +127,6 @@ export interface AgentHelloPayload {
   v: typeof PROTOCOL_VERSION;
   device_id: string;
   agent_instance_id: string;
-  key_id: string;
   relay_auth?: RelayAgentAuthPayload;
   protocol: ProtocolSupport;
   e2e: E2ESupport;
@@ -206,7 +205,6 @@ export interface AppInfoPayload {
 export interface MobileConnectPayload {
   v: typeof PROTOCOL_VERSION;
   device_id: string;
-  key_id: string;
   app_info: AppInfoPayload;
   protocol: ProtocolSupport;
   e2e: E2ESupport;
@@ -292,7 +290,6 @@ export interface E2EHandshakeInitPayload {
   e2e_version: typeof E2E_PROTOCOL_VERSION;
   app_connection_id: string;
   handshake_id: string;
-  key_id: string;
   suite: NoiseSuite;
   app_protocol: {
     outer_v: typeof PROTOCOL_VERSION;
@@ -307,7 +304,6 @@ export interface E2EHandshakeReplyPayload {
   e2e_version: typeof E2E_PROTOCOL_VERSION;
   app_connection_id: string;
   handshake_id: string;
-  key_id: string;
   suite: NoiseSuite;
   agent_protocol: {
     outer_v: typeof PROTOCOL_VERSION;
@@ -398,12 +394,10 @@ export interface InnerEnvelope<TPayload = unknown> {
 
 export interface AuthChallengePayload {
   nonce: string;
-  key_id: string;
   expires_at: string;
 }
 
 export interface AuthProofPayload {
-  key_id: string;
   nonce: string;
   app_info: AppInfoPayload;
   proof: string;
@@ -477,7 +471,6 @@ export interface PairingLinkPayload {
   device_id: string;
   display_name?: string;
   key: string;
-  key_id?: string;
 }
 
 export type SessionStatus =
@@ -1158,7 +1151,6 @@ export function createPairingLink(payload: PairingLinkPayload): string {
   params.set("device_id", payload.device_id);
   setOptionalParam(params, "display_name", payload.display_name);
   params.set("key", payload.key);
-  setOptionalParam(params, "key_id", payload.key_id);
 
   return `${PAIRING_LINK_SCHEME}://${PAIRING_LINK_HOST}?${params.toString()}`;
 }
@@ -1189,7 +1181,6 @@ export function parsePairingLink(input: string): PairingLinkPayload | null {
     device_id: deviceId,
     display_name: searchParam(params, "display_name"),
     key,
-    key_id: searchParam(params, "key_id"),
   };
 }
 

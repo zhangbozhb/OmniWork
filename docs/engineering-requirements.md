@@ -127,7 +127,7 @@ MVP 鉴权模型：
 
 安全要求：
 
-- 日志和审计只记录 `key_id`，不得记录完整 key。
+- 日志和审计只记录 `device_id` / `agent_instance_id` / `app_connection_id` 等非密钥上下文，不得记录完整 key。
 - Relay 对认证失败做限流。
 - App 认证失败后清理旧 key。
 - key 文件不进入仓库、备份样例或测试夹具。

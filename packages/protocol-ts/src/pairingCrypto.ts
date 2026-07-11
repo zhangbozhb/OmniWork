@@ -281,8 +281,7 @@ function isPairingLinkPayload(value: unknown): value is PairingLinkPayload {
     typeof payload.key === "string" &&
     payload.key.length > 0 &&
     (payload.display_name === undefined ||
-      typeof payload.display_name === "string") &&
-    (payload.key_id === undefined || typeof payload.key_id === "string")
+        typeof payload.display_name === "string")
   );
 }
 

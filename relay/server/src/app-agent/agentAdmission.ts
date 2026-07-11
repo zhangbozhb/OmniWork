@@ -40,7 +40,6 @@ export class AgentAdmission {
     connection.state = "registered_agent";
     connection.deviceId = message.payload.device_id;
     connection.agentInstanceId = message.payload.agent_instance_id;
-    connection.keyId = message.payload.key_id;
     connection.businessSecurityMode =
       message.payload.business_security_mode ?? "e2e_required";
     connection.e2e = message.payload.e2e;

@@ -66,7 +66,7 @@ export class AppAdmission {
     }
     this.options.state.registerApp(connection);
 
-    if (!agent?.keyId) {
+      if (!agent) {
       connection.authState = "failed";
       this.options.send(
         connection,
@@ -88,7 +88,6 @@ export class AppAdmission {
     this.options.pendingAuth.set(connection.id, {
       deviceId,
       nonce,
-      keyId: agent.keyId,
       appInfo,
       expiresAt,
     });
@@ -99,7 +98,6 @@ export class AppAdmission {
         "auth.challenge",
         {
           nonce,
-          key_id: agent.keyId,
           expires_at: new Date(expiresAt).toISOString(),
         },
         { device_id: deviceId },

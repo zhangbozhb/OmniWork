@@ -61,7 +61,6 @@ export class MobileRelaySession {
   private e2ePeerReady = false;
   private businessSecurityMode: BusinessSecurityMode = "e2e_required";
   private plaintextReady = false;
-  private pendingKeyId: string | null = null;
   private appConnectionId: string | null = null;
   private readonly appInstanceId: string;
   private readonly appRuntimeId = createRuntimeId("runtime");
@@ -95,7 +94,6 @@ export class MobileRelaySession {
         {
           v: PROTOCOL_SUPPORT_V1.current,
           device_id: this.pairing.deviceId,
-          key_id: this.pairing.keyId ?? "unknown",
           app_info: appInfo,
           protocol: PROTOCOL_SUPPORT_V1,
           e2e: E2E_SUPPORT_V1,
@@ -230,7 +228,6 @@ export class MobileRelaySession {
   private async handleAuthChallenge(
     challenge: AuthChallengePayload,
   ): Promise<void> {
-    this.pendingKeyId = challenge.key_id;
     const appInfo = await this.appInfo();
     const proof = await createKeyProof(
       this.pairing.key,
@@ -241,7 +238,6 @@ export class MobileRelaySession {
       createMessage(
         "auth.proof",
         {
-          key_id: challenge.key_id,
           nonce: challenge.nonce,
           app_info: appInfo,
           proof,
@@ -252,7 +248,6 @@ export class MobileRelaySession {
   }
 
   private handleAuthOk(payload: AuthOkPayload): void {
-    const keyId = this.pendingKeyId ?? this.pairing.keyId ?? "unknown";
     if (!payload.connection_id) {
       return;
     }
@@ -269,7 +264,6 @@ export class MobileRelaySession {
     this.e2eHandshake = createInitiatorHandshake({
       pairingKey: this.pairing.key,
       deviceId: this.pairing.deviceId,
-      keyId,
       agentInstanceId: payload.agent_instance_id,
       appConnectionId: payload.connection_id,
     });

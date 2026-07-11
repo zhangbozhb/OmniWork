@@ -210,7 +210,6 @@ export class AgentRelayController {
           v: PROTOCOL_SUPPORT_V1.current,
           device_id: this.config.deviceId,
           agent_instance_id: keyRecord.agent_instance_id,
-          key_id: keyRecord.key_id,
           ...(this.config.relayDevicePrivateKey
             ? {
                 relay_auth: createRelayDeviceAuth({
@@ -264,7 +263,7 @@ export class AgentRelayController {
 
     this.logger.info("connected to relay", {
       relay_url: url,
-      key_id: keyRecord.key_id,
+        agent_instance_id: keyRecord.agent_instance_id,
     });
     this.reconnectAttempts = 0;
     this.lastError = null;

@@ -3,7 +3,6 @@ export interface PairingConfig {
   deviceId: string;
   displayName?: string;
   key: string;
-  keyId?: string;
   relaySessionToken?: string;
   appInstanceId: string;
 }

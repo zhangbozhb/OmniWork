@@ -1,6 +1,5 @@
 import {
   createHmac,
-  createHash,
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
@@ -11,7 +10,6 @@ import type { AppInfoPayload } from "@omniwork/protocol-ts";
 export interface SessionKeyRecord {
   version: 1;
   key: string;
-  key_id: string;
   created_at: string;
   agent_instance_id: string;
   relay_url?: string;
@@ -30,12 +28,10 @@ export async function createAndPersistSessionKey(
   const record: SessionKeyRecord = {
     version: 1,
     key: generateSessionKey(),
-    key_id: "",
     created_at: (options.now ?? new Date()).toISOString(),
     agent_instance_id: options.agentInstanceId,
     relay_url: options.relayUrl,
   };
-  record.key_id = createKeyId(record.key);
 
   await writeSessionKeyRecord(options.path, record);
   return record;
@@ -51,10 +47,6 @@ export function createAgentInstanceId(now = new Date()): string {
     .replace(/[-:.TZ]/g, "")
     .slice(0, 14);
   return `agent_${stamp}_${randomBytes(4).toString("hex")}`;
-}
-
-export function createKeyId(key: string): string {
-  return `sha256:${createHash("sha256").update(key).digest("hex").slice(0, 12)}`;
 }
 
 export function createAuthProofInput(

@@ -29,6 +29,5 @@ function toPairingLinkPayload(pairing: PairingConfig): PairingLinkPayload {
     device_id: pairing.deviceId,
     display_name: pairing.displayName,
     key: pairing.key,
-    key_id: pairing.keyId,
   };
 }

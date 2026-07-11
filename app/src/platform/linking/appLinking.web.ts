@@ -128,7 +128,6 @@ function removePairingParams(params: URLSearchParams): void {
     "relay_url",
     "device_id",
     "key",
-    "key_id",
     "v",
     "kind",
     "alg",

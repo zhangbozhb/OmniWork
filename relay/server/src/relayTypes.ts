@@ -34,7 +34,6 @@ export interface RelayConnectionBase {
   userId?: string;
   deviceId?: string;
   agentInstanceId?: string;
-  keyId?: string;
   appInfo?: RelayAppInfo;
   businessSecurityMode?: BusinessSecurityMode;
   e2e?: E2ESupport;
@@ -82,7 +81,6 @@ export interface RegisteredAgentRelayConnection extends RelayConnectionBase {
   state: "registered_agent" | "closed";
   deviceId: string;
   agentInstanceId: string;
-  keyId: string;
   businessSecurityMode: BusinessSecurityMode;
   e2e: E2ESupport;
   authenticated: true;
@@ -100,7 +98,6 @@ export interface MobileRelayConnection extends RelayConnectionBase {
     | "e2e_ready"
     | "closed";
   deviceId?: string;
-  keyId?: string;
   appInfo?: RelayAppInfo;
   transportPreference?: TransportPreference;
 }
@@ -108,7 +105,6 @@ export interface MobileRelayConnection extends RelayConnectionBase {
 export interface AuthenticatedMobileRelayConnection extends MobileRelayConnection {
   state: "relay_pairing_verified" | "e2e_handshaking" | "e2e_ready";
   deviceId: string;
-  keyId: string;
   appInfo: RelayAppInfo;
   authenticated: true;
   authState: "verified";
@@ -143,7 +139,6 @@ export interface RelayAppInfo {
 export interface PendingAuth {
   deviceId: string;
   nonce: string;
-  keyId: string;
   appInfo: RelayAppInfo;
   expiresAt: number;
 }

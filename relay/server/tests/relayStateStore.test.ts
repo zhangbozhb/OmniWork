@@ -78,7 +78,6 @@ function createAgentConnection(id: string, deviceId: string): RelayConnection {
     socket: createNoopSocket(),
     deviceId,
     agentInstanceId: "agent_instance_1",
-    keyId: "key_1",
     businessSecurityMode: "e2e_required",
     e2e: E2E_SUPPORT_V1,
     authenticated: true,

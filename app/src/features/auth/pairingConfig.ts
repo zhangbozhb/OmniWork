@@ -25,7 +25,6 @@ export function parsePairingConfig(input: string): PairingConfig | null {
     deviceId: payload.device_id,
     displayName: payload.display_name?.trim() || undefined,
     key: payload.key,
-    keyId: payload.key_id,
     appInstanceId: createAppInstanceId(),
   };
 }
@@ -45,7 +44,6 @@ export function decryptPairingConfig(
       deviceId: payload.device_id,
       displayName: payload.display_name?.trim() || undefined,
       key: payload.key,
-      keyId: payload.key_id,
       appInstanceId: createAppInstanceId(),
     };
   } catch {

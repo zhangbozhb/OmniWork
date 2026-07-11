@@ -46,7 +46,6 @@ export function createPairingQrDetails(
     device_id: config.deviceId,
     display_name: config.displayName,
     key: keyRecord.key,
-    key_id: keyRecord.key_id,
   };
 
   const share = createEncryptedPairingShare(payload, {
@@ -90,7 +89,6 @@ export function printPairingDetailsWithoutRelay(
 ): void {
   console.info("[omniwork-agent] pairing details");
   console.info(`  key: ${keyRecord.key}`);
-  console.info(`  key_id: ${keyRecord.key_id}`);
   console.info(`  device_id: ${config.deviceId}`);
   console.info(`  display_name: ${config.displayName}`);
   console.info("  host: -");
@@ -105,7 +103,6 @@ function printPairingSummary(details: PairingQrDetails): void {
   const { payload, endpoint } = details;
   console.info("[omniwork-agent] pairing details");
   console.info(`  key: ${payload.key}`);
-  console.info(`  key_id: ${payload.key_id ?? "-"}`);
   console.info(`  device_id: ${payload.device_id}`);
   console.info(`  display_name: ${payload.display_name ?? "-"}`);
   console.info(`  host: ${endpoint?.host ?? "-"}`);

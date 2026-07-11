@@ -78,11 +78,9 @@ export class AgentAppSecurityGateway {
 
   handleAuthVerify(message: MessageEnvelope<AuthVerifyPayload>): void {
     const keyRecord = this.getKeyRecord();
-    const authNonceKey = `${message.payload.key_id}:${message.payload.nonce}`;
+    const authNonceKey = message.payload.nonce;
     if (this.authReplayCache.has(authNonceKey)) {
-      this.logger.warn("rejected replayed auth nonce", {
-        key_id: message.payload.key_id,
-      });
+      this.logger.warn("rejected replayed auth nonce");
       this.send(
         createMessage(
           "auth.failed",
@@ -97,14 +95,12 @@ export class AgentAppSecurityGateway {
       return;
     }
 
-    const valid =
-      message.payload.key_id === keyRecord.key_id &&
-      verifyProof(
-        keyRecord.key,
-        message.payload.nonce,
-        message.payload.app_info,
-        message.payload.proof,
-      );
+    const valid = verifyProof(
+      keyRecord.key,
+      message.payload.nonce,
+      message.payload.app_info,
+      message.payload.proof,
+    );
 
     if (valid) {
       this.authReplayCache.remember(authNonceKey);
@@ -113,7 +109,6 @@ export class AgentAppSecurityGateway {
         const result =
           this.appConnections.acceptAuthenticatedConnectionDetailed({
             relayConnectionId: message.payload.connection_id,
-            keyId: keyRecord.key_id,
             appInfo: message.payload.app_info,
             observations: message.payload.observations,
           });
@@ -198,7 +193,6 @@ export class AgentAppSecurityGateway {
         {
           pairingKey: keyRecord.key,
           deviceId: this.config.deviceId,
-          keyId: keyRecord.key_id,
           agentInstanceId: keyRecord.agent_instance_id,
           appConnectionId: message.payload.app_connection_id,
           handshakeId: message.payload.handshake_id,

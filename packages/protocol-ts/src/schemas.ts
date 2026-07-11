@@ -121,7 +121,6 @@ export type MessageEnvelopeShape = z.infer<typeof messageEnvelopeSchema>;
 
 export const authChallengePayloadSchema = z.object({
   nonce: z.string().min(1),
-  key_id: z.string().min(1),
   expires_at: isoDateTime,
 });
 
@@ -153,7 +152,6 @@ export const appInfoPayloadSchema = z
   .strict();
 
 export const authProofPayloadSchema = z.object({
-  key_id: z.string().min(1),
   nonce: z.string().min(1),
   app_info: appInfoPayloadSchema,
   proof: z.string().min(1),
@@ -298,7 +296,6 @@ export const agentHelloPayloadSchema = z
     v: z.literal(PROTOCOL_VERSION),
     device_id: z.string().min(1),
     agent_instance_id: z.string().min(1),
-    key_id: z.string().min(1),
     relay_auth: relayAgentAuthPayloadSchema.optional(),
     protocol: protocolSupportSchema,
     e2e: e2eSupportSchema,
@@ -318,7 +315,6 @@ export const mobileConnectPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     device_id: z.string().min(1),
-    key_id: z.string().min(1),
     app_info: appInfoPayloadSchema,
     protocol: protocolSupportSchema,
     e2e: e2eSupportSchema,
@@ -366,7 +362,6 @@ export const e2eHandshakeInitPayloadSchema = z
     e2e_version: z.literal(E2E_PROTOCOL_VERSION),
     app_connection_id: z.string().min(1),
     handshake_id: z.string().min(1),
-    key_id: z.string().min(1),
     suite: z.literal(NOISE_SUITE_NNPSK0_V1),
     app_protocol: protocolVersionsSchema,
     message: z.string().min(1),
@@ -379,7 +374,6 @@ export const e2eHandshakeReplyPayloadSchema = z
     e2e_version: z.literal(E2E_PROTOCOL_VERSION),
     app_connection_id: z.string().min(1),
     handshake_id: z.string().min(1),
-    key_id: z.string().min(1),
     suite: z.literal(NOISE_SUITE_NNPSK0_V1),
     agent_protocol: protocolVersionsSchema,
     message: z.string().min(1),

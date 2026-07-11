@@ -13,7 +13,6 @@ import { join } from "node:path";
 import {
   createAgentInstanceId,
   createAndPersistSessionKey,
-  createKeyId,
   createProof,
   generateSessionKey,
   verifyProof,
@@ -36,9 +35,6 @@ import {
 const key = generateSessionKey();
 assert.equal(key.length, 32);
 assert.match(key, /^[A-Za-z0-9_-]{32}$/);
-
-const keyId = createKeyId(key);
-assert.match(keyId, /^sha256:[0-9a-f]{12}$/);
 
 const nonce = "nonce_for_test_123456";
 const appInfo = {
@@ -74,7 +70,7 @@ const record = await createAndPersistSessionKey({
 });
 
 const raw = await readFile(path, "utf8");
-assert.equal(JSON.parse(raw).key_id, record.key_id);
+assert.equal(JSON.parse(raw).key, record.key);
 assert.equal((await stat(join(dir, "nested"))).mode & 0o777, 0o700);
 assert.equal((await stat(path)).mode & 0o777, 0o600);
 

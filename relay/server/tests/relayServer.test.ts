@@ -448,7 +448,6 @@ type TestRelayConnection = {
   transportPath: "relay" | "p2p" | "mixed" | "unknown";
   deviceId?: string;
   agentInstanceId?: string;
-  keyId?: string;
   businessSecurityMode?: "e2e_required" | "plaintext_allowed";
   e2e?: typeof E2E_SUPPORT_V1;
   appInfo?: {
@@ -898,7 +897,6 @@ function createAgentConnection(
     socket: createFakeSocket(),
     deviceId,
     agentInstanceId: `${id}_instance`,
-    keyId: "key_1",
     businessSecurityMode: "e2e_required",
     e2e: E2E_SUPPORT_V1,
     authenticated: true,
@@ -963,7 +961,6 @@ function createServer(): RelayServer {
     state: "registered_agent",
     socket: agentSocket,
     deviceId,
-    keyId: "key_1",
     businessSecurityMode: "e2e_required",
     e2e: E2E_SUPPORT_V1,
     authenticated: true,

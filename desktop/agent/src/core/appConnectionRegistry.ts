@@ -27,7 +27,6 @@ export interface AppConnectionRegistryOptions {
 
 export interface AuthenticatedConnectionOptions {
   relayConnectionId: string;
-  keyId: string;
   appInfo: AppInfoPayload;
   observations?: AppConnectionObservation[];
   now?: number;
@@ -54,7 +53,6 @@ export interface AgentObservedAppConnection {
   security: {
     encrypted: boolean;
     mode: SecurityMode;
-    key_id?: string;
     e2e_ready: boolean;
     handshake_at?: number;
     last_verified_at?: number;
@@ -187,7 +185,6 @@ export class AppConnectionRegistry {
       this.createBaseConnection({
         appInfo: options.appInfo,
         relayConnectionId: options.relayConnectionId,
-        keyId: options.keyId,
         now,
       });
 
@@ -210,7 +207,6 @@ export class AppConnectionRegistry {
     ]);
     connection.security.encrypted = false;
     connection.security.mode = "plaintext";
-    connection.security.key_id = options.keyId;
     connection.security.e2e_ready = false;
     connection.security.handshake_at = undefined;
     connection.security.last_verified_at = now;
@@ -613,7 +609,6 @@ export class AppConnectionRegistry {
   private createBaseConnection(options: {
     appInfo: AppInfoPayload;
     relayConnectionId: string;
-    keyId: string;
     now: number;
   }): AgentObservedAppConnection {
     return {
@@ -632,7 +627,6 @@ export class AppConnectionRegistry {
       security: {
         encrypted: false,
         mode: "plaintext",
-        key_id: options.keyId,
         e2e_ready: false,
         last_verified_at: options.now,
       },

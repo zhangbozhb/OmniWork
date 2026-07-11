@@ -37,7 +37,6 @@ export interface RelayAgentConnectionState {
   connection_id: string;
   device_id: string;
   agent_instance_id?: string;
-  key_id?: string;
   remote_ip: string;
   location?: RelayConnectionLocation;
   connected_at: number;
@@ -280,7 +279,6 @@ export class RelayStateStore {
       connection_id: connection.id,
       device_id: connection.deviceId,
       agent_instance_id: connection.agentInstanceId,
-      key_id: connection.keyId,
       remote_ip: connection.remoteIp,
       location: connection.location,
       connected_at: connection.connectedAt,

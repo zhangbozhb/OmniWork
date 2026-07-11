@@ -43,7 +43,6 @@ export class E2ENoiseError extends Error {
 export interface NoiseContext {
   pairingKey: string;
   deviceId: string;
-  keyId: string;
   agentInstanceId: string;
   appConnectionId: string;
   handshakeId?: string;
@@ -54,7 +53,6 @@ export interface HandshakeInit {
   e2e_version: typeof E2E_PROTOCOL_VERSION;
   app_connection_id: string;
   handshake_id: string;
-  key_id: string;
   suite: typeof NOISE_SUITE_NNPSK0_V1;
   app_protocol: {
     outer_v: typeof PROTOCOL_VERSION;
@@ -69,7 +67,6 @@ export interface HandshakeReply {
   e2e_version: typeof E2E_PROTOCOL_VERSION;
   app_connection_id: string;
   handshake_id: string;
-  key_id: string;
   suite: typeof NOISE_SUITE_NNPSK0_V1;
   agent_protocol: {
     outer_v: typeof PROTOCOL_VERSION;
@@ -125,7 +122,6 @@ export function createInitiatorHandshake(
     e2e_version: E2E_PROTOCOL_VERSION,
     app_connection_id: context.appConnectionId,
     handshake_id: handshakeId,
-    key_id: context.keyId,
     suite: NOISE_SUITE_NNPSK0_V1,
     app_protocol: {
       outer_v: PROTOCOL_VERSION,
@@ -142,7 +138,6 @@ export function createInitiatorHandshake(
       if (
         reply.handshake_id !== handshakeId ||
         reply.app_connection_id !== context.appConnectionId ||
-        reply.key_id !== context.keyId ||
         reply.e2e_version !== E2E_PROTOCOL_VERSION
       ) {
         throw new E2ENoiseError(
@@ -176,7 +171,6 @@ export function acceptInitiatorHandshake(
 ): ResponderHandshakeResult {
   assertSuite(init.suite);
   if (
-    init.key_id !== context.keyId ||
     init.app_connection_id !== context.appConnectionId ||
     init.e2e_version !== E2E_PROTOCOL_VERSION
   ) {
@@ -205,7 +199,6 @@ export function acceptInitiatorHandshake(
     e2e_version: E2E_PROTOCOL_VERSION,
     app_connection_id: context.appConnectionId,
     handshake_id: init.handshake_id,
-    key_id: context.keyId,
     suite: NOISE_SUITE_NNPSK0_V1,
     agent_protocol: {
       outer_v: PROTOCOL_VERSION,
@@ -368,13 +361,16 @@ export class E2ENoiseSession {
 export function deriveNoisePsk(context: {
   pairingKey: string;
   deviceId: string;
-  keyId: string;
+  agentInstanceId: string;
+  appConnectionId: string;
 }): Uint8Array {
   return hkdf(
     sha256,
     encode(context.pairingKey),
     encode(PSK_SALT),
-    encode(`${PSK_INFO_PREFIX}|${context.deviceId}|${context.keyId}`),
+    encode(
+      `${PSK_INFO_PREFIX}|${context.deviceId}|${context.agentInstanceId}|${context.appConnectionId}`,
+    ),
     32,
   );
 }
@@ -401,7 +397,6 @@ function prologue(context: NoiseContext): string {
     `inner=${INNER_PROTOCOL_VERSION}`,
     `e2e=${E2E_PROTOCOL_VERSION}`,
     `device=${context.deviceId}`,
-    `key=${context.keyId}`,
     `agent=${context.agentInstanceId}`,
     `app=${context.appConnectionId}`,
     `suite=${NOISE_SUITE_NNPSK0_V1}`,

@@ -62,7 +62,6 @@ mode: 0600
 {
   "version": 1,
   "key": "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
-  "key_id": "sha256:8f2b7d62d9b0",
   "created_at": "<ISO_TIMESTAMP>",
   "agent_instance_id": "agent_20260512000001_a1b2c3d4",
   "relay_url": "wss://relay.company.example/relay/ws/agent"
@@ -72,7 +71,6 @@ mode: 0600
 说明：
 
 - `key` 是本次 Agent 启动生成的临时共享 key。
-- `key_id` 是 key 的短 hash 标识（取 `sha256(key)` 前 12 位 hex），只用于日志和排查，不可作为认证凭证。
 - `agent_instance_id` 随 Agent 启动生成，格式 `agent_<YYYYMMDDhhmmss>_<8 位 hex>`（实现见 [authKey.ts](../desktop/agent/src/auth-key/authKey.ts)），用于区分同一台 电脑 的不同运行实例。
 - 文件只保存在本机，不提交仓库，不同步到云盘。
 
@@ -120,8 +118,8 @@ sequenceDiagram
   participant R as Relay
   participant M as 桌面端 Agent
 
-  M->>R: agent.hello(device_id, agent_instance_id, key_id)
-  A->>R: mobile.connect(device_id, key_id)
+  M->>R: agent.hello(device_id, agent_instance_id)
+  A->>R: mobile.connect(device_id)
   R->>A: auth.challenge(nonce)
   A->>R: auth.proof(HMAC_SHA256(key, nonce))
   R->>M: auth.verify(nonce, proof)
@@ -156,7 +154,6 @@ mobile.connect
 
 ```json
 {
-  "key_id": "sha256:8f2b7d62d9b0",
   "nonce": "nonce_0123456789ab",
   "proof": "base64url(hmac_sha256(key, nonce))",
   "connection_id": "conn_..."
@@ -184,7 +181,7 @@ malformed_proof
 - Relay 对失败次数限流（仅对失败的 `auth.proof` 计数：relay 端 `malformed_proof` / agent 端返回 `auth.failed` 两个真实失败分支才 consume token；合法 `auth.proof` → `auth.ok` 不消耗桶，避免频繁重连或切换 `transport_preference` 被误封禁）。
 - App 认证失败后不无限重试。
 - 日志中永远不打印完整 key。
-- 审计中只记录 `key_id`，不记录 `key`。
+- 审计中只记录 `device_id` / `agent_instance_id` / `app_connection_id` 等非密钥上下文，不记录 `key`。
 
 不做：
 
