@@ -3,7 +3,6 @@ import type { RelayAdminSession } from "../adminAuth.ts";
 export interface RelayAuthSubject {
   userId?: string;
   deviceId?: string;
-  agentInstanceId?: string;
   adminSession?: RelayAdminSession;
 }
 
@@ -42,7 +41,6 @@ export type RelayAuthDecision =
         endpoint?: "agent" | "mobile";
         remoteIp?: string;
         deviceId?: string;
-        agentInstanceId?: string;
         userId?: string;
       };
     };

@@ -33,7 +33,6 @@ export interface RelayConnectionBase {
   socket: RelaySocket;
   userId?: string;
   deviceId?: string;
-  agentInstanceId?: string;
   appInfo?: RelayAppInfo;
   businessSecurityMode?: BusinessSecurityMode;
   e2e?: E2ESupport;
@@ -80,7 +79,6 @@ export interface RegisteredAgentRelayConnection extends RelayConnectionBase {
   role: "agent";
   state: "registered_agent" | "closed";
   deviceId: string;
-  agentInstanceId: string;
   businessSecurityMode: BusinessSecurityMode;
   e2e: E2ESupport;
   authenticated: true;

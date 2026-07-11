@@ -84,7 +84,7 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
 {
   const guard = createAgentHelloGuard({
     authMode: "none",
-    activeDisabledAgentInstance: () => ({ reason: "test" }),
+    activeDisabledAgentDevice: () => ({ reason: "test" }),
   });
 
   const decision = guard.authorize({
@@ -203,7 +203,6 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
     subject: {
       userId: "user-1",
       deviceId: "device-1",
-      agentInstanceId: "agent-1",
     },
   });
   assert.equal(seenDeviceId, "device-1");
@@ -315,7 +314,7 @@ function createRelayWsGuard(activeIpBan: (ip: string) => unknown) {
 
 function createAgentHelloGuard(options: {
   authMode: "none" | "email_link";
-  activeDisabledAgentInstance?: (agentInstanceId: string) => unknown;
+    activeDisabledAgentDevice?: (deviceId: string) => unknown;
   getDevice?: (deviceId: string) => RelayAuthDevice | null;
   rememberNonce?: (deviceId: string, nonce: string, ttlMs: number) => boolean;
   markDeviceSeen?: (deviceId: string) => void;
@@ -324,8 +323,8 @@ function createAgentHelloGuard(options: {
     policies: {
       agentHello: [
         new AgentControlPolicy({
-          activeDisabledAgentInstance:
-            options.activeDisabledAgentInstance ?? (() => null),
+            activeDisabledAgentDevice:
+              options.activeDisabledAgentDevice ?? (() => null),
         }),
         new AgentEmailLinkPolicy({
           config: createConfig(options.authMode),
@@ -362,7 +361,6 @@ function createAgentHello(
   return {
     v: 1,
     device_id: "device-1",
-    agent_instance_id: "agent-1",
     protocol: PROTOCOL_SUPPORT_V1,
     e2e: E2E_SUPPORT_V1,
     hostname: "host",
@@ -406,7 +404,6 @@ function createSignedAgentHello(): {
         null,
         relayDeviceSignaturePayload({
           deviceId: "device-1",
-          agentInstanceId: "agent-1",
           timestamp,
           nonce,
         }),

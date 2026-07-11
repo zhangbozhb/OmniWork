@@ -15,7 +15,6 @@ const nonce = "nonce-12345678901234567890";
 const hello: AgentHelloPayload = {
   v: 1,
   device_id: "device-1",
-  agent_instance_id: "agent-1",
   relay_auth: {
     method: "device_signature",
     timestamp,
@@ -24,7 +23,6 @@ const hello: AgentHelloPayload = {
       null,
       relayDeviceSignaturePayload({
         deviceId: "device-1",
-        agentInstanceId: "agent-1",
         timestamp,
         nonce,
       }),

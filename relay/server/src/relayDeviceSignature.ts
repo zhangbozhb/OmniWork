@@ -4,14 +4,10 @@ import type { AgentHelloPayload } from "@omniwork/protocol-ts";
 
 export function relayDeviceSignaturePayload(input: {
   deviceId: string;
-  agentInstanceId: string;
   timestamp: number;
   nonce: string;
 }): Buffer {
-  return Buffer.from(
-    `${input.deviceId}|${input.agentInstanceId}|${input.timestamp}|${input.nonce}`,
-    "utf8",
-  );
+  return Buffer.from(`${input.deviceId}|${input.timestamp}|${input.nonce}`, "utf8");
 }
 
 export function verifyRelayDeviceSignature(input: {
@@ -34,7 +30,6 @@ export function verifyRelayDeviceSignature(input: {
       null,
       relayDeviceSignaturePayload({
         deviceId: input.hello.device_id,
-        agentInstanceId: input.hello.agent_instance_id,
         timestamp: auth.timestamp,
         nonce: auth.nonce,
       }),

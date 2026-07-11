@@ -833,11 +833,7 @@
         const agent = statusSnapshot.agent;
         const runtime = statusSnapshot.runtime;
         document.getElementById("agent-line").textContent =
-          agent.device_id +
-          " · " +
-          agent.hostname +
-          " · " +
-          agent.agent_instance_id;
+            agent.device_id + " · " + agent.hostname;
         document.getElementById("status-pills").innerHTML = [
           statusPill(
             "Relay " + relayStatusLabel(runtime),

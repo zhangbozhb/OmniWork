@@ -11,7 +11,7 @@ export interface RelayPersistedDeviceStatusRecord {
   first_seen_at: number;
   last_seen_at: number;
   offline_at?: number;
-  last_agent_instance_id?: string;
+  last_agent_connection_id?: string;
   last_agent_remote_ip?: string;
   last_app_remote_ip?: string;
   last_close_role?: RelayPersistedCloseRole;
@@ -28,7 +28,7 @@ export interface RelayDeviceStatusUpsert {
   status: RelayPersistedDeviceStatus;
   seenAt: number;
   offlineAt?: number;
-  lastAgentInstanceId?: string;
+  lastAgentConnectionId?: string;
   lastAgentRemoteIp?: string;
   lastAppRemoteIp?: string;
   lastCloseRole?: RelayPersistedCloseRole;
@@ -48,7 +48,7 @@ interface RelayDeviceStatusRow {
   first_seen_at: number;
   last_seen_at: number;
   offline_at: number | null;
-  last_agent_instance_id: string | null;
+  last_agent_connection_id: string | null;
   last_agent_remote_ip: string | null;
   last_app_remote_ip: string | null;
   last_close_role: RelayPersistedCloseRole | null;
@@ -78,7 +78,7 @@ export class RelayDeviceStatusStore {
           first_seen_at,
           last_seen_at,
           offline_at,
-          last_agent_instance_id,
+          last_agent_connection_id,
           last_agent_remote_ip,
           last_app_remote_ip,
           last_close_role,
@@ -90,7 +90,7 @@ export class RelayDeviceStatusStore {
           status = excluded.status,
           last_seen_at = excluded.last_seen_at,
           offline_at = excluded.offline_at,
-          last_agent_instance_id = COALESCE(excluded.last_agent_instance_id, relay_device_status.last_agent_instance_id),
+          last_agent_connection_id = COALESCE(excluded.last_agent_connection_id, relay_device_status.last_agent_connection_id),
           last_agent_remote_ip = COALESCE(excluded.last_agent_remote_ip, relay_device_status.last_agent_remote_ip),
           last_app_remote_ip = COALESCE(excluded.last_app_remote_ip, relay_device_status.last_app_remote_ip),
           last_close_role = COALESCE(excluded.last_close_role, relay_device_status.last_close_role),
@@ -103,7 +103,7 @@ export class RelayDeviceStatusStore {
       input.seenAt,
       input.seenAt,
       input.offlineAt ?? null,
-      input.lastAgentInstanceId ?? null,
+      input.lastAgentConnectionId ?? null,
       input.lastAgentRemoteIp ?? null,
       input.lastAppRemoteIp ?? null,
       input.lastCloseRole ?? null,
@@ -147,7 +147,7 @@ export class RelayDeviceStatusStore {
             first_seen_at,
             last_seen_at,
             offline_at,
-            last_agent_instance_id,
+            last_agent_connection_id,
             last_agent_remote_ip,
             last_app_remote_ip,
             last_close_role,
@@ -217,7 +217,7 @@ export class RelayDeviceStatusStore {
         first_seen_at INTEGER NOT NULL,
         last_seen_at INTEGER NOT NULL,
         offline_at INTEGER,
-        last_agent_instance_id TEXT,
+        last_agent_connection_id TEXT,
         last_agent_remote_ip TEXT,
         last_app_remote_ip TEXT,
         last_close_role TEXT,
@@ -241,7 +241,7 @@ function rowToRecord(row: RelayDeviceStatusRow): RelayPersistedDeviceStatusRecor
     first_seen_at: row.first_seen_at,
     last_seen_at: row.last_seen_at,
     offline_at: row.offline_at ?? undefined,
-    last_agent_instance_id: row.last_agent_instance_id ?? undefined,
+    last_agent_connection_id: row.last_agent_connection_id ?? undefined,
     last_agent_remote_ip: row.last_agent_remote_ip ?? undefined,
     last_app_remote_ip: row.last_app_remote_ip ?? undefined,
     last_close_role: row.last_close_role ?? undefined,

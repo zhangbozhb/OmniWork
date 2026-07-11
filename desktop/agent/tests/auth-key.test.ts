@@ -11,7 +11,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  createAgentInstanceId,
   createAndPersistSessionKey,
   createProof,
   generateSessionKey,
@@ -64,7 +63,6 @@ function loadIsolatedAgentConfig(
 const path = join(dir, "nested", "session-key.json");
 const record = await createAndPersistSessionKey({
   path,
-  agentInstanceId: createAgentInstanceId(new Date("2026-05-12T00:00:00Z")),
   relayUrl: "wss://relay.example/relay/ws/agent",
   now: new Date("2026-05-12T00:00:00Z"),
 });

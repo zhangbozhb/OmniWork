@@ -48,7 +48,6 @@ export class AgentEmailLinkPolicy
     const audit = {
       surface: context.surface,
       deviceId: hello.device_id,
-      agentInstanceId: hello.agent_instance_id,
     } as const;
 
     const device = this.options.getDevice(hello.device_id);
@@ -85,7 +84,6 @@ export class AgentEmailLinkPolicy
       subject: {
         userId: device.user_id,
         deviceId: device.id,
-        agentInstanceId: hello.agent_instance_id,
       },
     };
   }

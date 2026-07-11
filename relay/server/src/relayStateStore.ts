@@ -36,7 +36,6 @@ export type RelayLinkStateName =
 export interface RelayAgentConnectionState {
   connection_id: string;
   device_id: string;
-  agent_instance_id?: string;
   remote_ip: string;
   location?: RelayConnectionLocation;
   connected_at: number;
@@ -160,7 +159,7 @@ export interface RelayDeviceSnapshot {
   status: "online" | "degraded" | "offline";
   counters: RelayTrafficCounters;
   source: "active" | "persisted";
-  last_agent_instance_id?: string;
+  last_agent_connection_id?: string;
   last_agent_remote_ip?: string;
   last_app_remote_ip?: string;
   last_close_role?: string;
@@ -237,7 +236,7 @@ export class RelayStateStore {
       device?.agents.delete(connection.id);
       this.refreshDeviceStatus(agent.device_id, now, {
         lastCloseRole: "agent",
-        lastAgentInstanceId: agent.agent_instance_id,
+        lastAgentConnectionId: agent.connection_id,
         lastAgentRemoteIp: agent.remote_ip,
       });
     }
@@ -272,13 +271,12 @@ export class RelayStateStore {
       deviceId: connection.deviceId,
       status: "online",
       seenAt: connection.lastSeenAt,
-      lastAgentInstanceId: connection.agentInstanceId,
+      lastAgentConnectionId: connection.id,
       lastAgentRemoteIp: connection.remoteIp,
     });
     this.agents.set(connection.id, {
       connection_id: connection.id,
       device_id: connection.deviceId,
-      agent_instance_id: connection.agentInstanceId,
       remote_ip: connection.remoteIp,
       location: connection.location,
       connected_at: connection.connectedAt,
@@ -550,7 +548,6 @@ export class RelayStateStore {
       return {
         connection_id: connectionId,
         device_id: undefined,
-        agent_instance_id: undefined,
         apps: [],
         summary: { app_count: 0 },
       };
@@ -559,7 +556,6 @@ export class RelayStateStore {
     return {
       connection_id: connectionId,
       device_id: agent.device_id,
-      agent_instance_id: agent.agent_instance_id,
       apps,
       summary: { app_count: apps.length },
     };
@@ -798,7 +794,7 @@ export class RelayStateStore {
     now: number,
     closed: {
       lastCloseRole?: "agent" | "mobile";
-      lastAgentInstanceId?: string;
+      lastAgentConnectionId?: string;
       lastAgentRemoteIp?: string;
       lastAppRemoteIp?: string;
     } = {},
@@ -823,7 +819,7 @@ export class RelayStateStore {
       seenAt: now,
       offlineAt: device.status === "offline" ? now : undefined,
       lastCloseRole: closed.lastCloseRole,
-      lastAgentInstanceId: closed.lastAgentInstanceId,
+      lastAgentConnectionId: closed.lastAgentConnectionId,
       lastAgentRemoteIp: closed.lastAgentRemoteIp,
       lastAppRemoteIp: closed.lastAppRemoteIp,
     });
@@ -1136,7 +1132,7 @@ function persistedDeviceToSnapshot(
       messages_out_by_type: {},
     },
     source: "persisted",
-    last_agent_instance_id: device.last_agent_instance_id,
+    last_agent_connection_id: device.last_agent_connection_id,
     last_agent_remote_ip: device.last_agent_remote_ip,
     last_app_remote_ip: device.last_app_remote_ip,
     last_close_role: device.last_close_role,

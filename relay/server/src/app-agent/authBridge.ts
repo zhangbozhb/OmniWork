@@ -146,6 +146,7 @@ export class AppAuthBridge {
     if (message.type === "auth.ok") {
       const okPayload = message.payload as AuthOkPayload;
       const agentMode = connection.businessSecurityMode ?? "e2e_required";
+      okPayload.agent_connection_id = connection.id;
       okPayload.business_security_mode ??= agentMode;
       okPayload.e2e ??= connection.e2e;
       mobile.authenticated = true;

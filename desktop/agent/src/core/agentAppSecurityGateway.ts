@@ -44,6 +44,7 @@ interface AgentAppSecurityGatewayOptions {
   appConnections: AppConnectionRegistry;
   getTransport(): AgentSessionTransport | null;
   getKeyRecord(): SessionKeyRecord;
+  getAgentConnectionId(): string | null;
   dispatchMessage(
     message: MessageEnvelope,
     context?: AgentDispatchContext,
@@ -57,6 +58,7 @@ export class AgentAppSecurityGateway {
   private readonly appConnections: AppConnectionRegistry;
   private readonly getTransport: () => AgentSessionTransport | null;
   private readonly getKeyRecord: () => SessionKeyRecord;
+  private readonly getAgentConnectionId: () => string | null;
   private readonly dispatchMessage: (
     message: MessageEnvelope,
     context?: AgentDispatchContext,
@@ -72,6 +74,7 @@ export class AgentAppSecurityGateway {
     this.appConnections = options.appConnections;
     this.getTransport = options.getTransport;
     this.getKeyRecord = options.getKeyRecord;
+    this.getAgentConnectionId = options.getAgentConnectionId;
     this.dispatchMessage = options.dispatchMessage;
     this.onSupersededConnection = options.onSupersededConnection;
   }
@@ -120,7 +123,6 @@ export class AgentAppSecurityGateway {
         createMessage(
           "auth.ok",
           {
-            agent_instance_id: keyRecord.agent_instance_id,
             connection_id: message.payload.connection_id,
             business_security_mode: this.config.businessSecurityMode,
             e2e: this.e2eSupport(),
@@ -188,12 +190,23 @@ export class AgentAppSecurityGateway {
       return;
     }
     const keyRecord = this.getKeyRecord();
+    const agentConnectionId = this.getAgentConnectionId();
+    if (
+      !agentConnectionId ||
+      message.payload.agent_connection_id !== agentConnectionId
+    ) {
+      this.logger.warn("rejected e2e handshake for unknown agent connection", {
+        expected_agent_connection_id: agentConnectionId,
+        received_agent_connection_id: message.payload.agent_connection_id,
+      });
+      return;
+    }
     try {
       const result = acceptInitiatorHandshake(
         {
           pairingKey: keyRecord.key,
           deviceId: this.config.deviceId,
-          agentInstanceId: keyRecord.agent_instance_id,
+          agentConnectionId,
           appConnectionId: message.payload.app_connection_id,
           handshakeId: message.payload.handshake_id,
         },

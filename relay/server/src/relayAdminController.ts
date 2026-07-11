@@ -42,7 +42,7 @@ export class RelayAdminController {
   private readonly connections: Map<string, RelayConnection>;
   private readonly state: RelayStateStore;
   private readonly mobilesByDevice: Map<string, Set<RelayConnection>>;
-  private readonly disabledAgentInstances = new Map<string, ControlRule>();
+  private readonly disabledAgentDevices = new Map<string, ControlRule>();
   private readonly ipBans = new Map<string, ControlRule>();
   private readonly auth: RelayAdminAuth;
   private readonly authGuard: RelayAuthGuard;
@@ -133,13 +133,11 @@ export class RelayAdminController {
     return this.activeRule(this.ipBans, ip);
   }
 
-  activeDisabledAgentInstance(
-    agentInstanceId: string | undefined,
-  ): ControlRule | null {
-    if (!agentInstanceId) {
+  activeDisabledAgentDevice(deviceId: string | undefined): ControlRule | null {
+    if (!deviceId) {
       return null;
     }
-    return this.activeRule(this.disabledAgentInstances, agentInstanceId);
+    return this.activeRule(this.disabledAgentDevices, deviceId);
   }
 
   private handleWeb(request: IncomingMessage, response: ServerResponse): void {
@@ -328,37 +326,43 @@ export class RelayAdminController {
       return;
     }
 
-    if (method === "POST" && url.pathname === "/api/controls/agents/agent-op") {
+    if (
+      method === "POST" &&
+      url.pathname === "/api/controls/agent-devices/device-op"
+    ) {
       const body = await readJsonBody(request);
       const action = readAgentControlAction(body);
-      const agentInstanceIds = readAgentInstanceIds(body);
+      const deviceIds = readAgentDeviceIds(body);
       if (action === "delete") {
-        for (const agentInstanceId of agentInstanceIds) {
-          this.disabledAgentInstances.delete(agentInstanceId);
-          this.controlStore.delete("agent_instance_disable", agentInstanceId);
+        for (const deviceId of deviceIds) {
+          this.disabledAgentDevices.delete(deviceId);
+          this.controlStore.delete("agent_device_disable", deviceId);
         }
         this.writeJson(response, 200, {
           ok: true,
           action,
-          agent_instance_ids: agentInstanceIds,
+          agent_device_ids: deviceIds,
         });
         return;
       }
 
-      const rules = agentInstanceIds.map((agentInstanceId) => {
-        const rule = this.disableAgentInstance(
-          agentInstanceId,
-          controlRuleFromBody(body, this.config.admin.agentDisableDefaultMs),
+      const rules = deviceIds.map((deviceId) => {
+        const rule = this.disableAgentDevice(
+          deviceId,
+          controlRuleFromBody(
+            body,
+            this.config.admin.agentDeviceDisableDefaultMs,
+          ),
         );
         return {
-          agent_instance_id: agentInstanceId,
+          agent_device_id: deviceId,
           rule: serializeRule(rule),
         };
       });
       this.writeJson(response, 200, {
         ok: true,
         action,
-        agent_instance_ids: agentInstanceIds,
+        agent_device_ids: deviceIds,
         rules,
       });
       return;
@@ -408,7 +412,7 @@ export class RelayAdminController {
         active_link_count: runtime.totals.link_count,
         open_connection_count: runtime.totals.connection_count,
         app_count: runtime.totals.app_connection_count,
-        disabled_agent_count: this.activeDisabledAgentInstances().length,
+        disabled_agent_device_count: this.activeDisabledAgentDevices().length,
         ip_ban_count: this.activeIpBans().length,
       },
       traffic: runtime.traffic,
@@ -429,10 +433,11 @@ export class RelayAdminController {
   private controlsSnapshot() {
     this.pruneExpiredRules();
     return {
-      agent_instance_disables: this.activeDisabledAgentInstances(),
+      agent_device_disables: this.activeDisabledAgentDevices(),
       ip_bans: this.activeIpBans(),
       defaults: {
-        agent_disable_default_ms: this.config.admin.agentDisableDefaultMs,
+        agent_device_disable_default_ms:
+          this.config.admin.agentDeviceDisableDefaultMs,
         ip_ban_default_ms: this.config.admin.ipBanDefaultMs,
         session_auth_required: true,
         https_required: this.config.admin.requireHttps,
@@ -460,16 +465,12 @@ export class RelayAdminController {
     });
   }
 
-  private disableAgentInstance(
-    agentInstanceId: string,
-    rule: ControlRule,
-  ): ControlRule {
-    this.disabledAgentInstances.set(agentInstanceId, rule);
-    this.persistPermanentRule("agent_instance_disable", agentInstanceId, rule);
+  private disableAgentDevice(deviceId: string, rule: ControlRule): ControlRule {
+    this.disabledAgentDevices.set(deviceId, rule);
+    this.persistPermanentRule("agent_device_disable", deviceId, rule);
     const agents = [...this.connections.values()].filter(
       (connection) =>
-        connection.role === "agent" &&
-        connection.agentInstanceId === agentInstanceId,
+        connection.role === "agent" && connection.deviceId === deviceId,
     );
     for (const agent of agents) {
       agent.socket.close(
@@ -477,9 +478,7 @@ export class RelayAdminController {
         RELAY_AGENT_DISABLED_CLOSE_REASON,
       );
       this.unregister(agent);
-      const mobiles = [
-        ...(this.mobilesByDevice.get(agent.deviceId ?? "") ?? new Set()),
-      ];
+      const mobiles = [...(this.mobilesByDevice.get(deviceId) ?? new Set())];
       for (const mobile of mobiles) {
         mobile.socket.close(4403, "agent_disabled");
         this.unregister(mobile);
@@ -526,14 +525,12 @@ export class RelayAdminController {
     return rule;
   }
 
-  private activeDisabledAgentInstances() {
+  private activeDisabledAgentDevices() {
     this.pruneExpiredRules();
-    return [...this.disabledAgentInstances.entries()].map(
-      ([agentInstanceId, rule]) => ({
-        agent_instance_id: agentInstanceId,
-        rule: serializeRule(rule),
-      }),
-    );
+    return [...this.disabledAgentDevices.entries()].map(([deviceId, rule]) => ({
+      agent_device_id: deviceId,
+      rule: serializeRule(rule),
+    }));
   }
 
   private activeIpBans() {
@@ -546,9 +543,9 @@ export class RelayAdminController {
 
   private pruneExpiredRules(): void {
     const now = Date.now();
-    for (const [key, rule] of this.disabledAgentInstances) {
+    for (const [key, rule] of this.disabledAgentDevices) {
       if (rule.expiresAt && rule.expiresAt <= now) {
-        this.disabledAgentInstances.delete(key);
+        this.disabledAgentDevices.delete(key);
       }
     }
     for (const [key, rule] of this.ipBans) {
@@ -563,16 +560,16 @@ export class RelayAdminController {
       if (record.rule.expiresAt) {
         continue;
       }
-      if (record.kind === "agent_instance_disable") {
-        this.disabledAgentInstances.set(record.target, record.rule);
-      } else {
+      if (record.kind === "agent_device_disable") {
+        this.disabledAgentDevices.set(record.target, record.rule);
+      } else if (record.kind === "ip_ban") {
         this.ipBans.set(record.target, record.rule);
       }
     }
   }
 
   private persistPermanentRule(
-    kind: "agent_instance_disable" | "ip_ban",
+    kind: "agent_device_disable" | "ip_ban",
     target: string,
     rule: ControlRule,
   ): void {
@@ -683,24 +680,26 @@ function readAgentControlAction(body: unknown): "disable" | "delete" {
   return action;
 }
 
-function readAgentInstanceIds(body: unknown): string[] {
+function readAgentDeviceIds(body: unknown): string[] {
   if (!isRecord(body)) {
-    throw new Error("Missing agent_instance_ids.");
+    throw new Error("Missing agent_device_ids.");
   }
-  const rawIds = body.agent_instance_ids;
+  const rawIds = body.agent_device_ids;
   const ids = Array.isArray(rawIds)
     ? rawIds
         .filter((value): value is string => typeof value === "string")
         .map((value) => value.trim())
         .filter(Boolean)
     : [];
-  const singleId = readOptionalString(body, "agent_instance_id");
+  const singleId =
+    readOptionalString(body, "agent_device_id") ??
+    readOptionalString(body, "device_id");
   if (singleId) {
     ids.push(singleId);
   }
   const uniqueIds = [...new Set(ids)];
   if (uniqueIds.length === 0) {
-    throw new Error("Missing agent_instance_ids.");
+    throw new Error("Missing agent_device_ids.");
   }
   return uniqueIds;
 }

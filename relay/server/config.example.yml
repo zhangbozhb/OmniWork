@@ -60,7 +60,7 @@ admin:
 
   # Defaults to <paths.runtimeDir>/admin-controls.sqlite.
   # controlsDbPath: .omniwork-relay/admin-controls.sqlite
-  agentDisableDefaultMs: 86400000
+  agentDeviceDisableDefaultMs: 86400000
   ipBanDefaultMs: 86400000
 
 state:

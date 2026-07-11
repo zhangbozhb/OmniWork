@@ -8,12 +8,10 @@ import type { RelayAuthDecision } from "../decision.ts";
 import type { RelayAuthPolicy } from "../policy.ts";
 
 export interface AgentControlPolicyOptions {
-  activeDisabledAgentInstance(agentInstanceId: string): unknown;
+  activeDisabledAgentDevice(deviceId: string): unknown;
 }
 
-export class AgentControlPolicy
-  implements RelayAuthPolicy<AgentHelloAuthContext>
-{
+export class AgentControlPolicy implements RelayAuthPolicy<AgentHelloAuthContext> {
   readonly name = "agent_control";
   private readonly options: AgentControlPolicyOptions;
 
@@ -23,7 +21,7 @@ export class AgentControlPolicy
 
   authorize(context: AgentHelloAuthContext): RelayAuthDecision | null {
     const hello = context.message.payload;
-    if (!this.options.activeDisabledAgentInstance(hello.agent_instance_id)) {
+    if (!this.options.activeDisabledAgentDevice(hello.device_id)) {
       return null;
     }
 
@@ -38,7 +36,6 @@ export class AgentControlPolicy
       audit: {
         surface: context.surface,
         deviceId: hello.device_id,
-        agentInstanceId: hello.agent_instance_id,
       },
     };
   }

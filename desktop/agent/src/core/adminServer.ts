@@ -25,7 +25,6 @@ export interface AgentAdminServerOptions {
 export interface AgentAdminStatus {
   agent: {
     device_id: string;
-    agent_instance_id: string;
     hostname: string;
     platform: "darwin";
     version: string;

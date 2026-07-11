@@ -15,7 +15,7 @@ try {
     deviceId: "device-1",
     status: "online",
     seenAt: 1000,
-    lastAgentInstanceId: "agent-instance-1",
+    lastAgentConnectionId: "agent-conn-1",
     lastAgentRemoteIp: "203.0.113.10",
   });
   store.addTraffic("device-1", {
@@ -42,7 +42,7 @@ try {
   assert.equal(records[0]?.first_seen_at, 1000);
   assert.equal(records[0]?.last_seen_at, 2000);
   assert.equal(records[0]?.offline_at, 2000);
-  assert.equal(records[0]?.last_agent_instance_id, "agent-instance-1");
+  assert.equal(records[0]?.last_agent_connection_id, "agent-conn-1");
   assert.equal(records[0]?.last_agent_remote_ip, "203.0.113.10");
   assert.equal(records[0]?.last_close_role, "agent");
   assert.equal(records[0]?.bytes_in, 128);

@@ -14,6 +14,7 @@ export const PAIRING_LINK_HOST = "pair" as const;
 export const RELAY_AGENT_SHUTDOWN_CLOSE_CODE = 4404 as const;
 export const RELAY_AGENT_DISABLED_CLOSE_REASON = "agent_disabled" as const;
 export const RELAY_AGENT_IP_BANNED_CLOSE_REASON = "ip_banned" as const;
+export const RELAY_AGENT_SUPERSEDED_CLOSE_REASON = "agent_superseded" as const;
 
 /**
  * Agent 启动期 session store 的"应当被持久化保留"的 status 白名单。

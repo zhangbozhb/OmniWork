@@ -343,7 +343,7 @@ flowchart LR
 职责：
 
 - 转发临时 key challenge/proof。
-- 接收 桌面端 Agent 的 `agent.hello`，记录 `device_id`、`agent_instance_id`。
+- 接收 桌面端 Agent 的 `agent.hello`，记录 `device_id`，并在鉴权通过后分配 `agent_connection_id`。
 - 让 桌面端 Agent 校验 App 的 key proof。
 - 接收 桌面端 Agent 的出站注册连接。
 - 在手机和 桌面端 Agent 之间转发 TUI 数据。

@@ -289,7 +289,7 @@ flowchart LR
 - WebSocket 传输，业务消息强制 App-Agent E2E 加密。
 - MVP 不接入 SSO / OIDC。
 - App 使用 32 字符临时 key 的 HMAC proof 完成连接授权。
-- 桌面端 Agent 使用 `agent.hello` 注册 `device_id`、`agent_instance_id`。
+- 桌面端 Agent 使用 `agent.hello` 注册 `device_id`；Relay 鉴权通过后生成 `agent_connection_id` 并返回给连接双方。
 - PostgreSQL 存设备、Agent 实例、审计元数据。
 - Redis 用于在线状态、临时路由、分布式锁。
 - OpenTelemetry 做 trace / metrics。
@@ -408,7 +408,7 @@ e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 
 ```text
 ws://relay.example/relay/ws/agent 或 wss://relay.example/relay/ws/agent
-agent.hello: device_id + agent_instance_id
+agent.hello: device_id
 e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 ```
 
@@ -665,7 +665,7 @@ MVP 不接入 SSO / OIDC / 持久设备绑定。
 - Relay 将 proof 转发给 桌面端 Agent。
 - 桌面端 Agent 使用本地 key 校验 proof。
 - Relay 不保存完整 key。
-- 审计只记录 `device_id`、`agent_instance_id`、`app_connection_id` 等非密钥上下文，不记录 key。
+- 审计只记录 `device_id`、`agent_connection_id`、`app_connection_id` 等非密钥上下文，不记录 key。
 - App 收到 `auth.failed` 时立即关闭 relay 连接，并按 [auth-key-design.md](./auth-key-design.md) 的「App 收到 `auth.failed` 后的具体清理动作」清除本地失效 pairing 与会话状态，引导用户重新扫码或输入新的临时 key。
 
 ### 授权
@@ -673,7 +673,7 @@ MVP 不接入 SSO / OIDC / 持久设备绑定。
 授权判断：
 
 ```text
-device_id + agent_instance_id + app_connection_id + key_proof
+device_id + agent_connection_id + app_connection_id + key_proof
 ```
 
 默认策略：

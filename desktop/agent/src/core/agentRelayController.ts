@@ -6,6 +6,7 @@ import {
   TERMINAL_STREAM_CAPABILITY_V1,
   createMessage,
   type AgentHelloPayload,
+  type AuthOkPayload,
   type MessageEnvelope,
 } from "@omniwork/protocol-ts";
 import type { RelayCloseEvent } from "@omniwork/relay-client";
@@ -65,6 +66,7 @@ export class AgentRelayController {
   private lastError: string | null = null;
   private lastClose: RelayCloseEvent | null = null;
   private nextRetryAt: number | null = null;
+  private agentConnectionId: string | null = null;
   private stopping = false;
 
   constructor(options: AgentRelayControllerOptions) {
@@ -108,6 +110,10 @@ export class AgentRelayController {
     return this.transport;
   }
 
+  getAgentConnectionId(): string | null {
+    return this.agentConnectionId;
+  }
+
   statusSnapshot(): AgentRelayRuntimeStatus {
     return {
       status: this.status,
@@ -137,6 +143,7 @@ export class AgentRelayController {
 
   private async connectRelay(url: string): Promise<void> {
     const keyRecord = this.getKeyRecord();
+    this.agentConnectionId = null;
     const relay = new AgentRelayClient(url);
     this.relay = relay;
     const relayPath = new AgentRelayPath(relay);
@@ -180,6 +187,7 @@ export class AgentRelayController {
     });
 
     transport.onMessage((message) => {
+      this.rememberAgentConnectionId(message);
       this.onMessage(message).catch((error: unknown) => {
         this.logger.error("failed to handle relay message", {
           message_type: message.type,
@@ -209,12 +217,10 @@ export class AgentRelayController {
         {
           v: PROTOCOL_SUPPORT_V1.current,
           device_id: this.config.deviceId,
-          agent_instance_id: keyRecord.agent_instance_id,
           ...(this.config.relayDevicePrivateKey
             ? {
                 relay_auth: createRelayDeviceAuth({
                   deviceId: this.config.deviceId,
-                  agentInstanceId: keyRecord.agent_instance_id,
                   privateKeyPem: this.config.relayDevicePrivateKey,
                 }),
               }
@@ -263,7 +269,7 @@ export class AgentRelayController {
 
     this.logger.info("connected to relay", {
       relay_url: url,
-        agent_instance_id: keyRecord.agent_instance_id,
+      device_id: this.config.deviceId,
     });
     this.reconnectAttempts = 0;
     this.lastError = null;
@@ -312,6 +318,19 @@ export class AgentRelayController {
         );
         await this.waitRelayReconnectDelay(delayMs);
       }
+    }
+  }
+
+  private rememberAgentConnectionId(message: MessageEnvelope): void {
+    if (message.type !== "auth.ok") {
+      return;
+    }
+    const payload = message.payload as AuthOkPayload;
+    if (payload.agent_connection_id && !payload.connection_id) {
+      this.agentConnectionId = payload.agent_connection_id;
+      this.logger.info("relay assigned agent connection id", {
+        agent_connection_id: payload.agent_connection_id,
+      });
     }
   }
 

@@ -139,8 +139,8 @@ export class RelayServer {
         ],
         agentHello: [
           new AgentControlPolicy({
-            activeDisabledAgentInstance: (agentInstanceId) =>
-              this.admin.activeDisabledAgentInstance(agentInstanceId),
+            activeDisabledAgentDevice: (deviceId) =>
+              this.admin.activeDisabledAgentDevice(deviceId),
           }),
           new AgentEmailLinkPolicy({
             config,
@@ -190,6 +190,7 @@ export class RelayServer {
       authExecutor: this.authExecutor,
       topology: this.topology,
       state: this.state,
+      send: (connection, message) => this.send(connection, message),
     });
     this.appAdmission = new AppAdmission({
       config,

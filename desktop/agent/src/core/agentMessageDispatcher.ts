@@ -77,6 +77,8 @@ export class AgentMessageDispatcher {
         : undefined);
 
     switch (message.type) {
+      case "auth.ok":
+        break;
       case "auth.verify":
         this.options.security.handleAuthVerify(
           message as MessageEnvelope<AuthVerifyPayload>,

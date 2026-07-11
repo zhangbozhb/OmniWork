@@ -182,7 +182,7 @@ describe("auth payload schemas", () => {
       ],
     });
     authOkPayloadSchema.parse({
-      agent_instance_id: "agent-1",
+        agent_connection_id: "conn_agent_1",
       connection_id: "c1",
     });
   });
@@ -213,7 +213,6 @@ describe("agent hello security mode", () => {
     agentHelloPayloadSchema.parse({
       v: PROTOCOL_VERSION,
       device_id: "device-1",
-      agent_instance_id: "agent-1",
       relay_auth: {
         method: "device_signature",
         timestamp: Date.now(),
@@ -234,7 +233,6 @@ describe("agent hello security mode", () => {
     agentHelloPayloadSchema.parse({
       v: PROTOCOL_VERSION,
       device_id: "device-1",
-      agent_instance_id: "agent-1",
       protocol: PROTOCOL_SUPPORT_V1,
       e2e: { ...E2E_SUPPORT_V1, required: false },
       business_security_mode: "plaintext_allowed",
@@ -249,7 +247,6 @@ describe("agent hello security mode", () => {
     agentHelloPayloadSchema.parse({
       v: PROTOCOL_VERSION,
       device_id: "device-1",
-      agent_instance_id: "agent-1",
       protocol: PROTOCOL_SUPPORT_V1,
       e2e: E2E_SUPPORT_V1,
       hostname: "mac",
@@ -265,6 +262,7 @@ describe("e2e v1 schemas", () => {
     e2eHandshakeInitPayloadSchema.parse({
       v: PROTOCOL_VERSION,
       e2e_version: E2E_PROTOCOL_VERSION,
+        agent_connection_id: "conn_agent_1",
       app_connection_id: "conn_app_1",
       handshake_id: "hs_1",
       suite: NOISE_SUITE_NNPSK0_V1,
@@ -281,6 +279,7 @@ describe("e2e v1 schemas", () => {
     const result = e2eHandshakeInitPayloadSchema.safeParse({
       v: PROTOCOL_VERSION,
       e2e_version: E2E_PROTOCOL_VERSION,
+        agent_connection_id: "conn_agent_1",
       app_connection_id: "conn_app_1",
       handshake_id: "hs_1",
       suite: "Noise_XX_25519_ChaChaPoly_BLAKE2s",

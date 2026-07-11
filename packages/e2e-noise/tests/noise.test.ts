@@ -11,7 +11,7 @@ import {
 const context = {
   pairingKey: "test-pairing-key-32-bytes",
   deviceId: "mac_test",
-  agentInstanceId: "agent_test",
+  agentConnectionId: "conn_agent_1",
   appConnectionId: "conn_app_1",
   handshakeId: "hs_test",
 };

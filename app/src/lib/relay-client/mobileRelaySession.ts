@@ -248,7 +248,7 @@ export class MobileRelaySession {
   }
 
   private handleAuthOk(payload: AuthOkPayload): void {
-    if (!payload.connection_id) {
+    if (!payload.connection_id || !payload.agent_connection_id) {
       return;
     }
     this.appConnectionId = payload.connection_id;
@@ -264,7 +264,7 @@ export class MobileRelaySession {
     this.e2eHandshake = createInitiatorHandshake({
       pairingKey: this.pairing.key,
       deviceId: this.pairing.deviceId,
-      agentInstanceId: payload.agent_instance_id,
+      agentConnectionId: payload.agent_connection_id,
       appConnectionId: payload.connection_id,
     });
     this.client.send(

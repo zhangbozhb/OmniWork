@@ -67,7 +67,7 @@ export interface RelayServerConfig {
     trustProxy: boolean;
     trustedProxyIps: Set<string>;
     controlsDbPath: string;
-    agentDisableDefaultMs: number;
+    agentDeviceDisableDefaultMs: number;
     ipBanDefaultMs: number;
   };
   state: {
@@ -312,14 +312,31 @@ export function loadRelayServerConfig(
         readConfigString(rawConfig, "admin", "controlsDbPath") ??
         optionalNonEmpty(env.OMNIWORK_RELAY_ADMIN_CONTROLS_DB_PATH) ??
         join(runtimeDir, "admin-controls.sqlite"),
-      agentDisableDefaultMs:
+      agentDeviceDisableDefaultMs:
+        readConfigNumber(
+          rawConfig,
+          86_400_000,
+          "admin",
+          "agentDeviceDisableDefaultMs",
+        ) ??
+        readConfigNumber(
+          rawConfig,
+          86_400_000,
+          "admin",
+          "deviceDisableDefaultMs",
+        ) ??
         readConfigNumber(
           rawConfig,
           86_400_000,
           "admin",
           "agentDisableDefaultMs",
         ) ??
-        parseNumber(env.OMNIWORK_RELAY_AGENT_DISABLE_DEFAULT_MS, 86_400_000),
+        parseNumber(
+          env.OMNIWORK_RELAY_AGENT_DEVICE_DISABLE_DEFAULT_MS ??
+            env.OMNIWORK_RELAY_DEVICE_DISABLE_DEFAULT_MS ??
+            env.OMNIWORK_RELAY_AGENT_DISABLE_DEFAULT_MS,
+          86_400_000,
+        ),
       ipBanDefaultMs:
         readConfigNumber(rawConfig, 86_400_000, "admin", "ipBanDefaultMs") ??
         parseNumber(env.OMNIWORK_RELAY_IP_BAN_DEFAULT_MS, 86_400_000),

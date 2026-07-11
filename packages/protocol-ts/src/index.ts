@@ -11,6 +11,7 @@ export {
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
   RELAY_AGENT_DISABLED_CLOSE_REASON,
   RELAY_AGENT_IP_BANNED_CLOSE_REASON,
+  RELAY_AGENT_SUPERSEDED_CLOSE_REASON,
   SUPPORTED_SESSION_STATUSES,
   TERMINAL_STREAM_CAPABILITY_V1,
 } from "./constants.ts";
@@ -126,7 +127,6 @@ export interface MessageEnvelope<TPayload = unknown> {
 export interface AgentHelloPayload {
   v: typeof PROTOCOL_VERSION;
   device_id: string;
-  agent_instance_id: string;
   relay_auth?: RelayAgentAuthPayload;
   protocol: ProtocolSupport;
   e2e: E2ESupport;
@@ -288,6 +288,7 @@ export const E2E_SUPPORT_V1: E2ESupport = {
 export interface E2EHandshakeInitPayload {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  agent_connection_id: string;
   app_connection_id: string;
   handshake_id: string;
   suite: NoiseSuite;
@@ -302,6 +303,7 @@ export interface E2EHandshakeInitPayload {
 export interface E2EHandshakeReplyPayload {
   v: typeof PROTOCOL_VERSION;
   e2e_version: typeof E2E_PROTOCOL_VERSION;
+  agent_connection_id: string;
   app_connection_id: string;
   handshake_id: string;
   suite: NoiseSuite;
@@ -444,7 +446,7 @@ export interface AuthVerifyPayload extends AuthProofPayload {
 }
 
 export interface AuthOkPayload {
-  agent_instance_id: string;
+  agent_connection_id?: string;
   connection_id?: string;
   business_security_mode?: BusinessSecurityMode;
   e2e?: E2ESupport;

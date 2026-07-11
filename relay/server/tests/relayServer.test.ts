@@ -13,6 +13,7 @@ import {
   RELAY_AGENT_DISABLED_CLOSE_REASON,
   RELAY_AGENT_IP_BANNED_CLOSE_REASON,
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+  RELAY_AGENT_SUPERSEDED_CLOSE_REASON,
   type MessageEnvelope,
   type AppInfoPayload,
   type TunnelUpgradeOfferPayload,
@@ -372,7 +373,7 @@ interface FakeHttpResponse {
   assert.match(html, /\/admin\/api\/traffic-map/);
   assert.match(html, /world-land-110m\.geojson/);
   assert.match(html, /\/admin\/api\/agent-connections/);
-  assert.match(html, /\/admin\/api\/controls\/agents\/agent-op/);
+  assert.match(html, /\/admin\/api\/controls\/agent-devices\/device-op/);
   assert.match(html, /\/admin\/api\/controls\/ip-bans/);
   assert.doesNotMatch(html, /localStorage/);
   assert.doesNotMatch(html, /Authorization: Bearer/);
@@ -447,7 +448,6 @@ type TestRelayConnection = {
   authState: "none" | "pending" | "verified" | "failed";
   transportPath: "relay" | "p2p" | "mixed" | "unknown";
   deviceId?: string;
-  agentInstanceId?: string;
   businessSecurityMode?: "e2e_required" | "plaintext_allowed";
   e2e?: typeof E2E_SUPPORT_V1;
   appInfo?: {
@@ -467,7 +467,6 @@ type TestRelayConnection = {
 type TestAgentConnection = TestRelayConnection & {
   role: "agent";
   deviceId: string;
-  agentInstanceId: string;
 };
 
 // 入站协议边界必须拒绝已知类型的畸形 payload，避免后续业务逻辑依赖类型断言。
@@ -568,14 +567,12 @@ type TestAgentConnection = TestRelayConnection & {
         agents: Array<{
           device_id: string;
           connection_id: string;
-          agent_instance_id?: string;
           app_count: number;
         }>;
       };
       agentAppsSnapshot(connectionId: string): {
         connection_id: string;
         device_id?: string;
-        agent_instance_id?: string;
         summary: { app_count: number };
         apps: Array<{ app_info?: AppInfoPayload; auth_state: string }>;
       };
@@ -641,7 +638,7 @@ type TestAgentConnection = TestRelayConnection & {
       ): void;
     };
     admin: {
-      disableAgentInstance(agentInstanceId: string, rule: unknown): void;
+      disableAgentDevice(deviceId: string, rule: unknown): void;
     };
   };
   internals.connections.set(agent.id, agent);
@@ -652,7 +649,7 @@ type TestAgentConnection = TestRelayConnection & {
   internals.state.registerAgent(agent);
   internals.state.authenticateApp(mobile, agent);
 
-  internals.admin.disableAgentInstance(agent.agentInstanceId, {
+  internals.admin.disableAgentDevice(agent.deviceId, {
     id: "rule-1",
     createdAt: Date.now(),
     reason: "maintenance",
@@ -896,7 +893,6 @@ function createAgentConnection(
     state: "registered_agent",
     socket: createFakeSocket(),
     deviceId,
-    agentInstanceId: `${id}_instance`,
     businessSecurityMode: "e2e_required",
     e2e: E2E_SUPPORT_V1,
     authenticated: true,
@@ -941,6 +937,54 @@ function createServer(): RelayServer {
       OMNIWORK_UPGRADE_ICE_SERVERS_JSON: "[]",
     }),
   );
+}
+
+// 同一 Agent device 只允许一个在线 Agent；新 Agent 通过鉴权后顶替旧连接。
+{
+  const server = createServer();
+  const deviceId = "device_single";
+  const oldAgent = createAgentConnection("conn_agent_old", deviceId);
+  const newAgent = createAgentConnection("conn_agent_new", deviceId);
+  const mobile = createMobileConnection("conn_mobile_old", deviceId);
+  const internals = server as unknown as {
+    topology: {
+      connections: Map<string, TestRelayConnection>;
+      agentsByDevice: Map<string, Set<TestRelayConnection>>;
+      primaryAgentByDevice: Map<string, TestRelayConnection>;
+      mobilesByDevice: Map<string, Set<TestRelayConnection>>;
+      addAgentToDevice(deviceId: string, connection: TestRelayConnection): void;
+      addMobileToDevice(
+        deviceId: string,
+        connection: TestRelayConnection,
+      ): void;
+    };
+  };
+  internals.topology.connections.set(oldAgent.id, oldAgent);
+  internals.topology.connections.set(newAgent.id, newAgent);
+  internals.topology.connections.set(mobile.id, mobile);
+  internals.topology.addAgentToDevice(deviceId, oldAgent);
+  internals.topology.addMobileToDevice(deviceId, mobile);
+  internals.topology.addAgentToDevice(deviceId, newAgent);
+
+  assert.equal(
+    oldAgent.socket.closed[0]?.reason,
+    RELAY_AGENT_SUPERSEDED_CLOSE_REASON,
+  );
+  assert.equal(
+    mobile.socket.closed[0]?.reason,
+    RELAY_AGENT_SUPERSEDED_CLOSE_REASON,
+  );
+  assert.deepEqual(
+    [...(internals.topology.agentsByDevice.get(deviceId) ?? [])].map(
+      (agent) => agent.id,
+    ),
+    [newAgent.id],
+  );
+  assert.equal(
+    internals.topology.primaryAgentByDevice.get(deviceId)?.id,
+    newAgent.id,
+  );
+  assert.equal(internals.topology.mobilesByDevice.get(deviceId)?.size, 0);
 }
 
 // P2P upgrade 信令是控制面消息：E2E ready 后必须允许明文透传，

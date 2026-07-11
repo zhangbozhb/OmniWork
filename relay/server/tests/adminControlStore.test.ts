@@ -12,8 +12,8 @@ try {
   const store = new AdminControlStore(path);
 
   store.upsert({
-    kind: "agent_instance_disable",
-    target: "agent-instance-1",
+      kind: "agent_device_disable",
+      target: "device-1",
     rule: {
       id: "rule-agent",
       reason: "maintenance",
@@ -36,12 +36,12 @@ try {
   assert.deepEqual(
     records.map((record) => [record.kind, record.target]),
     [
-      ["agent_instance_disable", "agent-instance-1"],
+        ["agent_device_disable", "device-1"],
       ["ip_ban", "203.0.113.10"],
     ],
   );
 
-  reloaded.delete("agent_instance_disable", "agent-instance-1");
+    reloaded.delete("agent_device_disable", "device-1");
   assert.equal(reloaded.load().length, 1);
 
   console.log("admin control store tests passed");

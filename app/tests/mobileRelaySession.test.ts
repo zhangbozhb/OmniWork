@@ -28,7 +28,7 @@ function createSessionPair(): {
   const context = {
     pairingKey: pairing.key,
     deviceId: pairing.deviceId,
-    agentInstanceId: "agent_test",
+      agentConnectionId: "conn_agent_1",
     appConnectionId: "conn_app_1",
     handshakeId: "hs_test",
   };

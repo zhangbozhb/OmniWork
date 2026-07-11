@@ -1,8 +1,4 @@
-import {
-  createHmac,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, writeFile, chmod, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AppInfoPayload } from "@omniwork/protocol-ts";
@@ -11,13 +7,11 @@ export interface SessionKeyRecord {
   version: 1;
   key: string;
   created_at: string;
-  agent_instance_id: string;
   relay_url?: string;
 }
 
 export interface CreateSessionKeyOptions {
   path: string;
-  agentInstanceId: string;
   relayUrl?: string;
   now?: Date;
 }
@@ -29,7 +23,6 @@ export async function createAndPersistSessionKey(
     version: 1,
     key: generateSessionKey(),
     created_at: (options.now ?? new Date()).toISOString(),
-    agent_instance_id: options.agentInstanceId,
     relay_url: options.relayUrl,
   };
 
@@ -39,14 +32,6 @@ export async function createAndPersistSessionKey(
 
 export function generateSessionKey(): string {
   return randomBytes(24).toString("base64url");
-}
-
-export function createAgentInstanceId(now = new Date()): string {
-  const stamp = now
-    .toISOString()
-    .replace(/[-:.TZ]/g, "")
-    .slice(0, 14);
-  return `agent_${stamp}_${randomBytes(4).toString("hex")}`;
 }
 
 export function createAuthProofInput(

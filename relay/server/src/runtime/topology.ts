@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import {
+  RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+  RELAY_AGENT_SUPERSEDED_CLOSE_REASON,
+} from "@omniwork/protocol-ts";
 
 import type { RelayStateStore } from "../relayStateStore.ts";
 import type {
@@ -108,13 +112,27 @@ export class RuntimeTopology {
   }
 
   addAgentToDevice(deviceId: string, connection: RelayConnection): void {
-    const agents =
-      this.agentsByDevice.get(deviceId) ?? new Set<RelayConnection>();
+    const existingAgents = [
+      ...(this.agentsByDevice.get(deviceId) ?? new Set<RelayConnection>()),
+    ].filter((agent) => agent !== connection);
+    for (const agent of existingAgents) {
+      agent.socket.close(
+        RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+        RELAY_AGENT_SUPERSEDED_CLOSE_REASON,
+      );
+      this.unregister(agent);
+    }
+    const existingMobiles = [
+      ...(this.mobilesByDevice.get(deviceId) ?? new Set<RelayConnection>()),
+    ];
+    for (const mobile of existingMobiles) {
+      mobile.socket.close(4403, RELAY_AGENT_SUPERSEDED_CLOSE_REASON);
+      this.unregister(mobile);
+    }
+    const agents = new Set<RelayConnection>();
     agents.add(connection);
     this.agentsByDevice.set(deviceId, agents);
-    if (!this.primaryAgentByDevice.has(deviceId)) {
-      this.primaryAgentByDevice.set(deviceId, connection);
-    }
+    this.primaryAgentByDevice.set(deviceId, connection);
   }
 
   addMobileToDevice(deviceId: string, connection: RelayConnection): void {

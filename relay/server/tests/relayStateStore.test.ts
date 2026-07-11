@@ -54,7 +54,7 @@ try {
   assert.equal(devices.devices[0]?.device_id, "device_1");
   assert.equal(devices.devices[0]?.source, "persisted");
   assert.equal(devices.devices[0]?.status, "offline");
-  assert.equal(devices.devices[0]?.last_agent_instance_id, "agent_instance_1");
+  assert.equal(devices.devices[0]?.last_agent_connection_id, "conn_agent_1");
   assert.equal(devices.devices[0]?.last_app_remote_ip, "198.51.100.10");
   assert.equal(devices.devices[0]?.counters.bytes_in, 128);
 
@@ -77,7 +77,6 @@ function createAgentConnection(id: string, deviceId: string): RelayConnection {
     state: "registered_agent",
     socket: createNoopSocket(),
     deviceId,
-    agentInstanceId: "agent_instance_1",
     businessSecurityMode: "e2e_required",
     e2e: E2E_SUPPORT_V1,
     authenticated: true,

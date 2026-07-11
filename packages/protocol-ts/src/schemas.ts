@@ -216,7 +216,7 @@ export const authVerifyPayloadSchema = authProofPayloadSchema.extend({
 });
 
 export const authOkPayloadSchema = z.object({
-  agent_instance_id: z.string().min(1),
+  agent_connection_id: z.string().min(1).optional(),
   connection_id: z.string().min(1).optional(),
   business_security_mode: z
     .enum(["e2e_required", "plaintext_allowed"])
@@ -295,7 +295,6 @@ export const agentHelloPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     device_id: z.string().min(1),
-    agent_instance_id: z.string().min(1),
     relay_auth: relayAgentAuthPayloadSchema.optional(),
     protocol: protocolSupportSchema,
     e2e: e2eSupportSchema,
@@ -360,6 +359,7 @@ export const e2eHandshakeInitPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    agent_connection_id: z.string().min(1),
     app_connection_id: z.string().min(1),
     handshake_id: z.string().min(1),
     suite: z.literal(NOISE_SUITE_NNPSK0_V1),
@@ -372,6 +372,7 @@ export const e2eHandshakeReplyPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
     e2e_version: z.literal(E2E_PROTOCOL_VERSION),
+    agent_connection_id: z.string().min(1),
     app_connection_id: z.string().min(1),
     handshake_id: z.string().min(1),
     suite: z.literal(NOISE_SUITE_NNPSK0_V1),

@@ -8,7 +8,6 @@ export interface AgentDispatchContext {
 
 export interface AgentInfo {
   device_id: string;
-  agent_instance_id: string;
   hostname: string;
   platform: "darwin";
   version: string;

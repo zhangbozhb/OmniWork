@@ -123,7 +123,7 @@ Cookie-authenticated state-changing requests must include `x-csrf-token` from
 `GET /auth/me`. Bearer-token API calls are not subject to this CSRF check.
 
 When enabled, `agent.hello` must include a `relay_auth.device_signature`
-signature over `device_id|agent_instance_id|timestamp|nonce`, verified against
+signature over `device_id|timestamp|nonce`, verified against
 the registered device public key. `mobile.connect` must include a user
 `session_token`, and Relay only allows access when the session user owns the
 target device.
@@ -269,11 +269,12 @@ to_location_id`, with link/device counts and transport-path distribution.
   admin session.
 - `GET /admin/api/me` — reports the current admin session state. Requires a
   valid admin session.
-- `POST /admin/api/controls/agents/agent-op` — disable Agent runtime instances
-  or delete disable rules. Body:
-  `{ "action": "disable", "agent_instance_ids": ["..."], "reason": "..." }`
-  or `{ "action": "delete", "agent_instance_ids": ["..."] }`. Disable rules
-  are temporary and default to `OMNIWORK_RELAY_AGENT_DISABLE_DEFAULT_MS` (1 day).
+- `POST /admin/api/controls/agent-devices/device-op` — disable Agent devices or
+  delete disable rules. Body:
+  `{ "action": "disable", "agent_device_ids": ["..."], "reason": "..." }`
+  or `{ "action": "delete", "agent_device_ids": ["..."] }`. Disable rules
+  are temporary and default to `OMNIWORK_RELAY_AGENT_DEVICE_DISABLE_DEFAULT_MS`
+  (1 day).
   Add `"permanent": true` or `"duration": "permanent"` to persist them in
   SQLite.
   Requires a valid admin session.

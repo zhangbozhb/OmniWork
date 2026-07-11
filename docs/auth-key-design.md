@@ -63,7 +63,6 @@ mode: 0600
   "version": 1,
   "key": "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
   "created_at": "<ISO_TIMESTAMP>",
-  "agent_instance_id": "agent_20260512000001_a1b2c3d4",
   "relay_url": "wss://relay.company.example/relay/ws/agent"
 }
 ```
@@ -71,7 +70,7 @@ mode: 0600
 说明：
 
 - `key` 是本次 Agent 启动生成的临时共享 key。
-- `agent_instance_id` 随 Agent 启动生成，格式 `agent_<YYYYMMDDhhmmss>_<8 位 hex>`（实现见 [authKey.ts](../desktop/agent/src/auth-key/authKey.ts)），用于区分同一台 电脑 的不同运行实例。
+- Agent 不再自生成运行实例 ID；Relay 在 `agent.hello` 鉴权通过后生成 `agent_connection_id`，用于标识当前 Agent WebSocket 连接。
 - 文件只保存在本机，不提交仓库，不同步到云盘。
 
 ## App 获取 Key
@@ -118,7 +117,8 @@ sequenceDiagram
   participant R as Relay
   participant M as 桌面端 Agent
 
-  M->>R: agent.hello(device_id, agent_instance_id)
+  M->>R: agent.hello(device_id)
+  R-->>M: auth.ok(agent_connection_id)
   A->>R: mobile.connect(device_id)
   R->>A: auth.challenge(nonce)
   A->>R: auth.proof(HMAC_SHA256(key, nonce))
@@ -135,7 +135,7 @@ sequenceDiagram
 - 桌面端 Agent 是 key 校验真相源。
 - 握手成功后，Relay 只维护内存态连接授权。
 - 连接断开后可以重新 challenge。
-- 桌面端 Agent 重启后 `agent_instance_id` 和 key 都变化，旧连接失效。
+- 桌面端 Agent 重启后 key 会变化；Relay 会为新连接分配新的 `agent_connection_id`，并顶替同一 `device_id` 下的旧 Agent 连接。
 
 ## 消息头和协议字段
 
@@ -181,7 +181,7 @@ malformed_proof
 - Relay 对失败次数限流（仅对失败的 `auth.proof` 计数：relay 端 `malformed_proof` / agent 端返回 `auth.failed` 两个真实失败分支才 consume token；合法 `auth.proof` → `auth.ok` 不消耗桶，避免频繁重连或切换 `transport_preference` 被误封禁）。
 - App 认证失败后不无限重试。
 - 日志中永远不打印完整 key。
-- 审计中只记录 `device_id` / `agent_instance_id` / `app_connection_id` 等非密钥上下文，不记录 `key`。
+- 审计中只记录 `device_id` / `agent_connection_id` / `app_connection_id` 等非密钥上下文，不记录 `key`。
 
 不做：
 

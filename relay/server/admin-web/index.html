@@ -436,17 +436,17 @@
         <p id="toast"></p>
         <div class="forms">
           <div>
-            <h2>Disable Agent</h2>
+              <h2>Disable Agent Device</h2>
             <div class="form-row">
               <input
-                id="disable-agent-instance"
-                placeholder="agent_instance_id"
+                  id="disable-agent-device"
+                  placeholder="agent device_id"
               /><input id="disable-reason" placeholder="reason" /><button
                 class="danger"
-                id="disable-agent"
+                  id="disable-agent-device-button"
               >
                 Disable</button
-              ><button class="secondary" id="delete-agent-disable">
+                ><button class="secondary" id="delete-agent-device-disable">
                 Delete Rule
               </button>
             </div>
@@ -542,7 +542,8 @@
             status.summary.open_connection_count;
         qs("traffic-in").textContent = formatBytes(status.traffic.bytes_in);
         qs("traffic-out").textContent = formatBytes(status.traffic.bytes_out);
-        qs("disabled-count").textContent = status.summary.disabled_agent_count;
+          qs("disabled-count").textContent =
+            status.summary.disabled_agent_device_count;
         qs("ban-count").textContent = status.summary.ip_ban_count;
         renderTrafficMap(trafficMap);
           qs("devices").innerHTML = devices.devices
@@ -555,7 +556,7 @@
                 td(device.app_count) +
                 td(device.last_seen_at) +
                 td(device.offline_at) +
-                td(device.last_agent_instance_id) +
+                td(device.last_agent_connection_id) +
                 td(device.last_agent_remote_ip) +
                 td(device.last_app_remote_ip) +
                 "</tr>",
@@ -570,7 +571,7 @@
               encodeURIComponent(agent.device_id) +
               "'>" +
               td(agent.device_id) +
-              td(agent.agent_instance_id) +
+              td(agent.connection_id) +
               td(agent.remote_ip) +
               td(agent.app_count) +
               td(agent.business_security_mode) +
@@ -622,27 +623,27 @@
         await api("/admin/api/logout", { method: "POST" }).catch(() => {});
         location.href = adminBase();
       };
-      qs("disable-agent").onclick = async () => {
-        await api("/admin/api/controls/agents/agent-op", {
+        qs("disable-agent-device-button").onclick = async () => {
+          await api("/admin/api/controls/agent-devices/device-op", {
           method: "POST",
           body: JSON.stringify({
             action: "disable",
-            agent_instance_ids: parseCsv(qs("disable-agent-instance").value),
+              agent_device_ids: parseCsv(qs("disable-agent-device").value),
             reason: qs("disable-reason").value || undefined,
           }),
         });
-        qs("toast").textContent = "Agent disabled.";
+          qs("toast").textContent = "Agent device disabled.";
         await refresh();
       };
-      qs("delete-agent-disable").onclick = async () => {
-        await api("/admin/api/controls/agents/agent-op", {
+        qs("delete-agent-device-disable").onclick = async () => {
+          await api("/admin/api/controls/agent-devices/device-op", {
           method: "POST",
           body: JSON.stringify({
             action: "delete",
-            agent_instance_ids: parseCsv(qs("disable-agent-instance").value),
+              agent_device_ids: parseCsv(qs("disable-agent-device").value),
           }),
         });
-        qs("toast").textContent = "Agent disable rule deleted.";
+          qs("toast").textContent = "Agent device disable rule deleted.";
         await refresh();
       };
       qs("ban-ip-btn").onclick = async () => {

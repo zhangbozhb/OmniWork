@@ -2,7 +2,6 @@ import { createPrivateKey, randomBytes, sign } from "node:crypto";
 
 export function createRelayDeviceAuth(input: {
   deviceId: string;
-  agentInstanceId: string;
   privateKeyPem: string;
 }): {
   method: "device_signature";
@@ -12,10 +11,7 @@ export function createRelayDeviceAuth(input: {
 } {
   const timestamp = Date.now();
   const nonce = randomBytes(24).toString("base64url");
-  const payload = Buffer.from(
-    `${input.deviceId}|${input.agentInstanceId}|${timestamp}|${nonce}`,
-    "utf8",
-  );
+  const payload = Buffer.from(`${input.deviceId}|${timestamp}|${nonce}`, "utf8");
   return {
     method: "device_signature",
     timestamp,

@@ -1,4 +1,6 @@
 import {
+  createMessage,
+  type AuthOkPayload,
   type AgentHelloPayload,
   type MessageEnvelope,
 } from "@omniwork/protocol-ts";
@@ -14,6 +16,7 @@ export interface AgentAdmissionOptions {
   authExecutor: RelayAuthExecutor;
   topology: RuntimeTopology;
   state: RelayStateStore;
+  send(connection: RelayConnection, message: MessageEnvelope): void;
 }
 
 export class AgentAdmission {
@@ -39,7 +42,6 @@ export class AgentAdmission {
     connection.role = "agent";
     connection.state = "registered_agent";
     connection.deviceId = message.payload.device_id;
-    connection.agentInstanceId = message.payload.agent_instance_id;
     connection.businessSecurityMode =
       message.payload.business_security_mode ?? "e2e_required";
     connection.e2e = message.payload.e2e;
@@ -50,5 +52,15 @@ export class AgentAdmission {
       connection,
     );
     this.options.state.registerAgent(connection);
+    this.options.send(
+      connection,
+      createMessage<AuthOkPayload>(
+        "auth.ok",
+        {
+          agent_connection_id: connection.id,
+        },
+        { device_id: message.payload.device_id },
+      ),
+    );
   }
 }

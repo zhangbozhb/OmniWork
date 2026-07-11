@@ -5,7 +5,6 @@ import type {
 } from "@omniwork/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
 import {
-  createAgentInstanceId,
   createAndPersistSessionKey,
   type SessionKeyRecord,
 } from "../auth-key/authKey.ts";
@@ -71,7 +70,6 @@ export class AgentService {
   private readonly config: AgentConfig;
   private keyRecord: SessionKeyRecord | null = null;
   private agentStartedAt = Date.now();
-  private agentInstanceId = "";
   private readonly logTransport =
     (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
   private readonly onShutdownRequested?: (reason: string) => void;
@@ -132,6 +130,7 @@ export class AgentService {
       appConnections: this.appConnections,
       getTransport: () => this.relayController.getTransport(),
       getKeyRecord: () => this.requireKeyRecord(),
+      getAgentConnectionId: () => this.relayController.getAgentConnectionId(),
       dispatchMessage: (message, context) =>
         this.dispatcher.dispatch(message, context),
       onSupersededConnection: (appConnectionId) =>
@@ -281,18 +280,14 @@ export class AgentService {
 
   async start(): Promise<void> {
     try {
-      const agentInstanceId = createAgentInstanceId();
       this.agentStartedAt = Date.now();
-      this.agentInstanceId = agentInstanceId;
       this.keyRecord = await createAndPersistSessionKey({
         path: this.config.sessionKeyPath,
-        agentInstanceId,
         relayUrl: this.config.relayUrl,
       });
 
       this.logger.info("generated temporary session key", {
         key_path: this.config.sessionKeyPath,
-        agent_instance_id: this.keyRecord.agent_instance_id,
       });
       const pairingQr = createPairingQrDetails(this.config, this.keyRecord);
       if (pairingQr) {
@@ -338,7 +333,6 @@ export class AgentService {
   private agentInfo(): AgentInfo {
     return {
       device_id: this.config.deviceId,
-      agent_instance_id: this.agentInstanceId,
       hostname: this.config.hostname,
       platform: "darwin",
       version: this.config.agentVersion,
