@@ -21,6 +21,7 @@ export interface EncryptedPairingLinkEnvelope {
   source: PairingQrSource;
   iat: number;
   exp: number;
+  passwordRequired: boolean;
   ct: string;
 }
 
@@ -28,11 +29,13 @@ export interface CreateEncryptedPairingLinkOptions {
   source: PairingQrSource;
   nowMs?: number;
   ttlMs?: number;
+  passwordEnabled?: boolean;
 }
 
 export interface EncryptedPairingShare {
   link: string;
   password: string;
+  passwordRequired: boolean;
   expiresAt: Date;
   envelope: EncryptedPairingLinkEnvelope;
 }
@@ -61,17 +64,20 @@ export function createEncryptedPairingShare(
   payload: PairingLinkPayload,
   options: CreateEncryptedPairingLinkOptions,
 ): EncryptedPairingShare {
-  const password = createPairingPassword();
+  const passwordRequired = options.passwordEnabled ?? true;
+  const password = passwordRequired ? createPairingPassword() : "";
   const nowMs = options.nowMs ?? Date.now();
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const envelope = encryptPairingLink(payload, password, {
     ...options,
+    passwordEnabled: passwordRequired,
     nowMs,
     ttlMs,
   });
   return {
     link: createEncryptedPairingLink(envelope),
     password,
+    passwordRequired,
     expiresAt: new Date(nowMs + ttlMs),
     envelope,
   };
@@ -84,6 +90,7 @@ export function encryptPairingLink(
 ): EncryptedPairingLinkEnvelope {
   const nowMs = options.nowMs ?? Date.now();
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
+  const passwordRequired = options.passwordEnabled ?? true;
   const iat = Math.floor(nowMs / 1000);
   const exp = Math.floor((nowMs + ttlMs) / 1000);
   const salt = randomBytes(SALT_LEN);
@@ -110,6 +117,7 @@ export function encryptPairingLink(
     source: options.source,
     iat,
     exp,
+    passwordRequired,
     ct: toBase64Url(ciphertext),
   };
 }
@@ -127,6 +135,9 @@ export function createEncryptedPairingLink(
   params.set("source", envelope.source);
   params.set("iat", String(envelope.iat));
   params.set("exp", String(envelope.exp));
+  if (!envelope.passwordRequired) {
+    params.set("pin", "0");
+  }
   params.set("ct", envelope.ct);
   return `${PAIRING_LINK_SCHEME}://${PAIRING_LINK_HOST}?${params.toString()}`;
 }
@@ -199,6 +210,7 @@ export function parseEncryptedPairingLink(
     source: params.get("source") as PairingQrSource,
     iat: Number(params.get("iat")),
     exp: Number(params.get("exp")),
+    passwordRequired: params.get("pin") !== "0",
     ct: params.get("ct")?.trim() ?? "",
   };
 

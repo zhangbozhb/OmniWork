@@ -668,6 +668,23 @@ describe("pairing link round-trip", () => {
     );
   });
 
+  it("can create encrypted pairing QR links without a user password", () => {
+    const nowMs = Date.UTC(2026, 0, 1, 0, 0, 0);
+    const share = createEncryptedPairingShare(samplePayload, {
+      source: "agent",
+      nowMs,
+      ttlMs: 60_000,
+      passwordEnabled: false,
+    });
+
+    assert.equal(share.password, "");
+    assert.equal(share.passwordRequired, false);
+    assert.match(share.link, /[?&]pin=0(?:&|$)/u);
+    assert.equal(share.link.includes("password_required"), false);
+    assert.equal(parseEncryptedPairingLink(share.link)?.passwordRequired, false);
+    assert.deepEqual(decryptPairingLink(share.link, "", nowMs), samplePayload);
+  });
+
   it("rejects encrypted pairing QR links after local expiry", () => {
     const nowMs = Date.UTC(2026, 0, 1, 0, 0, 0);
     const share = createEncryptedPairingShare(samplePayload, {

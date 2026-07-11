@@ -88,29 +88,58 @@ export function PairingQrScannerModal({
     return () => clearTimeout(focusTimer);
   }, [pendingEncryptedLink]);
 
-  const handleCodeRead = useCallback((event: CameraKitReadCodeEvent) => {
-    if (scanLockedRef.current) {
-      return;
-    }
+  const handleCodeRead = useCallback(
+    (event: CameraKitReadCodeEvent) => {
+      if (scanLockedRef.current) {
+        return;
+      }
 
-    const scannedValue = event.nativeEvent.codeStringValue?.trim();
-    if (!scannedValue) {
-      return;
-    }
+      const scannedValue = event.nativeEvent.codeStringValue?.trim();
+      if (!scannedValue) {
+        return;
+      }
 
-    const encrypted = parseEncryptedPairingLink(scannedValue);
-    if (!encrypted) {
-      setScanMessage("This is not an encrypted OmniWork pairing QR code.");
-      return;
-    }
+      const encrypted = parseEncryptedPairingLink(scannedValue);
+      if (!encrypted) {
+        setScanMessage("This is not an encrypted OmniWork pairing QR code.");
+        return;
+      }
 
-    scanLockedRef.current = true;
-    setPendingEncryptedLink(scannedValue);
-    setPassword("");
-    setPasswordError(null);
-    setDecrypting(false);
-    setScanMessage("Encrypted QR code detected. Enter its 4-digit password.");
-  }, []);
+      scanLockedRef.current = true;
+      setPassword("");
+      setPasswordError(null);
+
+      if (!encrypted.passwordRequired) {
+        setPendingEncryptedLink(null);
+        setDecrypting(true);
+        setScanMessage("QR code detected. Connecting...");
+        const pairing = decryptPairingConfig(scannedValue, "");
+        if (!pairing) {
+          scanLockedRef.current = false;
+          setDecrypting(false);
+          setScanMessage("QR code is expired or data is invalid.");
+          return;
+        }
+
+        Promise.resolve(onScanned(pairing))
+          .catch((error: unknown) => {
+            scanLockedRef.current = false;
+            setScanMessage(
+              `Could not import QR code: ${formatErrorMessage(error)}`,
+            );
+          })
+          .finally(() => {
+            setDecrypting(false);
+          });
+        return;
+      }
+
+      setPendingEncryptedLink(scannedValue);
+      setDecrypting(false);
+      setScanMessage("Encrypted QR code detected. Enter its 4-digit password.");
+    },
+    [onScanned],
+  );
 
   const handleDecrypt = useCallback(() => {
     if (decrypting) {

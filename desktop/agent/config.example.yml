@@ -52,6 +52,13 @@ probe:
   port: 17669
   # token: local-probe-token
 
+pairing:
+  # Desktop startup QR validity in seconds. Defaults to 5 minutes.
+  qrTtlSeconds: 300
+
+  # Default true. Set false to allow scanning without entering the 4-digit QR password.
+  qrPasswordEnabled: true
+
 connection:
   heartbeatMs: 10000
   staleMs: 30000

@@ -51,6 +51,8 @@ export interface AgentConfig {
   terminalSize: TerminalSize;
   terminalStreamEnabled: boolean;
   businessSecurityMode: BusinessSecurityMode;
+  pairingQrTtlSeconds: number;
+  pairingQrPasswordEnabled: boolean;
 }
 
 export interface AgentConfigLoadOptions {
@@ -230,6 +232,12 @@ export function loadAgentConfig(
       readConfigBoolean(rawConfig, false, "terminal", "streamEnabled") ??
       parseBoolean(env.OMNIWORK_TERMINAL_STREAM_ENABLED, false),
     businessSecurityMode: resolveBusinessSecurityMode(rawConfig, env),
+    pairingQrTtlSeconds:
+      readConfigPositiveInteger(rawConfig, 5 * 60, "pairing", "qrTtlSeconds") ??
+      5 * 60,
+    pairingQrPasswordEnabled:
+      readConfigBoolean(rawConfig, true, "pairing", "qrPasswordEnabled") ??
+      true,
   };
 }
 

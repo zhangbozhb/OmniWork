@@ -20,6 +20,7 @@ interface QrCodeTerminal {
 export interface PairingQrDetails {
   link: string;
   password: string;
+  passwordRequired: boolean;
   expiresAt: Date;
   payload: PairingLinkPayload;
   /**
@@ -48,11 +49,16 @@ export function createPairingQrDetails(
     key_id: keyRecord.key_id,
   };
 
-  const share = createEncryptedPairingShare(payload, { source: "agent" });
+  const share = createEncryptedPairingShare(payload, {
+    source: "agent",
+    ttlMs: config.pairingQrTtlSeconds * 1000,
+    passwordEnabled: config.pairingQrPasswordEnabled,
+  });
 
   return {
     link: share.link,
     password: share.password,
+    passwordRequired: share.passwordRequired,
     expiresAt: share.expiresAt,
     payload,
     endpoint,
@@ -105,7 +111,10 @@ function printPairingSummary(details: PairingQrDetails): void {
   console.info(`  host: ${endpoint?.host ?? "-"}`);
   console.info(`  port: ${endpoint?.port ?? "-"}`);
   console.info(`  relay_url: ${payload.relay_url}`);
-  console.info(`  qr_password: ${details.password}`);
+  console.info(
+    `  qr_password: ${details.passwordRequired ? details.password : "-"}`,
+  );
+  console.info(`  qr_password_enabled: ${details.passwordRequired}`);
   console.info(`  qr_expires_at: ${details.expiresAt.toISOString()}`);
 }
 

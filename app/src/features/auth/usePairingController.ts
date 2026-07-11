@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
+import { parseEncryptedPairingLink } from "@omniwork/protocol-ts";
 
 import type { ConnectionStatus, AppView } from "../../app/appTypes";
 import { formatErrorMessage } from "../../app/connectionMessages";
@@ -96,6 +97,18 @@ export function usePairingController({
         }
 
         if (initialUrl && isEncryptedPairingConfig(initialUrl)) {
+          const encrypted = parseEncryptedPairingLink(initialUrl);
+          if (encrypted && !encrypted.passwordRequired) {
+            const nextPairing = decryptPairingConfig(initialUrl, "");
+            if (nextPairing) {
+              await saveAndActivatePairing(nextPairing, savedPairings, {
+                autoOpenSessions: true,
+              });
+              setConnectionMessage("Pairing imported from link. Connecting...");
+              return;
+            }
+          }
+
           pairingsRef.current = savedPairings;
           setPairings(savedPairings);
           setPairing(savedPairings[0] ?? null);
@@ -155,6 +168,19 @@ export function usePairingController({
   async function handlePairingUrl(url: string): Promise<void> {
     const nextPairing = parsePairingConfig(url);
     if (!nextPairing && isEncryptedPairingConfig(url)) {
+      const encrypted = parseEncryptedPairingLink(url);
+      if (encrypted && !encrypted.passwordRequired) {
+        const decryptedPairing = decryptPairingConfig(url, "");
+        if (decryptedPairing) {
+          setPairingError(undefined);
+          setConnectionMessage("Pairing imported from link. Connecting...");
+          await saveAndActivatePairing(decryptedPairing, pairingsRef.current, {
+            autoOpenSessions: true,
+          });
+          return;
+        }
+      }
+
       setPendingEncryptedPairingLink(url);
       setEncryptedPairingPassword("");
       setEncryptedPairingError(undefined);

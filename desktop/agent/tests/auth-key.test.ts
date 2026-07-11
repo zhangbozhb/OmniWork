@@ -106,6 +106,8 @@ const baseConfig: AgentConfig = {
   terminalSize: { cols: 80, rows: 24 },
   terminalStreamEnabled: false,
   businessSecurityMode: "e2e_required",
+  pairingQrTtlSeconds: 5 * 60,
+  pairingQrPasswordEnabled: true,
 };
 
 assert.equal(
@@ -120,11 +122,31 @@ assert.equal(
   const details = createPairingQrDetails(baseConfig, record);
   assert.ok(details);
   assert.match(details.password, /^\d{4}$/u);
+  assert.equal(details.passwordRequired, true);
   assert.equal(parseEncryptedPairingLink(details.link)?.source, "agent");
   assert.equal(
     decryptPairingLink(details.link, details.password).display_name,
     "test",
   );
+}
+{
+  const details = createPairingQrDetails(
+    {
+      ...baseConfig,
+      pairingQrTtlSeconds: 60,
+      pairingQrPasswordEnabled: false,
+    },
+    record,
+  );
+  assert.ok(details);
+  assert.equal(details.password, "");
+  assert.equal(details.passwordRequired, false);
+  assert.equal(
+    details.expiresAt.getTime() - Date.now() <= 60_000,
+    true,
+  );
+  assert.equal(parseEncryptedPairingLink(details.link)?.passwordRequired, false);
+  assert.equal(decryptPairingLink(details.link, "").display_name, "test");
 }
 assert.equal(defaultAgentDisplayName("work-mac.local"), "work-mac");
 assert.equal(defaultAgentDisplayName("work-mac.LOCAL"), "work-mac");
@@ -165,6 +187,8 @@ assert.throws(
   assert.equal(config.agentVersion, "0.1.0");
   assert.equal(config.relayReconnectForever, true);
   assert.equal(config.relayReconnectMaxAttempts, 8);
+  assert.equal(config.pairingQrTtlSeconds, 5 * 60);
+  assert.equal(config.pairingQrPasswordEnabled, true);
   assert.ok(config.displayName.length > 0);
 }
 
@@ -193,6 +217,9 @@ admin:
   port: 18000
 probe:
   enabled: false
+pairing:
+  qrTtlSeconds: 120
+  qrPasswordEnabled: false
 connection:
   heartbeatMs: 11000
   staleMs: 31000
@@ -237,6 +264,8 @@ paths:
   assert.equal(config.connectionHeartbeatMs, 11000);
   assert.equal(config.connectionStaleMs, 31000);
   assert.equal(config.connectionDisconnectMs, 91000);
+  assert.equal(config.pairingQrTtlSeconds, 120);
+  assert.equal(config.pairingQrPasswordEnabled, false);
   assert.equal(config.relayReconnectForever, false);
   assert.equal(config.relayReconnectMaxAttempts, 3);
   assert.equal(config.relayReconnectInitialDelayMs, 1500);
