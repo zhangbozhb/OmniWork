@@ -1,5 +1,5 @@
 import type { IncomingMessage } from "node:http";
-import type { Socket } from "node:net";
+import { isIP, type Socket } from "node:net";
 
 import geoip from "geoip-lite";
 import type { AppConnectionObservation } from "@omniwork/protocol-ts";
@@ -90,6 +90,23 @@ export function resolveConnectionLocation(
   };
 }
 
+export function resolvePublicRemoteIp(remoteIp: string | undefined): string | null {
+  const normalized = normalizeIpLiteral(remoteIp ?? "");
+  return isPublicIpLiteral(normalized) ? normalized : null;
+}
+
+export function isPublicIpLiteral(remoteIp: string): boolean {
+  const ip = normalizeIpLiteral(remoteIp);
+  const version = isIP(ip);
+  if (version === 4) {
+    return isPublicIpv4(ip);
+  }
+  if (version === 6) {
+    return isPublicIpv6(ip);
+  }
+  return false;
+}
+
 export function createRelayObservation(
   request: IncomingMessage,
   remoteIp: ResolvedRemoteIp,
@@ -171,6 +188,43 @@ function normalizeIpLiteral(remoteIp: string): string {
   return trimmed.startsWith("::ffff:")
     ? trimmed.slice("::ffff:".length)
     : trimmed;
+}
+
+function isPublicIpv4(ip: string): boolean {
+  const parts = ip.split(".").map((part) => Number.parseInt(part, 10));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
+    return false;
+  }
+  const [a, b, c, d] = parts;
+  if (
+    a === undefined ||
+    b === undefined ||
+    c === undefined ||
+    d === undefined ||
+    parts.some((part) => part < 0 || part > 255)
+  ) {
+    return false;
+  }
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
+  if (a === 100 && b >= 64 && b <= 127) return false;
+  if (a === 169 && b === 254) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 192 && b === 0 && c === 2) return false;
+  if (a === 198 && b === 51 && c === 100) return false;
+  if (a === 203 && b === 0 && c === 113) return false;
+  return true;
+}
+
+function isPublicIpv6(ip: string): boolean {
+  if (ip === "::" || ip === "::1") return false;
+  const first = Number.parseInt(ip.split(":")[0] ?? "", 16);
+  if (!Number.isFinite(first)) return false;
+  if ((first & 0xfe00) === 0xfc00) return false; // unique local fc00::/7
+  if ((first & 0xffc0) === 0xfe80) return false; // link-local fe80::/10
+  if ((first & 0xff00) === 0xff00) return false; // multicast ff00::/8
+  if (ip.toLowerCase().startsWith("2001:db8:")) return false;
+  return true;
 }
 
 function countryName(countryCode: string): string {

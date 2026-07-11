@@ -85,6 +85,8 @@ export interface RelayServerConfig {
     emailLinkTtlMs: number;
     sessionTtlMs: number;
     deviceEnrollmentTtlMs: number;
+    agentAuthChallengeTtlMs: number;
+    agentAuthClockSkewMs: number;
     nonceTtlMs: number;
     emailRateLimitPerHour: number;
     ipRateLimitPerHour: number;
@@ -259,11 +261,11 @@ export function loadRelayServerConfig(
         readConfigNumber(rawConfig, 5, "authRateLimit", "capacity") ??
         parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_CAPACITY, 5),
       refillPerSecond:
-        readConfigNumber(rawConfig, 1, "authRateLimit", "refillPerSecond") ??
-        parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC, 1),
+        readConfigNumber(rawConfig, 2, "authRateLimit", "refillPerSecond") ??
+        parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC, 2),
       blockMs:
-        readConfigNumber(rawConfig, 60_000, "authRateLimit", "blockMs") ??
-        parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS, 60_000),
+        readConfigNumber(rawConfig, 120_000, "authRateLimit", "blockMs") ??
+        parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS, 120_000),
     },
     websocket: {
       keepaliveIntervalMs:
@@ -388,6 +390,16 @@ export function loadRelayServerConfig(
       deviceEnrollmentTtlMs:
         readConfigNumber(rawConfig, 300_000, "auth", "deviceEnrollmentTtlMs") ??
         parseNumber(env.OMNIWORK_AUTH_DEVICE_ENROLL_TTL_MS, 300_000),
+      agentAuthChallengeTtlMs:
+        readConfigNumber(
+          rawConfig,
+          60_000,
+          "auth",
+          "agentAuthChallengeTtlMs",
+        ) ?? parseNumber(env.OMNIWORK_AUTH_AGENT_CHALLENGE_TTL_MS, 60_000),
+      agentAuthClockSkewMs:
+        readConfigNumber(rawConfig, 60_000, "auth", "agentAuthClockSkewMs") ??
+        parseNumber(env.OMNIWORK_AUTH_AGENT_CLOCK_SKEW_MS, 60_000),
       nonceTtlMs:
         readConfigNumber(rawConfig, 300_000, "auth", "nonceTtlMs") ??
         parseNumber(env.OMNIWORK_AUTH_NONCE_TTL_MS, 300_000),

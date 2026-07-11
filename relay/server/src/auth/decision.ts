@@ -19,7 +19,8 @@ export type RelayAuthDecision =
         | "device_not_registered"
         | "device_revoked"
         | "invalid_signature"
-        | "replayed_nonce"
+        | "public_key_mismatch"
+        | "invalid_challenge"
         | "invalid_session"
         | "admin_https_required"
         | "unauthorized"
@@ -35,6 +36,7 @@ export type RelayAuthDecision =
       audit: {
         surface:
           | "relay_ws_upgrade"
+          | "agent_auth_init"
           | "agent_hello"
           | "mobile_connect"
           | "admin_http";

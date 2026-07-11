@@ -45,7 +45,7 @@
 - `ingress/identity.ts` 处理可信代理 IP、connection observation、GeoIP location 与 WebSocket endpoint 解析。
 - `runtime/topology.ts` 的 `RuntimeTopology` 持有 active connection topology，包括 Agent、App、primary Agent 与 device revoke 关闭。
 - `runtime/maintenance.ts` 的 `RuntimeMaintenance` 处理 pending auth、device status、auth store 和 delivery context 的周期清理。
-- `app-agent/agentAdmission.ts` 的 `AgentAdmission` 处理 `agent.hello`、设备签名、nonce 与 Agent 准入。
+- `app-agent/agentAdmission.ts` 的 `AgentAdmission` 处理 `agent.auth.init`、无状态 `agent.auth.challenge`、`agent.hello` 设备签名 proof 与 Agent 准入。
 - `app-agent/appAdmission.ts` 的 `AppAdmission` 处理 `mobile.connect`、用户-device ownership 与 `auth.challenge`。
 - `app-agent/authBridge.ts` 的 `AppAuthBridge` 处理 `auth.proof`、`auth.ok`、`auth.failed`，负责 App proof 到 Agent 验证的控制面桥接。
 - `app-agent/channel.ts` 的 `AppAgentChannel` 处理 App-Agent 消息路由与 `relay.app.deliver` 的 delivery context。
@@ -57,11 +57,28 @@
 Relay 用户体系是可选控制面能力，默认 `OMNIWORK_RELAY_AUTH_MODE=none`，保持现有本地/内网使用方式。开启 `OMNIWORK_RELAY_AUTH_MODE=email_link` 后：
 
 - 用户通过 Relay 网站 `/auth/` 进行邮箱 magic link 注册/登录，邮件发送支持本地 `console` 与 SMTP；非 loopback host 必须配置 HTTPS `OMNIWORK_PUBLIC_BASE_URL`，且不能使用 `console` provider。
-- Relay 使用 SQLite 保存 user/session/device/enrollment/nonce，默认路径为 `<OMNIWORK_RELAY_RUNTIME_DIR>/relay-auth.sqlite`。
+- Relay 使用 SQLite 保存 user/session/device/enrollment，默认路径为 `<OMNIWORK_RELAY_RUNTIME_DIR>/relay-auth.sqlite`。
 - Cookie 会话下的状态变更接口要求携带 `/auth/me` 返回的 `x-csrf-token`；Bearer token 调用不走该 CSRF 校验。
-- Agent 首次设备登记通过网站生成的短期 enrollment token 完成：`omniwork-agent enroll` 自动生成 Ed25519 keypair、提交 public key、保存 Relay 分配的 `device_id` 和本地 private key；后续 `agent.hello.payload.relay_auth` 必须签名 `device_id|timestamp|nonce`。Relay 鉴权通过后生成 `agent_connection_id`，并保证同一 `device_id` 只有一个在线 Agent。
+- Agent 首次设备登记通过网站生成的短期 enrollment token 完成：`omniwork-agent enroll` 自动生成 Ed25519 keypair、提交 public key、保存 Relay 分配的 `device_id` 和本地 private key。后续连接先用 `agent.auth.init` 对 `device_id|device_public_key|timestamp` 做时间签名，Relay 校验登记公钥后返回无状态 `agent.auth.challenge`（默认 60 秒 TTL）；最终 `agent.hello.payload.relay_auth` 签名 `device_id|challenge|timestamp`。Relay 鉴权通过后生成 `agent_connection_id`，并保证同一 `device_id` 只有一个在线 Agent。
 - App 的 `mobile.connect.payload.session_token` 必须属于目标 device 的 owner user，否则 Relay 在进入 App-Agent 鉴权前拒绝连接。
 - 该能力只约束 Relay 控制面身份与设备归属，不改变 App-Agent 业务 E2E 边界，Relay 仍不解析业务 payload。
+
+Agent 设备准入的 Relay 校验顺序如下，完整时序见 [auth-key-design.md](./auth-key-design.md#relay-鉴权流程)：
+
+```mermaid
+flowchart LR
+  A[agent.auth.init] --> B[查 device 登记状态]
+  B --> C[校验登记公钥匹配]
+  C --> D[校验 init 时间签名]
+  D --> E[返回无状态 challenge]
+  E --> F[agent.hello proof]
+  F --> G[校验 connection 为 pending]
+  G --> H[校验 challenge HMAC/过期/connection]
+  H --> I[校验 proof 签名]
+  I --> J[分配 agent_connection_id]
+```
+
+该流程不把 `device_id` 或 `device_public_key` 当作秘密。攻击者即使知道这些明文，也需要持有登记公钥对应的 `device_private_key`，才能分别生成 init 签名和本次 challenge 的 proof 签名。Agent 准入按 `agent|device_id|public_remote_ip` 与 `agent_ip|public_remote_ip` 两层限流；`public_remote_ip` 只来自 Relay 连接层观测，内网、loopback、链路本地和保留地址不进入该限流。成功发出 init challenge 会消耗公网 IP-only 桶，最终 proof 成功后只重置 device+public IP 桶。同一连接 verified 后重复 `agent.hello` 会被忽略并记录审计日志，避免重复注册触发 App 断连。
 
 ### 3.1 触发
 
@@ -117,16 +134,16 @@ App                       Relay                       Agent
 
 完整示例见 [relay/server/README.md](../relay/server/README.md)。升级相关项：
 
-| 环境变量                               | 默认                                        | 说明                                                                                                    |
-| -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `OMNIWORK_UPGRADE_ENABLED`             | `true`                                      | 全局开关；`false` 时 Relay 永远不发起 propose                                                           |
-| `OMNIWORK_UPGRADE_ROLLOUT`             | `100`                                       | 灰度百分比 0..100；按 `sha1(device_id)` 哈希分桶                                                        |
-| `OMNIWORK_UPGRADE_DEVICE_BLOCKLIST`    | （空）                                      | 逗号分隔 device_id；命中的 device 永不升级                                                              |
-| `OMNIWORK_UPGRADE_ICE_SERVERS_JSON`    | `[{"urls":"stun:stun.l.google.com:19302"}]` | propose 环节下发的 ICE servers                                                                          |
-| `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS`    | `3000`                                      | 鉴权完成到 propose 的稳定窗口                                                                           |
-| `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF` | `true`                                      | 是否尊重 App `mobile.connect.transport_preference`；`false` 时 Relay 全部按 `auto` 处理（运维回滚开关） |
-| `OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS` | `3300000`                                | Relay WebSocket ping 间隔；默认 55 分钟，需低于 Nginx/LB 空闲超时                                      |
-| `OMNIWORK_RELAY_WS_PONG_TIMEOUT_MS`    | `30000`                                     | Relay 等待 pong 的超时时间；超时后关闭 socket 并清理 RuntimeTopology                                   |
+| 环境变量                                  | 默认                                        | 说明                                                                                                    |
+| ----------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `OMNIWORK_UPGRADE_ENABLED`                | `true`                                      | 全局开关；`false` 时 Relay 永远不发起 propose                                                           |
+| `OMNIWORK_UPGRADE_ROLLOUT`                | `100`                                       | 灰度百分比 0..100；按 `sha1(device_id)` 哈希分桶                                                        |
+| `OMNIWORK_UPGRADE_DEVICE_BLOCKLIST`       | （空）                                      | 逗号分隔 device_id；命中的 device 永不升级                                                              |
+| `OMNIWORK_UPGRADE_ICE_SERVERS_JSON`       | `[{"urls":"stun:stun.l.google.com:19302"}]` | propose 环节下发的 ICE servers                                                                          |
+| `OMNIWORK_UPGRADE_PROPOSE_DELAY_MS`       | `3000`                                      | 鉴权完成到 propose 的稳定窗口                                                                           |
+| `OMNIWORK_UPGRADE_RESPECT_CLIENT_PREF`    | `true`                                      | 是否尊重 App `mobile.connect.transport_preference`；`false` 时 Relay 全部按 `auto` 处理（运维回滚开关） |
+| `OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS` | `3300000`                                   | Relay WebSocket ping 间隔；默认 55 分钟，需低于 Nginx/LB 空闲超时                                       |
+| `OMNIWORK_RELAY_WS_PONG_TIMEOUT_MS`       | `30000`                                     | Relay 等待 pong 的超时时间；超时后关闭 socket 并清理 RuntimeTopology                                    |
 
 客户端可观测开关：
 

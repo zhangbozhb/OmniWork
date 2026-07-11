@@ -33,8 +33,8 @@ paths:
 
 authRateLimit:
   capacity: 5
-  refillPerSecond: 1
-  blockMs: 60000
+  refillPerSecond: 2
+  blockMs: 120000
 
 websocket:
   # 55 minutes, intended to sit below a 1 hour reverse proxy idle timeout.
@@ -83,6 +83,10 @@ auth:
   emailLinkTtlMs: 900000
   sessionTtlMs: 2592000000
   deviceEnrollmentTtlMs: 300000
+  # Stateless Agent device-auth challenge TTL.
+  agentAuthChallengeTtlMs: 60000
+  # Accepted clock skew for Agent device-auth init/proof signatures.
+  agentAuthClockSkewMs: 60000
   nonceTtlMs: 300000
   emailRateLimitPerHour: 3
   ipRateLimitPerHour: 10

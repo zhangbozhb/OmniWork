@@ -35,6 +35,8 @@ import {
 } from "./constants.ts";
 
 export type MessageType =
+  | "agent.auth.init"
+  | "agent.auth.challenge"
   | "agent.hello"
   | "agent.heartbeat"
   | "mobile.connect"
@@ -139,10 +141,22 @@ export interface AgentHelloPayload {
   capabilities: AgentCapability[];
 }
 
+export interface AgentAuthInitPayload {
+  v: typeof PROTOCOL_VERSION;
+  device_id: string;
+  device_public_key: string;
+  timestamp: number;
+  signature: string;
+}
+
+export interface AgentAuthChallengePayload {
+  challenge: string;
+}
+
 export interface RelayAgentAuthPayload {
   method: "device_signature";
   timestamp: number;
-  nonce: string;
+  challenge: string;
   signature: string;
 }
 

@@ -314,28 +314,10 @@ export class RelayUserAuthStore {
       .run(now, deviceId);
   }
 
-  rememberNonce(deviceId: string, nonce: string, ttlMs: number, now = Date.now()): boolean {
-    const expiresAt = now + ttlMs;
-    try {
-      this.open()
-        .prepare(
-          `
-            INSERT INTO agent_auth_nonces (device_id, nonce, expires_at)
-            VALUES (?, ?, ?)
-          `,
-        )
-        .run(deviceId, nonce, expiresAt);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   sweep(now = Date.now()): void {
     const db = this.open();
     db.prepare("DELETE FROM auth_email_links WHERE expires_at < ?").run(now);
     db.prepare("DELETE FROM device_enrollments WHERE expires_at < ?").run(now);
-    db.prepare("DELETE FROM agent_auth_nonces WHERE expires_at < ?").run(now);
     db.prepare(
       "DELETE FROM auth_sessions WHERE expires_at < ? OR revoked_at IS NOT NULL",
     ).run(now);
@@ -422,12 +404,6 @@ export class RelayUserAuthStore {
         expires_at INTEGER NOT NULL,
         consumed_at INTEGER,
         created_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS agent_auth_nonces (
-        device_id TEXT NOT NULL,
-        nonce TEXT NOT NULL,
-        expires_at INTEGER NOT NULL,
-        PRIMARY KEY (device_id, nonce)
       );
     `);
     this.db = db;

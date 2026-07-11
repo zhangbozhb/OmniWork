@@ -5,6 +5,8 @@ import {
   PROTOCOL_SUPPORT_V1,
   TERMINAL_STREAM_CAPABILITY_V1,
   createMessage,
+  type AgentAuthChallengePayload,
+  type AgentAuthInitPayload,
   type AgentHelloPayload,
   type AuthOkPayload,
   type MessageEnvelope,
@@ -18,7 +20,10 @@ import type { WorkspaceManager } from "../workspace/workspaceManager.ts";
 import { AgentRelayPath, AgentSessionTransport } from "../transport/index.ts";
 import type { TerminalStreamPusher } from "./terminalStreamPusher.ts";
 import type { Logger } from "../telemetry/logger.ts";
-import { createRelayDeviceAuth } from "./relayDeviceAuth.ts";
+import {
+  createRelayDeviceAuthInit,
+  createRelayDeviceAuthProof,
+} from "./relayDeviceAuth.ts";
 import {
   classifyRelayClose,
   formatRelayConnectionError,
@@ -188,6 +193,13 @@ export class AgentRelayController {
 
     transport.onMessage((message) => {
       this.rememberAgentConnectionId(message);
+      if (message.type === "agent.auth.challenge") {
+        this.handleAgentAuthChallenge(
+          relay,
+          message.payload as AgentAuthChallengePayload,
+        );
+        return;
+      }
       this.onMessage(message).catch((error: unknown) => {
         this.logger.error("failed to handle relay message", {
           message_type: message.type,
@@ -211,61 +223,27 @@ export class AgentRelayController {
     }
     relay.onClose((event) => this.handleRelayClose(event));
 
-    relay.send(
-      createMessage<AgentHelloPayload>(
-        "agent.hello",
-        {
-          v: PROTOCOL_SUPPORT_V1.current,
-          device_id: this.config.deviceId,
-          ...(this.config.relayDevicePrivateKey
-            ? {
-                relay_auth: createRelayDeviceAuth({
-                  deviceId: this.config.deviceId,
-                  privateKeyPem: this.config.relayDevicePrivateKey,
-                }),
-              }
-            : {}),
-          protocol: PROTOCOL_SUPPORT_V1,
-          e2e: this.e2eSupport(),
-          business_security_mode: this.config.businessSecurityMode,
-          hostname: this.config.hostname,
-          platform: "darwin",
-          agent_version: this.config.agentVersion,
-          providers: this.terminalProviders.providers(),
-          workspaces: this.workspaces.snapshot(),
-          capabilities: [
-            E2E_NOISE_NNPSK0_CAPABILITY_V1,
-            this.config.businessSecurityMode === "e2e_required"
-              ? ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1
-              : PLAINTEXT_BUSINESS_CAPABILITY_V1,
-            "terminal.tui",
-            "terminal.snapshot",
-            ...(this.config.terminalStreamEnabled
-              ? [TERMINAL_STREAM_CAPABILITY_V1]
-              : []),
-            "session.tmux",
-            "session.tmux.attach",
-            "session.tmux.kill",
-            "workspace.list",
-            "files.read",
-            "files.write",
-            "git.read",
-            "agent.message",
-            "agent.message.inbox.sqlite",
-            "agent.surface.event",
-            "agent.notification.settings",
-            "agent.probe.codex",
-            "agent.probe.codex.app_server",
-            "agent.probe.claude_code",
-            "agent.probe.trae",
-            "agent.probe.trae_cn",
-            "agent.probe.tmux",
-            ...this.terminalProviders.capabilities(),
-          ],
-        },
-        { device_id: this.config.deviceId },
-      ),
-    );
+    if (this.config.relayDevicePrivateKey) {
+      const init = createRelayDeviceAuthInit({
+        deviceId: this.config.deviceId,
+        privateKeyPem: this.config.relayDevicePrivateKey,
+      });
+      relay.send(
+        createMessage<AgentAuthInitPayload>(
+          "agent.auth.init",
+          {
+            v: PROTOCOL_SUPPORT_V1.current,
+            device_id: this.config.deviceId,
+            device_public_key: init.device_public_key,
+            timestamp: init.timestamp,
+            signature: init.signature,
+          },
+          { device_id: this.config.deviceId },
+        ),
+      );
+    } else {
+      this.sendAgentHello(relay);
+    }
 
     this.logger.info("connected to relay", {
       relay_url: url,
@@ -332,6 +310,79 @@ export class AgentRelayController {
         agent_connection_id: payload.agent_connection_id,
       });
     }
+  }
+
+  private handleAgentAuthChallenge(
+    relay: AgentRelayClient,
+    payload: AgentAuthChallengePayload,
+  ): void {
+    if (!this.config.relayDevicePrivateKey) {
+      this.logger.error("relay requested agent auth challenge without private key", {
+        device_id: this.config.deviceId,
+      });
+      relay.close(4403, "missing relay device private key");
+      return;
+    }
+    this.sendAgentHello(relay, payload.challenge);
+  }
+
+  private sendAgentHello(relay: AgentRelayClient, challenge?: string): void {
+    relay.send(
+      createMessage<AgentHelloPayload>(
+        "agent.hello",
+        {
+          v: PROTOCOL_SUPPORT_V1.current,
+          device_id: this.config.deviceId,
+          ...(challenge && this.config.relayDevicePrivateKey
+            ? {
+                relay_auth: createRelayDeviceAuthProof({
+                  deviceId: this.config.deviceId,
+                  privateKeyPem: this.config.relayDevicePrivateKey,
+                  challenge,
+                }),
+              }
+            : {}),
+          protocol: PROTOCOL_SUPPORT_V1,
+          e2e: this.e2eSupport(),
+          business_security_mode: this.config.businessSecurityMode,
+          hostname: this.config.hostname,
+          platform: "darwin",
+          agent_version: this.config.agentVersion,
+          providers: this.terminalProviders.providers(),
+          workspaces: this.workspaces.snapshot(),
+          capabilities: [
+            E2E_NOISE_NNPSK0_CAPABILITY_V1,
+            this.config.businessSecurityMode === "e2e_required"
+              ? ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1
+              : PLAINTEXT_BUSINESS_CAPABILITY_V1,
+            "terminal.tui",
+            "terminal.snapshot",
+            ...(this.config.terminalStreamEnabled
+              ? [TERMINAL_STREAM_CAPABILITY_V1]
+              : []),
+            "session.tmux",
+            "session.tmux.attach",
+            "session.tmux.kill",
+            "workspace.list",
+            "files.read",
+            "files.write",
+            "git.read",
+            "agent.message",
+            "agent.message.inbox.sqlite",
+            "agent.surface.event",
+            "agent.notification.settings",
+            "agent.probe.codex",
+            "agent.probe.codex.app_server",
+            "agent.probe.claude_code",
+            "agent.probe.trae",
+            "agent.probe.trae_cn",
+            "agent.probe.tmux",
+            ...this.terminalProviders.capabilities(),
+          ],
+        },
+        { device_id: this.config.deviceId },
+      ),
+    );
   }
 
   private handleRelayClose(event: RelayCloseEvent): void {

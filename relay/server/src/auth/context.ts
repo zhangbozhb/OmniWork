@@ -1,4 +1,5 @@
 import {
+  type AgentAuthInitPayload,
   type AgentHelloPayload,
   type MessageEnvelope,
   type MobileConnectPayload,
@@ -16,6 +17,15 @@ export type RelayWsUpgradeAuthContext = {
 export type AgentHelloAuthContext = {
   surface: "agent_hello";
   message: MessageEnvelope<AgentHelloPayload>;
+  connectionId: string;
+  remoteIp: string;
+};
+
+export type AgentAuthInitContext = {
+  surface: "agent_auth_init";
+  message: MessageEnvelope<AgentAuthInitPayload>;
+  connectionId: string;
+  remoteIp: string;
 };
 
 export type MobileConnectAuthContext = {
@@ -35,6 +45,7 @@ export type AdminHttpAuthContext = {
 
 export type RelayAuthContext =
   | RelayWsUpgradeAuthContext
+  | AgentAuthInitContext
   | AgentHelloAuthContext
   | MobileConnectAuthContext
   | AdminHttpAuthContext;

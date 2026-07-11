@@ -21,6 +21,8 @@ import {
   SUPPORTED_SESSION_STATUSES,
   TRANSPORT_PREFERENCES,
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+  agentAuthChallengePayloadSchema,
+  agentAuthInitPayloadSchema,
   agentHelloPayloadSchema,
   authFailedPayloadSchema,
   authOkPayloadSchema,
@@ -209,6 +211,19 @@ describe("auth payload schemas", () => {
 });
 
 describe("agent hello security mode", () => {
+  it("accepts agent auth init and challenge payloads", () => {
+    agentAuthInitPayloadSchema.parse({
+      v: PROTOCOL_VERSION,
+      device_id: "device-1",
+      device_public_key: "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+      timestamp: Date.now(),
+      signature: "signature",
+    });
+    agentAuthChallengePayloadSchema.parse({
+      challenge: "challenge-12345678901234567890",
+    });
+  });
+
   it("accepts the default encrypted-only mode", () => {
     agentHelloPayloadSchema.parse({
       v: PROTOCOL_VERSION,
@@ -216,7 +231,7 @@ describe("agent hello security mode", () => {
       relay_auth: {
         method: "device_signature",
         timestamp: Date.now(),
-        nonce: "nonce-12345678901234567890",
+        challenge: "challenge-12345678901234567890",
         signature: "signature",
       },
       protocol: PROTOCOL_SUPPORT_V1,

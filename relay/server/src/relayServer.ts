@@ -3,11 +3,13 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { randomBytes } from "node:crypto";
 import type { Socket } from "node:net";
 
 import {
   createMessage,
   parseMessageEnvelope,
+  type AgentAuthInitPayload,
   type AgentHelloPayload,
   type AppNetworkChangedPayload,
   type AuthProofPayload,
@@ -37,7 +39,7 @@ import { AppAuthBridge } from "./app-agent/authBridge.ts";
 import { RelayAuthExecutor } from "./auth/executor.ts";
 import { RelayAuthGuard } from "./auth/guard.ts";
 import { AgentControlPolicy } from "./auth/policies/agentControlPolicy.ts";
-import { AgentEmailLinkPolicy } from "./auth/policies/agentEmailLinkPolicy.ts";
+import { AgentDeviceIdentityPolicy } from "./auth/policies/agentDeviceIdentityPolicy.ts";
 import { IpBanPolicy } from "./auth/policies/ipBanPolicy.ts";
 import { MobileEmailLinkPolicy } from "./auth/policies/mobileEmailLinkPolicy.ts";
 import {
@@ -84,6 +86,7 @@ export class RelayServer {
   private readonly orchestrator: RelayUpgradeOrchestrator;
   private readonly authGuard: RelayAuthGuard;
   private readonly authExecutor: RelayAuthExecutor;
+  private readonly agentAuthChallengeSecret = randomBytes(32);
 
   constructor(config: RelayServerConfig) {
     this.config = config;
@@ -137,16 +140,24 @@ export class RelayServer {
             activeIpBan: (ip) => this.admin.activeIpBan(ip),
           }),
         ],
+        agentAuthInit: [
+          new AgentDeviceIdentityPolicy({
+            config,
+            challengeSecret: this.agentAuthChallengeSecret,
+            getDevice: (deviceId) => this.userAuthStore.getDevice(deviceId),
+            markDeviceSeen: (deviceId) =>
+              this.userAuthStore.markDeviceSeen(deviceId),
+          }),
+        ],
         agentHello: [
           new AgentControlPolicy({
             activeDisabledAgentDevice: (deviceId) =>
               this.admin.activeDisabledAgentDevice(deviceId),
           }),
-          new AgentEmailLinkPolicy({
+          new AgentDeviceIdentityPolicy({
             config,
+            challengeSecret: this.agentAuthChallengeSecret,
             getDevice: (deviceId) => this.userAuthStore.getDevice(deviceId),
-            rememberNonce: (deviceId, nonce, ttlMs) =>
-              this.userAuthStore.rememberNonce(deviceId, nonce, ttlMs),
             markDeviceSeen: (deviceId) =>
               this.userAuthStore.markDeviceSeen(deviceId),
           }),
@@ -186,8 +197,11 @@ export class RelayServer {
       getAgent: (deviceId) => this.primaryAgentByDevice.get(deviceId),
     });
     this.agentAdmission = new AgentAdmission({
+      config,
+      challengeSecret: this.agentAuthChallengeSecret,
       authGuard: this.authGuard,
       authExecutor: this.authExecutor,
+      authLimiter: this.authLimiter,
       topology: this.topology,
       state: this.state,
       send: (connection, message) => this.send(connection, message),
@@ -440,6 +454,15 @@ export class RelayServer {
     this.state.recordIngress(connection, message, Buffer.byteLength(raw));
 
     switch (message.type) {
+      case "agent.auth.init":
+        if (!this.ensureEndpoint(connection, "agent")) {
+          return;
+        }
+        this.agentAdmission.handleAgentAuthInit(
+          connection,
+          message as MessageEnvelope<AgentAuthInitPayload>,
+        );
+        break;
       case "agent.hello":
         if (!this.ensureEndpoint(connection, "agent")) {
           return;

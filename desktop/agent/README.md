@@ -104,8 +104,10 @@ so the App can display and create configured providers without hardcoded
 Codex/Claude/Gemini assumptions.
 
 When Relay is started with `OMNIWORK_RELAY_AUTH_MODE=email_link`, the Agent
-must send device-signature auth in `agent.hello`. Register on the Relay website
-at `/auth/`, create a device token, then run:
+must prove the enrolled device private key before `agent.hello` is accepted.
+It sends a time-bound `agent.auth.init` signature, receives a stateless
+`agent.auth.challenge`, then signs that challenge in `agent.hello.relay_auth`.
+Register on the Relay website at `/auth/`, create a device token, then run:
 
 ```sh
 omniwork-agent enroll \

@@ -25,6 +25,8 @@ const messageId = z.string().min(1, "id must be a non-empty string");
 const emptyPayloadSchema = z.object({}).strict();
 
 export const messageTypeSchema = z.enum([
+  "agent.auth.init",
+  "agent.auth.challenge",
   "agent.hello",
   "agent.heartbeat",
   "mobile.connect",
@@ -286,8 +288,24 @@ const relayAgentAuthPayloadSchema = z
   .object({
     method: z.literal("device_signature"),
     timestamp: z.number().int().positive(),
-    nonce: z.string().min(16),
+    challenge: z.string().min(16),
     signature: z.string().min(1),
+  })
+  .strict();
+
+export const agentAuthInitPayloadSchema = z
+  .object({
+    v: z.literal(PROTOCOL_VERSION),
+    device_id: z.string().min(1),
+    device_public_key: z.string().min(1),
+    timestamp: z.number().int().positive(),
+    signature: z.string().min(1),
+  })
+  .strict();
+
+export const agentAuthChallengePayloadSchema = z
+  .object({
+    challenge: z.string().min(16),
   })
   .strict();
 
@@ -1045,6 +1063,8 @@ export const agentNotificationSettingsPayloadSchema = z
   .strict();
 
 const payloadSchemaByType = {
+  "agent.auth.init": agentAuthInitPayloadSchema,
+  "agent.auth.challenge": agentAuthChallengePayloadSchema,
   "agent.hello": agentHelloPayloadSchema,
   "mobile.connect": mobileConnectPayloadSchema,
   "auth.challenge": authChallengePayloadSchema,

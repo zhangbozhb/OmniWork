@@ -1,5 +1,6 @@
 import type {
   AdminHttpAuthContext,
+  AgentAuthInitContext,
   AgentHelloAuthContext,
   MobileConnectAuthContext,
   RelayAuthContext,
@@ -11,6 +12,7 @@ import type { RelayAuthPolicy } from "./policy.ts";
 export interface RelayAuthGuardOptions {
   policies: {
     relayWsUpgrade?: RelayAuthPolicy<RelayWsUpgradeAuthContext>[];
+    agentAuthInit?: RelayAuthPolicy<AgentAuthInitContext>[];
     agentHello?: RelayAuthPolicy<AgentHelloAuthContext>[];
     mobileConnect?: RelayAuthPolicy<MobileConnectAuthContext>[];
     adminHttp?: RelayAuthPolicy<AdminHttpAuthContext>[];
@@ -25,6 +27,9 @@ export class RelayAuthGuard {
   }
 
   authorize(context: RelayAuthContext): RelayAuthDecision {
+    if (context.surface === "agent_auth_init") {
+      return this.runPolicies(context, this.policies.agentAuthInit ?? []);
+    }
     if (context.surface === "agent_hello") {
       return this.runPolicies(context, this.policies.agentHello ?? []);
     }

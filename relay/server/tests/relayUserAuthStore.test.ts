@@ -46,8 +46,6 @@ try {
   assert.equal(device.user_id, user.id);
   assert.equal(device.name, "MacBook");
   assert.equal(store.getDevice(device.id)?.id, device.id);
-  assert.equal(store.rememberNonce(device.id, "nonce-1", 1000, 1600), true);
-  assert.equal(store.rememberNonce(device.id, "nonce-1", 1000, 1601), false);
   assert.equal(store.revokeDevice(device.id, user.id, 1700), true);
   assert.ok(store.getDevice(device.id)?.revoked_at);
 

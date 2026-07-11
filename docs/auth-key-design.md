@@ -117,7 +117,14 @@ sequenceDiagram
   participant R as Relay
   participant M as 桌面端 Agent
 
-  M->>R: agent.hello(device_id)
+  M->>R: agent.auth.init(device_id, device_public_key, timestamp, signature)
+  R->>R: 校验 device_id 已登记、未撤销
+  R->>R: 校验 device_public_key 与登记公钥规范化后匹配
+  R->>R: 校验 timestamp 窗口和 init 签名
+  R-->>M: agent.auth.challenge(challenge)
+  M->>R: agent.hello(device_id, Sign(device_private_key, challenge, timestamp))
+  R->>R: 校验 challenge HMAC、过期时间、connection 绑定
+  R->>R: 校验 proof 签名
   R-->>M: auth.ok(agent_connection_id)
   A->>R: mobile.connect(device_id)
   R->>A: auth.challenge(nonce)
@@ -137,11 +144,46 @@ sequenceDiagram
 - 连接断开后可以重新 challenge。
 - 桌面端 Agent 重启后 key 会变化；Relay 会为新连接分配新的 `agent_connection_id`，并顶替同一 `device_id` 下的旧 Agent 连接。
 
+Agent 设备身份校验流程：
+
+```mermaid
+flowchart TD
+  A[收到 agent.auth.init] --> B{device_id 已登记且未撤销?}
+  B -- 否 --> X[拒绝: device_not_registered / device_revoked]
+  B -- 是 --> C{device_public_key 与登记公钥规范化后匹配?}
+  C -- 否 --> Y[拒绝: public_key_mismatch]
+  C -- 是 --> D{timestamp 在窗口内且 init 签名有效?}
+  D -- 否 --> Z[拒绝: invalid_signature]
+  D -- 是 --> E[返回无状态 agent.auth.challenge]
+  E --> F[收到 agent.hello.relay_auth]
+  F --> S{当前 connection 为 pending?}
+  S -- 否 --> T[忽略重复 hello 或拒绝非法状态]
+  S -- 是 --> G{challenge HMAC 正确、未过期、绑定当前 connection?}
+  G -- 否 --> H[拒绝: invalid_challenge]
+  G -- 是 --> I{proof timestamp 在窗口内且签名有效?}
+  I -- 否 --> J[拒绝: invalid_signature]
+  I -- 是 --> K[准入: 分配 agent_connection_id 并注册 Agent]
+```
+
+校验语义：
+
+- `device_id` 是公开路由标识，不是 secret。
+- `device_public_key` 也是公开信息，但必须与 Relay 登记公钥一致，不能由连接方任意替换。
+- `agent.auth.init.signature = Sign(device_private_key, agent_init_v1 | device_id | device_public_key | timestamp)`，用于在发 challenge 前过滤伪造请求。
+- `agent.auth.challenge` 是 opaque 字符串，内部包含过期时间、当前 `connection_id` 和随机 nonce，并由 Relay 进程内 HMAC 密钥保护；Relay 不写入 DB，默认有效期为 60 秒。
+- init/proof 的 timestamp 使用独立的 `agentAuthClockSkewMs` 校验窗口，默认 60 秒，不再复用 App proof 的 `nonceTtlMs`。
+- `agent.hello.relay_auth.signature = Sign(device_private_key, agent_proof_v1 | device_id | challenge | timestamp)`，用于证明当前连接者能响应本次 challenge。
+- `agent.hello` 只允许从 `pending` 状态进入 `verified`；同一连接在 verified 后重复提交 `agent.hello` 会被忽略并记录 `agent.hello.ignored` 审计日志，不会重复注册 Agent 或关闭已有 App 连接。
+- 抓包得到旧 `device_id`、`device_public_key`、challenge、signature 也不能伪造下一次连接；旧 challenge 会受过期时间、connection 绑定和连接状态机限制。
+- Agent 设备准入按 `agent | device_id | public_remote_ip` 和 `agent_ip | public_remote_ip` 两层 token bucket 限流；`public_remote_ip` 只来自 Relay 连接层观测，内网、loopback、链路本地和保留地址不进入该限流。成功发出 init challenge 会消耗公网 IP-only 桶；最终 `agent.hello` 成功后只重置 device+public IP 桶，不清空 IP-only 桶，避免抓包重放 init 持续刷 challenge。
+
 ## 消息头和协议字段
 
 推荐新增消息：
 
 ```text
+agent.auth.init
+agent.auth.challenge
 auth.challenge
 auth.proof
 auth.ok
@@ -149,6 +191,8 @@ auth.failed
 agent.hello
 mobile.connect
 ```
+
+Agent 设备准入不再依赖 Relay 记录 nonce。`agent.auth.challenge` 是一个 opaque 字符串，内部包含过期时间和当前连接绑定，并由 Relay 进程内 HMAC 密钥保护；Relay 在 `agent.hello` 阶段重新验 HMAC、时间窗口和连接绑定即可完成无状态校验。重复提交的同连接 `agent.hello` 由连接状态机拦截。
 
 `auth.proof` payload 的字段定义以 [protocol/auth/auth-proof.schema.json](../protocol/auth/auth-proof.schema.json) 为唯一来源，运行时校验由 [packages/protocol-ts/src/schemas.ts](../packages/protocol-ts/src/schemas.ts) 落地。示例：
 

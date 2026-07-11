@@ -7,20 +7,29 @@ import {
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
   PROTOCOL_SUPPORT_V1,
   createMessage,
+  type AgentAuthInitPayload,
   type AgentHelloPayload,
   type MobileConnectPayload,
 } from "@omniwork/protocol-ts";
 
-import { relayDeviceSignaturePayload } from "../src/relayDeviceSignature.ts";
+import {
+  createStatelessAgentAuthChallenge,
+  relayDeviceInitSignaturePayload,
+  relayDeviceProofSignaturePayload,
+} from "../src/relayDeviceSignature.ts";
 import type {
   RelayAuthDevice,
   RelayAuthUser,
 } from "../src/relayUserAuthStore.ts";
 import { RelayAuthGuard } from "../src/auth/guard.ts";
 import { AgentControlPolicy } from "../src/auth/policies/agentControlPolicy.ts";
-import { AgentEmailLinkPolicy } from "../src/auth/policies/agentEmailLinkPolicy.ts";
+import { AgentDeviceIdentityPolicy } from "../src/auth/policies/agentDeviceIdentityPolicy.ts";
 import { IpBanPolicy } from "../src/auth/policies/ipBanPolicy.ts";
 import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolicy.ts";
+
+const CHALLENGE_SECRET = Buffer.from("auth-guard-test-secret");
+const AGENT_CONNECTION_ID = "conn-agent-test";
+const AGENT_REMOTE_IP = "203.0.113.20";
 
 {
   const guard = createRelayWsGuard(() => ({ reason: "test" }));
@@ -90,6 +99,8 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
   const decision = guard.authorize({
     surface: "agent_hello",
     message: createMessage("agent.hello", createAgentHello()),
+    connectionId: AGENT_CONNECTION_ID,
+    remoteIp: AGENT_REMOTE_IP,
   });
 
   assert.equal(decision.ok, false);
@@ -112,6 +123,8 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
   const decision = guard.authorize({
     surface: "agent_hello",
     message: createMessage("agent.hello", createAgentHello()),
+    connectionId: AGENT_CONNECTION_ID,
+    remoteIp: AGENT_REMOTE_IP,
   });
 
   assert.equal(decision.ok, false);
@@ -134,12 +147,13 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
       public_key: "invalid",
       created_at: 1,
     }),
-    rememberNonce: () => true,
   });
 
   const decision = guard.authorize({
     surface: "agent_hello",
     message: createMessage("agent.hello", createAgentHello()),
+    connectionId: AGENT_CONNECTION_ID,
+    remoteIp: AGENT_REMOTE_IP,
   });
 
   assert.equal(decision.ok, false);
@@ -162,17 +176,18 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
       public_key: publicKey,
       created_at: 1,
     }),
-    rememberNonce: () => false,
   });
 
   const decision = guard.authorize({
     surface: "agent_hello",
     message: createMessage("agent.hello", hello),
+    connectionId: "other-connection",
+    remoteIp: AGENT_REMOTE_IP,
   });
 
   assert.equal(decision.ok, false);
   if (!decision.ok) {
-    assert.equal(decision.reason, "replayed_nonce");
+    assert.equal(decision.reason, "invalid_challenge");
   }
 }
 
@@ -187,7 +202,6 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
       public_key: publicKey,
       created_at: 1,
     }),
-    rememberNonce: () => true,
     markDeviceSeen: (deviceId) => {
       seenDeviceId = deviceId;
     },
@@ -196,6 +210,8 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
   const decision = guard.authorize({
     surface: "agent_hello",
     message: createMessage("agent.hello", hello),
+    connectionId: AGENT_CONNECTION_ID,
+    remoteIp: AGENT_REMOTE_IP,
   });
 
   assert.deepEqual(decision, {
@@ -206,6 +222,34 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
     },
   });
   assert.equal(seenDeviceId, "device-1");
+}
+
+{
+  const { init, publicKey } = createSignedAgentAuthInit();
+  const guard = createAgentHelloGuard({
+    authMode: "email_link",
+    getDevice: () => ({
+      id: "device-1",
+      user_id: "user-1",
+      public_key: publicKey,
+      created_at: 1,
+    }),
+  });
+
+  const decision = guard.authorize({
+    surface: "agent_auth_init",
+    message: createMessage("agent.auth.init", init),
+    connectionId: AGENT_CONNECTION_ID,
+    remoteIp: AGENT_REMOTE_IP,
+  });
+
+  assert.deepEqual(decision, {
+    ok: true,
+    subject: {
+      userId: "user-1",
+      deviceId: "device-1",
+    },
+  });
 }
 
 {
@@ -299,6 +343,7 @@ function createConfig(authMode: "none" | "email_link") {
   return {
     auth: {
       mode: authMode,
+      agentAuthClockSkewMs: 60_000,
       nonceTtlMs: 60_000,
     },
   } as never;
@@ -314,22 +359,29 @@ function createRelayWsGuard(activeIpBan: (ip: string) => unknown) {
 
 function createAgentHelloGuard(options: {
   authMode: "none" | "email_link";
-    activeDisabledAgentDevice?: (deviceId: string) => unknown;
+  activeDisabledAgentDevice?: (deviceId: string) => unknown;
   getDevice?: (deviceId: string) => RelayAuthDevice | null;
-  rememberNonce?: (deviceId: string, nonce: string, ttlMs: number) => boolean;
   markDeviceSeen?: (deviceId: string) => void;
 }) {
   return new RelayAuthGuard({
     policies: {
+      agentAuthInit: [
+        new AgentDeviceIdentityPolicy({
+          config: createConfig(options.authMode),
+          challengeSecret: CHALLENGE_SECRET,
+          getDevice: options.getDevice ?? (() => null),
+          markDeviceSeen: options.markDeviceSeen ?? (() => {}),
+        }),
+      ],
       agentHello: [
         new AgentControlPolicy({
-            activeDisabledAgentDevice:
-              options.activeDisabledAgentDevice ?? (() => null),
+          activeDisabledAgentDevice:
+            options.activeDisabledAgentDevice ?? (() => null),
         }),
-        new AgentEmailLinkPolicy({
+        new AgentDeviceIdentityPolicy({
           config: createConfig(options.authMode),
+          challengeSecret: CHALLENGE_SECRET,
           getDevice: options.getDevice ?? (() => null),
-          rememberNonce: options.rememberNonce ?? (() => true),
           markDeviceSeen: options.markDeviceSeen ?? (() => {}),
         }),
       ],
@@ -388,24 +440,60 @@ function createMobileConnect(
   };
 }
 
+function createSignedAgentAuthInit(): {
+  init: AgentAuthInitPayload;
+  publicKey: string;
+} {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const timestamp = Date.now();
+  const devicePublicKey = publicKey
+    .export({ type: "spki", format: "pem" })
+    .toString();
+  const init: AgentAuthInitPayload = {
+    v: 1,
+    device_id: "device-1",
+    device_public_key: devicePublicKey,
+    timestamp,
+    signature: sign(
+      null,
+      relayDeviceInitSignaturePayload({
+        deviceId: "device-1",
+        devicePublicKey,
+        timestamp,
+      }),
+      privateKey,
+    ).toString("base64url"),
+  };
+  return {
+    init,
+    publicKey: devicePublicKey,
+  };
+}
+
 function createSignedAgentHello(): {
   hello: AgentHelloPayload;
   publicKey: string;
 } {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const timestamp = Date.now();
-  const nonce = "nonce-12345678901234567890";
+  const challenge = createStatelessAgentAuthChallenge({
+    deviceId: "device-1",
+    connectionId: AGENT_CONNECTION_ID,
+    secret: CHALLENGE_SECRET,
+    ttlMs: 60_000,
+    now: timestamp,
+  });
   const hello = createAgentHello({
     relay_auth: {
       method: "device_signature",
       timestamp,
-      nonce,
+      challenge,
       signature: sign(
         null,
-        relayDeviceSignaturePayload({
+        relayDeviceProofSignaturePayload({
           deviceId: "device-1",
           timestamp,
-          nonce,
+          challenge,
         }),
         privateKey,
       ).toString("base64url"),

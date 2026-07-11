@@ -4,7 +4,8 @@ Minimal company-network relay for the native OmniWork App and Desktop Agent.
 
 The server does not store the temporary key. It brokers the challenge flow:
 
-1. Desktop Agent registers with `agent.hello` and its `key_id`.
+1. Desktop Agent proves its device identity with `agent.auth.init`,
+   `agent.auth.challenge`, and a signed `agent.hello`.
 2. App sends `mobile.connect` for a Desktop Agent `device_id`.
 3. Relay sends `auth.challenge` to the App.
 4. App sends `auth.proof`; Relay forwards `auth.verify` to the Desktop Agent.
@@ -122,11 +123,28 @@ Auth data is stored in `OMNIWORK_RELAY_AUTH_DB_PATH` (default
 Cookie-authenticated state-changing requests must include `x-csrf-token` from
 `GET /auth/me`. Bearer-token API calls are not subject to this CSRF check.
 
-When enabled, `agent.hello` must include a `relay_auth.device_signature`
-signature over `device_id|timestamp|nonce`, verified against
-the registered device public key. `mobile.connect` must include a user
-`session_token`, and Relay only allows access when the session user owns the
-target device.
+When enabled, Agent device auth uses two signatures. `agent.auth.init` carries
+`device_id`, registered `device_public_key`, `timestamp`, and a signature over
+those fields so Relay can reject spoofed challenge requests early. Relay then
+returns an opaque stateless `agent.auth.challenge` string. The final
+`agent.hello.relay_auth` signs `device_id|challenge|timestamp`, verified against
+the registered device public key. The challenge is not stored; it carries an
+HMAC-protected expiry and connection binding, and defaults to a 60s TTL via
+`auth.agentAuthChallengeTtlMs`. Init/proof timestamps use the separate
+`auth.agentAuthClockSkewMs` window, also defaulting to 60s. `mobile.connect`
+must include a user `session_token`, and Relay only allows access when the
+session user owns the target device.
+
+Relay 校验顺序：
+
+1. `agent.auth.init` 只能从未鉴权连接进入，失败按 `agent|device_id|public_remote_ip` 和 `agent_ip|public_remote_ip` 两层限流；成功发出 challenge 也会消耗公网 IP-only 桶，最终 `agent.hello` 成功后只重置 `agent|device_id|public_remote_ip`。`public_remote_ip` 只来自 Relay 连接层观测；内网、loopback、链路本地和保留地址不进入 Agent 准入限流。
+2. `device_id` 已登记且未撤销。
+3. `agent.auth.init.device_public_key` 与登记公钥规范化后匹配。
+4. `agent.auth.init.timestamp` 在允许窗口内，init 签名有效。
+5. 无状态 `agent.auth.challenge` 的 HMAC、过期时间和 connection 绑定有效。
+6. `agent.hello.relay_auth.timestamp` 在允许窗口内，proof 签名有效。
+7. `agent.hello` 只允许从 `pending` 进入 `verified`；重复 `agent.hello` 被忽略并记录 `agent.hello.ignored` 审计日志。
+8. 校验通过后分配 `agent_connection_id`，并执行同一 `device_id` 单 Agent 在线策略。
 
 ### auth.proof rate limiting
 
@@ -135,9 +153,9 @@ token bucket:
 
 - `OMNIWORK_RELAY_AUTH_RATE_CAPACITY` (default `5`): bucket capacity, i.e. the
   maximum number of failed attempts allowed before the bucket is drained.
-- `OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC` (default `1`): tokens refilled per
+- `OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC` (default `2`): tokens refilled per
   second once the bucket is no longer blocked.
-- `OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS` (default `60000`): cool-down window in
+- `OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS` (default `120000`): cool-down window in
   milliseconds after the bucket drains; further attempts are rejected during
   this window. After the window elapses the bucket is fully refilled.
 
@@ -179,10 +197,10 @@ long enough to deliver `4404 / ip_banned`, so the Agent can exit intentionally.
 
 `RelayAuthGuard` is the Relay-local auth orchestrator, not the rule container.
 Stable policy modules own the concrete checks: IP bans, Agent instance disable,
-`email_link` Agent device lookup/revoke, device signature and nonce replay
-checks, plus Mobile user session and device ownership checks. Admission modules
-consume the guard decision and then only advance connection state or create the
-App pairing challenge.
+`email_link` Agent device lookup/revoke, init/proof device signatures and
+stateless challenge checks, plus Mobile user session and device ownership
+checks. Admission modules consume the guard decision and then only advance
+connection state or create the App pairing challenge.
 
 ### P2P upgrade orchestrator
 
