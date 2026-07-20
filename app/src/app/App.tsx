@@ -62,7 +62,14 @@ function AppContent(): JSX.Element {
     record: LocalAgentMessageRecord;
     reason?: MessageDetailReason;
   } | null>(null);
+  const [agentMessageSessionOpening, setAgentMessageSessionOpening] =
+    useState(false);
+  const [sessionListRefreshVersion, setSessionListRefreshVersion] = useState(0);
   const pendingAutoOpenSessionsRef = useRef(false);
+  const pendingAgentMessageSessionOpenRef = useRef<{
+    record: LocalAgentMessageRecord;
+    requestedAfterVersion: number;
+  } | null>(null);
   const viewRef = useRef<AppView>("pairing");
   const selectedSessionRef = useRef<TerminalSession | null>(null);
   const confirm = useConfirm();
@@ -381,6 +388,33 @@ function AppContent(): JSX.Element {
     viewRef.current = view;
   }, [view]);
 
+  useEffect(() => {
+    const pending = pendingAgentMessageSessionOpenRef.current;
+    if (
+      !pending ||
+      pending.requestedAfterVersion === sessionListRefreshVersion
+    ) {
+      return;
+    }
+
+    const target = resolveAgentMessageOpenTarget(pending.record.message);
+    pendingAgentMessageSessionOpenRef.current = null;
+    setAgentMessageSessionOpening(false);
+    if (target.kind === "session") {
+      openAgentMessageSession(
+        pending.record.message.id,
+        target.session,
+        Boolean(pending.record.message.action),
+      );
+      return;
+    }
+    setAgentMessageDetail({
+      record: pending.record,
+      reason: target.reason,
+    });
+    setView("messageDetail");
+  }, [sessionListRefreshVersion]);
+
   function reconnectActivePairing(): void {
     clearFailureDialogState();
     reconnectTransport();
@@ -402,22 +436,9 @@ function AppContent(): JSX.Element {
   }
 
   function openAgentMessageTarget(record: LocalAgentMessageRecord): void {
-    const message = record.message;
-    const target = resolveAgentMessageOpenTarget(message);
-    if (target.kind === "detail") {
-      setAgentMessageDetail({
-        record,
-        reason: target.reason,
-      });
-      setView("messageDetail");
-      return;
-    }
-
-    openAgentMessageSession(
-      message.id,
-      target.session,
-      Boolean(message.action),
-    );
+    clearPendingAgentMessageSessionOpen();
+    setAgentMessageDetail({ record });
+    setView("messageDetail");
   }
 
   function openAgentMessageSession(
@@ -472,6 +493,7 @@ function AppContent(): JSX.Element {
   }
 
   function handleBackAgentMessageDetail(): void {
+    clearPendingAgentMessageSessionOpen();
     setAgentMessageDetail(null);
     setView("messages");
   }
@@ -484,6 +506,10 @@ function AppContent(): JSX.Element {
       agentMessageDetail.record.message,
     );
     if (target.kind !== "session") {
+      if (target.reason === "session_not_found") {
+        requestAgentMessageSessionOpen(agentMessageDetail.record);
+        return;
+      }
       setAgentMessageDetail({
         record: agentMessageDetail.record,
         reason: target.reason,
@@ -495,6 +521,35 @@ function AppContent(): JSX.Element {
       target.session,
       Boolean(agentMessageDetail.record.message.action),
     );
+  }
+
+  function requestAgentMessageSessionOpen(
+    record: LocalAgentMessageRecord,
+  ): void {
+    const sessionId = getAgentMessageSessionId(record.message);
+    if (!sessionId) {
+      setAgentMessageDetail({ record, reason: "missing_session_id" });
+      return;
+    }
+    if (!pairing) {
+      setAgentMessageDetail({ record, reason: "session_not_found" });
+      return;
+    }
+    pendingAgentMessageSessionOpenRef.current = {
+      record,
+      requestedAfterVersion: sessionListRefreshVersion,
+    };
+    setAgentMessageSessionOpening(true);
+    if (connectionStatus !== "authenticated") {
+      reconnectActivePairing();
+      return;
+    }
+    requestSessionListRefresh();
+  }
+
+  function clearPendingAgentMessageSessionOpen(): void {
+    pendingAgentMessageSessionOpenRef.current = null;
+    setAgentMessageSessionOpening(false);
   }
 
   function handleChangePrimaryTab(
@@ -560,7 +615,9 @@ function AppContent(): JSX.Element {
 
   function shouldRefreshWorkbenchOnConnection(): boolean {
     return (
-      pendingAutoOpenSessionsRef.current || isWorkbenchView(viewRef.current)
+      Boolean(pendingAgentMessageSessionOpenRef.current) ||
+      pendingAutoOpenSessionsRef.current ||
+      isWorkbenchView(viewRef.current)
     );
   }
 
@@ -602,7 +659,11 @@ function AppContent(): JSX.Element {
       setSelectedSession,
       resetSessionProgress,
       handleAuthFailureCleanup,
-      applySessionList,
+      applySessionList: (payload) => {
+        const remoteSurfaceIds = applySessionList(payload);
+        setSessionListRefreshVersion((version) => version + 1);
+        return remoteSurfaceIds;
+      },
       pruneTerminalSurfaces,
       applySessionStatus,
       applyWorkspaceList,
@@ -643,10 +704,6 @@ function AppContent(): JSX.Element {
       ),
     );
   }
-
-  const agentMessageDetailTarget = agentMessageDetail
-    ? resolveAgentMessageOpenTarget(agentMessageDetail.record.message)
-    : null;
 
   const routerProps = buildAppRouterProps({
     t,
@@ -694,12 +751,12 @@ function AppContent(): JSX.Element {
     handleDeleteAgentMessage,
     handleDeleteSelectedAgentMessages,
     agentMessageDetail: agentMessageDetail?.record ?? null,
-    agentMessageDetailReason:
-      agentMessageDetailTarget?.kind === "detail"
-        ? agentMessageDetailTarget.reason
-        : undefined,
-    agentMessageDetailCanOpenSession:
-      agentMessageDetailTarget?.kind === "session",
+    agentMessageDetailReason: agentMessageDetail?.reason,
+    agentMessageDetailCanOpenSession: Boolean(
+      agentMessageDetail &&
+      getAgentMessageSessionId(agentMessageDetail.record.message),
+    ),
+    agentMessageDetailOpeningSession: agentMessageSessionOpening,
     handleBackAgentMessageDetail,
     handleOpenAgentMessageDetailSession,
     transportPreference,
@@ -837,6 +894,12 @@ function getSessionFilesWorkspace(
     status: "available",
     source: "session",
   };
+}
+
+function getAgentMessageSessionId(
+  message: LocalAgentMessageRecord["message"],
+): string | undefined {
+  return message.action?.session_id ?? message.session_id;
 }
 
 function isPathInside(path: string, parent: string): boolean {

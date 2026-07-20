@@ -23,6 +23,7 @@ export interface AgentMessageDetailScreenProps {
   record: LocalAgentMessageRecord;
   reason?: MessageDetailReason;
   canOpenSession: boolean;
+  openingSession: boolean;
   onBack(): void;
   onOpenSession(): void;
   onMarkHandled(messageId: string): void;
@@ -32,6 +33,7 @@ export function AgentMessageDetailScreen({
   record,
   reason,
   canOpenSession,
+  openingSession,
   onBack,
   onOpenSession,
   onMarkHandled,
@@ -163,13 +165,13 @@ export function AgentMessageDetailScreen({
 
         <View style={styles.footer}>
           <Button
-            disabled={!canOpenSession}
+            disabled={!canOpenSession || openingSession}
             icon="terminal"
             style={styles.footerButton}
             tone="primary"
             onPress={onOpenSession}
           >
-            {t("messages.openSession")}
+            {openingSession ? t("common.loading") : t("messages.openSession")}
           </Button>
           {actionable && !handled ? (
             <Button

@@ -88,6 +88,7 @@ type BuildAppRouterPropsOptions = {
   agentMessageDetail: AgentMessageDetailScreenProps["record"] | null;
   agentMessageDetailReason: AgentMessageDetailScreenProps["reason"];
   agentMessageDetailCanOpenSession: AgentMessageDetailScreenProps["canOpenSession"];
+  agentMessageDetailOpeningSession: AgentMessageDetailScreenProps["openingSession"];
   handleBackAgentMessageDetail: AgentMessageDetailScreenProps["onBack"];
   handleOpenAgentMessageDetailSession: AgentMessageDetailScreenProps["onOpenSession"];
   transportPreference: ConnectionPreferenceScreenProps["transportPreference"];
@@ -209,6 +210,7 @@ export function buildAppRouterProps(
           record: o.agentMessageDetail,
           reason: o.agentMessageDetailReason,
           canOpenSession: o.agentMessageDetailCanOpenSession,
+          openingSession: o.agentMessageDetailOpeningSession,
           onBack: o.handleBackAgentMessageDetail,
           onOpenSession: o.handleOpenAgentMessageDetailSession,
           onMarkHandled: o.handleMarkAgentMessageHandled,
