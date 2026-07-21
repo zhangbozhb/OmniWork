@@ -142,7 +142,7 @@ app/
 |   |   |-- sessions/            # SessionListScreen
 |   |   |-- settings/            # SettingsScreen + ConnectionPreferenceScreen
 |   |   |-- terminal/            # TerminalScreen
-|   |   |-- workspaces/          # FileBrowserScreen + FileEditorScreen + GitStatusScreen
+|   |   |-- workspaces/          # 文件/Git 页面；GitStatusScreen 的纯计算与缓存选择位于 gitStatusModel
 |   |-- terminal/                # NativeTerminalView + terminalText
 |   |-- ui/                      # 通用组件（KeyboardAwareScrollView / components / icons / theme / confirm）
 |-- ios/
@@ -155,7 +155,7 @@ app/
 
 - 移动端导航级页面，包含 `devices` / `pairing` / `security` / `sessions` / `settings` / `terminal` / `workspaces`。
 - 不直接实现复杂业务逻辑；组合 `features/` 与 `lib/`。
-- `workspaces/GitStatusScreen` 采用 Git Overview + Review 分层：概览页展示分支、摘要与变更文件，Review 视图按 scope 与文件阅读 diff，避免在概览页底部堆叠完整 diff。
+- `workspaces/GitStatusScreen` 采用 Git Overview + Review 分层：概览页展示分支、摘要与变更文件，Review 视图按 scope 与文件阅读 diff；scope 判定、统计、diff 解析和缓存选择由无 UI 依赖的 `gitStatusModel.ts` 负责。
 
 `features/`：
 
@@ -235,7 +235,7 @@ desktop/
 |   |   |-- agentd/              # startAgent 主入口
 |   |   |-- core/                # Agent 组合根、协议 dispatcher、连接安全网关、请求 handler 与推流组件
 |   |   |-- relay-client/        # agentRelayClient
-|   |   |-- transport/           # SessionTransport 门面、session-transport 内部实现、UpgradeCoordinator、WebRtcPeerAdapter、relayPath
+|   |   |-- transport/           # SessionTransport 门面、平台 adapter、WebRtcPeerAdapter、relayPath；状态迁移和健康策略复用 protocol-ts
 |   |   |-- terminal-provider/   # terminalProviderRegistry（Codex/Claude/Gemini 终端 provider 抽象）
 |   |   |-- pty-bridge/          # terminalBridge
 |   |   |-- tmux-manager/        # tmuxManager

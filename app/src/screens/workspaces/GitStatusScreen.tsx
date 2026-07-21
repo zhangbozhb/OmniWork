@@ -24,12 +24,25 @@ import type {
 import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
-import { toGitDiffCacheKey } from "../../features/workspaces/workspaceKeys";
+import {
+  canReadUntrackedFileContent,
+  type ChangedFile,
+  type DiffLine,
+  type DiffLineType,
+  type FileStatus,
+  formatBytes,
+  getCachedDiff,
+  getChangeSummary,
+  getReviewScopeBadgeLabel,
+  getScopedStats,
+  getScopedStatus,
+  isFileInScope,
+  parseDiffLines,
+  shouldUseUntrackedFileContentFallback,
+  statusCode,
+} from "./gitStatusModel";
 
-type FileStatus = "modified" | "added" | "deleted" | "renamed" | "untracked";
 type GitViewMode = "overview" | "review";
-type ChangedFile = WorkspaceGitStatus["files"][number];
-type DiffLineType = "add" | "delete" | "hunk" | "meta" | "context";
 type FileStatsScope = GitDiffScope;
 type CopyNotice = {
   message: string;
@@ -1020,146 +1033,6 @@ function getCopyNoticeToastPosition(
   };
 }
 
-function isFileInScope(file: ChangedFile, scope: GitDiffScope): boolean {
-  if (scope === "all") {
-    return true;
-  }
-  if (scope === "staged") {
-    return Boolean(file.staged);
-  }
-  if (scope === "untracked") {
-    return file.status === "untracked";
-  }
-  return Boolean(file.unstaged) && file.status !== "untracked";
-}
-
-function getChangeSummary(files: ChangedFile[]): { additions: number; deletions: number } {
-  return files.reduce(
-    (summary, file) => ({
-      additions: summary.additions + (file.additions ?? 0),
-      deletions: summary.deletions + (file.deletions ?? 0),
-    }),
-    { additions: 0, deletions: 0 },
-  );
-}
-
-function getReviewScopeBadgeLabel(
-  file: ChangedFile,
-  scope: FileStatsScope,
-  t: (key: string) => string,
-): string {
-  if (scope !== "all") {
-    return t(`git.scope.${scope}`);
-  }
-  if (file.status === "untracked") {
-    return t("git.scope.untracked");
-  }
-  if (file.staged && !file.unstaged) {
-    return t("git.scope.staged");
-  }
-  if (file.unstaged && !file.staged) {
-    return t("git.scope.unstaged");
-  }
-  return t("git.scope.all");
-}
-
-function getScopedStats(
-  file: ChangedFile,
-  scope: FileStatsScope,
-): { additions: number; deletions: number } {
-  if (scope === "staged") {
-    return {
-      additions: file.stagedAdditions ?? 0,
-      deletions: file.stagedDeletions ?? 0,
-    };
-  }
-  if (scope === "unstaged" || scope === "untracked") {
-    return {
-      additions: file.unstagedAdditions ?? 0,
-      deletions: file.unstagedDeletions ?? 0,
-    };
-  }
-  return {
-    additions: file.additions ?? 0,
-    deletions: file.deletions ?? 0,
-  };
-}
-
-function getScopedStatus(file: ChangedFile, scope: FileStatsScope): FileStatus {
-  if (file.status === "untracked") {
-    return "untracked";
-  }
-  const code = scope === "staged" ? file.indexStatus : file.worktreeStatus;
-  if (code === "A") return "added";
-  if (code === "D") return "deleted";
-  if (code === "R") return "renamed";
-  return file.status;
-}
-
-function statusCode(status: FileStatus): string {
-  if (status === "untracked") return "?";
-  if (status === "renamed") return "R";
-  if (status === "added") return "A";
-  if (status === "deleted") return "D";
-  return "M";
-}
-
-function parseDiffLines(diff: string): DiffLine[] {
-  return diff
-    .split("\n")
-    .filter((line) => line.length > 0)
-    .map((content) => ({ content, type: getDiffLineType(content) }));
-}
-
-function getDiffLineType(content: string): DiffLineType {
-  if (content.startsWith("@@")) return "hunk";
-  if (content.startsWith("diff --git") || content.startsWith("index ") || content.startsWith("---") || content.startsWith("+++") || content.startsWith("## ")) return "meta";
-  if (content.startsWith("+")) return "add";
-  if (content.startsWith("-")) return "delete";
-  return "context";
-}
-
-function getCachedDiff(
-  cache: Record<string, GitDiffPayload>,
-  fallback: GitDiffPayload | undefined,
-  file: ChangedFile | undefined,
-  scope: GitDiffScope,
-): GitDiffPayload | undefined {
-  if (!file) {
-    return undefined;
-  }
-  const cached = cache[toGitDiffCacheKey(file.path, scope)];
-  if (cached) {
-    return cached;
-  }
-  if (
-    fallback?.relativePath === file.path &&
-    (fallback.scope ?? "unstaged") === scope
-  ) {
-    return fallback;
-  }
-  return undefined;
-}
-
-function shouldUseUntrackedFileContentFallback(
-  file: ChangedFile | undefined,
-  diff: GitDiffPayload | undefined,
-  scope: GitDiffScope,
-): boolean {
-  return Boolean(
-    file &&
-      scope === "untracked" &&
-      file.status === "untracked" &&
-      diff?.relativePath === file.path &&
-      (diff.scope ?? "unstaged") === scope &&
-      parseDiffLines(diff.diff).length === 0,
-  );
-}
-
-function canReadUntrackedFileContent(file: ChangedFile | undefined): boolean {
-  return Boolean(file && isSupportedTextFilePath(file.path));
-}
-
 function shouldActivateReviewSwipe(dx: number, dy: number): boolean {
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
@@ -1180,21 +1053,6 @@ function shouldCommitReviewSwipe(dx: number, dy: number): boolean {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function formatBytes(size: number): string {
-  if (size < 1024) {
-    return `${size} B`;
-  }
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
-interface DiffLine {
-  content: string;
-  type: DiffLineType;
 }
 
 function getWorkspaceDisplayName(workspace: WorkspaceDefinition): string {

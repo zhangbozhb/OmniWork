@@ -2,20 +2,10 @@ import type {
   MessageEnvelope,
   P2pChannelKind,
 } from "@omniwork/protocol-ts";
-
-/**
- * 严格 P2P 模式下放行的控制面消息前缀；其余业务消息（session.x / terminal.x /
- * workspace.x / files.x / git.x / agent.x）必须在 currentPath === "p2p" 时才能 send。
- */
-const STRICT_CONTROL_PREFIXES = ["tunnel.upgrade.", "transport."] as const;
+import { isStrictTransportControlMessage } from "@omniwork/protocol-ts";
 
 export function isStrictControlMessage(envelopeType: string): boolean {
-  for (const prefix of STRICT_CONTROL_PREFIXES) {
-    if (envelopeType.startsWith(prefix)) {
-      return true;
-    }
-  }
-  return false;
+  return isStrictTransportControlMessage(envelopeType);
 }
 
 export function getEnvelopeAppConnectionId(

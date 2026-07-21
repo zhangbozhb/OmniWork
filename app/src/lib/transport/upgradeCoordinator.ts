@@ -1,5 +1,6 @@
 import {
   createMessage,
+  transitionUpgradeState,
   type IceServerConfig,
   type MessageEnvelope,
   type TransportPath,
@@ -9,16 +10,11 @@ import {
   type TunnelUpgradeDowngradePayload,
   type TunnelUpgradeOfferPayload,
   type TunnelUpgradeProposePayload,
+  type UpgradeState,
   type WebRtcPeerAdapter,
 } from "@omniwork/protocol-ts";
 
-export type UpgradeState =
-  | "idle"
-  | "proposed"
-  | "negotiating"
-  | "committing"
-  | "upgraded"
-  | "failed";
+export type { UpgradeState } from "@omniwork/protocol-ts";
 
 export type UpgradeRole = "offerer" | "answerer";
 
@@ -123,7 +119,7 @@ export class UpgradeCoordinator {
     this.upgradeId = payload.upgrade_id;
     this.appConnectionId = payload.app_connection_id;
     this.strict = payload.strict === true;
-    this.state = "proposed";
+    this.state = transitionUpgradeState(this.state, "proposed");
     this.successEmitted = false;
     this.emitEvent({
       type: "propose",
@@ -258,7 +254,7 @@ export class UpgradeCoordinator {
       return;
     }
     this.localCommitted = true;
-    this.state = "committing";
+    this.state = transitionUpgradeState(this.state, "committing");
     this.sendUpgrade<TunnelUpgradeCommittedPayload>(
       "tunnel.upgrade.committed",
       {
@@ -334,7 +330,7 @@ export class UpgradeCoordinator {
   }
 
   private fail(reason: string): void {
-    this.state = "failed";
+    this.state = transitionUpgradeState(this.state, "failed");
     this.downgrade(reason);
   }
 
@@ -372,7 +368,7 @@ export class UpgradeCoordinator {
 
   private enterNegotiating(): void {
     if (this.state !== "negotiating") {
-      this.state = "negotiating";
+      this.state = transitionUpgradeState(this.state, "negotiating");
     }
     this.armTimeout();
   }
@@ -399,7 +395,7 @@ export class UpgradeCoordinator {
 
   private maybeUpgrade(): void {
     if (this.localCommitted && this.remoteCommitted) {
-      this.state = "upgraded";
+      this.state = transitionUpgradeState(this.state, "upgraded");
       this.clearNegotiationTimer();
       const upgradeId = this.upgradeId;
       // 先触发路径切换，再 emit upgrade_success：让订阅方观察到 success 时
@@ -426,7 +422,7 @@ export class UpgradeCoordinator {
   }
 
   private resetToIdle(): void {
-    this.state = "idle";
+    this.state = transitionUpgradeState(this.state, "idle");
     this.upgradeId = null;
     this.appConnectionId = null;
     this.strict = false;

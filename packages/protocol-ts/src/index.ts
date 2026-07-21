@@ -33,84 +33,18 @@ import {
   SUPPORTED_SESSION_STATUSES,
   TERMINAL_STREAM_CAPABILITY_V1,
 } from "./constants.ts";
-
-export type MessageType =
-  | "agent.auth.init"
-  | "agent.auth.challenge"
-  | "agent.hello"
-  | "agent.heartbeat"
-  | "mobile.connect"
-  | "auth.challenge"
-  | "auth.proof"
-  | "auth.verify"
-  | "auth.ok"
-  | "auth.failed"
-  | "app.network.changed"
-  | "app.connection.heartbeat"
-  | "app.connection.goodbye"
-  | "e2e.handshake.init"
-  | "e2e.handshake.reply"
-  | "e2e.ready"
-  | "e2e.message"
-  | "e2e.failed"
-  | "e2e.rekey.init"
-  | "e2e.rekey.reply"
-  | "e2e.rekey.ready"
-  | "e2e.close"
-  | "protocol.error"
-  | "relay.app.deliver"
-  | "device.list"
-  | "session.list"
-  | "session.create"
-  | "session.rename"
-  | "session.close"
-  | "session.kill_terminal"
-  | "session.attach"
-  | "session.detach"
-  | "session.status"
-  | "workspace.list"
-  | "workspace.status"
-  | "files.list"
-  | "files.read"
-  | "files.write"
-  | "git.status"
-  | "git.diff"
-  | "terminal.frame"
-  | "terminal.input"
-  | "terminal.resize"
-  | "terminal.snapshot"
-  | "terminal.stream.start"
-  | "terminal.stream.ready"
-  | "terminal.stream.data"
-  | "terminal.stream.stop"
-  | "terminal.stream.error"
-  | "terminal.ack"
-  | "terminal.error"
-  | "codex.thread.list"
-  | "codex.thread.start"
-  | "codex.thread.resume"
-  | "codex.turn.event"
-  | "codex.approval.request"
-  | "codex.approval.answer"
-  | "codex.diff.event"
-  | "codex.error"
-  | "agent.message"
-  | "agent.message.list"
-  | "agent.message.read"
-  | "agent.message.ack"
-  | "agent.message.delivered"
-  | "agent.surface.event"
-  | "agent.prompt.submit"
-  | "agent.notification.settings.get"
-  | "agent.notification.settings.set"
-  | "tunnel.upgrade.propose"
-  | "tunnel.upgrade.offer"
-  | "tunnel.upgrade.answer"
-  | "tunnel.upgrade.candidate"
-  | "tunnel.upgrade.committed"
-  | "tunnel.upgrade.downgrade"
-  | "transport.ping"
-  | "transport.pong";
+import type { MessageType } from "./messageTypes.ts";
+export {
+  AGENT_MESSAGE_TYPES,
+  CONNECTION_MESSAGE_TYPES,
+  E2E_MESSAGE_TYPES,
+  MESSAGE_TYPES,
+  SESSION_MESSAGE_TYPES,
+  TERMINAL_MESSAGE_TYPES,
+  TRANSPORT_MESSAGE_TYPES,
+  WORKSPACE_MESSAGE_TYPES,
+  type MessageType,
+} from "./messageTypes.ts";
 
 export interface MessageEnvelope<TPayload = unknown> {
   v: typeof PROTOCOL_VERSION;

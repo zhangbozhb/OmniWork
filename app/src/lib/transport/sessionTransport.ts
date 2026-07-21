@@ -1,6 +1,8 @@
 import {
   createMessage,
+  isStrictTransportControlMessage,
   parseMessageEnvelope,
+  TRANSPORT_HEALTH_POLICY,
   type MessageEnvelope,
   type P2pChannelKind,
   type SessionTransport,
@@ -36,52 +38,23 @@ type TransportEvent =
   | { type: "background_resume" };
 type TransportEventHandler = (event: TransportEvent) => void;
 
-/**
- * 严格 P2P 模式下放行的控制面消息前缀；其余业务消息（session.x / terminal.x /
- * workspace.x / files.x / git.x / agent.x）必须在 currentPath === "p2p" 时才能 send。
- */
-const STRICT_CONTROL_PREFIXES = ["tunnel.upgrade.", "transport."] as const;
-
-function isStrictControlMessage(envelopeType: string): boolean {
-  for (const prefix of STRICT_CONTROL_PREFIXES) {
-    if (envelopeType.startsWith(prefix)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-const DRAIN_DELAY_MS = 100;
-const PING_INTERVAL_MS = 5_000;
-const PING_TIMEOUT_MS = 2_500;
-const PING_TIMEOUT_THRESHOLD = 4;
-/**
- * strict 模式下心跳采用更宽松的阈值，避免 4G/5G 弱网偶发丢包就触发不可恢复的 forceClose。
- * - INTERVAL 使用 4s：降低移动弱网和 JS 短暂停顿下的探测噪声；
- * - TIMEOUT 放宽到 5s：覆盖 RTT 较高的跨大洲 / 移动网络场景；
- * - THRESHOLD 提升到 6：单次成功收到 pong 即清零，连续 6 次未收到才算"真死"。
- */
-const STRICT_PING_INTERVAL_MS = 4_000;
-const STRICT_PING_TIMEOUT_MS = 5_000;
-const STRICT_PING_TIMEOUT_THRESHOLD = 6;
-const PING_TIMER_STALL_GRACE_MS = 5_000;
-const STRICT_PING_TIMER_STALL_GRACE_MS = 8_000;
-const BUFFERED_AMOUNT_LIMIT = 1_000_000;
-const BUFFERED_AMOUNT_SAMPLE_INTERVAL_MS = 1_000;
-const BUFFERED_AMOUNT_OVERFLOW_SECONDS = 5;
-const ICE_DISCONNECTED_GRACE_MS = 8_000;
-/**
- * strict 模式下 ICE disconnected → connected 的容忍窗口拉长到 16s，
- * 避免移动端 LTE/Wi-Fi 漫游瞬间的 ICE 抖动直接 forceClose。
- */
-const STRICT_ICE_DISCONNECTED_GRACE_MS = 16_000;
-/**
- * strict 模式下 P2P 未就绪期间业务消息暂存队列的上限。超过此上限说明
- * 协商窗口异常长（>10s 的 negotiation 超时配合上层重试已足够暴露问题），
- * 此时继续累积只会让 flush 时 burst 写入 DataChannel 触发 buffered_overflow，
- * 直接 forceClose 让上层重建 session 更安全。
- */
-const STRICT_PENDING_QUEUE_LIMIT = 256;
+const {
+  bufferedAmountLimit: BUFFERED_AMOUNT_LIMIT,
+  bufferedAmountOverflowSeconds: BUFFERED_AMOUNT_OVERFLOW_SECONDS,
+  bufferedAmountSampleIntervalMs: BUFFERED_AMOUNT_SAMPLE_INTERVAL_MS,
+  drainDelayMs: DRAIN_DELAY_MS,
+  iceDisconnectedGraceMs: ICE_DISCONNECTED_GRACE_MS,
+  pingIntervalMs: PING_INTERVAL_MS,
+  pingTimeoutMs: PING_TIMEOUT_MS,
+  pingTimeoutThreshold: PING_TIMEOUT_THRESHOLD,
+  pingTimerStallGraceMs: PING_TIMER_STALL_GRACE_MS,
+  strictIceDisconnectedGraceMs: STRICT_ICE_DISCONNECTED_GRACE_MS,
+  strictPendingQueueLimit: STRICT_PENDING_QUEUE_LIMIT,
+  strictPingIntervalMs: STRICT_PING_INTERVAL_MS,
+  strictPingTimeoutMs: STRICT_PING_TIMEOUT_MS,
+  strictPingTimeoutThreshold: STRICT_PING_TIMEOUT_THRESHOLD,
+  strictPingTimerStallGraceMs: STRICT_PING_TIMER_STALL_GRACE_MS,
+} = TRANSPORT_HEALTH_POLICY;
 
 export interface AttachP2pPeerOptions {
   /** 由 UpgradeCoordinator.downgrade 提供的降级回调；transport 检测到健康异常时调用。 */
@@ -188,7 +161,7 @@ export class MobileSessionTransport implements SessionTransport {
     if (
       this.strictP2p &&
       this.currentPath !== "p2p" &&
-      !isStrictControlMessage(envelope.type)
+      !isStrictTransportControlMessage(envelope.type)
     ) {
       if (this.forceClosed) {
         // session 已经被 strict force_close，业务上层会重连重发；这里直接静默丢弃。

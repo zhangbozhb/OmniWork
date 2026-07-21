@@ -143,7 +143,7 @@ MVP 鉴权模型：
 - Relay 如使用 Go/Rust，也从 `protocol/` 生成对应语言类型。
 - 生成代码只放 `generated/`，不得手工修改。
 - 协议破坏性变更必须升级版本并补 contract test。
-- `packages/protocol-ts/src/schemas.ts` 提供 envelope、`auth.*`、`terminal.*`、`session.*` 等关键报文的 zod schema 作为运行时校验来源；常量（如 `PROTOCOL_VERSION`、`SUPPORTED_SESSION_STATUSES`、pairing link scheme/host）集中维护在 `packages/protocol-ts/src/constants.ts`。会话字段清单 `SESSION_FIELDS` / `SESSION_REQUIRED_FIELDS` 定义在 `index.ts`，与 `protocol/sessions/session.schema.json` 由 contract test 强制对账。
+- `packages/protocol-ts/src/schemas.ts` 提供 envelope、`auth.*`、`terminal.*`、`session.*` 等关键报文的 zod schema 作为运行时校验来源；消息类型按 connection、E2E、session、workspace、terminal、agent、transport 领域集中在 `messageTypes.ts`，TypeScript 联合类型和 zod enum 必须从该注册表派生。常量（如 `PROTOCOL_VERSION`、`SUPPORTED_SESSION_STATUSES`、pairing link scheme/host）集中维护在 `packages/protocol-ts/src/constants.ts`。会话字段清单 `SESSION_FIELDS` / `SESSION_REQUIRED_FIELDS` 定义在 `index.ts`，与 `protocol/sessions/session.schema.json` 由 contract test 强制对账。
 - `packages/protocol-ts/tests/contract.test.ts` 是协议契约测试，通过 `pnpm --filter @omniwork/protocol-ts test` 运行；新增/调整字段或取值集合时必须同步补充正反例。
 
 ## 传输与升级要求
@@ -151,6 +151,8 @@ MVP 鉴权模型：
 业务消息默认走 Relay WS；P2P（WebRTC DataChannel）作为可选优选路径，由 Relay 协调升级、双端按需降级。详细架构以 [relay-architecture.md](./relay-architecture.md) 为单一来源。
 
 能力关系上，P2P 传输能力已落地；MVP 范围是在既有 Relay / P2P 两条路径上补齐 App-Agent E2E 加密。E2E 完成后，P2P 仍只是路径优化，不单独承担业务安全边界。
+
+App 与 Desktop 的平台 adapter 必须复用 `@omniwork/protocol-ts` 导出的升级状态转移、严格控制消息判定和传输健康策略；平台层只维护 Relay/WebRTC 接线、后台生命周期等运行时差异，不得复制阈值或另行定义升级状态迁移。
 
 依赖与运行时：
 
