@@ -59,7 +59,7 @@ test("ensureClaudeHooksInstalled creates user settings with OmniWork hooks", asy
   );
   assert.match(
     parsed.hooks.Stop[0].hooks[0].command,
-    /omniwork-agent-hook\.mjs/u,
+    /omniwork-hook-post\.mjs/u,
   );
 });
 

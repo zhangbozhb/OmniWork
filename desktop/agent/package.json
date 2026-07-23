@@ -1,7 +1,6 @@
 {
   "name": "@omniwork/desktop-agent",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "main": "src/main.ts",
   "scripts": {
@@ -12,6 +11,8 @@
   },
   "dependencies": {
     "@omniwork/e2e-noise": "workspace:*",
+    "@omniwork/surface-hook-post": "workspace:*",
+    "@omniwork/surface-hook-record": "workspace:*",
     "@omniwork/protocol-ts": "workspace:*",
     "@omniwork/relay-client": "workspace:*",
     "@omniwork/terminal-core": "workspace:*",
@@ -26,8 +27,7 @@
     "typescript": "^5.8.0"
   },
   "bin": {
-    "omniwork-agent": "bin/omniwork-agent.mjs",
-    "omniwork-agent-hook": "bin/omniwork-agent-hook.mjs"
+    "omniwork-agent": "bin/omniwork-agent.mjs"
   },
   "files": [
     "bin/",
@@ -38,5 +38,8 @@
   ],
   "engines": {
     "node": ">=22.6.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

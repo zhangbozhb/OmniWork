@@ -1,7 +1,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 export type TraeHookInstallProvider = "trae" | "trae-cn";
 
@@ -63,22 +63,14 @@ const MANAGED_TRAE_HOOK_EVENTS: ManagedTraeHookEvent[] = [
     name: "UserPromptSubmit",
   },
   {
-    name: "PreToolUse",
-    matcher: "*",
-  },
-  {
-    name: "PostToolUse",
-    matcher: "*",
-  },
-  {
-    name: "Notification",
-  },
-  {
     name: "Stop",
   },
 ];
 
 const DEPRECATED_TRAE_HOOK_EVENTS = [
+  "PreToolUse",
+  "PostToolUse",
+  "Notification",
   "PermissionRequest",
   "PostToolUseFailure",
   "PermissionDenied",
@@ -141,7 +133,7 @@ export async function ensureTraeHooksInstalled(
       if (currentGroups.length === 0) {
         continue;
       }
-      const cleanup = cleanupOmniWorkHookCommands(currentGroups, "");
+      const cleanup = cleanupOmniWorkHookCommands(currentGroups, []);
       if (!cleanup.changed) {
         continue;
       }
@@ -157,15 +149,17 @@ export async function ensureTraeHooksInstalled(
     const currentGroups = Array.isArray(hooks[eventName])
       ? (hooks[eventName] as unknown[])
       : [];
-    const hookCommand = group.hooks[0]?.command;
-    if (!hookCommand) {
+    const hookCommands = group.hooks
+      .map((hook) => hook.command)
+      .filter((command): command is string => Boolean(command));
+    if (hookCommands.length === 0) {
       continue;
     }
-    const cleanup = cleanupOmniWorkHookCommands(currentGroups, hookCommand);
+    const cleanup = cleanupOmniWorkHookCommands(currentGroups, hookCommands);
     if (cleanup.changed) {
       changed = true;
     }
-    if (!hasHookCommand(cleanup.groups, hookCommand)) {
+    if (!hasAllHookCommands(cleanup.groups, hookCommands)) {
       hooks[eventName] = [...cleanup.groups, group];
       changed = true;
     } else if (cleanup.changed) {
@@ -234,33 +228,53 @@ export async function discoverTraeHookTargets(
   ];
 }
 
-function defaultHookScriptPath(): string {
-  return fileURLToPath(
-    new URL("../../bin/omniwork-agent-hook.mjs", import.meta.url),
+function defaultPostHookScriptPath(): string {
+  return createRequire(import.meta.url).resolve(
+    "@omniwork/surface-hook-post/bin/omniwork-hook-post.mjs",
   );
 }
 
-function buildHookCommand(
+function defaultRecordHookScriptPath(): string {
+  return createRequire(import.meta.url).resolve(
+    "@omniwork/surface-hook-record/bin/omniwork-hook-record.mjs",
+  );
+}
+
+function buildPostHookCommand(
   options: TraeHookInstallOptions,
   provider: TraeHookInstallProvider,
+  hookEventName: string,
 ): string {
   const env = [
     ["OMNIWORK_AGENT_PROBE_URL", options.receiverUrl],
     ["OMNIWORK_SESSION_KEY_PATH", options.sessionKeyPath],
     ["OMNIWORK_AGENT_HOOK_SOURCE", provider],
+    ["OMNIWORK_AGENT_HOOK_EVENT", hookEventName],
   ]
     .filter((entry): entry is [string, string] => Boolean(entry[1]))
     .map(([name, value]) => `${name}=${shellQuote(value)}`)
     .join(" ");
-  const command = `node ${shellQuote(defaultHookScriptPath())}`;
+  const command = `node ${shellQuote(defaultPostHookScriptPath())}`;
   return env ? `${env} ${command}` : command;
+}
+
+function buildRecordHookCommand(
+  provider: TraeHookInstallProvider,
+  hookEventName: string,
+): string {
+  const env = [
+    ["OMNIWORK_AGENT_HOOK_SOURCE", provider],
+    ["OMNIWORK_AGENT_HOOK_EVENT", hookEventName],
+  ]
+    .map(([name, value]) => `${name}=${shellQuote(value)}`)
+    .join(" ");
+  return `${env} node ${shellQuote(defaultRecordHookScriptPath())}`;
 }
 
 function createOmniWorkHooks(
   options: TraeHookInstallOptions,
   provider: TraeHookInstallProvider,
 ): Array<[string, TraeHookGroup]> {
-  const command = buildHookCommand(options, provider);
   return MANAGED_TRAE_HOOK_EVENTS.map((event) => [
     event.name,
     {
@@ -268,7 +282,12 @@ function createOmniWorkHooks(
       hooks: [
         {
           type: "command",
-          command,
+          command: buildRecordHookCommand(provider, event.name),
+          timeout: 10,
+        },
+        {
+          type: "command",
+          command: buildPostHookCommand(options, provider, event.name),
           timeout: 10,
         },
       ],
@@ -289,6 +308,10 @@ async function readHooksFile(path: string): Promise<TraeHooksFile | null> {
   }
 }
 
+function hasAllHookCommands(groups: unknown[], commands: string[]): boolean {
+  return commands.every((command) => hasHookCommand(groups, command));
+}
+
 function hasHookCommand(groups: unknown[], command: string): boolean {
   return groups.some((group) => {
     if (!isRecord(group) || !Array.isArray(group.hooks)) {
@@ -303,8 +326,9 @@ function hasHookCommand(groups: unknown[], command: string): boolean {
 
 function cleanupOmniWorkHookCommands(
   groups: unknown[],
-  validCommand: string,
+  validCommands: string[],
 ): { groups: unknown[]; changed: boolean } {
+  const validCommandSet = new Set(validCommands);
   let changed = false;
   const cleanedGroups = groups.flatMap((group) => {
     if (!isRecord(group) || !Array.isArray(group.hooks)) {
@@ -318,7 +342,7 @@ function cleanupOmniWorkHookCommands(
       if (!isOmniWorkHookCommand(command)) {
         return true;
       }
-      const keep = command === validCommand;
+      const keep = validCommandSet.has(command);
       if (!keep) {
         changed = true;
       }
@@ -341,7 +365,11 @@ function cleanupOmniWorkHookCommands(
 }
 
 function isOmniWorkHookCommand(command: string): boolean {
-  return command.includes("omniwork-agent-hook");
+  return (
+    command.includes("omniwork-agent-hook") ||
+    command.includes("omniwork-hook-post") ||
+    command.includes("omniwork-hook-record")
+  );
 }
 
 async function pathExists(path: string): Promise<boolean> {

@@ -16,6 +16,9 @@ import {
   type TraeHookInstallProvider,
 } from "../probes/traeHookInstaller.ts";
 import {
+  importTraeHookRecords as importTraeHookRecordFiles,
+} from "../probes/traeHookRecordImporter.ts";
+import {
   isClaudeTerminalProvider,
   isCodexTerminalProvider,
   resolveTraeTerminalProvider,
@@ -58,28 +61,7 @@ export class AgentProbeRuntime {
       port: this.config.agentProbePort,
       token,
       onProbeEvent: async (event) => {
-        const enrichedEvent = await this.enrichProbeEvent(event).catch(
-          (error) => {
-            this.logger.warn("agent probe event enrichment failed", {
-              provider: event.provider,
-              event_type: event.event_type,
-              session_id: event.session_id,
-              error: String(error),
-            });
-            return event;
-          },
-        );
-        const message = this.agentMessages.publishProbeEvent(enrichedEvent);
-        this.publishSurfaceEvent(enrichedEvent);
-        if (message) {
-          this.logger.info("agent probe event accepted", {
-            provider: enrichedEvent.provider,
-            event_type: enrichedEvent.event_type,
-            session_id: enrichedEvent.session_id,
-            surface_id: enrichedEvent.surface_id,
-            message_kind: message.message_kind,
-          });
-        }
+        await this.acceptProbeEvent(event, "agent probe event accepted");
       },
     });
     try {
@@ -89,6 +71,7 @@ export class AgentProbeRuntime {
         url: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
         token_source: this.config.agentProbeToken ? "env" : "session_key",
       });
+      await this.importTraeHookRecords();
     } catch (error) {
       receiver.close();
       this.logger.warn("agent hook receiver disabled after startup failure", {
@@ -146,6 +129,66 @@ export class AgentProbeRuntime {
       event,
       await this.sessionManager.list(),
     );
+  }
+
+  private async acceptProbeEvent(
+    event: AgentProbeEvent,
+    logMessage: string,
+  ): Promise<void> {
+    const enrichedEvent = await this.enrichProbeEvent(event).catch((error) => {
+      this.logger.warn("agent probe event enrichment failed", {
+        provider: event.provider,
+        event_type: event.event_type,
+        session_id: event.session_id,
+        error: String(error),
+      });
+      return event;
+    });
+    const message = this.agentMessages.publishProbeEvent(enrichedEvent);
+    this.publishSurfaceEvent(enrichedEvent);
+    if (message) {
+      this.logger.info(logMessage, {
+        provider: enrichedEvent.provider,
+        event_type: enrichedEvent.event_type,
+        session_id: enrichedEvent.session_id,
+        surface_id: enrichedEvent.surface_id,
+        message_kind: message.message_kind,
+      });
+    }
+  }
+
+  private async importTraeHookRecords(): Promise<void> {
+    try {
+      const results = await importTraeHookRecordFiles({
+        onProbeEvent: async (event) => {
+          await this.acceptProbeEvent(
+            event,
+            "trae hook record imported as probe event",
+          );
+        },
+      });
+      for (const result of results) {
+        if (
+          result.files === 0 &&
+          result.imported === 0 &&
+          result.invalid === 0
+        ) {
+          continue;
+        }
+        this.logger.info("trae hook records import checked", {
+          provider: result.provider,
+          records_root: result.recordsRoot,
+          files: result.files,
+          imported: result.imported,
+          skipped: result.skipped,
+          invalid: result.invalid,
+        });
+      }
+    } catch (error) {
+      this.logger.warn("trae hook records import failed", {
+        error: String(error),
+      });
+    }
   }
 
   private publishSurfaceEvent(event: AgentProbeEvent): void {

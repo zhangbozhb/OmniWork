@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const DEFAULT_URL = "http://127.0.0.1:17669/api/probes/hooks";
+const DEFAULT_TIMEOUT_MS = 1000;
 
 async function main() {
   const body = await readHookPayload();
@@ -22,6 +23,7 @@ async function main() {
         authorization: `Bearer ${token}`,
       },
       body,
+      signal: AbortSignal.timeout(resolveTimeoutMs()),
     },
   );
   if (!response.ok) {
@@ -91,6 +93,15 @@ async function resolveToken() {
   } catch {
     return undefined;
   }
+}
+
+function resolveTimeoutMs() {
+  const raw = process.env.OMNIWORK_AGENT_PROBE_TIMEOUT_MS?.trim();
+  if (!raw) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
 }
 
 main().catch(() => {

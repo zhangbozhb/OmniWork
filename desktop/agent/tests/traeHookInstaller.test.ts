@@ -29,9 +29,9 @@ test("ensureTraeHooksInstalled creates hooks.json with OmniWork hooks", async ()
   assert.equal(parsed.version, 1);
   assert.equal(parsed.hooks.SessionStart.length, 1);
   assert.equal(parsed.hooks.UserPromptSubmit.length, 1);
-  assert.equal(parsed.hooks.PreToolUse[0].matcher, "*");
-  assert.equal(parsed.hooks.PostToolUse[0].matcher, "*");
-  assert.equal(parsed.hooks.Notification.length, 1);
+  assert.equal(parsed.hooks.PreToolUse, undefined);
+  assert.equal(parsed.hooks.PostToolUse, undefined);
+  assert.equal(parsed.hooks.Notification, undefined);
   assert.equal(parsed.hooks.Stop.length, 1);
   assert.equal(parsed.hooks.PermissionRequest, undefined);
   assert.equal(parsed.hooks.PostToolUseFailure, undefined);
@@ -40,13 +40,21 @@ test("ensureTraeHooksInstalled creates hooks.json with OmniWork hooks", async ()
     parsed.hooks.SessionStart[0].hooks[0].command,
     /OMNIWORK_AGENT_HOOK_SOURCE='trae-cn'/u,
   );
-  assert.match(
+  assert.doesNotMatch(
     parsed.hooks.SessionStart[0].hooks[0].command,
+    /OMNIWORK_TRAE_RECORDS_SCOPE/u,
+  );
+  assert.match(
+    parsed.hooks.SessionStart[0].hooks[1].command,
     /OMNIWORK_SESSION_KEY_PATH='\/tmp\/session-key\.json'/u,
   );
   assert.match(
     parsed.hooks.SessionStart[0].hooks[0].command,
-    /omniwork-agent-hook\.mjs/u,
+    /omniwork-hook-record\.mjs/u,
+  );
+  assert.match(
+    parsed.hooks.SessionStart[0].hooks[1].command,
+    /omniwork-hook-post\.mjs/u,
   );
 });
 
@@ -82,7 +90,7 @@ test("ensureTraeHooksInstalled preserves existing hooks and is idempotent", asyn
   assert.equal(parsed.other, true);
   assert.equal(parsed.hooks.Stop.length, 2);
   assert.equal(parsed.hooks.Stop[0].hooks[0].command, "echo existing");
-  assert.equal(countManagedCommands(parsed), 6);
+  assert.equal(countManagedCommands(parsed), 3);
 });
 
 test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () => {
@@ -182,7 +190,7 @@ test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () =
     /OMNIWORK_AGENT_HOOK_SOURCE='trae'/u,
   );
   assert.match(
-    parsed.hooks.UserPromptSubmit[0].hooks[0].command,
+    parsed.hooks.UserPromptSubmit[0].hooks[1].command,
     /OMNIWORK_SESSION_KEY_PATH='\/tmp\/current-session-key\.json'/u,
   );
 });
@@ -223,6 +231,18 @@ test("ensureTraeFamilyHooksInstalled installs every detected Trae hooks file", a
     traeCn.hooks.SessionStart[0].hooks[0].command,
     /OMNIWORK_AGENT_HOOK_SOURCE='trae-cn'/u,
   );
+  assert.doesNotMatch(
+    traeCn.hooks.SessionStart[0].hooks[0].command,
+    /OMNIWORK_TRAE_RECORDS_SCOPE/u,
+  );
+  assert.match(
+    trae.hooks.SessionStart[0].hooks[0].command,
+    /omniwork-hook-record\.mjs/u,
+  );
+  assert.match(
+    trae.hooks.SessionStart[0].hooks[1].command,
+    /omniwork-hook-post\.mjs/u,
+  );
 });
 
 test("discoverTraeHookTargets falls back to requested provider when no config dirs exist", async () => {
@@ -262,7 +282,7 @@ function countManagedCommands(value: unknown): number {
     return (
       count +
       groups.filter((group) =>
-        JSON.stringify(group).includes("omniwork-agent-hook"),
+        JSON.stringify(group).includes("omniwork-hook"),
       ).length
     );
   }, 0);

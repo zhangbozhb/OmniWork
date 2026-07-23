@@ -53,7 +53,7 @@ test("ensureCodexHooksInstalled creates user hooks file with OmniWork hooks", as
   );
   assert.match(
     parsed.hooks.Stop[0].hooks[0].command,
-    /omniwork-agent-hook\.mjs/u,
+    /omniwork-hook-post\.mjs/u,
   );
 });
 

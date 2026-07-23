@@ -162,7 +162,7 @@ pnpm dev:web
 或在 app package 内执行：
 
 ```sh
-pnpm --filter @omniwork/app web:dev
+pnpm --filter @omniwork/web-app dev
 ```
 
 生产构建：

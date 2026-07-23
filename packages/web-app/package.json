@@ -1,0 +1,21 @@
+{
+  "name": "@omniwork/web-app",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --dir ../../app web:dev",
+    "build": "node scripts/build.mjs",
+    "verify": "pnpm run build",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

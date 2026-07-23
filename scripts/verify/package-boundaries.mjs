@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 const files = execFileSync("git", ["ls-files"], { encoding: "utf8" })
@@ -10,6 +10,9 @@ const forbidden = /(?:\.\.\/)+(?:packages\/)?(?:protocol-ts|relay-client|termina
 const violations = [];
 
 for (const file of files) {
+  if (!existsSync(file)) {
+    continue;
+  }
   const content = readFileSync(file, "utf8");
   if (forbidden.test(content)) {
     violations.push(file);

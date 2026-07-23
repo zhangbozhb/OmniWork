@@ -1,0 +1,17 @@
+{
+  "name": "@omniwork/surface-hook-record",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "omniwork-hook-record": "bin/omniwork-hook-record.mjs"
+  },
+  "files": [
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

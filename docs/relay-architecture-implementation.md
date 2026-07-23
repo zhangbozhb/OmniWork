@@ -177,6 +177,7 @@ pnpm --filter @omniwork/protocol-ts typecheck
 pnpm --filter @omniwork/relay-server typecheck
 pnpm --filter @omniwork/desktop-agent typecheck
 pnpm --filter @omniwork/app typecheck
+pnpm --filter @omniwork/web-app verify
 pnpm verify:relay
 ```
 

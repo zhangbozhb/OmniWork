@@ -1,0 +1,14 @@
+{
+  "name": "@omniwork/surface-hook-post",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "omniwork-hook-post": "bin/omniwork-hook-post.mjs"
+  },
+  "files": [
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=22.6.0"
+  }
+}

@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 interface ClaudeHookCommand {
   type: "command";
@@ -159,8 +159,8 @@ export function defaultClaudeSettingsPath(): string {
 }
 
 function defaultHookScriptPath(): string {
-  return fileURLToPath(
-    new URL("../../bin/omniwork-agent-hook.mjs", import.meta.url),
+  return createRequire(import.meta.url).resolve(
+    "@omniwork/surface-hook-post/bin/omniwork-hook-post.mjs",
   );
 }
 
@@ -266,7 +266,10 @@ function cleanupOmniWorkHookCommands(
 }
 
 function isOmniWorkHookCommand(command: string): boolean {
-  return command.includes("omniwork-agent-hook");
+  return (
+    command.includes("omniwork-agent-hook") ||
+    command.includes("omniwork-hook-post")
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

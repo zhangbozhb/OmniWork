@@ -41,10 +41,10 @@ Android / iOS / Web App
 - 已落地：`packages/protocol-ts` 中的 `AgentProbeEvent`、`AgentAppMessage` 与 `agent.message*` 协议类型。
 - 已落地：桌面端 Agent 内部 `AgentMessageService`，支持 Probe Event 幂等去重、基础过滤和在线 App 广播。目标模型下 Desktop Agent 不维护多 App 一致的消息状态；消息列表、已读和处理状态由各 App 本地 SQLite 自维护，Desktop Agent 只关心消息是否送达任一 App。
 - 已落地：Codex / Claude Code / Trae / Trae-CN Hooks Channel 的本机 HTTP receiver，默认监听 `127.0.0.1:17669/api/probes/hooks`，通过 `Authorization: Bearer <token>` 校验，并按 `omniwork_hook_source` 分发到对应 Probe。
-- 已落地：`desktop/agent/bin/omniwork-agent-hook.mjs`，用于 Codex / Claude Code / Trae / Trae-CN command hook 将 stdin JSON 转交给本机 receiver。
+- 已落地：`packages/surface-hook-post/bin/omniwork-hook-post.mjs`，用于 Codex / Claude Code / Trae / Trae-CN command hook 将 stdin JSON 转交给本机 receiver。
 - 已落地：Codex hooks 自动安装。Desktop Agent 启动生成 session key 后会立即检测并合并写入 `~/.codex/hooks.json`，该步骤发生在 admin server / hook receiver 监听端口之前；启动 Codex runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Codex 会话启动。
 - 已落地：Claude Code hooks 自动安装。Desktop Agent 启动生成 session key 后会检测并合并写入 `~/.claude/settings.json`；启动 Claude runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Claude 会话启动。当前支持 `claude-code` 与 `claudecode` 输入别名，内部统一归一化为 `claude-code` provider。
-- 已落地：Trae / Trae-CN hook payload normalizer 和本机 HTTP ingest provider 解析，支持 `/api/probes/trae/hooks`、`/api/probes/trae-cn/hooks` 以及共享 `/api/probes/hooks?source=...`。根据本机 `~/.trae/traecli.toml`、`~/.trae/traecli.yaml`、`~/.trae/hooks.json` 和 `~/.trae-cn/hooks.json` 调研，当前只接入 hook 事件语义；不自动改写 `~/.trae*` 配置，不把 Trae / Trae-CN 升级为完整 AgentSurface 主交互协议。
+- 已落地：Trae / Trae-CN hook payload normalizer 和本机 HTTP ingest provider 解析，支持 `/api/probes/trae/hooks`、`/api/probes/trae-cn/hooks` 以及共享 `/api/probes/hooks?source=...`。根据本机 `~/.trae/traecli.toml`、`~/.trae/traecli.yaml`、`~/.trae/hooks.json` 和 `~/.trae-cn/hooks.json` 调研，当前只接入 hook 事件语义；不把 Trae / Trae-CN 升级为完整 AgentSurface 主交互协议。Trae / Trae-CN hook 会同时安装 `@omniwork/surface-hook-record` 和 `@omniwork/surface-hook-post`：前者只安装到用户全局 `~/.trae/hooks.json` / `~/.trae-cn/hooks.json`，主动把完整 hook payload 记录写入 provider 全局 records 目录，并额外抽取 `conversation.user_input` 与 `conversation.model_response` 便于分析；后者保持 POST 实时链路。安装器会把 Trae-CN 全局 records 目录加入 sandbox allowPaths，避免 hook 写 `~/.trae-cn/omniwork/records` 被拦截。Desktop Agent 启动后会扫描这些记录，按 `import-index.json` 幂等导入为统一 `AgentProbeEvent`。
 - 已落地：Codex app-server event normalizer 和本机 HTTP ingest endpoint（`/api/probes/codex/app-server`），可把 thread / turn / approval / diff / completion 等结构化事件归一化为 `AgentProbeEvent`。当前尚未接入 app-server 进程管理和主动订阅。
 - 已落地：tmux Probe 的最小事件路径，tmux target 消失时会产生 `agent.exited` 并进入消息流。
 - 已落地：通知偏好持久化协议、App 设置页开关、服务端通知资格判断和脱敏系统通知 payload 生成。当前仅形成可接入 Push gateway 的候选通知，尚未接入平台原生 Push。
@@ -439,7 +439,7 @@ desktop/agent/src/probes/codex/
     normalizePtySignal.ts
   hook-receiver/
     agentHookReceiver.ts
-    omniwork-agent-hook.mjs
+    omniwork-hook-post.mjs
 ```
 
 #### Codex App Server Channel
@@ -489,7 +489,7 @@ Hook 命令只负责把 stdin JSON 原样转交给 Desktop Agent 的本地 hook 
 ```text
 Codex hook command
         ↓
-omniwork-agent-hook.mjs
+omniwork-hook-post.mjs
         ↓
 Desktop Agent local hook receiver
         ↓
@@ -513,7 +513,7 @@ Agent Probe Sink
         "hooks": [
           {
             "type": "command",
-            "command": "node /absolute/path/to/omniwork-agent-hook.mjs",
+            "command": "node /absolute/path/to/omniwork-hook-post.mjs",
             "timeout": 10,
             "statusMessage": "OmniWork collecting Codex session event"
           }
@@ -526,7 +526,7 @@ Agent Probe Sink
         "hooks": [
           {
             "type": "command",
-            "command": "node /absolute/path/to/omniwork-agent-hook.mjs",
+            "command": "node /absolute/path/to/omniwork-hook-post.mjs",
             "timeout": 10
           }
         ]
@@ -538,7 +538,7 @@ Agent Probe Sink
         "hooks": [
           {
             "type": "command",
-            "command": "node /absolute/path/to/omniwork-agent-hook.mjs",
+            "command": "node /absolute/path/to/omniwork-hook-post.mjs",
             "timeout": 10
           }
         ]
@@ -549,7 +549,7 @@ Agent Probe Sink
         "hooks": [
           {
             "type": "command",
-            "command": "node /absolute/path/to/omniwork-agent-hook.mjs",
+            "command": "node /absolute/path/to/omniwork-hook-post.mjs",
             "timeout": 10
           }
         ]
@@ -566,7 +566,7 @@ Hook receiver 约束：
 - hook 自动安装在 Desktop Agent 启动后立即触发一次；启动具体 runtime 前也会二次触发，二次触发的识别规则是 `runtime.kind === "codex"` 或启动命令首词为 `codex`。
 - hook 自动安装采用合并策略：只追加 OmniWork 缺失的 command hook，不修改或删除用户已有的非 OmniWork hooks。
 - hook 自动安装按阶段生成 command，每个阶段都会写入对应的 `OMNIWORK_AGENT_HOOK_EVENT`，例如 `SessionStart`、`PermissionRequest`、`PostToolUse`、`Stop`；hook 脚本会用该值补齐缺失的 `hook_event_name`。
-- hook 自动安装会检查 `omniwork-agent-hook` 命令有效性：当前阶段的完整 command 与 installer 生成值一致才视为有效；旧路径、缺失环境变量、来源参数不匹配、阶段参数不匹配或历史无效安装会被移除并替换。
+- hook 自动安装会检查 `omniwork-hook-post` 命令有效性：当前阶段的完整 command 与 installer 生成值一致才视为有效；旧路径、缺失环境变量、来源参数不匹配、阶段参数不匹配或历史无效安装会被移除并替换。
 - hook 自动安装不会把 token 写入 `~/.codex/hooks.json`；脚本通过 `OMNIWORK_SESSION_KEY_PATH` 定位 Desktop Agent 生成的 `session-key.json`，再读取其中的临时 key。
 - hook command 不做 App 推送、不做消息过滤、不连接 Relay。
 - hook command 失败不能阻塞 Codex 主流程，除非明确进入企业 managed hook 治理模式。
@@ -583,7 +583,7 @@ Hook receiver 约束：
 
 #### Claude Code Hooks Channel
 
-Claude Code hooks 与 Codex hooks 走同一个本机 receiver 和同一个共享脚本，不直接发送 App 消息。
+Claude Code hooks 与 Codex hooks 走同一个本机 receiver 和同一个 `@omniwork/surface-hook-post` 插件，不直接发送 App 消息。
 
 Claude Code 官方配置位置包括用户级 `~/.claude/settings.json`、项目级 `.claude/settings.json`、项目本地 `.claude/settings.local.json` 和 managed policy。当前实现只自动合并用户级 `~/.claude/settings.json`，避免修改项目仓库文件。
 
@@ -598,7 +598,7 @@ Claude Code 官方配置位置包括用户级 `~/.claude/settings.json`、项目
         "hooks": [
           {
             "type": "command",
-            "command": "node /absolute/path/to/omniwork-agent-hook.mjs",
+            "command": "node /absolute/path/to/omniwork-hook-post.mjs",
             "timeout": 10
           }
         ]
@@ -610,7 +610,7 @@ Claude Code 官方配置位置包括用户级 `~/.claude/settings.json`、项目
         "hooks": [
           {
             "type": "command",
-            "command": "node /absolute/path/to/omniwork-agent-hook.mjs",
+            "command": "node /absolute/path/to/omniwork-hook-post.mjs",
             "timeout": 10
           }
         ]
@@ -622,7 +622,7 @@ Claude Code 官方配置位置包括用户级 `~/.claude/settings.json`、项目
         "hooks": [
           {
             "type": "command",
-            "command": "node /absolute/path/to/omniwork-agent-hook.mjs",
+            "command": "node /absolute/path/to/omniwork-hook-post.mjs",
             "timeout": 10
           }
         ]
@@ -633,7 +633,7 @@ Claude Code 官方配置位置包括用户级 `~/.claude/settings.json`、项目
         "hooks": [
           {
             "type": "command",
-            "command": "node /absolute/path/to/omniwork-agent-hook.mjs",
+            "command": "node /absolute/path/to/omniwork-hook-post.mjs",
             "timeout": 10
           }
         ]
@@ -644,7 +644,7 @@ Claude Code 官方配置位置包括用户级 `~/.claude/settings.json`、项目
         "hooks": [
           {
             "type": "command",
-            "command": "node /absolute/path/to/omniwork-agent-hook.mjs",
+            "command": "node /absolute/path/to/omniwork-hook-post.mjs",
             "timeout": 10
           }
         ]
@@ -686,12 +686,9 @@ Trae / Trae-CN hook 到 Probe Event 的默认映射遵循 TRAE 官方 hooks sche
 |---|---|---|
 | `SessionStart` / `session_start` | `agent.started` | 可进入 App 内消息，不系统 Push |
 | `UserPromptSubmit` / `user_prompt_submit` | `agent.user_prompt_submitted` | 本地记录，默认不发 App |
-| `PreToolUse` / `pre_tool_use` | `agent.tool_call_started` | 本地记录，默认不发 App |
-| `PostToolUse` / `post_tool_use` | `agent.tool_call_finished` | 本地记录 |
-| `Notification` / `notification` + `permission_prompt` | `agent.approval_required` | 可进入 App 内消息，可系统 Push |
-| `Notification` / `notification` + `document_review` | `agent.approval_required` | 可进入 App 内消息，可系统 Push |
-| `Notification` / `notification` + `idle_prompt` | `agent.completed` | 可进入 App 内消息，系统 Push 可选 |
-| `Notification` / `notification` + 其他类型 | `agent.waiting_user_input` | 可进入 App 内消息，可系统 Push |
+| `PreToolUse` / `pre_tool_use` | `agent.tool_call_started` | Trae 本地 record hook 不安装、不落盘 |
+| `PostToolUse` / `post_tool_use` | `agent.tool_call_finished` | Trae 本地 record hook 不安装、不落盘 |
+| `Notification` / `notification` | - | 当前 Trae 本地 hook 不安装、不落盘 |
 | `Stop` / `stop` | `agent.completed` | 可进入 App 内消息，系统 Push 可选 |
 
 Codex hook 到 Probe Event 的默认映射：
@@ -749,7 +746,7 @@ Trae 与 Trae-CN 当前按 Coding Agent Probe 接入，不按完整 `AgentSurfac
 
 本机调研到的组织方式：
 
-- `~/.trae/hooks.json` 与 `~/.trae-cn/hooks.json`：均为 `version + hooks` 结构，当前仅自动安装 TRAE 官方事件 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Notification`、`Stop`。
+- `~/.trae/hooks.json` 与 `~/.trae-cn/hooks.json`：均为 `version + hooks` 结构，当前 record hook 仅自动安装 TRAE 官方事件 `SessionStart`、`UserPromptSubmit`、`Stop`；工具调用事件 `PreToolUse`、`PostToolUse` 与通知事件 `Notification` 不进入本地 records。
 - `~/.trae/traecli.toml` / `~/.trae/traecli.yaml`：只按 TRAE 官方事件 schema 读取；历史调研中的 `PermissionRequest`、`PostToolUseFailure`、`PermissionDenied`、`PreCompact`、`PostCompact`、`SubagentStart`、`SubagentStop`、`SessionEnd` 不再作为 TRAE 事件安装或归一化。
 - `~/.trae/traecli.yaml`：兼容官方事件的 snake_case 名称，例如 `user_prompt_submit`、`post_tool_use`、`notification`、`stop`。
 - `~/.trae-cn/builtin_skills`、`~/.trae-cn/skills`、`~/.trae/skills`：采用 `SKILL.md + references/scripts/assets` 的能力包组织。
@@ -762,6 +759,9 @@ Trae 与 Trae-CN 当前按 Coding Agent Probe 接入，不按完整 `AgentSurfac
 - shared endpoint source：`trae`、`traex`、`coco` 归一化为 `trae`；`trae-cn`、`trae_cn`、`traecn` 归一化为 `trae-cn`。
 - hook name alias：支持 PascalCase 和 snake_case 两种事件命名。
 - session/surface 自动关联：`trae`、`traex`、`coco` 匹配 `trae` terminal provider；`trae-cn`、`trae_cn`、`traecn` 匹配 `trae-cn` terminal provider。
+- 主动记录：`omniwork-hook-record.mjs` 对 Trae / Trae-CN 的非工具 hook 写本地 JSONL record；`omniwork-hook-post.mjs` 独立负责实时 POST。record hook 只安装到用户全局 `~/.trae/hooks.json` / `~/.trae-cn/hooks.json`。记录默认使用 `payload_mode: "full"`，保存完整 hook payload，并抽取 `conversation.session_id`、`conversation.workspace_path`、`conversation.user_input` 和 `conversation.model_response`。安装后的 Trae / Trae-CN record hook 只写 provider 全局目录；安装器会把 Trae-CN 的 `~/.trae-cn/omniwork` 与 `~/.trae-cn/omniwork/records` 加入 sandbox allowPaths。`OMNIWORK_TRAE_RECORDS_DIR` 仅用于显式覆盖记录根目录；`OMNIWORK_TRAE_RECORDS_SCOPE` 不再参与写入点选择。JSONL 写入通过 lock file 串行化，避免多进程并发追加互相打断。
+- 记录目录：Trae 写入 `~/.trae/omniwork/records/sessions/YYYY-MM-DD.jsonl`，Trae-CN 写入 `~/.trae-cn/omniwork/records/sessions/YYYY-MM-DD.jsonl`。导入状态保存在 provider records 根目录的 `import-index.json`，不移动原始 JSONL 文件。
+- 幂等键：hook script 会为 Trae / Trae-CN payload 注入 `omniwork_record_id`，实时 POST 和后续 records 导入都使用该 id 生成 `AgentProbeEvent.id`，避免重复 App 消息。
 
 ### 其他 Coding Agent Probe
 

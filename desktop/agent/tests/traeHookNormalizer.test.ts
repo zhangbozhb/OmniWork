@@ -139,3 +139,16 @@ test("normalizeTraeHookPayload includes Stop summaries in stable ids", () => {
     })?.id,
   );
 });
+
+test("normalizeTraeHookPayload uses OmniWork record ids for replay dedupe", () => {
+  const event = normalizeTraeHookPayload("trae", {
+    session_id: "sess-1",
+    hook_event_name: "Stop",
+    omniwork_record_id: "record-1",
+    last_assistant_message: "Done",
+  });
+
+  assert.ok(event);
+  assert.equal(event.id, "record-1");
+  assert.equal(event.payload?.omniwork_record_id, "record-1");
+});

@@ -17,6 +17,7 @@ export interface TraeHookPayload {
   event?: unknown;
   event_name?: unknown;
   omniwork_hook_source?: unknown;
+  omniwork_record_id?: unknown;
   source?: unknown;
   prompt?: unknown;
   tool_name?: unknown;
@@ -234,6 +235,7 @@ function sanitizePayload(payload: TraeHookPayload): Record<string, unknown> {
     event: readString(payload.event),
     event_name: readString(payload.event_name),
     omniwork_hook_source: readString(payload.omniwork_hook_source),
+    omniwork_record_id: readString(payload.omniwork_record_id),
     cwd: readString(payload.cwd),
     workspace_path: readString(payload.workspace_path),
     source: readString(payload.source),
@@ -257,6 +259,11 @@ function hookEventId(
   hookName: string,
   sessionId: string,
 ): string {
+  const recordId = readString(payload.omniwork_record_id);
+  if (recordId) {
+    return recordId;
+  }
+
   const stable = JSON.stringify({
     provider,
     hookName,
