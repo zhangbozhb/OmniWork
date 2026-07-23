@@ -1,4 +1,4 @@
-import type { AppClientPlatform, AppInfoPayload } from "@omniwork/protocol-ts";
+import type { AppClientPlatform, AppInfoPayload } from "@omni-work/protocol-ts";
 
 import { appConfig } from "./appConfig.ts";
 

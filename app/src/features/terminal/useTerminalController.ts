@@ -8,7 +8,7 @@ import type {
   TerminalSnapshotPayload,
   TerminalStreamDataPayload,
   TerminalStreamErrorPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import { appConfig } from "../../app/appConfig";
 import type { AppView, ConnectionStatus } from "../../app/appTypes";

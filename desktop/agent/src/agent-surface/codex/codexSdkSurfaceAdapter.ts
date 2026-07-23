@@ -10,7 +10,7 @@ import type {
   AgentProbeEventType,
   AgentSurfaceEventPayload,
   TerminalSession,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { Logger } from "../../telemetry/logger.ts";
 

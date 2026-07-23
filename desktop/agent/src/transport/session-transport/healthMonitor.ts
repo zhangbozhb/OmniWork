@@ -4,7 +4,7 @@ import {
   type TransportPath,
   type TransportPingPayload,
   type TransportPongPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   BUFFERED_AMOUNT_LIMIT,
   BUFFERED_AMOUNT_OVERFLOW_SECONDS,

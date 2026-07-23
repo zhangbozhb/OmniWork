@@ -4,13 +4,13 @@ import { homedir, hostname, platform } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { DEFAULT_TERMINAL_SIZE } from "@omniwork/terminal-core";
+import { DEFAULT_TERMINAL_SIZE } from "@omni-work/terminal-core";
 import {
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
   type BusinessSecurityMode,
   type TerminalProviderDefinition,
-} from "@omniwork/protocol-ts";
-import type { TerminalSize } from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
+import type { TerminalSize } from "@omni-work/protocol-ts";
 import { resolveAgentDeviceId } from "./deviceIdentity.ts";
 import {
   defaultRelayDeviceCredentialsPath,

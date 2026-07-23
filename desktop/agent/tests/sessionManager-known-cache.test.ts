@@ -7,7 +7,7 @@ import {
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
   type TerminalSession,
   type WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { SessionManager } from "../src/core/sessionManager.ts";
 import { SQLiteSessionStore } from "../src/session-store/sessionStore.ts";
 import { TerminalProviderRegistry } from "../src/terminal-provider/terminalProviderRegistry.ts";

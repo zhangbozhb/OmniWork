@@ -3,8 +3,8 @@ import type {
   P2pChannelKind,
   TransportPath,
   WebRtcPeerAdapter,
-} from "@omniwork/protocol-ts";
-import { TRANSPORT_HEALTH_POLICY } from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
+import { TRANSPORT_HEALTH_POLICY } from "@omni-work/protocol-ts";
 
 export type MessageHandler = (envelope: MessageEnvelope) => void;
 export type PathChangeHandler = (path: TransportPath) => void;

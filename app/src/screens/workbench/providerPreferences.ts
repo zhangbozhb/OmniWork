@@ -1,4 +1,4 @@
-import type { TerminalProviderDefinition } from "@omniwork/protocol-ts";
+import type { TerminalProviderDefinition } from "@omni-work/protocol-ts";
 
 export type ProviderPreferences = {
   hiddenKinds: string[];

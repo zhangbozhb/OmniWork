@@ -5,7 +5,7 @@ import {
   type MessageEnvelope,
   type P2pChannelKind,
   type TerminalFramePayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { TerminalBridge } from "../pty-bridge/terminalBridge.ts";
 import { TmuxTargetMissingError } from "../tmux-manager/tmuxManager.ts";
 import { DISPLAY_FRAME_BUFFERED_AMOUNT_LIMIT } from "../transport/index.ts";

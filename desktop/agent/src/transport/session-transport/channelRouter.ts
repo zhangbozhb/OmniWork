@@ -1,8 +1,8 @@
 import type {
   MessageEnvelope,
   P2pChannelKind,
-} from "@omniwork/protocol-ts";
-import { isStrictTransportControlMessage } from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
+import { isStrictTransportControlMessage } from "@omni-work/protocol-ts";
 
 export function isStrictControlMessage(envelopeType: string): boolean {
   return isStrictTransportControlMessage(envelopeType);

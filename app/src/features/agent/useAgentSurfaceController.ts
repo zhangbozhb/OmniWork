@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AgentSurfaceEventPayload } from "@omniwork/protocol-ts";
+import type { AgentSurfaceEventPayload } from "@omni-work/protocol-ts";
 
 export function useAgentSurfaceController() {
   const [eventsBySurfaceId, setEventsBySurfaceId] = useState<

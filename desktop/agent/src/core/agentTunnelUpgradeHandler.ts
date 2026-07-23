@@ -7,7 +7,7 @@ import {
   type TunnelUpgradeDowngradePayload,
   type TunnelUpgradeOfferPayload,
   type TunnelUpgradeProposePayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { Logger } from "../telemetry/logger.ts";
 import type { AppConnectionRegistry } from "./appConnectionRegistry.ts";
 import type { AgentSessionTransport } from "../transport/index.ts";

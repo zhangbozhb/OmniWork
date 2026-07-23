@@ -4,12 +4,12 @@ import type {
   TerminalInputPayload,
   TerminalResizePayload,
   TerminalSnapshotPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   createControlInput,
   createPasteInput,
   createTextInput,
-} from "@omniwork/terminal-core";
+} from "@omni-work/terminal-core";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
 
 export class TerminalBridge {

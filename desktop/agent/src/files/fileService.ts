@@ -9,8 +9,8 @@ import type {
   FilesWriteRequestPayload,
   WorkspaceDefinition,
   WorkspaceFileEntry,
-} from "@omniwork/protocol-ts";
-import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
+import { isSupportedTextFilePath } from "@omni-work/protocol-ts";
 import {
   MAX_TEXT_FILE_BYTES,
   isIgnoredDirectory,

@@ -5,13 +5,13 @@ import {
   acceptInitiatorHandshake,
   createInitiatorHandshake,
   type E2ENoiseSession,
-} from "@omniwork/e2e-noise";
+} from "@omni-work/e2e-noise";
 import {
   INNER_PROTOCOL_VERSION,
   createMessage,
   type InnerEnvelope,
   type MessageEnvelope,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { MobileRelaySession } from "../src/lib/relay-client/mobileRelaySession.ts";
 
 const pairing = {

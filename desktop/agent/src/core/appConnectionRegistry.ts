@@ -5,7 +5,7 @@ import type {
   AppInfoPayload,
   AppConnectionHeartbeatPayload,
   AppConnectionGoodbyePayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export type ConnectionState = "active" | "idle" | "stale" | "disconnected";
 export type SecurityMode = "e2e" | "plaintext" | "unauthenticated";

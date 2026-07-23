@@ -7,7 +7,7 @@ import {
   type AgentNotificationSettingsPayload,
   type AgentProbeEvent,
   type AgentProbeEventType,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { AgentMessageStore } from "./agentMessageStore.ts";
 
 export interface AgentMessageServiceOptions {

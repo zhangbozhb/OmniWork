@@ -3,8 +3,8 @@ import type {
   TerminalProviderKind,
   TerminalSession,
   WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
-import { getTerminalProviderDefinition } from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
+import { getTerminalProviderDefinition } from "@omni-work/protocol-ts";
 
 import { colors } from "../../ui/theme.ts";
 import type {

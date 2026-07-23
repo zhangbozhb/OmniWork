@@ -14,7 +14,7 @@ const targetDist = resolve(packageDir, "dist");
 
 const result = spawnSync("pnpm", ["--dir", appDir, "web:build"], {
   stdio: "inherit",
-  env: process.env,
+  env: { ...process.env, GENERATE_SOURCEMAP: "false" },
 });
 
 if (result.status !== 0) {

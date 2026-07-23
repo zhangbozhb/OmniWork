@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
-import type { AgentAppMessage } from "@omniwork/protocol-ts";
+import type { AgentAppMessage } from "@omni-work/protocol-ts";
 
 import type { LocalAgentMessageRecord } from "../../features/agent/agentMessageStore";
 import { Icon } from "../../ui/icons";

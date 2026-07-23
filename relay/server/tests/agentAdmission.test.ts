@@ -7,7 +7,7 @@ import {
   type AgentAuthInitPayload,
   type AgentHelloPayload,
   type MessageEnvelope,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import { AgentAdmission } from "../src/app-agent/agentAdmission.ts";
 import { TokenBucketLimiter } from "../src/tokenBucket.ts";

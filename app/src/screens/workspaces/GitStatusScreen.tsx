@@ -20,8 +20,8 @@ import type {
   GitDiffScope,
   WorkspaceDefinition,
   WorkspaceGitStatus,
-} from "@omniwork/protocol-ts";
-import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
+import { isSupportedTextFilePath } from "@omni-work/protocol-ts";
 import { Badge, Button, Card } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 import {

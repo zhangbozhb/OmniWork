@@ -5,8 +5,8 @@ import type {
   TerminalSession,
   MessageEnvelope,
   WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
-import { createMessage } from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
+import { createMessage } from "@omni-work/protocol-ts";
 import type {
   AppSessionTransport,
   AppView,

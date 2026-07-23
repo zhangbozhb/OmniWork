@@ -1,5 +1,5 @@
 {
-  "name": "@omniwork/relay-server",
+  "name": "@omni-work/relay-server",
   "version": "0.1.0",
   "type": "module",
   "main": "src/main.ts",
@@ -11,7 +11,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts tests/upgrade/*.test.ts && node --experimental-strip-types src/main.ts --check"
   },
   "dependencies": {
-    "@omniwork/protocol-ts": "workspace:*",
+    "@omni-work/protocol-ts": "0.1.0",
     "geoip-lite": "^2.0.3",
     "js-yaml": "^5.2.1"
   },

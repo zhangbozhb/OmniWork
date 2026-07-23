@@ -1,5 +1,5 @@
 import { createHmacSha256Base64Url } from "./hmacSha256.ts";
-import type { AppInfoPayload } from "@omniwork/protocol-ts";
+import type { AppInfoPayload } from "@omni-work/protocol-ts";
 
 export async function createKeyProof(
   key: string,

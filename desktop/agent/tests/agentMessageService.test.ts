@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { AgentProbeEvent } from "@omniwork/protocol-ts";
+import type { AgentProbeEvent } from "@omni-work/protocol-ts";
 import {
   AgentMessageService,
   type AgentSystemNotificationPayload,

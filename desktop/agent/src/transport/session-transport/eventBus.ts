@@ -1,4 +1,4 @@
-import type { TransportPath } from "@omniwork/protocol-ts";
+import type { TransportPath } from "@omni-work/protocol-ts";
 import type {
   MessageHandler,
   PathChangeHandler,

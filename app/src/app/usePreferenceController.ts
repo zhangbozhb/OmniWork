@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dimensions } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { TransportPreference } from "@omniwork/protocol-ts";
-import { isTransportPreference } from "@omniwork/protocol-ts";
+import type { TransportPreference } from "@omni-work/protocol-ts";
+import { isTransportPreference } from "@omni-work/protocol-ts";
 
 import { appConfig } from "./appConfig";
 import type { ConfirmOptions } from "../ui/confirm/ConfirmProvider";

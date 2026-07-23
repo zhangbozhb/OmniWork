@@ -7,7 +7,7 @@ import {
   type TransportPreference,
   type TunnelUpgradeDowngradePayload,
   type TunnelUpgradeProposePayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 /**
  * Orchestrator 关注的最小连接抽象：仅需 connection id 与可选 device id。

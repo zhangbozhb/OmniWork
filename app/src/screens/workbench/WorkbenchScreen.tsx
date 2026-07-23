@@ -21,11 +21,11 @@ import type {
   WorkspaceDefinition,
   WorkspaceFileEntry,
   WorkspaceGitStatus,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   getCreatableTerminalProviders,
   isCreatableTerminalProviderKind,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { Button } from "../../ui/components";
 import { spacing } from "../../ui/theme";
 import { CreateSessionModal } from "./CreateSessionModal";

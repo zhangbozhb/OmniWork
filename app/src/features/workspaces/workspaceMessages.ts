@@ -5,7 +5,7 @@ import {
   type FilesWriteRequestPayload,
   type GitDiffRequestPayload,
   type GitStatusRequestPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export function listWorkspacesRequest(deviceId: string) {
   return createMessage("workspace.list", {}, { device_id: deviceId });

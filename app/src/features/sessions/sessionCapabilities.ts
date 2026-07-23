@@ -1,7 +1,7 @@
 import type {
   TerminalSession,
   SessionStatus,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export interface SessionPendingState {
   closing?: boolean;

@@ -1,4 +1,4 @@
-import type { MessageEnvelope } from "@omniwork/protocol-ts";
+import type { MessageEnvelope } from "@omni-work/protocol-ts";
 
 import type {
   AppSessionTransport,

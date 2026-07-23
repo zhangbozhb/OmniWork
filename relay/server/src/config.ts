@@ -3,7 +3,7 @@ import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { IceServerConfig } from "@omniwork/protocol-ts";
+import type { IceServerConfig } from "@omni-work/protocol-ts";
 import { load as loadYaml } from "js-yaml";
 
 /**

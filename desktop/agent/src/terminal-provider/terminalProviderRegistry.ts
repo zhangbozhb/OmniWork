@@ -2,7 +2,7 @@ import {
   type AgentCapability,
   type TerminalProviderDefinition,
   type TerminalProviderKind,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export interface TerminalProviderAdapter {
   readonly kind: TerminalProviderKind;

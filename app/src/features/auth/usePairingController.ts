@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
-import { parseEncryptedPairingLink } from "@omniwork/protocol-ts";
+import { parseEncryptedPairingLink } from "@omni-work/protocol-ts";
 
 import type { ConnectionStatus, AppView } from "../../app/appTypes";
 import { formatErrorMessage } from "../../app/connectionMessages";

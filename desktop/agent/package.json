@@ -1,5 +1,5 @@
 {
-  "name": "@omniwork/desktop-agent",
+  "name": "@omni-work/desktop-agent",
   "version": "0.1.0",
   "type": "module",
   "main": "src/main.ts",
@@ -10,12 +10,12 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts tests/transport/*.test.ts"
   },
   "dependencies": {
-    "@omniwork/e2e-noise": "workspace:*",
-    "@omniwork/surface-hook-post": "workspace:*",
-    "@omniwork/surface-hook-record": "workspace:*",
-    "@omniwork/protocol-ts": "workspace:*",
-    "@omniwork/relay-client": "workspace:*",
-    "@omniwork/terminal-core": "workspace:*",
+    "@omni-work/e2e-noise": "0.1.0",
+    "@omni-work/surface-hook-post": "0.1.0",
+    "@omni-work/surface-hook-record": "0.1.0",
+    "@omni-work/protocol-ts": "0.1.0",
+    "@omni-work/relay-client": "0.1.0",
+    "@omni-work/terminal-core": "0.1.0",
     "@openai/codex-sdk": "0.142.5",
     "@roamhq/wrtc": "^0.8.0",
     "js-yaml": "^5.2.1",

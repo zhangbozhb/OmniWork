@@ -1,4 +1,4 @@
-import type { RelayCloseEvent } from "@omniwork/relay-client";
+import type { RelayCloseEvent } from "@omni-work/relay-client";
 import type { RelayConnectionStatus } from "./relayReconnectPolicy.ts";
 
 export interface AgentDispatchContext {

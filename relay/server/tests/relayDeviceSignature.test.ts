@@ -1,11 +1,11 @@
 import { strict as assert } from "node:assert";
 import { generateKeyPairSync, sign } from "node:crypto";
 
-import { E2E_SUPPORT_V1, PROTOCOL_SUPPORT_V1 } from "@omniwork/protocol-ts";
+import { E2E_SUPPORT_V1, PROTOCOL_SUPPORT_V1 } from "@omni-work/protocol-ts";
 import type {
   AgentAuthInitPayload,
   AgentHelloPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import {
   createStatelessAgentAuthChallenge,

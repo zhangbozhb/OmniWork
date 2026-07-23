@@ -14,7 +14,7 @@ The server does not store the temporary key. It brokers the challenge flow:
 Run locally:
 
 ```sh
-pnpm --filter @omniwork/relay-server dev
+pnpm --filter @omni-work/relay-server dev
 ```
 
 Smoke-check the configuration without binding the port:

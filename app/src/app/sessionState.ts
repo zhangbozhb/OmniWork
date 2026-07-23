@@ -1,4 +1,4 @@
-import type { TerminalSession } from "@omniwork/protocol-ts";
+import type { TerminalSession } from "@omni-work/protocol-ts";
 
 export function upsertSession(
   sessions: TerminalSession[],

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import type { WorkspaceDefinition } from "@omniwork/protocol-ts";
+import type { WorkspaceDefinition } from "@omni-work/protocol-ts";
 import { GitService } from "../src/git/gitService.ts";
 
 const execFileAsync = promisify(execFile);

@@ -2,7 +2,7 @@ import {
   createMessage,
   type AgentMessageDeliveredPayload,
   type AgentNotificationSettingsPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export function getAgentNotificationSettingsRequest(deviceId: string) {
   return createMessage("agent.notification.settings.get", {}, {

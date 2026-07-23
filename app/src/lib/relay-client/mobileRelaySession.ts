@@ -1,4 +1,4 @@
-import { RelayClient, type RelayCloseEvent } from "@omniwork/relay-client";
+import { RelayClient, type RelayCloseEvent } from "@omni-work/relay-client";
 import {
   E2E_SUPPORT_V1,
   PROTOCOL_SUPPORT_V1,
@@ -20,13 +20,13 @@ import {
   type MessageEnvelope,
   type TransportPath,
   type TransportPreference,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   E2ENoiseError,
   createInitiatorHandshake,
   type E2ENoiseSession,
   type InitiatorHandshakeState,
-} from "@omniwork/e2e-noise";
+} from "@omni-work/e2e-noise";
 import type { PairingConfig } from "../../features/auth/types";
 import { createKeyProof } from "../../features/auth/keyProof.ts";
 import { createSha256Hex } from "../../features/auth/hmacSha256.ts";

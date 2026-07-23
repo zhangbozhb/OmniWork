@@ -1,4 +1,4 @@
-import type { AgentProbeEvent, TerminalSession } from "@omniwork/protocol-ts";
+import type { AgentProbeEvent, TerminalSession } from "@omni-work/protocol-ts";
 
 export function enrichProbeEventWithSessions(
   event: AgentProbeEvent,

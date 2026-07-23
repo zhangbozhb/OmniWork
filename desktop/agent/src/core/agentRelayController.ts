@@ -10,8 +10,8 @@ import {
   type AgentHelloPayload,
   type AuthOkPayload,
   type MessageEnvelope,
-} from "@omniwork/protocol-ts";
-import type { RelayCloseEvent } from "@omniwork/relay-client";
+} from "@omni-work/protocol-ts";
+import type { RelayCloseEvent } from "@omni-work/relay-client";
 import type { AgentConfig } from "../config/config.ts";
 import type { SessionKeyRecord } from "../auth-key/authKey.ts";
 import { AgentRelayClient } from "../relay-client/agentRelayClient.ts";
@@ -34,7 +34,7 @@ import {
   type RelayConnectionStatus,
 } from "./relayReconnectPolicy.ts";
 import type { AgentRelayRuntimeStatus } from "./agentRuntimeTypes.ts";
-import type { E2E_SUPPORT_V1 } from "@omniwork/protocol-ts";
+import type { E2E_SUPPORT_V1 } from "@omni-work/protocol-ts";
 
 interface AgentRelayControllerOptions {
   config: AgentConfig;

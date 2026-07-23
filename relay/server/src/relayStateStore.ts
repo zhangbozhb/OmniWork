@@ -1,4 +1,4 @@
-import type { AppInfoPayload, MessageEnvelope } from "@omniwork/protocol-ts";
+import type { AppInfoPayload, MessageEnvelope } from "@omni-work/protocol-ts";
 
 import type {
   RelayAppInfo,

@@ -4,7 +4,7 @@ import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import type {
   TerminalProviderDefinition,
   TerminalProviderKind,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import { Badge, Button, Card } from "../../ui/components";
 import { colors } from "../../ui/theme";

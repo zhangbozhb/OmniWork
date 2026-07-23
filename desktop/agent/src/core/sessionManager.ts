@@ -9,9 +9,9 @@ import type {
   SurfaceDefinition,
   TerminalSize,
   WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
-import { isSupportedSessionStatus } from "@omniwork/protocol-ts";
-import { clampTerminalSize } from "@omniwork/terminal-core";
+} from "@omni-work/protocol-ts";
+import { isSupportedSessionStatus } from "@omni-work/protocol-ts";
+import { clampTerminalSize } from "@omni-work/terminal-core";
 import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { formatLocalTimestamp } from "../telemetry/logger.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";

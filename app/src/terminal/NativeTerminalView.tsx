@@ -14,7 +14,7 @@ import type {
   TerminalInputPayload,
   TerminalResizePayload,
   TerminalSize,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { TerminalLayout } from "../features/terminal/terminalLayout";
 import {
   parseTerminalFrame,

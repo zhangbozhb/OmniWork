@@ -5,7 +5,7 @@ import {
   createMessage,
   E2E_SUPPORT_V1,
   PROTOCOL_SUPPORT_V1,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { RelayClient, type RelayCloseEvent } from "../src/index.ts";
 
 type ListenerMap = {

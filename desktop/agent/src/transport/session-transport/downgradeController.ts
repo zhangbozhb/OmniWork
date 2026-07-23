@@ -1,4 +1,4 @@
-import type { TransportPath } from "@omniwork/protocol-ts";
+import type { TransportPath } from "@omni-work/protocol-ts";
 import type { TransportRouteStore } from "./routeStore.ts";
 import type { P2pPeerRegistry } from "./p2pPeerRegistry.ts";
 import type { StrictP2pGate } from "./strictP2pGate.ts";

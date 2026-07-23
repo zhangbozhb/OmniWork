@@ -1,7 +1,7 @@
 import type { Stats } from "node:fs";
 import { basename, extname } from "node:path";
 
-import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
+import { isSupportedTextFilePath } from "@omni-work/protocol-ts";
 
 export const IGNORED_DIRECTORIES = new Set([
   ".git",

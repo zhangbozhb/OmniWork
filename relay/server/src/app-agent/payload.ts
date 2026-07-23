@@ -1,4 +1,4 @@
-import type { AppInfoPayload, MobileConnectPayload } from "@omniwork/protocol-ts";
+import type { AppInfoPayload, MobileConnectPayload } from "@omni-work/protocol-ts";
 
 import type { RelayAppInfo } from "../relayTypes.ts";
 

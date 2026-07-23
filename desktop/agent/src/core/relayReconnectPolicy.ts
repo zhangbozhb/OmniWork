@@ -1,9 +1,9 @@
-import type { RelayCloseEvent } from "@omniwork/relay-client";
+import type { RelayCloseEvent } from "@omni-work/relay-client";
 import {
   RELAY_AGENT_DISABLED_CLOSE_REASON,
   RELAY_AGENT_IP_BANNED_CLOSE_REASON,
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export type RelayConnectionStatus =
   | "idle"

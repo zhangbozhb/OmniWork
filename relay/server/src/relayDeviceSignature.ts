@@ -10,7 +10,7 @@ import {
 import type {
   AgentAuthInitPayload,
   AgentHelloPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 const AGENT_AUTH_INIT_DOMAIN = "agent_init_v1";
 const AGENT_AUTH_PROOF_DOMAIN = "agent_proof_v1";

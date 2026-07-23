@@ -4,7 +4,7 @@ import type {
   AgentProbeEvent,
   AgentProbeEventType,
   AgentProbeSeverity,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export interface CodexHookPayload {
   session_id?: unknown;

@@ -19,8 +19,8 @@ import type {
   WorkspaceDefinition,
   WorkspaceFileEntry,
   WorkspaceGitStatus,
-} from "@omniwork/protocol-ts";
-import { isCreatableTerminalProviderKind } from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
+import { isCreatableTerminalProviderKind } from "@omni-work/protocol-ts";
 
 import { Button } from "../../ui/components";
 import { colors } from "../../ui/theme";

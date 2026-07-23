@@ -6,7 +6,7 @@ import {
   type PeerState,
   type TransportPath,
   type WebRtcPeerAdapter,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { UpgradeCoordinator } from "../../src/transport/upgradeCoordinator.ts";
 
 class MockPeer implements WebRtcPeerAdapter {

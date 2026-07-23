@@ -7,7 +7,7 @@ import {
   type TerminalSession,
   type MessageEnvelope,
   type SessionCreatePayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { TerminalProviderRegistry } from "../src/terminal-provider/terminalProviderRegistry.ts";
 import { SessionRequestHandler } from "../src/core/sessionRequestHandler.ts";
 import type { SessionManager } from "../src/core/sessionManager.ts";

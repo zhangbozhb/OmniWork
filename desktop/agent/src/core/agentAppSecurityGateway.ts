@@ -18,12 +18,12 @@ import {
   type ProtocolErrorPayload,
   type RelayAppDeliverPayload,
   type RelayAppDeliveryMessage,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   E2ENoiseError,
   acceptInitiatorHandshake,
   type E2ENoiseSession,
-} from "@omniwork/e2e-noise";
+} from "@omni-work/e2e-noise";
 import type { AgentConfig } from "../config/config.ts";
 import { verifyProof, type SessionKeyRecord } from "../auth-key/authKey.ts";
 import type { Logger } from "../telemetry/logger.ts";

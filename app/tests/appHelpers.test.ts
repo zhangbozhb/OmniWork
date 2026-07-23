@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { TerminalSession } from "@omniwork/protocol-ts";
+import type { TerminalSession } from "@omni-work/protocol-ts";
 import {
   formatRelayCloseMessage,
   formatStrictForceCloseMessage,

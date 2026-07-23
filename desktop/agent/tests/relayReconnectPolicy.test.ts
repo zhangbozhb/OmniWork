@@ -5,7 +5,7 @@ import {
   RELAY_AGENT_DISABLED_CLOSE_REASON,
   RELAY_AGENT_IP_BANNED_CLOSE_REASON,
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   classifyRelayClose,
   isTerminalRelayConnectionError,

@@ -3,7 +3,7 @@ import {
   PROTOCOL_VERSION,
   type PairingLinkPayload,
   type PairingQrSource,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { PairingConfig } from "./types";
 

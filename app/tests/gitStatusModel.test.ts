@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { WorkspaceGitStatus } from "@omniwork/protocol-ts";
+import type { WorkspaceGitStatus } from "@omni-work/protocol-ts";
 
 import {
   getCachedDiff,

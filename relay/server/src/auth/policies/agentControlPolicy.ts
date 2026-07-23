@@ -1,7 +1,7 @@
 import {
   RELAY_AGENT_DISABLED_CLOSE_REASON,
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { AgentHelloAuthContext } from "../context.ts";
 import type { RelayAuthDecision } from "../decision.ts";

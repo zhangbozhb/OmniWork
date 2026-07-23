@@ -5,7 +5,7 @@ import type {
   E2ESupport,
   MessageEnvelope,
   TransportPreference,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export type RelayRole = "unknown" | "agent" | "mobile";
 export type RelayEndpoint = "agent" | "mobile";

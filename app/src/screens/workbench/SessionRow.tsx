@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import type { TerminalSession } from "@omniwork/protocol-ts";
+import type { TerminalSession } from "@omni-work/protocol-ts";
 
 import { getSessionCapabilities } from "../../features/sessions/sessionCapabilities";
 import { formatRelativeTime, getStatusColors } from "./workbenchModel";

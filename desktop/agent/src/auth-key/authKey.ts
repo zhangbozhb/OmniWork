@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, writeFile, chmod, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { AppInfoPayload } from "@omniwork/protocol-ts";
+import type { AppInfoPayload } from "@omni-work/protocol-ts";
 
 export interface SessionKeyRecord {
   version: 1;

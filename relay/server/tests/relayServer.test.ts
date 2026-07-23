@@ -17,7 +17,7 @@ import {
   type MessageEnvelope,
   type AppInfoPayload,
   type TunnelUpgradeOfferPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   defaultRelayConfigSearchPaths,
   loadRelayServerConfig,

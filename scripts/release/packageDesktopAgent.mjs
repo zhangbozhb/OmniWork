@@ -47,7 +47,7 @@ const result = spawnSync(
   "pnpm",
   [
     "--filter",
-    "@omniwork/desktop-agent",
+    "@omni-work/desktop-agent",
     "deploy",
     "--prod",
     "--legacy",

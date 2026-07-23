@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { parseEncryptedPairingLink } from "@omniwork/protocol-ts";
+import { parseEncryptedPairingLink } from "@omni-work/protocol-ts";
 import { Camera as CameraKitCamera, CameraType } from "react-native-camera-kit";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 

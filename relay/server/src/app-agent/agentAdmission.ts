@@ -5,7 +5,7 @@ import {
   type AuthOkPayload,
   type AgentHelloPayload,
   type MessageEnvelope,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { RelayServerConfig } from "../config.ts";
 import { createStatelessAgentAuthChallenge } from "../relayDeviceSignature.ts";

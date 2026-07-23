@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import { Text, View } from "react-native";
 
-import type { WorkspaceDefinition } from "@omniwork/protocol-ts";
+import type { WorkspaceDefinition } from "@omni-work/protocol-ts";
 
 import { Button } from "../../ui/components";
 import { getWorkspaceDisplayName } from "./workbenchModel";

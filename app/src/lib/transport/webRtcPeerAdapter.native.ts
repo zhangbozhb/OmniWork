@@ -2,13 +2,13 @@ import {
   P2P_CHANNEL_KINDS,
   P2P_CHANNEL_LABELS,
   p2pChannelKindFromLabel,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type {
   IceCandidateInit,
   P2pChannelKind,
   PeerState,
   WebRtcPeerAdapter,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 interface IceServerLike {
   urls: string | string[];

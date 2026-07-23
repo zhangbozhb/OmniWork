@@ -6,7 +6,7 @@ import {
   type AuthFailedPayload,
   type MessageEnvelope,
   type MobileConnectPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { RelayServerConfig } from "../config.ts";
 import { RelayAuthExecutor } from "../auth/executor.ts";

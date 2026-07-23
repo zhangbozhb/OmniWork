@@ -5,7 +5,7 @@ import {
   createMessage,
   type AuthFailedPayload,
   type MessageEnvelope,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import { rejectWebSocketUpgrade } from "../ingress/identity.ts";
 import type { RelayConnection } from "../relayTypes.ts";

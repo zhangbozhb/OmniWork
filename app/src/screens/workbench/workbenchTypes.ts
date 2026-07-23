@@ -2,7 +2,7 @@ import type {
   AgentCapability,
   SessionRuntimeKind,
   TerminalProviderKind,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export type CreatableTerminalProviderKind = TerminalProviderKind;
 export type RuntimePreference = SessionRuntimeKind;

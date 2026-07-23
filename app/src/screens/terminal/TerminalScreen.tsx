@@ -20,13 +20,13 @@ import type {
   TerminalSession,
   TerminalInputPayload,
   TerminalResizePayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   createControlInput,
   createTextInput,
   sanitizeTerminalText,
   type TerminalControlKey,
-} from "@omniwork/terminal-core";
+} from "@omni-work/terminal-core";
 import i18n from "../../i18n";
 import {
   computeTerminalLayout,

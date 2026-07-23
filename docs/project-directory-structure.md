@@ -362,7 +362,7 @@ relay/
 |   |   |   |-- orchestrator.test.ts
 ```
 
-> `@omniwork/relay-server` 的 `test` 脚本已执行 `adminAuth`、`adminControlStore`、`upgrade/orchestrator`、`relayServer` 单测，并在最后运行 `src/main.ts --check` 做配置自检。
+> `@omni-work/relay-server` 的 `test` 脚本已执行 `adminAuth`、`adminControlStore`、`upgrade/orchestrator`、`relayServer` 单测，并在最后运行 `src/main.ts --check` 做配置自检。
 
 演进若公司决定用 Go/Rust 重写生产 Relay，可保留同样的协议边界，目录可演进为：
 
@@ -489,8 +489,8 @@ packages/
 
 说明：
 
-- `protocol-ts/`：跨端协议的 TypeScript 类型与 zod 运行时校验，包括 E2E、升级链路的 `tunnel.upgrade.*` / `transport.*`。运行 `pnpm --filter @omniwork/protocol-ts test` 校验契约。
-- `e2e-noise/`：App-Agent Noise E2E 握手、加解密、seq 防重放和篡改检测。运行 `pnpm --filter @omniwork/e2e-noise test` 校验安全基础能力。
+- `protocol-ts/`：跨端协议的 TypeScript 类型与 zod 运行时校验，包括 E2E、升级链路的 `tunnel.upgrade.*` / `transport.*`。运行 `pnpm --filter @omni-work/protocol-ts test` 校验契约。
+- `e2e-noise/`：App-Agent Noise E2E 握手、加解密、seq 防重放和篡改检测。运行 `pnpm --filter @omni-work/e2e-noise test` 校验安全基础能力。
 - `relay-client/`：可被 `app/` 和 `desktop/` 复用的 Relay 客户端核心。
 - `terminal-core/`：终端输入、快捷键、frame 合并等纯 TS 逻辑。
 
@@ -528,7 +528,7 @@ scripts/
 - `verify:security`
 - `deploy:web:build`、`deploy:web:prepare`
 
-> P2P 升级 e2e 验证脚本是 mobile simulator：需要先启动真实 Relay 与 桌面端 Agent，再运行 `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY> --key-id <KEY_ID>`。安全基础验证运行 `pnpm verify:security`，等价于 `@omniwork/e2e-noise` 测试。
+> P2P 升级 e2e 验证脚本是 mobile simulator：需要先启动真实 Relay 与 桌面端 Agent，再运行 `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY> --key-id <KEY_ID>`。安全基础验证运行 `pnpm verify:security`，等价于 `@omni-work/e2e-noise` 测试。
 
 可补：
 

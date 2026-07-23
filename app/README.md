@@ -27,19 +27,19 @@ browser access without introducing a second UI stack.
 Install workspace dependencies first, then:
 
 ```sh
-pnpm --filter @omniwork/app start
+pnpm --filter @omni-work/app start
 ```
 
 Web SPA development server:
 
 ```sh
-pnpm --filter @omniwork/app web:dev
+pnpm --filter @omni-work/app web:dev
 ```
 
 Web production build:
 
 ```sh
-pnpm --filter @omniwork/app web:build
+pnpm --filter @omni-work/app web:build
 ```
 
 The Web build outputs static SPA assets under `app/dist/web`. Deployment should
@@ -48,7 +48,7 @@ serve `index.html` for all routes.
 Three-target verification:
 
 ```sh
-pnpm --filter @omniwork/app verify:targets
+pnpm --filter @omni-work/app verify:targets
 ```
 
 This runs TypeScript checking, iOS Metro bundle, Android Metro bundle, and the
@@ -57,7 +57,7 @@ Web production build.
 Native WebView terminal and editor assets are generated from the installed
 `@xterm/*` and CodeMirror packages before app start, bundle, build, typecheck,
 lint, and test scripts.
-Run `pnpm --filter @omniwork/app generate:xterm-assets` manually after changing
+Run `pnpm --filter @omni-work/app generate:xterm-assets` manually after changing
 xterm or CodeMirror dependencies if you need to inspect the generated files
 before packaging.
 
@@ -66,13 +66,13 @@ before packaging.
 Android release APK:
 
 ```sh
-pnpm --filter @omniwork/app build:android:apk
+pnpm --filter @omni-work/app build:android:apk
 ```
 
 Android release AAB:
 
 ```sh
-pnpm --filter @omniwork/app build:android:aab
+pnpm --filter @omni-work/app build:android:aab
 ```
 
 The Android Gradle build reads `OMNIWORK_APP_VERSION`,
@@ -89,7 +89,7 @@ switch the relay to `wss://` before shipping.
 iOS release build (signed):
 
 ```sh
-pnpm --filter @omniwork/app build:ios
+pnpm --filter @omni-work/app build:ios
 ```
 
 This runs `app/scripts/ensureIosPods.mjs` before
@@ -108,16 +108,16 @@ targets do not receive the app provisioning profile.
 iOS unsigned smoke build (local / CI compile check, do not distribute):
 
 ```sh
-pnpm --filter @omniwork/app build:ios:dev
+pnpm --filter @omni-work/app build:ios:dev
 ```
 
 Prepare the iOS workspace for building in Xcode:
 
 ```sh
-pnpm --filter @omniwork/app setup:ios
+pnpm --filter @omni-work/app setup:ios
 ```
 
-Use `pnpm --filter @omniwork/app pods:ios` to force a full `pod install` after
+Use `pnpm --filter @omni-work/app pods:ios` to force a full `pod install` after
 native dependency changes.
 
 See [app/.env.example](./.env.example) for the full list of release
@@ -126,8 +126,8 @@ environment variables.
 Local native runs:
 
 ```sh
-pnpm --filter @omniwork/app android
-pnpm --filter @omniwork/app ios
+pnpm --filter @omni-work/app android
+pnpm --filter @omni-work/app ios
 ```
 
 The terminal surface uses xterm through Web/native WebView assets. The React

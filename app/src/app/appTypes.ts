@@ -3,8 +3,8 @@ import type {
   MessageEnvelope,
   SessionTransport,
   TransportPath,
-} from "@omniwork/protocol-ts";
-import type { RelayCloseEvent } from "@omniwork/relay-client";
+} from "@omni-work/protocol-ts";
+import type { RelayCloseEvent } from "@omni-work/relay-client";
 
 export type AppView =
   | "pairing"

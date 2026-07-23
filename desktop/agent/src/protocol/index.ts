@@ -1,1 +1,1 @@
-export * from "@omniwork/protocol-ts";
+export * from "@omni-work/protocol-ts";

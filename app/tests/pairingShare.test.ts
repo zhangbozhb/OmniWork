@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   decryptPairingLink,
   parseEncryptedPairingLink,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import { createPairingSharePackage } from "../src/features/auth/pairingShare.ts";
 

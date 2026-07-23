@@ -1,7 +1,7 @@
 import {
   parseMessageEnvelope,
   type MessageEnvelope,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 type WebSocketLike = {
   readyState: number;

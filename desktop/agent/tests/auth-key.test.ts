@@ -29,7 +29,7 @@ import {
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
   decryptPairingLink,
   parseEncryptedPairingLink,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 const key = generateSessionKey();
 assert.equal(key.length, 32);

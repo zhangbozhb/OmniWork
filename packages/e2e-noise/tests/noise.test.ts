@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { INNER_PROTOCOL_VERSION, type InnerEnvelope } from "@omniwork/protocol-ts";
+import { INNER_PROTOCOL_VERSION, type InnerEnvelope } from "@omni-work/protocol-ts";
 import {
   E2ENoiseError,
   acceptInitiatorHandshake,

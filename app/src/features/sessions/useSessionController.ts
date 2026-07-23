@@ -9,10 +9,10 @@ import type {
   TerminalSession,
   WorkspaceDefinition,
   WorkspaceListPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { AppView, ConnectionStatus } from "../../app/appTypes";
 import {

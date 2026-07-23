@@ -5,7 +5,7 @@ import type {
   AgentProbeEventType,
   AgentProbeProvider,
   AgentProbeSeverity,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export interface TraeHookPayload {
   session_id?: unknown;

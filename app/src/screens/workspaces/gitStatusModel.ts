@@ -2,8 +2,8 @@ import type {
   GitDiffPayload,
   GitDiffScope,
   WorkspaceGitStatus,
-} from "@omniwork/protocol-ts";
-import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
+import { isSupportedTextFilePath } from "@omni-work/protocol-ts";
 
 import { toGitDiffCacheKey } from "../../features/workspaces/workspaceKeys.ts";
 

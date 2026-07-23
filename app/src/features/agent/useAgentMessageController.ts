@@ -3,7 +3,7 @@ import type {
   AgentAppMessage,
   AgentNotificationSettingsPayload,
   MessageEnvelope,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { AppView, ConnectionStatus } from "../../app/appTypes";
 import { formatErrorMessage } from "../../app/connectionMessages";

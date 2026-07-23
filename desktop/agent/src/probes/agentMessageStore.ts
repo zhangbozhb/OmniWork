@@ -6,7 +6,7 @@ import type {
   AgentAppMessage,
   AgentMessageListRequestPayload,
   AgentNotificationSettingsPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 interface MessageRow {
   message_id: string;

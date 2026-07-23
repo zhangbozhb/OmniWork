@@ -7,7 +7,7 @@ import {
   type SessionListPayload,
   type SessionRenamePayload,
   type TerminalErrorPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { TerminalProviderRegistry } from "../terminal-provider/terminalProviderRegistry.ts";
 import { WorkspaceManager } from "../workspace/workspaceManager.ts";
 import type { SessionManager } from "./sessionManager.ts";

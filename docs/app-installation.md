@@ -76,13 +76,13 @@ pnpm app:build:android:aab
 或在 app package 内执行：
 
 ```sh
-pnpm --filter @omniwork/app build:android:apk
-pnpm --filter @omniwork/app build:android:aab
+pnpm --filter @omni-work/app build:android:apk
+pnpm --filter @omni-work/app build:android:aab
 ```
 
 产物：
 
-- App 构建脚本会先运行 `pnpm --filter @omniwork/app generate:xterm-assets`，从已安装的 `@xterm/*` 与 CodeMirror 依赖生成 Native WebView 终端和编辑器本地资源；升级 xterm 或 CodeMirror 依赖后重新执行构建即可刷新资源。
+- App 构建脚本会先运行 `pnpm --filter @omni-work/app generate:xterm-assets`，从已安装的 `@xterm/*` 与 CodeMirror 依赖生成 Native WebView 终端和编辑器本地资源；升级 xterm 或 CodeMirror 依赖后重新执行构建即可刷新资源。
 - Gradle 会读取 `OMNIWORK_APP_VERSION` / `OMNIWORK_ANDROID_VERSION_CODE` / `OMNIWORK_ANDROID_PACKAGE` 环境变量注入 versionName / versionCode / applicationId。
 - 当同时提供 `OMNIWORK_RELEASE_KEYSTORE`、`OMNIWORK_RELEASE_KEYSTORE_PASSWORD`、`OMNIWORK_RELEASE_KEY_ALIAS`、`OMNIWORK_RELEASE_KEY_PASSWORD` 时使用 release 签名；否则回退到 debug 签名（仅供 CI 冒烟产物，不可分发）。
 - 默认 release 允许明文 `ws://` 流量（manifest 硬编码 `usesCleartextTraffic="true"`），方便扫码连公网 IP 形态的 Relay；默认业务安全模式由 App-Agent E2E 保护，Relay 不解析业务 payload。
@@ -90,7 +90,7 @@ pnpm --filter @omniwork/app build:android:aab
 本地调试：
 
 ```sh
-pnpm --filter @omniwork/app android
+pnpm --filter @omni-work/app android
 ```
 
 要求：
@@ -110,7 +110,7 @@ pnpm app:build:ios
 或在 app package 内执行：
 
 ```sh
-pnpm --filter @omniwork/app build:ios
+pnpm --filter @omni-work/app build:ios
 ```
 
 该入口对应 `app/scripts/buildIosRelease.mjs`：会先 `pod install`，再调用 `react-native build-ios`，并校验 `OMNIWORK_IOS_DEVELOPMENT_TEAM`、`OMNIWORK_IOS_PROVISIONING_PROFILE` 必填，缺失时直接退出避免静默产出无签名 IPA。`OMNIWORK_IOS_CODE_SIGN_STYLE`（默认 `Manual`）、`OMNIWORK_IOS_CODE_SIGN_IDENTITY`（默认 `Apple Distribution`）、`OMNIWORK_IOS_BUNDLE_ID`、`OMNIWORK_APP_VERSION`、`OMNIWORK_IOS_BUILD_NUMBER` 会导出给 OmniWork App target 的 Xcode build settings，不作为全局 `xcodebuild` 覆盖传入，避免 Pods target 继承 App provisioning profile。
@@ -135,7 +135,7 @@ pnpm app:build:ios:dev
 本地调试：
 
 ```sh
-pnpm --filter @omniwork/app ios
+pnpm --filter @omni-work/app ios
 ```
 
 要求：
@@ -162,7 +162,7 @@ pnpm dev:web
 或在 app package 内执行：
 
 ```sh
-pnpm --filter @omniwork/web-app dev
+pnpm --filter @omni-work/web-app dev
 ```
 
 生产构建：

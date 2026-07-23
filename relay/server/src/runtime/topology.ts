@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
   RELAY_AGENT_SUPERSEDED_CLOSE_REASON,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { RelayStateStore } from "../relayStateStore.ts";
 import type {

@@ -8,8 +8,8 @@ import type {
   TerminalInputPayload,
   TerminalResizePayload,
   TerminalSize,
-} from "@omniwork/protocol-ts";
-import { createTextInput } from "@omniwork/terminal-core";
+} from "@omni-work/protocol-ts";
+import { createTextInput } from "@omni-work/terminal-core";
 import type { TerminalLayout } from "../features/terminal/terminalLayout";
 import {
   FIT_ADDON_JS,

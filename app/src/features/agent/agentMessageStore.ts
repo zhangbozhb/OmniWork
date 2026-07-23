@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { AgentAppMessage } from "@omniwork/protocol-ts";
+import type { AgentAppMessage } from "@omni-work/protocol-ts";
 
 export interface LocalAgentMessageRecord {
   message: AgentAppMessage;

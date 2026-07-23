@@ -11,7 +11,7 @@ import {
 import type {
   TerminalSession,
   WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import { colors } from "../../ui/theme";
 import { getWorkspaceDisplayName } from "./workbenchModel";

@@ -7,7 +7,7 @@ import {
   type GitStatusRequestPayload,
   type MessageEnvelope,
   type WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { FileService } from "../files/fileService.ts";
 import { GitService } from "../git/gitService.ts";
 import { WorkspaceManager } from "../workspace/workspaceManager.ts";

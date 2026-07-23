@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { AgentProbeEvent, TerminalSession } from "@omniwork/protocol-ts";
+import type { AgentProbeEvent, TerminalSession } from "@omni-work/protocol-ts";
 import { enrichProbeEventWithSessions } from "../src/probes/agentProbeEnrichment.ts";
 
 function fakeSession(

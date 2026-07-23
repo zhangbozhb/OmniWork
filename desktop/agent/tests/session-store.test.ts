@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { SQLiteSessionStore } from "../src/session-store/sessionStore.ts";
-import type { TerminalSession } from "@omniwork/protocol-ts";
+import type { TerminalSession } from "@omni-work/protocol-ts";
 
 function fakeSession(overrides: Partial<TerminalSession> = {}): TerminalSession {
   const now = new Date().toISOString();

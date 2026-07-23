@@ -1,5 +1,5 @@
-import type { FilesReadPayload } from "@omniwork/protocol-ts";
-import { isSupportedTextFilePath } from "@omniwork/protocol-ts";
+import type { FilesReadPayload } from "@omni-work/protocol-ts";
+import { isSupportedTextFilePath } from "@omni-work/protocol-ts";
 
 export const MAX_EDITABLE_TEXT_FILE_BYTES = 1024 * 1024;
 

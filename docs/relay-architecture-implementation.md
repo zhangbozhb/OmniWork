@@ -172,12 +172,12 @@ P2P 已经作为传输能力落地；E2E 改造对 P2P 控制面做了如下收�
 MVP 范围的基础验收：
 
 ```sh
-pnpm --filter @omniwork/protocol-ts test
-pnpm --filter @omniwork/protocol-ts typecheck
-pnpm --filter @omniwork/relay-server typecheck
-pnpm --filter @omniwork/desktop-agent typecheck
-pnpm --filter @omniwork/app typecheck
-pnpm --filter @omniwork/web-app verify
+pnpm --filter @omni-work/protocol-ts test
+pnpm --filter @omni-work/protocol-ts typecheck
+pnpm --filter @omni-work/relay-server typecheck
+pnpm --filter @omni-work/desktop-agent typecheck
+pnpm --filter @omni-work/app typecheck
+pnpm --filter @omni-work/web-app verify
 pnpm verify:relay
 ```
 

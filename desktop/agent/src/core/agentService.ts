@@ -1,8 +1,8 @@
-import { createMessage } from "@omniwork/protocol-ts";
+import { createMessage } from "@omni-work/protocol-ts";
 import type {
   AgentAppMessage,
   AgentSurfaceEventPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
 import {
   createAndPersistSessionKey,

@@ -4,7 +4,7 @@ import type {
   MessageEnvelope,
   TransportPath,
   TransportPreference,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { PairingConfig } from "../features/auth/types";
 import {

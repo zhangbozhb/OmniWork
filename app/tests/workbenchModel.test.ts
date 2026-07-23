@@ -5,7 +5,7 @@ import type {
   TerminalProviderDefinition,
   TerminalSession,
   WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   EMPTY_PROVIDER_PREFERENCES,
   getProviderPreferencesStorageKey,

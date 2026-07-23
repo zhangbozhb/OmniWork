@@ -1,7 +1,7 @@
 import type {
   AgentAuthInitPayload,
   AgentHelloPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { RelayServerConfig } from "../../config.ts";
 import {

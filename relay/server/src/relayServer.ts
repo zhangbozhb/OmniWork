@@ -22,7 +22,7 @@ import {
   type MobileConnectPayload,
   type ProtocolErrorPayload,
   type RelayAppDeliverPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { RelayServerConfig } from "./config.ts";
 import { createMailSender } from "./mailSender.ts";

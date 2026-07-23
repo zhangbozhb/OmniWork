@@ -23,7 +23,7 @@ if (violations.length > 0) {
   console.error(
     [
       "Forbidden cross-package source imports found.",
-      "Use @omniwork/* package imports instead:",
+      "Use @omni-work/* package imports instead:",
       ...violations.map((file) => `- ${file}`),
     ].join("\n"),
   );

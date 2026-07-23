@@ -7,7 +7,7 @@ import {
 import type {
   AgentProbeEvent,
   AgentProbeProvider,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   normalizeClaudeHookPayload,
   type ClaudeHookPayload,

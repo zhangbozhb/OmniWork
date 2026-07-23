@@ -14,7 +14,7 @@ import {
   type TunnelUpgradeDowngradePayload,
   type TunnelUpgradeOfferPayload,
   type TunnelUpgradeProposePayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { PairingConfig } from "../features/auth/types";
 import { MobileRelaySession } from "../lib/relay-client/mobileRelaySession";
 import { MobileRelayPath, MobileSessionTransport } from "../lib/transport";

@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import type {
   TerminalSession,
   WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 const execFileAsync = promisify(execFile);
 

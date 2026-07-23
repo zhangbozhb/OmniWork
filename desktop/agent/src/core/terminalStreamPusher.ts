@@ -14,7 +14,7 @@ import {
   type TerminalStreamDataPayload,
   type TerminalStreamErrorPayload,
   type TerminalStreamReadyPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   TmuxManager,
   TmuxTargetMissingError,

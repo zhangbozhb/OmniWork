@@ -10,7 +10,7 @@ import {
   type AgentAuthInitPayload,
   type AgentHelloPayload,
   type MobileConnectPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import {
   createStatelessAgentAuthChallenge,

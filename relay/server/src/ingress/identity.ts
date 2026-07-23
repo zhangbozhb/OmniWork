@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 import { isIP, type Socket } from "node:net";
 
 import geoip from "geoip-lite";
-import type { AppConnectionObservation } from "@omniwork/protocol-ts";
+import type { AppConnectionObservation } from "@omni-work/protocol-ts";
 
 import type { RelayConnectionLocation, RelayEndpoint } from "../relayTypes.ts";
 

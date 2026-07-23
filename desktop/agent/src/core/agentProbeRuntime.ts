@@ -1,7 +1,7 @@
 import type {
   AgentProbeEvent,
   AgentSurfaceEventPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
 import type { Logger } from "../telemetry/logger.ts";
 import type { SessionKeyRecord } from "../auth-key/authKey.ts";

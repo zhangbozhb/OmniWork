@@ -6,7 +6,7 @@ import type {
   TerminalSession,
   TerminalProviderKind,
   SessionRuntimeDefinition,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { formatLocalTimestamp } from "../telemetry/logger.ts";
 
 interface SessionRow {

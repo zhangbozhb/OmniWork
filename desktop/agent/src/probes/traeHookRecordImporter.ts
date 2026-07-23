@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import type { AgentProbeEvent } from "@omniwork/protocol-ts";
+import type { AgentProbeEvent } from "@omni-work/protocol-ts";
 import {
   normalizeTraeHookPayload,
   normalizeTraeProbeProvider,

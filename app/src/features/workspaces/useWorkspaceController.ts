@@ -8,7 +8,7 @@ import type {
   GitStatusPayload,
   MessageEnvelope,
   WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { AppView, ConnectionStatus } from "../../app/appTypes";
 import type { PairingConfig } from "../auth/types";

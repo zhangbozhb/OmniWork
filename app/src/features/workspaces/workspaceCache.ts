@@ -3,7 +3,7 @@ import type {
   GitDiffPayload,
   WorkspaceFileEntry,
   WorkspaceGitStatus,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export type WorkspaceFilesCache = {
   currentPath: string;

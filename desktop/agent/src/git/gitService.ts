@@ -9,7 +9,7 @@ import type {
   GitStatusPayload,
   WorkspaceDefinition,
   WorkspaceGitStatus,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import {
   MAX_UNTRACKED_GIT_STAT_CONCURRENCY,
   MAX_UNTRACKED_GIT_STAT_FILES,

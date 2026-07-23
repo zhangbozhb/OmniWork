@@ -4,6 +4,7 @@ packages:
   - "desktop/agent"
   - "relay/*"
   - "packages/*"
+linkWorkspacePackages: true
 allowBuilds:
   dtrace-provider: true
   esbuild: true

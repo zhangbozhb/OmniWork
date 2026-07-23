@@ -3,7 +3,7 @@ import {
   type AgentHelloPayload,
   type MessageEnvelope,
   type MobileConnectPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { IncomingMessage } from "node:http";
 
 import type { RelayEndpoint } from "../relayTypes.ts";

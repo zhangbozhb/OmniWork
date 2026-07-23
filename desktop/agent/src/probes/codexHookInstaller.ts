@@ -128,7 +128,7 @@ export function defaultCodexHooksPath(): string {
 
 function defaultHookScriptPath(): string {
   return createRequire(import.meta.url).resolve(
-    "@omniwork/surface-hook-post/bin/omniwork-hook-post.mjs",
+    "@omni-work/surface-hook-post/bin/omniwork-hook-post.mjs",
   );
 }
 

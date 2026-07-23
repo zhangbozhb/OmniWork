@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import type { AgentAppMessage } from "@omniwork/protocol-ts";
+import type { AgentAppMessage } from "@omni-work/protocol-ts";
 import { AgentMessageStore } from "../src/probes/agentMessageStore.ts";
 
 function message(overrides: Partial<AgentAppMessage> = {}): AgentAppMessage {

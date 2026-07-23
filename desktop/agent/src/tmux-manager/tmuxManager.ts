@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { TerminalSize } from "@omniwork/protocol-ts";
+import type { TerminalSize } from "@omni-work/protocol-ts";
 
 const execFileAsync = promisify(execFile);
 

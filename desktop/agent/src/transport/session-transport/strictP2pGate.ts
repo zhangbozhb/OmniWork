@@ -1,4 +1,4 @@
-import type { MessageEnvelope, P2pChannelKind } from "@omniwork/protocol-ts";
+import type { MessageEnvelope, P2pChannelKind } from "@omni-work/protocol-ts";
 import { isStrictControlMessage } from "./channelRouter.ts";
 import {
   STRICT_PENDING_QUEUE_LIMIT,

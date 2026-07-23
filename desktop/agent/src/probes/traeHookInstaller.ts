@@ -230,13 +230,13 @@ export async function discoverTraeHookTargets(
 
 function defaultPostHookScriptPath(): string {
   return createRequire(import.meta.url).resolve(
-    "@omniwork/surface-hook-post/bin/omniwork-hook-post.mjs",
+    "@omni-work/surface-hook-post/bin/omniwork-hook-post.mjs",
   );
 }
 
 function defaultRecordHookScriptPath(): string {
   return createRequire(import.meta.url).resolve(
-    "@omniwork/surface-hook-record/bin/omniwork-hook-record.mjs",
+    "@omni-work/surface-hook-record/bin/omniwork-hook-record.mjs",
   );
 }
 

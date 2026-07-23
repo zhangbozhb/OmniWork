@@ -10,7 +10,7 @@ import { TerminalProviderRegistry } from "../src/terminal-provider/terminalProvi
 import {
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
   type TerminalSession,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 function fakeSession(overrides: Partial<TerminalSession>): TerminalSession {
   const now = new Date().toISOString();

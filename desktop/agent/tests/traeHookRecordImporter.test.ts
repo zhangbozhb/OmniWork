@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import type { AgentProbeEvent } from "@omniwork/protocol-ts";
+import type { AgentProbeEvent } from "@omni-work/protocol-ts";
 import { importTraeHookRecords } from "../src/probes/traeHookRecordImporter.ts";
 
 test("importTraeHookRecords imports Trae records and records an import index", async () => {

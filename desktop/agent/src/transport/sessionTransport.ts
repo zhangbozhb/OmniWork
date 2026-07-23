@@ -4,7 +4,7 @@ import type {
   SessionTransport,
   TransportPath,
   WebRtcPeerAdapter,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { AgentRelayPath } from "./relayPath.ts";
 import {
   channelForP2pEnvelope,

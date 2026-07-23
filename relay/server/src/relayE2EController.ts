@@ -8,7 +8,7 @@ import {
   type E2EReadyPayload,
   type MessageEnvelope,
   type ProtocolErrorPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import type { AgentE2EPeerState, RelayConnection } from "./relayTypes.ts";
 

@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import type {
   AgentSurfaceEventPayload,
   TerminalSession,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import { Button, Card } from "../../ui/components";
 import { colors, radii, spacing, typography } from "../../ui/theme";

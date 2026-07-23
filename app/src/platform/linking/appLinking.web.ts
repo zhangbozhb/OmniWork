@@ -1,7 +1,7 @@
 import {
   PAIRING_LINK_HOST,
   PAIRING_LINK_SCHEME,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export interface AppLinkSubscription {
   remove(): void;

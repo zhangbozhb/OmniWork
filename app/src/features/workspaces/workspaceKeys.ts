@@ -1,4 +1,4 @@
-import type { GitDiffScope } from "@omniwork/protocol-ts";
+import type { GitDiffScope } from "@omni-work/protocol-ts";
 
 export function toGitDiffCacheKey(
   relativePath: string | undefined,

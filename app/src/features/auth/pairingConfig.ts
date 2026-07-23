@@ -2,7 +2,7 @@ import {
   decryptPairingLink,
   parseEncryptedPairingLink,
   parsePairingLink,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { isValidSessionKey } from "./keyProof";
 import type { PairingConfig } from "./types";
 

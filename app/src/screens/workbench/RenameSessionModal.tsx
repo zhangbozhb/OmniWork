@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 
-import type { TerminalSession } from "@omniwork/protocol-ts";
+import type { TerminalSession } from "@omni-work/protocol-ts";
 
 import { Button, Card } from "../../ui/components";
 import { styles } from "./styles";

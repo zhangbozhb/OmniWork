@@ -4,7 +4,7 @@ import {
   type TransportPingPayload,
   type TransportPongPayload,
   type WebRtcPeerAdapter,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type {
   AttachP2pPeerOptions,
   PeerRouteState,

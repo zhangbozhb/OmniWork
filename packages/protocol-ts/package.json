@@ -1,7 +1,6 @@
 {
-  "name": "@omniwork/protocol-ts",
+  "name": "@omni-work/protocol-ts",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -18,5 +17,11 @@
   "devDependencies": {
     "@types/node": "^22.19.19",
     "typescript": "^5.8.0"
+  },
+  "files": [
+    "src/"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

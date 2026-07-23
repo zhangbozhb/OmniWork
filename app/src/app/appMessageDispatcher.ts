@@ -18,7 +18,7 @@ import type {
   TerminalStreamDataPayload,
   TerminalStreamErrorPayload,
   WorkspaceListPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 export type AppMessageHandlers = {
   onAuthChallenge(message: MessageEnvelope): void;

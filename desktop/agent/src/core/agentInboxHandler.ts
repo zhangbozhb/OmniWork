@@ -6,7 +6,7 @@ import {
   type AgentMessageReadRequestPayload,
   type AgentNotificationSettingsPayload,
   type MessageEnvelope,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { Logger } from "../telemetry/logger.ts";
 import type { AgentMessageService } from "../probes/agentMessageService.ts";
 import type { AgentDispatchContext } from "./agentRuntimeTypes.ts";

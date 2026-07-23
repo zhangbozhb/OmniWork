@@ -5,7 +5,7 @@ import {
   PROTOCOL_VERSION,
   createEncryptedPairingShare,
   type PairingLinkPayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
 import type { SessionKeyRecord } from "../auth-key/authKey.ts";
 

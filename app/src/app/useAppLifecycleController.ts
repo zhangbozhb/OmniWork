@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
-import type { TransportPreference } from "@omniwork/protocol-ts";
+import type { TransportPreference } from "@omni-work/protocol-ts";
 
 import type {
   AppSessionTransport,

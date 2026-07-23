@@ -11,7 +11,7 @@ import {
   PROTOCOL_VERSION,
   type E2EMessagePayload,
   type InnerEnvelope,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 const HASHLEN = 32;
 const DH_LEN = 32;

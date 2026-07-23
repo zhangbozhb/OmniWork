@@ -28,7 +28,7 @@ import type {
   FilesReadPayload,
   WorkspaceDefinition,
   WorkspaceFileEntry,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import { Button } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
 import { Icon } from "../../ui/icons";

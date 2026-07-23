@@ -14,7 +14,7 @@ import {
 import type {
   TerminalProviderDefinition,
   WorkspaceDefinition,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
 import { Button, Card } from "../../ui/components";
 import { getWorkspaceDisplayName } from "./workbenchModel";

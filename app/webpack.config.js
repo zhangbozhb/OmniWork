@@ -9,6 +9,7 @@ const qrcodeSvgRoot = path.dirname(
 
 const webPublicPath = process.env.OMNIWORK_WEB_PUBLIC_PATH ?? "/";
 const appVersion = require("./package.json").version;
+const shouldGenerateSourceMap = process.env.GENERATE_SOURCEMAP !== "false";
 
 module.exports = {
   entry: path.resolve(__dirname, "index.web.tsx"),
@@ -18,7 +19,7 @@ module.exports = {
     publicPath: webPublicPath,
     clean: true,
   },
-  devtool: "source-map",
+  devtool: shouldGenerateSourceMap ? "source-map" : false,
   resolve: {
     modules: [
       path.resolve(__dirname, "node_modules"),

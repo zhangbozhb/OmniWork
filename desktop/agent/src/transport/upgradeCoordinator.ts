@@ -12,9 +12,9 @@ import {
   type TunnelUpgradeProposePayload,
   type UpgradeState,
   type WebRtcPeerAdapter,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 
-export type { UpgradeState } from "@omniwork/protocol-ts";
+export type { UpgradeState } from "@omni-work/protocol-ts";
 
 export type UpgradeRole = "offerer" | "answerer";
 

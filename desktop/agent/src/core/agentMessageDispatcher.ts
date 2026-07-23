@@ -1,4 +1,4 @@
-import { createMessageId } from "@omniwork/protocol-ts";
+import { createMessageId } from "@omni-work/protocol-ts";
 import type {
   AgentMessageAckPayload,
   AgentMessageDeliveredPayload,
@@ -30,7 +30,7 @@ import type {
   TunnelUpgradeDowngradePayload,
   TunnelUpgradeOfferPayload,
   TunnelUpgradeProposePayload,
-} from "@omniwork/protocol-ts";
+} from "@omni-work/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
 import type { Logger } from "../telemetry/logger.ts";
 import type { ResourceRequestHandler } from "./resourceRequestHandler.ts";
