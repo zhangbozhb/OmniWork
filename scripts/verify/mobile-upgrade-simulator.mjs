@@ -1,12 +1,11 @@
 // Mobile simulator that drives the P2P upgrade end-to-end against a real
-// relay + agent. Pass the pairing key and key_id printed by the agent.
+// relay + agent. Pass the pairing key printed by the agent.
 //
 // Usage:
 //   node scripts/verify/mobile-upgrade-simulator.mjs \
 //     --relay ws://127.0.0.1:8787/relay/ws/mobile \
 //     --device test-device \
-//     --key <KEY> \
-//     --key-id <KEY_ID>
+//     --key <KEY>
 
 import { createHmac, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
@@ -16,12 +15,20 @@ const require = createRequire(
   new URL("../../desktop/agent/package.json", import.meta.url),
 );
 const wrtc = require("@roamhq/wrtc");
+const {
+  E2E_SUPPORT_V1,
+  PROTOCOL_SUPPORT_V1,
+  innerToMessage,
+  messageToInner,
+} = await import(require.resolve("@omni-work/protocol-ts"));
+const { createInitiatorHandshake } = await import(
+  require.resolve("@omni-work/e2e-noise")
+);
 
 const args = parseArgs(process.argv.slice(2));
 const relayUrl = args.relay ?? "ws://127.0.0.1:8787/relay/ws/mobile";
 const deviceId = args.device ?? "test-device";
 const key = required(args, "key");
-const keyId = required(args, "key-id");
 const appInstanceId = args.appInstanceId ?? `app_${randomUUID()}`;
 const appRuntimeId = args.appRuntimeId ?? `runtime_${randomUUID()}`;
 
@@ -32,12 +39,28 @@ let upgradeId = null;
 let committedSent = false;
 let peerCommitted = false;
 let p2pVerified = false;
+let appConnectionId = null;
+let e2eHandshake = null;
+let e2eSession = null;
+let e2ePeerReady = false;
 
 const log = (event, fields = {}) =>
   console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...fields }));
 
 function send(message) {
   ws.send(JSON.stringify(message));
+}
+
+function sendBusiness(message) {
+  if (!e2eSession || !e2ePeerReady) {
+    throw new Error(`E2E session is not ready for ${message.type}`);
+  }
+  send(
+    envelope(
+      "e2e.message",
+      e2eSession.encrypt(messageToInner(message)).payload,
+    ),
+  );
 }
 
 function envelope(type, payload, extra = {}) {
@@ -55,17 +78,25 @@ function envelope(type, payload, extra = {}) {
 ws.addEventListener("open", () => {
   log("ws_open");
   send(envelope("mobile.connect", {
+    v: PROTOCOL_SUPPORT_V1.current,
     device_id: deviceId,
-    key_id: keyId,
     app_info: {
       instance_id: appInstanceId,
       runtime_id: appRuntimeId,
     },
+    protocol: PROTOCOL_SUPPORT_V1,
+    e2e: E2E_SUPPORT_V1,
   }));
 });
 
 ws.addEventListener("message", async (event) => {
-  const msg = JSON.parse(typeof event.data === "string" ? event.data : event.data.toString());
+  const msg = JSON.parse(
+    typeof event.data === "string" ? event.data : event.data.toString(),
+  );
+  await handleMessage(msg);
+});
+
+async function handleMessage(msg) {
   log("recv", { type: msg.type });
 
   switch (msg.type) {
@@ -75,7 +106,6 @@ ws.addEventListener("message", async (event) => {
         .digest("base64url");
       send(
         envelope("auth.proof", {
-          key_id: msg.payload.key_id,
           nonce: msg.payload.nonce,
           app_info: {
             instance_id: appInstanceId,
@@ -86,9 +116,46 @@ ws.addEventListener("message", async (event) => {
       );
       break;
     }
-    case "auth.ok":
+    case "auth.ok": {
       log("authenticated", { connection_id: msg.payload.connection_id });
+      appConnectionId = msg.payload.connection_id;
+      e2eHandshake = createInitiatorHandshake({
+        pairingKey: key,
+        deviceId,
+        agentConnectionId: msg.payload.agent_connection_id,
+        appConnectionId,
+      });
+      send(envelope("e2e.handshake.init", e2eHandshake.init));
       break;
+    }
+    case "e2e.handshake.reply":
+      if (!e2eHandshake) {
+        throw new Error("received E2E reply without an active handshake");
+      }
+      e2eSession = e2eHandshake.complete(msg.payload);
+      e2eHandshake = null;
+      send(envelope("e2e.ready", e2eSession.readyPayload()));
+      break;
+    case "e2e.ready":
+      if (
+        !e2eSession ||
+        msg.payload.app_connection_id !== appConnectionId ||
+        msg.payload.handshake_id !== e2eSession.handshakeId ||
+        msg.payload.transcript_hash !== e2eSession.transcriptHash
+      ) {
+        throw new Error("received mismatched E2E ready payload");
+      }
+      e2ePeerReady = true;
+      log("e2e_ready", { app_connection_id: appConnectionId });
+      break;
+    case "e2e.message": {
+      if (!e2eSession || !e2ePeerReady) {
+        throw new Error("received E2E message before ready");
+      }
+      const inner = e2eSession.decrypt(msg.payload);
+      await handleMessage(innerToMessage(inner, deviceId));
+      break;
+    }
     case "auth.failed":
       log("auth_failed", { reason: msg.payload.reason });
       process.exit(2);
@@ -111,7 +178,7 @@ ws.addEventListener("message", async (event) => {
     default:
       break;
   }
-});
+}
 
 ws.addEventListener("close", (event) => {
   log("ws_close", { code: event.code, reason: String(event.reason ?? "") });
@@ -133,9 +200,10 @@ async function onPropose(payload) {
   pc = new wrtc.RTCPeerConnection({ iceServers: payload.ice_servers });
   pc.onicecandidate = (e) => {
     if (e.candidate) {
-      send(
+      sendBusiness(
         envelope("tunnel.upgrade.candidate", {
           upgrade_id: upgradeId,
+          app_connection_id: appConnectionId,
           candidate: e.candidate.candidate,
           sdp_mid: e.candidate.sdpMid,
           sdp_mline_index: e.candidate.sdpMLineIndex,
@@ -147,14 +215,17 @@ async function onPropose(payload) {
     log("pc_state", { state: pc.connectionState });
     if (pc.connectionState === "connected" && !committedSent) {
       committedSent = true;
-      send(
-        envelope("tunnel.upgrade.committed", { upgrade_id: upgradeId }),
+      sendBusiness(
+        envelope("tunnel.upgrade.committed", {
+          upgrade_id: upgradeId,
+          app_connection_id: appConnectionId,
+        }),
       );
       maybeFinish();
     }
   };
 
-  dc = pc.createDataChannel("omniwork");
+  dc = pc.createDataChannel("omniwork-control");
   dc.onopen = () => {
     log("dc_open");
     // 发个测试 echo
@@ -167,7 +238,11 @@ async function onPropose(payload) {
             ts: new Date().toISOString(),
             device_id: deviceId,
             type: "transport.ping",
-            payload: { seq: 999, sent_at: new Date().toISOString() },
+            payload: {
+              upgrade_id: upgradeId,
+              seq: 999,
+              sent_at: new Date().toISOString(),
+            },
           }),
         );
         log("p2p_ping_sent");
@@ -185,9 +260,10 @@ async function onPropose(payload) {
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  send(
+  sendBusiness(
     envelope("tunnel.upgrade.offer", {
       upgrade_id: upgradeId,
+      app_connection_id: appConnectionId,
       sdp: offer.sdp,
     }),
   );

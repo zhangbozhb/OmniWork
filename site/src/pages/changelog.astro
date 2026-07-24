@@ -16,9 +16,9 @@ const downloads = JSON.parse(
   <section class="section">
     <div class="container">
       <p class="eyebrow">Changelog</p>
-      <h1 class="section-title">版本记录以 GitHub Releases 为准。</h1>
+      <h1 class="section-title">版本记录与公开交付。</h1>
       <p class="section-lede">
-        Public Web 展示当前版本摘要，并把完整 release notes、历史版本和下载资产交给 GitHub Releases 管理。
+        本页展示仓库版本摘要。npm 包版本以 npm 为准，真实安装资产与完整发布说明以 GitHub Releases 为准。
       </p>
     </div>
   </section>
@@ -29,12 +29,14 @@ const downloads = JSON.parse(
         <span class="pill">Current</span>
         <h2>{downloads.version}</h2>
         <p>发布时间：{downloads.releasedAt}</p>
-        <p>
-          第一阶段 Public Web 使用静态 manifest 展示下载入口。真实版本发布后，发布说明和安装包以 GitHub Releases
-          中的内容为准。
-        </p>
+        <ul>
+          <li>修复 npm 运行时包编译与声明文件发布。</li>
+          <li>确保 Desktop Agent 与 Relay Server 可在全局 npm 安装后运行。</li>
+          <li>补齐包级 README、npm metadata、仓库链接和 MIT License。</li>
+          <li>发布前在干净临时目录安装 tarball 并验证 CLI 与共享库。</li>
+        </ul>
         <div class="button-row">
-          <a class="button primary" href={downloads.releaseUrl}>当前 Release</a>
+          <a class="button primary" href="https://www.npmjs.com/org/omni-work">npm Packages</a>
           <a class="button" href={downloads.allReleasesUrl}>全部 Releases</a>
         </div>
       </article>

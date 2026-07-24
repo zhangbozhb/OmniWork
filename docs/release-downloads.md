@@ -22,9 +22,10 @@
 
 ## 下载入口职责
 
-- iOS 主入口始终是 App Store。
+- Desktop Agent 与 Relay Server 的已验证公共入口是 npm。
+- iOS 只有在提供正式 App Store URL 时才展示商店入口；没有正式 URL 时不得生成占位链接。
 - iOS IPA 只在确有签名分发需求时上传到 GitHub Release，并在下载页标注为备用。
-- Android APK 与桌面端 Agent Node 部署包使用 GitHub Release asset。
+- Android APK 与 Desktop Agent Node 部署包只有在资产存在且脚本生成 SHA256 后，才能展示 GitHub Release asset。
 - Web App 不作为 Release asset 分发，固定访问 `/app/`。
 
 ## 生成下载清单
@@ -59,7 +60,9 @@ cd omniwork-desktop-agent-v0.1.0-linux-x64
 node --experimental-strip-types src/main.ts
 ```
 
-后续当内部 workspace 包具备 npm registry 发布条件后，再切换为标准 `npm pack` / `npm publish` 流程；再往后才进入独立二进制或系统安装包阶段。
+Desktop Agent 和 Relay Server 已通过标准 `npm pack` / `npm publish` 流程发布，详见
+[npm-packages.md](./npm-packages.md)。GitHub Release 中的 Desktop Agent Node
+部署包是可选的按平台交付形式，不替代 npm 包。
 
 注意：桌面端 Agent 依赖 native WebRTC 模块，带 `node_modules` 的部署包必须按平台区分。当前 GitHub workflow 默认产出 `linux-x64` 包；扩展到 macOS / Windows 时，应新增对应 runner 矩阵并使用平台后缀区分资产。
 
@@ -73,9 +76,11 @@ pnpm release:downloads -- \
   --released-at 2026-06-23 \
   --repo zhangbozhb/OmniWork \
   --assets-dir dist/release \
-  --desktop-platform linux-x64 \
-  --app-store-url https://apps.apple.com/app/<app-id>
+  --desktop-platform linux-x64
 ```
+
+只有 App Store 条目真实存在时才追加
+`--app-store-url https://apps.apple.com/app/<real-app-id>`。脚本会忽略包含占位符的 URL。
 
 如果本次发布必须包含签名 IPA：
 
@@ -102,7 +107,8 @@ pnpm release:downloads -- --version v0.1.0 --require-ipa true
 - `dist/release/checksums.txt` 已生成并随 Release 上传。
 - `site/public/downloads.json` 中没有 `<sha256>`、`<app-id>` 等占位符。
 - Android APK 与桌面端 Agent 的 SHA256 与 `checksums.txt` 一致。
-- iOS App Store 链接是正式链接；如果没有 IPA，不应在下载页展示 IPA 入口。
+- 只有真实 App Store 链接才展示 iOS 商店入口；如果没有 IPA，不应展示 IPA 入口。
+- npm 包版本与仓库版本一致，并通过 `pnpm verify:npm-packages`。
 - 执行 `pnpm site:build`，确认下载页可以正常构建。
 
 ## CI 接入建议

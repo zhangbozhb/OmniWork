@@ -21,6 +21,15 @@ browser access without introducing a second UI stack.
 - Configured Terminal Provider metadata from the connected computer for capability display and session creation, with App-local hide, sort, and default-provider preferences.
 - Shared ConfirmDialog UI for destructive actions across Android, iOS, and Web.
 - Web SPA entry that reuses the React Native screens and disables QR scanning.
+- Codex `app_server` sessions backed by `@openai/codex-sdk`, with basic prompt
+  submission, conversation rendering, and a separate activity summary.
+- Local Agent message inbox with read/handled state, bulk deletion, message
+  actions, and notification preferences. APNs/FCM push delivery is not yet
+  connected.
+- English and Simplified Chinese UI, terminal text-size preferences, and
+  Relay/P2P connection preferences.
+- Native gesture app lock with configurable auto-lock timing. The Web target
+  intentionally does not persist app-lock configuration.
 
 ## Run
 

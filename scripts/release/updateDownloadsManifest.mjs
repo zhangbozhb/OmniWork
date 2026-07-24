@@ -28,7 +28,7 @@ const repo =
 const appStoreUrl =
   args.appStoreUrl ??
   process.env.OMNIWORK_IOS_APP_STORE_URL ??
-  currentManifest.assets.ios.appStore.url;
+  currentManifest.assets.ios.appStore?.url;
 const assetsDir = resolve(
   repoRoot,
   args.assetsDir ??
@@ -75,11 +75,13 @@ const manifest = {
   checksumsUrl: `${assetBaseUrl}/checksums.txt`,
   assets: {
     ios: withoutUndefined({
-      appStore: {
-        label: "Download on the App Store",
-        url: appStoreUrl,
-        type: "app_store",
-      },
+      appStore: isPublicUrl(appStoreUrl)
+        ? {
+            label: "Download on the App Store",
+            url: appStoreUrl,
+            type: "app_store",
+          }
+        : undefined,
       ipa: iosIpa
         ? {
             label: "Download signed IPA",
@@ -99,6 +101,7 @@ const manifest = {
       },
     },
     desktopAgent: {
+      ...currentManifest.assets.desktopAgent,
       archive: {
         label: `Download Desktop Agent Node package (${desktopPlatform})`,
         url: releaseAssetUrl(desktopAgent.name),
@@ -106,6 +109,7 @@ const manifest = {
         sha256: desktopAgent.sha256,
       },
     },
+    relayServer: currentManifest.assets.relayServer,
     web: currentManifest.assets.web,
   },
 };
@@ -200,4 +204,8 @@ function withoutUndefined(value) {
   return Object.fromEntries(
     Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
   );
+}
+
+function isPublicUrl(value) {
+  return typeof value === "string" && /^https:\/\//.test(value) && !value.includes("<");
 }

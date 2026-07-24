@@ -5,8 +5,8 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 const securityHighlights = [
   {
     label: "E2E",
-    title: "端到端加密传输",
-    text: "业务数据在 App 与桌面端 Agent 之间全程加密。Relay 仅处理外层路由，无法解密会话、终端、文件或 Git 等核心业务内容。",
+    title: "默认端到端加密",
+    text: "默认 e2e_required 模式下，业务数据在 App 与桌面端 Agent 之间加密。Relay 仅处理外层路由，无法解密会话、终端、文件或 Git 内容。",
   },
   {
     label: "Integrity",
@@ -16,7 +16,7 @@ const securityHighlights = [
   {
     label: "Zero-Trust",
     title: "Relay 零信任机制",
-    text: "Relay 仅负责连接建立、路由转发、限流及 P2P 升级协调，不存储业务密钥、不执行业务指令、不读取任何业务明文。",
+    text: "在默认 E2E 模式下，Relay 仅负责连接建立、路由转发、限流及 P2P 升级协调，不存储业务密钥、不执行业务指令。",
   },
   {
     label: "Boundary",
@@ -41,14 +41,14 @@ const guaranteeRows = [
       <h1>安全设计</h1>
       <p class="security-lede">
         在 OmniWork 中，安全不仅仅是一层附加的保护网，更是产品设计的核心底层机制。
-        我们默认将所有业务数据置于 App 与桌面端 Agent 的端到端加密通道中。Relay 仅充当通信桥梁，不参与任何具体的内容交付，也不具备解密业务数据的能力。
+        我们默认将业务数据置于 App 与桌面端 Agent 的端到端加密通道中。Relay 仅充当通信桥梁，不具备解密 E2E 业务数据的能力。
       </p>
 
       <section class="security-hero" aria-label="核心安全承诺">
         <div class="security-seal">
-          <span>encrypted-only</span>
-          <strong>业务内容只在两端解密</strong>
-          <p>Relay 只负责连接与转发，无法读取、存储或还原会话、终端、文件与 Git 等业务内容。</p>
+          <span>e2e-required by default</span>
+          <strong>默认业务内容只在两端解密</strong>
+          <p>默认配置下 Relay 只负责连接与转发，无法还原会话、终端、文件与 Git 等业务内容。</p>
         </div>
         <div class="security-grid">
           {securityHighlights.map((item) => (
@@ -110,7 +110,9 @@ const guaranteeRows = [
       </p>
 
       <div class="note">
-        公开站点（Public Web）绝不处理配对、不保存密钥、不接触用户的工作区数据，同时严格对外屏蔽 Admin、Metrics、Debug 等内部运维端点。
+        兼容模式允许管理员在 Desktop Agent 上显式设置 <code>requireE2e: false</code>。
+        该模式不具备上述 Relay 零信任保证，不应作为默认生产配置。Public Web 不处理配对或工作区数据；
+        Admin、Metrics、Debug 属于独立的受控运维面。
       </div>
     </article>
   </div>

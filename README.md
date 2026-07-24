@@ -36,6 +36,8 @@ types and fallback presets, while custom providers such as `opencode` can be
 added without App code changes.
 
 Documentation navigation starts at [docs/README.md](docs/README.md).
+The concise, code-backed implementation summary is
+[docs/current-status.md](docs/current-status.md).
 Mobile packaging guidance for APK/IPA installation lives in [docs/app-installation.md](docs/app-installation.md).
 Relay 与 P2P 升级架构（升级流程、降级触发清单、`/metrics` 字段、运维 runbook）见 [docs/relay-architecture.md](docs/relay-architecture.md)。
 
@@ -49,6 +51,17 @@ each Workspace by provider, and uses a Workspace Detail bottom-tab layout for
 path is inside a Git repository; `Files` is scoped to the workspace boundary
 and supports browsing, previewing, and guarded UTF-8 text editing for supported
 file types.
+
+Codex also supports a basic structured `app_server` session path backed by
+`@openai/codex-sdk`. The App renders conversation and activity events and can
+submit prompts; approval responses and full structured diff handling remain
+future work. Codex, Claude Code, Trae, and Trae CN hooks feed the local Agent
+message inbox. App inbox delivery is implemented, while APNs/FCM push delivery
+is not.
+
+The client includes English and Simplified Chinese UI, connection preferences,
+terminal text sizing, and a Native-only gesture app lock. The Web target does
+not persist app-lock configuration.
 
 Terminal rendering keeps the existing `terminal.frame` snapshot path as the
 default. An experimental ttyd-style byte stream path can be enabled on both the
@@ -75,9 +88,13 @@ pnpm verify:app:targets
 pnpm verify:app-auth
 pnpm verify:relay
 pnpm verify:desktop-key
-pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY> --key-id <KEY_ID>
+pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY>
 pnpm verify:security
 ```
+
+The npm packages are the currently verified public distribution channel.
+Android/iOS builds are supported from source, but the repository does not prove
+that App Store or GitHub Release mobile binaries are currently published.
 
 ## License
 

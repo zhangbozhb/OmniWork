@@ -4,17 +4,19 @@
 
 ## 推荐阅读顺序
 
-1. [project-directory-structure.md](./project-directory-structure.md)：目录结构、模块边界、依赖方向与 MVP 状态。
-2. [engineering-requirements.md](./engineering-requirements.md)：工程、安全、协议、传输与验证要求。
-3. [relay-architecture.md](./relay-architecture.md)：Relay、P2P、E2E、metrics 与调试 runbook 的架构事实。
-4. [mobile-file-editing.md](./mobile-file-editing.md)：移动端文件编辑边界、CodeMirror 实现与 `files.write` 协议。
-5. [app-installation.md](./app-installation.md)：Android / iOS / Web 构建、签名、安装与环境变量。
-6. [deployment-web-server.md](./deployment-web-server.md)：生产 Web 路径、Nginx 反代、admin web 启用策略。
-7. [release-downloads.md](./release-downloads.md)：GitHub Release 资产命名、校验文件和下载页清单更新。
+1. [current-status.md](./current-status.md)：代码和测试当前能够证明的功能、限制与交付状态。
+2. [project-directory-structure.md](./project-directory-structure.md)：目录结构、模块边界、依赖方向与 MVP 状态。
+3. [engineering-requirements.md](./engineering-requirements.md)：工程、安全、协议、传输与验证要求。
+4. [relay-architecture.md](./relay-architecture.md)：Relay、P2P、E2E、metrics 与调试 runbook 的架构事实。
+5. [mobile-file-editing.md](./mobile-file-editing.md)：移动端文件编辑边界、CodeMirror 实现与 `files.write` 协议。
+6. [app-installation.md](./app-installation.md)：Android / iOS / Web 构建、签名、安装与环境变量。
+7. [deployment-web-server.md](./deployment-web-server.md)：生产 Web 路径、Nginx 反代、admin web 启用策略。
 8. [npm-packages.md](./npm-packages.md)：npm 包构建、tarball 验证、版本与发布流程。
+9. [release-downloads.md](./release-downloads.md)：GitHub Release 资产命名、校验文件和下载页清单更新。
 
 ## 实现事实
 
+- [current-status.md](./current-status.md)：当前版本的功能、限制、交付与验证摘要。
 - [project-directory-structure.md](./project-directory-structure.md)：仓库结构、包边界、脚本、MVP 覆盖。
 - [engineering-requirements.md](./engineering-requirements.md)：工程约束、协议要求、验证要求。
 - [relay-architecture-implementation.md](./relay-architecture-implementation.md)：Relay / P2P / E2E 实现状态与不变量。

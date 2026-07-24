@@ -15,16 +15,17 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
       </p>
 
       <h2>1. 获取客户端</h2>
-      <p>在你的手机或浏览器中准备好客户端：</p>
+      <p>当前可直接使用 Web App，或按仓库文档从源码构建 Native App：</p>
       <ul>
-        <li><strong>iOS</strong>：从 App Store 下载。</li>
-        <li><strong>Android</strong>：从 GitHub Releases 下载 APK。</li>
+        <li><strong>iOS / Android</strong>：按源码安装文档构建；公开下载页只展示真实且经过校验的安装包。</li>
         <li><strong>Web</strong>：直接访问 <code>/app/</code>。</li>
       </ul>
 
       <h2>2. 启动桌面端 Agent</h2>
-      <p>在电脑上启动 Agent 后，记录页面或终端中显示的 Relay URL、device ID 和 32 字符临时 key。</p>
-      <pre><code>pnpm dev:desktop</code></pre>
+      <p>要求 Node.js 22.6 或更高版本和 tmux。安装并准备配置后启动：</p>
+      <pre><code>npm install --global @omni-work/desktop-agent
+omniwork-agent --config /path/to/config.yml</code></pre>
+      <p>记录终端或本地 Admin 页面显示的 Relay URL、device ID 和 32 字符临时 key。</p>
 
       <h2>3. 连接设备</h2>
       <p>

@@ -7,8 +7,8 @@ const features = [
     text: "将工作区作为核心对象，使会话、Git 状态和文件浏览统一在相同的上下文中。",
   },
   {
-    title: "多端无缝协同",
-    text: "iOS、Android 与 Web 端采用统一的产品架构，Web 客户端通过 /app/ 独立运行。",
+    title: "终端与结构化会话",
+    text: "既可接管 tmux 中的通用 Agent TUI，也可使用 Codex SDK 基础结构化对话与活动时间线。",
   },
   {
     title: "桌面端 Agent",
@@ -19,8 +19,8 @@ const features = [
     text: "通过 Relay 保障网络可达性，以 P2P 作为网络升级路径；公开站点仅作展示，不暴露内部运维接口。",
   },
   {
-    title: "文件与 Git 管理",
-    text: "在授权的工作区内，支持浏览文件、预览文本、查看 Git 状态及代码差异。",
+    title: "消息与代码审阅",
+    text: "在授权的工作区内浏览和编辑文本、查看 Git Diff，并通过本地消息收件箱跟进 Agent 事件。",
   },
   {
     title: "终端交互界面",
@@ -29,9 +29,9 @@ const features = [
 ];
 
 const platforms = [
-  { name: "iOS", href: "/download/#ios", text: "推荐通过 App Store 正式安装，签名 IPA 仅作为特殊分发的备选方案。" },
-  { name: "Android", href: "/download/#android", text: "APK 安装包通过 GitHub Releases 分发，并提供版本号与校验值。" },
-  { name: "桌面端 Agent", href: "/download/#desktop-agent", text: "桌面端 Agent 程序通过 GitHub Releases 分发。" },
+  { name: "iOS / Android", href: "/download/#ios", text: "当前支持从源码构建；公开安装包只会在具备真实商店或校验清单后展示。" },
+  { name: "桌面端 Agent", href: "/download/#desktop-agent", text: "通过 npm 安装，连接本地 tmux、工作区和 Agent Provider。" },
+  { name: "Relay Server", href: "/download/#relay-server", text: "通过 npm 安装，用于自托管连接中转、E2E 路由与 P2P 升级协调。" },
   { name: "Web App", href: "/app/", text: "无需安装移动端应用，直接在浏览器中打开客户端。" },
 ];
 ---
@@ -55,17 +55,16 @@ const platforms = [
           <a class="button" href="/app/">打开 Web App</a>
         </div>
       </div>
-      <!-- 占位图，后续可替换为多端截图 -->
       <div class="terminal-card" aria-label="OmniWork connection flow preview">
         <div class="terminal-top">
           <span></span><span></span><span></span>
         </div>
-        <pre><code>$ omniwork agent start
+        <pre><code>$ omniwork-agent --config ./config.yml
 key: 32-character temporary key
 relay: wss://omniwork.example.com/relay/ws/agent
 
 App/Web -> Relay/P2P -> Desktop Agent
-Workspace -> Sessions -> Terminal</code></pre>
+Workspace -> Terminal / Agent Session / Inbox</code></pre>
       </div>
     </div>
   </section>

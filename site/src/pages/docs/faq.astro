@@ -16,14 +16,19 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
         Web App 是产品客户端，占用 `/app/`，负责配对、查看 Workspace 和进入终端。
       </p>
 
-      <h2>为什么 iOS 不直接优先下载 IPA？</h2>
+      <h2>当前能从 App Store 下载吗？</h2>
       <p>
-        普通 iOS 用户应使用 App Store。IPA 需要满足 Apple 签名和分发条件，不能作为普通用户的默认安装方式。
+        当前仓库没有能够验证的 App Store 链接。下载页不会展示占位地址；可以按仓库文档配置签名后从源码构建。
       </p>
 
-      <h2>Android APK 从哪里下载？</h2>
+      <h2>Android APK 从哪里获取？</h2>
       <p>
-        APK 通过 GitHub Releases 分发。下载页会展示当前版本、Release 链接和 SHA256 校验信息。
+        当前没有已验证的公开 APK。发布清单只有在资产真实存在并生成 SHA256 后才会展示下载入口。
+      </p>
+
+      <h2>桌面端 Agent 和 Relay 如何安装？</h2>
+      <p>
+        两者均已通过 npm 发布，要求 Node.js 22.6 或更高版本；桌面端 Agent 还要求安装 tmux。
       </p>
 
       <h2>Web App 是否支持二维码扫描？</h2>
@@ -34,6 +39,11 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
       <h2>为什么这里没有 Admin、metrics 或 debug 说明？</h2>
       <p>
         这些属于内部运维和受控管理能力，不应暴露给公网访客。Public Web 只保留普通用户需要的公开信息。
+      </p>
+
+      <h2>Agent 消息会发送系统推送吗？</h2>
+      <p>
+        当前实现的是 App 内本地收件箱和通知偏好，尚未接入 APNs/FCM 系统推送。
       </p>
     </article>
   </div>

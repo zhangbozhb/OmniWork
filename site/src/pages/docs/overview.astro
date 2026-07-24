@@ -21,8 +21,8 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 
       <h2>系统架构组成</h2>
       <ul>
-        <li><strong>App / Web 客户端</strong>：承担设备配对、环境选择，并提供 Workspace、会话、Git、文件与终端的交互界面。</li>
-        <li><strong>桌面端 Agent</strong>：作为运行在电脑本地的守护进程，负责发现工作区、管理 tmux 会话、对接各种 Agent Provider，并执行底层的文件与 Git 操作。</li>
+        <li><strong>App / Web 客户端</strong>：承担设备配对、环境选择，并提供 Workspace、终端会话、Codex 结构化会话、Agent 消息、Git 与文件界面。</li>
+        <li><strong>桌面端 Agent</strong>：作为运行在电脑本地的 Node.js 进程，负责发现工作区、管理 tmux 会话、对接配置化 Provider，并执行文件与 Git 操作。</li>
         <li><strong>Relay 中继服务</strong>：在公网或企业内网中提供稳定的连接中转，协助客户端与桌面端 Agent 顺利建立加密通道。</li>
         <li><strong>共享协议层</strong>：定义了跨端消息、身份认证、会话状态、终端交互、文件传输及网络升级链路的标准数据结构。</li>
         <li><strong>公开站点 (Public Web)</strong>：即您当前访问的站点，专门用于项目介绍、公开文档查阅、应用下载及 Web 客户端的访问入口引导。</li>
@@ -33,10 +33,14 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
         用户首先在电脑上启动 Agent，系统会生成 Relay URL、Device ID 与临时密钥。随后，用户在 iOS、Android 或 Web 客户端输入这些信息完成配对。
         客户端将通过 Relay 中继（或在条件允许时自动升级为 P2P 直连）与桌面端 Agent 建立安全连接。连接成功后，用户即可选定工作区，在统一的上下文中管理会话、审阅 Git 变更、浏览项目文件并接管终端交互。
       </p>
+      <p>
+        Codex 还可创建基础结构化会话，在 App 中提交 prompt 并查看对话与活动事件。Codex、Claude Code、Trae
+        与 Trae CN hooks 可产生 App 内消息；原生系统 Push、结构化审批回答和完整 Diff 详情尚未接入。
+      </p>
 
       <h2>适用人群</h2>
       <ul>
-        <li>频繁使用 Codex、Claude、Gemini、OpenCode 等基于命令行的 Agent 工具的开发者。</li>
+        <li>频繁使用 Codex、Claude、Gemini、Trae、Trae CN 或自定义命令行 Provider 的开发者。</li>
         <li>希望在离开电脑屏幕后，依然能够随时查看并接续本地 Agent 任务的用户。</li>
         <li>期望在移动端快速审阅会话状态、代码 Diff、文件内容及终端输出的早期采用者。</li>
       </ul>

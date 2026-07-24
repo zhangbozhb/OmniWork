@@ -12,20 +12,28 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 
       <h2>iOS</h2>
       <p>
-        正式用户应从 App Store 安装 OmniWork。GitHub Releases 上的 IPA 只适用于已签名且满足 Apple
-        分发条件的场景，例如 Ad Hoc、企业签名、开发测试或 MDM。
+        仓库支持 React Native iOS 源码构建和签名。当前下载清单没有可验证的 App Store
+        或公开 IPA 入口；IPA 只有在满足 Ad Hoc、企业签名、开发测试或 MDM 条件时才能分发。
       </p>
 
       <h2>Android</h2>
       <p>
-        Android APK 通过 GitHub Releases 分发。下载后应核对页面展示的 SHA256，确认文件与发布版本一致。
+        仓库支持从源码构建 APK 和 AAB。下载页只会展示发布清单中存在且带 SHA256
+        的 APK；当前没有已验证的公开 APK 入口。
       </p>
 
       <h2>桌面端 Agent</h2>
       <p>
-        桌面端 Agent 通过 GitHub Releases 分发。它负责发现工作区、连接 tmux sessions，并向 App/Web
-        提供 Workspace、Git、Files 和 Terminal 能力。
+        桌面端 Agent 要求 Node.js 22.6 或更高版本和 tmux，通过 npm 安装：
       </p>
+      <pre><code>npm install --global @omni-work/desktop-agent
+omniwork-agent --config /path/to/config.yml</code></pre>
+      <p>它负责发现工作区、连接 tmux sessions，并提供 Workspace、Git、Files、Terminal 和 Agent 消息能力。</p>
+
+      <h2>Relay Server</h2>
+      <p>自托管 Relay 同样通过 npm 安装：</p>
+      <pre><code>npm install --global @omni-work/relay-server
+omniwork-relay --config /path/to/config.yml</code></pre>
 
       <h2>Web App</h2>
       <p>
@@ -35,8 +43,9 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 
       <h2>历史版本</h2>
       <p>
-        历史安装包、release notes 和校验文件以 <a href="https://github.com/zhangbozhb/OmniWork/releases">GitHub Releases</a>
-        为准。
+        npm 包以 <a href="https://www.npmjs.com/org/omni-work">npm organization</a> 为准；
+        真实存在的安装资产、release notes 和校验文件以
+        <a href="https://github.com/zhangbozhb/OmniWork/releases">GitHub Releases</a> 为准。
       </p>
     </article>
   </div>
