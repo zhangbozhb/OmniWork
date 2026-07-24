@@ -23,11 +23,12 @@
   "type": "module",
   "main": "./dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "node --experimental-strip-types src/main.ts",
-    "typecheck": "tsc -p tsconfig.json",
-    "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.ts tests/transport/*.test.ts"
+    "build:deps": "pnpm --filter @omni-work/protocol-ts build && pnpm --filter @omni-work/relay-client build && pnpm --filter @omni-work/terminal-core build && pnpm --filter @omni-work/e2e-noise build",
+    "build": "pnpm run build:deps && tsc -p tsconfig.build.json",
+    "dev": "pnpm run build:deps && node --experimental-strip-types src/main.ts",
+    "typecheck": "pnpm run build:deps && tsc -p tsconfig.json",
+    "lint": "pnpm run build:deps && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run build:deps && node --experimental-strip-types --test tests/*.test.ts tests/transport/*.test.ts"
   },
   "dependencies": {
     "@omni-work/e2e-noise": "0.1.1",
