@@ -28,8 +28,9 @@ const publishPackages = [
 ];
 
 if (!skipBuild) {
-  run("pnpm", ["--filter", "@omni-work/web-app", "build"], repoRoot);
+  run(process.execPath, ["scripts/release/buildNpmPackages.mjs"], repoRoot);
 }
+run(process.execPath, ["scripts/release/verifyNpmPackages.mjs"], repoRoot);
 
 for (const target of publishPackages) {
   const packageDir = join(repoRoot, target.path);
@@ -58,6 +59,9 @@ for (const target of publishPackages) {
   }
   if (args.otp) {
     publishArgs.push("--otp", args.otp);
+  }
+  if (args.provenance) {
+    publishArgs.push("--provenance");
   }
 
   run("npm", publishArgs, packageDir);

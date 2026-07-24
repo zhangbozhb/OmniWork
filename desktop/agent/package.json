@@ -1,21 +1,41 @@
 {
   "name": "@omni-work/desktop-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "description": "Desktop agent for managing terminal-based coding sessions with OmniWork.",
+  "keywords": [
+    "omniwork",
+    "coding-agent",
+    "terminal",
+    "tmux",
+    "cli"
+  ],
+  "author": "zhangbozhb <zhangbozhb@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangbozhb/OmniWork.git",
+    "directory": "desktop/agent"
+  },
+  "homepage": "https://github.com/zhangbozhb/OmniWork/tree/main/desktop/agent#readme",
+  "bugs": {
+    "url": "https://github.com/zhangbozhb/OmniWork/issues"
+  },
   "type": "module",
-  "main": "src/main.ts",
+  "main": "./dist/main.js",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "dev": "node --experimental-strip-types src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts tests/transport/*.test.ts"
   },
   "dependencies": {
-    "@omni-work/e2e-noise": "0.1.0",
-    "@omni-work/surface-hook-post": "0.1.0",
-    "@omni-work/surface-hook-record": "0.1.0",
-    "@omni-work/protocol-ts": "0.1.0",
-    "@omni-work/relay-client": "0.1.0",
-    "@omni-work/terminal-core": "0.1.0",
+    "@omni-work/e2e-noise": "0.1.1",
+    "@omni-work/surface-hook-post": "0.1.1",
+    "@omni-work/surface-hook-record": "0.1.1",
+    "@omni-work/protocol-ts": "0.1.1",
+    "@omni-work/relay-client": "0.1.1",
+    "@omni-work/terminal-core": "0.1.1",
     "@openai/codex-sdk": "0.142.5",
     "@roamhq/wrtc": "^0.8.0",
     "js-yaml": "^5.2.1",
@@ -32,7 +52,7 @@
   "files": [
     "bin/",
     "config.example.yml",
-    "src/",
+    "dist/",
     "static/",
     "README.md"
   ],

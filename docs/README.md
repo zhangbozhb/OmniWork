@@ -11,6 +11,7 @@
 5. [app-installation.md](./app-installation.md)：Android / iOS / Web 构建、签名、安装与环境变量。
 6. [deployment-web-server.md](./deployment-web-server.md)：生产 Web 路径、Nginx 反代、admin web 启用策略。
 7. [release-downloads.md](./release-downloads.md)：GitHub Release 资产命名、校验文件和下载页清单更新。
+8. [npm-packages.md](./npm-packages.md)：npm 包构建、tarball 验证、版本与发布流程。
 
 ## 实现事实
 
@@ -26,6 +27,7 @@
 - [auth-key-design.md](./auth-key-design.md)：临时 key 生成、文件权限、Relay proof 流程与失败处理。
 - [app-installation.md](./app-installation.md)：APK / IPA / Web SPA 构建、签名、安装前检查。
 - [release-downloads.md](./release-downloads.md)：下载资产命名、SHA256 校验与 `downloads.json` 自动更新。
+- [npm-packages.md](./npm-packages.md)：公共 npm 包的构建入口、发布门禁与版本规则。
 - [deployment-web-server.md](./deployment-web-server.md)：Nginx 静态站点、Relay 反代、Admin Web 生产/开发策略。
 
 ## 方案背景

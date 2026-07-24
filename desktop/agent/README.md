@@ -2,6 +2,21 @@
 
 TypeScript/Node.js 桌面端 Agent for managing Terminal provider TUI sessions.
 
+## Install
+
+Requires Node.js 22.6 or newer and `tmux`.
+
+```sh
+npm install --global @omni-work/desktop-agent
+omniwork-agent --config /path/to/config.yml
+```
+
+Validate configuration without starting the agent:
+
+```sh
+omniwork-agent --check --config /path/to/config.yml
+```
+
 ## Current MVP
 
 - Generates a fresh 32-character temporary key on every start.
@@ -22,6 +37,8 @@ TypeScript/Node.js 桌面端 Agent for managing Terminal provider TUI sessions.
 - Serves the local Agent Admin UI from `static/admin/index.html`; keep UI HTML/CSS/JS there instead of embedding it in `src/core/adminServer.ts`.
 
 ## Run
+
+For repository development:
 
 ```sh
 node --experimental-strip-types src/main.ts

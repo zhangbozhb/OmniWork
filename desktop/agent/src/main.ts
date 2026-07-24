@@ -18,15 +18,19 @@ try {
     configPath: parseAgentConfigPathArgv(process.argv.slice(2)),
   });
   logConfigSource(config);
-  service = new AgentService(config, {
-    onShutdownRequested: (reason) => {
-      console.info("[omniwork-agent] exiting after relay shutdown request", {
-        reason,
-      });
-      process.exit(0);
-    },
-  });
-  await service.start();
+  if (process.argv.includes("--check")) {
+    console.info("[omniwork-agent] configuration ok");
+  } else {
+    service = new AgentService(config, {
+      onShutdownRequested: (reason) => {
+        console.info("[omniwork-agent] exiting after relay shutdown request", {
+          reason,
+        });
+        process.exit(0);
+      },
+    });
+    await service.start();
+  }
 } catch (error: unknown) {
   console.error("[omniwork-agent] fatal", error);
   process.exitCode = 1;

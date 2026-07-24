@@ -255,9 +255,9 @@ function defaultAgentVersion(): string {
         "utf8",
       ),
     ) as { version?: unknown };
-    return readNonEmptyString(packageJson.version) ?? "0.1.0";
+    return readNonEmptyString(packageJson.version) ?? "0.1.1";
   } catch {
-    return "0.1.0";
+    return "0.1.1";
   }
 }
 

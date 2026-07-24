@@ -50,6 +50,7 @@ assert.equal(verifyProof(key, nonce, appInfo, `${proof}x`), false);
 
 const dir = await mkdtemp(join(tmpdir(), "omniwork-agent-"));
 const isolatedConfigOptions = {
+  cwd: join(dir, "isolated-cwd"),
   programDir: join(dir, "isolated-program"),
   packageRoot: join(dir, "isolated-package"),
   globalConfigPath: join(dir, "isolated-global-config.yml"),
@@ -178,7 +179,7 @@ assert.throws(
     OMNIWORK_AGENT_VERSION: "env-version",
   });
   assert.equal(config.configPath, undefined);
-  assert.equal(config.agentVersion, "0.1.0");
+  assert.equal(config.agentVersion, "0.1.1");
   assert.equal(config.relayReconnectForever, true);
   assert.equal(config.relayReconnectMaxAttempts, 8);
   assert.equal(config.pairingQrTtlSeconds, 5 * 60);
@@ -249,7 +250,7 @@ paths:
   );
   assert.equal(config.configPath, yamlConfigPath);
   assert.equal(config.relayUrl, "wss://yaml-relay.example/relay/ws/agent");
-  assert.equal(config.agentVersion, "0.1.0");
+  assert.equal(config.agentVersion, "0.1.1");
   assert.equal(config.deviceId, "yaml-device");
   assert.equal(config.displayName, "YAML Desktop");
   assert.equal(config.adminEnabled, false);

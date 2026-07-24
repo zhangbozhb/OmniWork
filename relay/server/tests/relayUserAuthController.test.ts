@@ -41,12 +41,20 @@ await assert.rejects(
   const dir = mkdtempSync(join(tmpdir(), "omniwork-relay-auth-controller-"));
   try {
     const store = new RelayUserAuthStore(join(dir, "relay-auth.sqlite"));
-    const config = loadRelayServerConfig({
-      OMNIWORK_RELAY_HOST: "127.0.0.1",
-      OMNIWORK_RELAY_AUTH_MODE: "email_link",
-      OMNIWORK_PUBLIC_BASE_URL: "http://127.0.0.1:8787",
-      OMNIWORK_MAIL_FROM: "OmniWork <test@example.com>",
-    });
+    const config = loadRelayServerConfig(
+      {
+        OMNIWORK_RELAY_HOST: "127.0.0.1",
+        OMNIWORK_RELAY_AUTH_MODE: "email_link",
+        OMNIWORK_PUBLIC_BASE_URL: "http://127.0.0.1:8787",
+        OMNIWORK_MAIL_FROM: "OmniWork <test@example.com>",
+      },
+      {
+        cwd: dir,
+        programDir: dir,
+        packageRoot: dir,
+        globalConfigPath: join(dir, "global.yml"),
+      },
+    );
     const revokedDeviceIds: string[] = [];
     const controller = new RelayUserAuthController({
       config,

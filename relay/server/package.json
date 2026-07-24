@@ -1,17 +1,39 @@
 {
   "name": "@omni-work/relay-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "description": "WebSocket relay server for OmniWork applications and desktop agents.",
+  "keywords": [
+    "omniwork",
+    "relay",
+    "websocket",
+    "server"
+  ],
+  "author": "zhangbozhb <zhangbozhb@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangbozhb/OmniWork.git",
+    "directory": "relay/server"
+  },
+  "homepage": "https://github.com/zhangbozhb/OmniWork/tree/main/relay/server#readme",
+  "bugs": {
+    "url": "https://github.com/zhangbozhb/OmniWork/issues"
+  },
   "type": "module",
-  "main": "src/main.ts",
+  "main": "./dist/main.js",
+  "bin": {
+    "omniwork-relay": "bin/omniwork-relay.mjs"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "dev": "OMNIWORK_RELAY_ADMIN_WEB_ENABLED=true node --experimental-strip-types src/main.ts",
-    "start": "node --experimental-strip-types src/main.ts",
+    "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts tests/upgrade/*.test.ts && node --experimental-strip-types src/main.ts --check"
   },
   "dependencies": {
-    "@omni-work/protocol-ts": "0.1.0",
+    "@omni-work/protocol-ts": "0.1.1",
     "geoip-lite": "^2.0.3",
     "js-yaml": "^5.2.1"
   },
@@ -23,8 +45,9 @@
   },
   "files": [
     "admin-web/",
+    "bin/",
     "config.example.yml",
-    "src/",
+    "dist/",
     "README.md"
   ],
   "engines": {

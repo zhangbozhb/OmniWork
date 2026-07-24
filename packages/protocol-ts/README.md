@@ -1,0 +1,30 @@
+# @omni-work/protocol-ts
+
+Shared TypeScript protocol types, runtime schemas, and pairing utilities for
+OmniWork.
+
+## Install
+
+```sh
+npm install @omni-work/protocol-ts
+```
+
+## Usage
+
+```ts
+import {
+  createMessage,
+  parseMessageEnvelope,
+  PROTOCOL_VERSION,
+} from "@omni-work/protocol-ts";
+
+const message = createMessage("session.list", { sessions: [] });
+const parsed = parseMessageEnvelope(message);
+
+console.log(PROTOCOL_VERSION, parsed);
+```
+
+This package is ESM-only and requires Node.js 20.19 or newer when used in Node.
+
+Source and issue tracking are available in the
+[OmniWork repository](https://github.com/zhangbozhb/OmniWork).

@@ -32,7 +32,13 @@ try {
         { kind: "terminal", displayName: "Terminal" },
       ]),
     },
-    { commandExists: () => true },
+    {
+      commandExists: () => true,
+      cwd: dir,
+      programDir: dir,
+      packageRoot: dir,
+      globalConfigPath: join(dir, "global-config.yml"),
+    },
   );
   assert.equal(config.relayUrl, "ws://relay.example/relay/ws/agent");
   assert.equal(config.deviceId, "dev_registered");

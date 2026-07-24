@@ -1,12 +1,31 @@
 {
   "name": "@omni-work/surface-hook-post",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "description": "CLI hook that forwards coding-agent events to the local OmniWork agent.",
+  "keywords": [
+    "omniwork",
+    "agent",
+    "hook",
+    "cli"
+  ],
+  "author": "zhangbozhb <zhangbozhb@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangbozhb/OmniWork.git",
+    "directory": "packages/surface-hook-post"
+  },
+  "homepage": "https://github.com/zhangbozhb/OmniWork/tree/main/packages/surface-hook-post#readme",
+  "bugs": {
+    "url": "https://github.com/zhangbozhb/OmniWork/issues"
+  },
   "type": "module",
   "bin": {
     "omniwork-hook-post": "bin/omniwork-hook-post.mjs"
   },
   "files": [
-    "bin/"
+    "bin/",
+    "README.md"
   ],
   "engines": {
     "node": ">=22.6.0"

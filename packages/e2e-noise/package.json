@@ -1,10 +1,36 @@
 {
   "name": "@omni-work/e2e-noise",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "description": "Noise-based end-to-end encryption primitives for OmniWork transports.",
+  "keywords": [
+    "omniwork",
+    "noise-protocol",
+    "encryption",
+    "websocket"
+  ],
+  "author": "zhangbozhb <zhangbozhb@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangbozhb/OmniWork.git",
+    "directory": "packages/e2e-noise"
+  },
+  "homepage": "https://github.com/zhangbozhb/OmniWork/tree/main/packages/e2e-noise#readme",
+  "bugs": {
+    "url": "https://github.com/zhangbozhb/OmniWork/issues"
+  },
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
@@ -13,15 +39,19 @@
     "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
-    "@omni-work/protocol-ts": "0.1.0"
+    "@omni-work/protocol-ts": "0.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.19.19",
     "typescript": "^5.8.0"
   },
   "files": [
-    "src/"
+    "dist/",
+    "README.md"
   ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "publishConfig": {
     "access": "public"
   }

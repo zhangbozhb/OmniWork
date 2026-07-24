@@ -11,7 +11,14 @@ The server does not store the temporary key. It brokers the challenge flow:
 4. App sends `auth.proof`; Relay forwards `auth.verify` to the Desktop Agent.
 5. Desktop Agent verifies the proof with the local startup key and returns `auth.ok` or `auth.failed`.
 
-Run locally:
+Install and run with Node.js 22.6 or newer:
+
+```sh
+npm install --global @omni-work/relay-server
+omniwork-relay --config /path/to/config.yml
+```
+
+Run from the repository:
 
 ```sh
 pnpm --filter @omni-work/relay-server dev

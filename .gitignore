@@ -1,7 +1,6 @@
 app/node_modules
 mac/agent/node_modules
 node_modules
-pnpm-lock.yaml
 app/dist
 dist
 .astro

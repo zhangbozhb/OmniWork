@@ -19,6 +19,7 @@ import {
   type TunnelUpgradeOfferPayload,
 } from "@omni-work/protocol-ts";
 import {
+  defaultGlobalRelayConfigPath,
   defaultRelayConfigSearchPaths,
   loadRelayServerConfig,
 } from "../src/config.ts";
@@ -34,10 +35,36 @@ import type {
   RelayConnectionLocation,
 } from "../src/relayTypes.ts";
 
+const isolatedConfigDir = await mkdtemp(
+  join(tmpdir(), "omniwork-relay-empty-config-"),
+);
+const isolatedConfigOptions = {
+  cwd: isolatedConfigDir,
+  programDir: isolatedConfigDir,
+  packageRoot: isolatedConfigDir,
+  globalConfigPath: join(isolatedConfigDir, "global.yml"),
+};
+let isolatedRuntimeIndex = 0;
+
+function loadIsolatedRelayServerConfig(env: NodeJS.ProcessEnv) {
+  return loadRelayServerConfig(
+    {
+      ...env,
+      OMNIWORK_RELAY_RUNTIME_DIR:
+        env.OMNIWORK_RELAY_RUNTIME_DIR ??
+        join(isolatedConfigDir, `runtime-${isolatedRuntimeIndex++}`),
+    },
+    isolatedConfigOptions,
+  );
+}
+
 {
-  const config = loadRelayServerConfig({
-    OMNIWORK_RELAY_HOST: "127.0.0.1",
-  });
+  const config = loadRelayServerConfig(
+    {
+      OMNIWORK_RELAY_HOST: "127.0.0.1",
+    },
+    isolatedConfigOptions,
+  );
 
   assert.equal(config.admin.tokenDir, join(process.cwd(), ".omniwork-relay"));
   assert.equal(
@@ -135,7 +162,7 @@ admin:
       cwdConfigPath,
       programConfigPath,
       packageConfigPath,
-      defaultRelayConfigSearchPaths()[3],
+      defaultGlobalRelayConfigPath({}),
     ],
   );
 
@@ -215,7 +242,7 @@ admin:
 }
 
 {
-  const config = loadRelayServerConfig({
+  const config = loadIsolatedRelayServerConfig({
     OMNIWORK_RELAY_HOST: "127.0.0.1",
     OMNIWORK_RELAY_ADMIN_WEB_ENABLED: "true",
   });
@@ -224,7 +251,7 @@ admin:
 }
 
 {
-  const config = loadRelayServerConfig({
+  const config = loadIsolatedRelayServerConfig({
     OMNIWORK_RELAY_HOST: "127.0.0.1",
     OMNIWORK_RELAY_WS_KEEPALIVE_INTERVAL_MS: "1000",
     OMNIWORK_RELAY_WS_PONG_TIMEOUT_MS: "2000",
@@ -235,7 +262,7 @@ admin:
 }
 
 {
-  const config = loadRelayServerConfig({
+  const config = loadIsolatedRelayServerConfig({
     OMNIWORK_RELAY_HOST: "127.0.0.1",
     OMNIWORK_RELAY_RUNTIME_DIR: "/tmp/omniwork-relay-runtime",
   });
@@ -258,7 +285,7 @@ admin:
 {
   assert.throws(
     () =>
-      loadRelayServerConfig({
+      loadIsolatedRelayServerConfig({
         OMNIWORK_RELAY_HOST: "127.0.0.1",
         OMNIWORK_RELAY_PORT: "8787",
         OMNIWORK_RELAY_ADMIN_HOST: "127.0.0.1",
@@ -268,7 +295,7 @@ admin:
   );
   assert.throws(
     () =>
-      loadRelayServerConfig({
+      loadIsolatedRelayServerConfig({
         OMNIWORK_RELAY_HOST: "0.0.0.0",
         OMNIWORK_RELAY_PORT: "8788",
         OMNIWORK_RELAY_ADMIN_HOST: "127.0.0.1",
@@ -279,7 +306,7 @@ admin:
   );
   assert.throws(
     () =>
-      loadRelayServerConfig({
+      loadIsolatedRelayServerConfig({
         OMNIWORK_RELAY_HOST: "127.0.0.1",
         OMNIWORK_RELAY_AUTH_MODE: "email_link",
       }),
@@ -287,7 +314,7 @@ admin:
   );
   assert.throws(
     () =>
-      loadRelayServerConfig({
+      loadIsolatedRelayServerConfig({
         OMNIWORK_RELAY_HOST: "0.0.0.0",
         OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS: "true",
         OMNIWORK_RELAY_AUTH_MODE: "email_link",
@@ -297,7 +324,7 @@ admin:
     /must use https/,
   );
   assert.equal(
-    loadRelayServerConfig({
+    loadIsolatedRelayServerConfig({
       OMNIWORK_RELAY_HOST: "127.0.0.1",
       OMNIWORK_RELAY_AUTH_MODE: "email_link",
       OMNIWORK_PUBLIC_BASE_URL: "http://127.0.0.1:8787",
@@ -931,7 +958,7 @@ function createMobileConnection(
 
 function createServer(): RelayServer {
   return new RelayServer(
-    loadRelayServerConfig({
+    loadIsolatedRelayServerConfig({
       OMNIWORK_RELAY_HOST: "127.0.0.1",
       OMNIWORK_UPGRADE_PROPOSE_DELAY_MS: "1",
       OMNIWORK_UPGRADE_ICE_SERVERS_JSON: "[]",

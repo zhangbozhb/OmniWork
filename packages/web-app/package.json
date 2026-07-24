@@ -1,13 +1,25 @@
 {
   "name": "@omni-work/web-app",
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "dev": "pnpm --dir ../../app web:dev",
-    "build": "node scripts/build.mjs",
-    "verify": "pnpm run build",
-    "clean": "rm -rf dist"
+  "version": "0.1.1",
+  "description": "Prebuilt static web application for OmniWork.",
+  "keywords": [
+    "omniwork",
+    "web-app",
+    "react-native-web",
+    "static-site"
+  ],
+  "author": "zhangbozhb <zhangbozhb@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangbozhb/OmniWork.git",
+    "directory": "packages/web-app"
   },
+  "homepage": "https://github.com/zhangbozhb/OmniWork/tree/main/packages/web-app#readme",
+  "bugs": {
+    "url": "https://github.com/zhangbozhb/OmniWork/issues"
+  },
+  "type": "module",
   "files": [
     "dist/",
     "README.md"
