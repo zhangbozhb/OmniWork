@@ -23,7 +23,7 @@
   "type": "module",
   "main": "./dist/main.js",
   "scripts": {
-    "build:deps": "pnpm --filter @omni-work/protocol-ts build && pnpm --filter @omni-work/relay-client build && pnpm --filter @omni-work/terminal-core build && pnpm --filter @omni-work/e2e-noise build",
+    "build:deps": "pnpm --filter '@omni-work/desktop-agent^...' build:dist",
     "build": "pnpm run build:deps && tsc -p tsconfig.build.json",
     "dev": "pnpm run build:deps && node --experimental-strip-types src/main.ts",
     "typecheck": "pnpm run build:deps && tsc -p tsconfig.json",

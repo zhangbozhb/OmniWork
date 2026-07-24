@@ -19,6 +19,11 @@ OmniWork 在 npm 的公共 scope 为 `@omni-work`。所有公开包使用同一�
 和 `desktop-agent` 必须先编译为 `dist/*.js` 后发布。禁止把 `src/*.ts`
 作为 npm 运行时入口。
 
+仓库内开发命令会通过各消费包的 `build:deps` 脚本，按 pnpm workspace
+依赖图先构建内部依赖。因此从干净 checkout 运行 App、Relay、Desktop 或共享包
+的 `dev`、`build`、`typecheck`、`lint`、`test` 时，不需要手动生成依赖包的
+`dist/`。
+
 ## 发布前验证
 
 ```sh

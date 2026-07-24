@@ -30,10 +30,12 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json",
-    "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "build:deps": "pnpm --filter '@omni-work/e2e-noise^...' build:dist",
+    "build:dist": "tsc -p tsconfig.build.json",
+    "build": "pnpm run build:deps && pnpm run build:dist",
+    "typecheck": "pnpm run build:deps && tsc -p tsconfig.json",
+    "lint": "pnpm run build:deps && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run build:deps && node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.2.0",

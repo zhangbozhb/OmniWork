@@ -30,7 +30,8 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build:dist": "tsc -p tsconfig.build.json",
+    "build": "pnpm run build:dist",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
