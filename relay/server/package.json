@@ -25,12 +25,12 @@
     "omniwork-relay": "bin/omniwork-relay.mjs"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "OMNIWORK_RELAY_ADMIN_WEB_ENABLED=true node --experimental-strip-types src/main.ts",
+    "build": "pnpm --filter @omni-work/protocol-ts build && tsc -p tsconfig.build.json",
+    "dev": "pnpm --filter @omni-work/protocol-ts build && OMNIWORK_RELAY_ADMIN_WEB_ENABLED=true node --experimental-strip-types src/main.ts",
     "start": "node dist/main.js",
-    "typecheck": "tsc -p tsconfig.json",
-    "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.ts tests/upgrade/*.test.ts && node --experimental-strip-types src/main.ts --check"
+    "typecheck": "pnpm --filter @omni-work/protocol-ts build && tsc -p tsconfig.json",
+    "lint": "pnpm --filter @omni-work/protocol-ts build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --filter @omni-work/protocol-ts build && node --experimental-strip-types --test tests/*.test.ts tests/upgrade/*.test.ts && node --experimental-strip-types src/main.ts --check"
   },
   "dependencies": {
     "@omni-work/protocol-ts": "0.1.1",
