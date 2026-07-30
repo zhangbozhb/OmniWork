@@ -412,6 +412,9 @@ function resolveInstallProvider() {
 }
 
 async function discoverTraeHookTargets(provider) {
+  if (provider === "traex") {
+    return [{ provider, hooksPath: defaultTraeHooksPath(provider) }];
+  }
   const candidates = [
     {
       provider: "trae",
@@ -713,6 +716,9 @@ function isTraeProvider(provider) {
 }
 
 function normalizeTraeProvider(provider) {
+  if (provider === "traex" || provider === "traecli" || provider === "coco") {
+    return "traex";
+  }
   return provider === "trae-cn" ||
     provider === "trae_cn" ||
     provider === "traecn"

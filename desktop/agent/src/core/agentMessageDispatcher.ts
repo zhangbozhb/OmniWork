@@ -426,7 +426,7 @@ export class AgentMessageDispatcher {
       payload: {
         session_id: message.payload.session_id,
         surface_id: message.payload.surface_id,
-        provider: "codex",
+        provider: "user",
         event_id: createMessageId(),
         event_type: "agent.user_prompt_submitted",
         title: "User prompt submitted",

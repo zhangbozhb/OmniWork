@@ -15,7 +15,7 @@
 - 终端主通道（Terminal Provider adapter）：已落地基础适配层，见 [desktop/agent/src/terminal-provider/](../desktop/agent/src/terminal-provider/)；provider 配置驱动 + `session.list` 下发已对齐。
 - Surface 协议层：`TerminalSession` 已下发 `primary_surface_id` 与 `surfaces`；终端输入、resize、snapshot、stream 和 frame 消息保留 `session_id` 作为归属信息，并以 `surface_id` 作为具体交互入口和缓存路由键。
 - 兼容通道（tmux + Native WebView/xterm 终端）：已落地，见 [desktop/agent/src/pty-bridge](../desktop/agent/src/pty-bridge)、[desktop/agent/src/tmux-manager](../desktop/agent/src/tmux-manager) 与 [app/src/terminal](../app/src/terminal)。
-- Codex app-server adapter 尚未完成进程管理和主动订阅；当前已落地 `codexAppServerNormalizer` 与本机 HTTP ingest endpoint，可把 app-server 的 thread / turn / approval / diff / completion 事件归一化为 `AgentProbeEvent`，供消息、通知和后续 AgentSurface timeline 复用。基础移动对话链路先通过 `@openai/codex-sdk` 落地：Desktop Agent 使用 SDK streamed turn 接收 thread / item / turn 事件，并转成 `agent.surface.event` 下发到 App。
+- 结构化 AgentSurface runner 已完成本机进程管理和主动订阅：Codex / TraeX 启动 `app-server --listen stdio://` 并消费 JSONL RPC，Claude Code 启动 `-p --input-format stream-json --output-format stream-json` 并消费双向 NDJSON。runner 将增量文本与 thread / turn / item 活动统一转成 `agent.surface.event` 下发到 App。既有 `codexAppServerNormalizer` 与 HTTP ingest endpoint 继续服务外部 Probe 事件；`@openai/codex-sdk` adapter 保留为未来显式兜底，但当前不自动降级。交互式审批回答和进程重启后恢复尚未接入。
 - Terminal Provider 元数据层：`packages/protocol-ts` 定义 + 桌面端 Agent 配置化 provider 已实现。
 - Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex / Claude / Trae / Trae-CN hook receiver、Desktop Agent 启动时 Codex / Claude hook 自动安装、hook 归一化、Codex app-server event HTTP ingest、Claude Code 官方生命周期 hook 主干映射、`claudecode` 输入别名归一化、Trae / Trae-CN hook provider 归一化、tmux target missing Probe、接收端按现有 session/workspace/provider 自动关联 `surface_id`、SQLite pending inbox、已读回执、通知偏好持久化、脱敏系统通知候选 payload 和在线 App `agent.message` 广播；平台原生系统 Push gateway 尚未落地。
 - Workspace 上下文层：已实现 `workspace.list/status` + `files.list/read/write` + `git.status/diff`，其中文件写入仅支持受控 UTF-8 文本编辑，详见 [desktop/agent/src/workspace](../desktop/agent/src/workspace) / [files](../desktop/agent/src/files) / [git](../desktop/agent/src/git)。
@@ -915,8 +915,8 @@ agent.*
 1. 稳定 `TerminalSurface`：继续打牢 tmux / PTY、重连、输入、快照和多会话。
 2. 引入 `Surface` 概念：App 与 Desktop Agent 按 `surface_id` 打开和订阅交互入口。
 3. Probe 先增强感知：Hooks / app-server event 进入 Probe Sink，用于状态卡片、通知和审批提醒。
-4. Codex `AgentSurface` MVP：先落地 app-server 事件归一化和本机 ingest，支持 thread / turn / approval / diff / completion 进入统一 Probe Sink；再接入 app-server 进程管理、主动订阅与 App timeline。
-5. 多 Agent 抽象：Claude Code 先以 hooks Probe Channel 接入统一 `AgentProbeEvent` / `AgentAppMessage` 语义，并把 `claudecode` 作为输入别名归一化为 `claude-code`；Trae / Trae-CN 根据本机 `~/.trae` 与 `~/.trae-cn` 目录调研结果，先接入 hook provider normalizer、CLI preset 和 session/surface 自动关联；OpenCode、Gemini CLI 后续按同样 provider-specific Probe 模式接入。只有 provider 暴露等价 app-server / structured protocol 时才升级为 `AgentSurface` 主交互协议。
+4. 结构化 `AgentSurface` MVP：Codex / TraeX app-server 与 Claude Code stream-json 已接入统一本机 runner、主动订阅与 App timeline。
+5. 多 Agent 抽象：Claude Code、TraeX 同时保留 hooks Probe Channel，并通过结构化 runner 承担主交互；Trae-CN、OpenCode、Gemini CLI 只有在验证独立配置下的等价 structured protocol 后才升级为 `AgentSurface` 主交互协议。
 
 ### 移动体验与通知
 

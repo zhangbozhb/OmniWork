@@ -54,6 +54,7 @@ import {
   sessionKillTerminalPayloadSchema,
   sessionListPayloadSchema,
   sessionRenamePayloadSchema,
+  supportsStructuredAgentSurface,
   terminalFramePayloadSchema,
   terminalInputPayloadSchema,
   terminalSnapshotPayloadSchema,
@@ -156,6 +157,15 @@ describe("default terminal providers", () => {
     assert.equal(terminalProvider.capability, "terminal.shell");
     assert.equal(terminalProvider.defaultCommand, "");
     assert.equal(terminalProvider.creatable, true);
+  });
+
+  it("advertises structured runtimes only for verified providers", () => {
+    assert.equal(supportsStructuredAgentSurface("codex"), true);
+    assert.equal(supportsStructuredAgentSurface("claude"), true);
+    assert.equal(supportsStructuredAgentSurface("traex"), true);
+    assert.equal(supportsStructuredAgentSurface("trae"), false);
+    assert.equal(supportsStructuredAgentSurface("trae-cn"), false);
+    assert.equal(supportsStructuredAgentSurface("gemini"), false);
   });
 });
 

@@ -229,3 +229,46 @@ test("SessionRequestHandler does not start terminal stream for app_server sessio
   assert.deepEqual(subscribers, []);
   assert.deepEqual(startedSessionIds, []);
 });
+
+test("SessionRequestHandler closes the structured runner with the session", async () => {
+  const closedRunnerSessions: string[] = [];
+  const closedSessions: string[] = [];
+  const stoppedFrames: string[] = [];
+  const sessionManager = {
+    async close(sessionId: string): Promise<void> {
+      closedSessions.push(sessionId);
+    },
+    async listWithWorkspaces() {
+      return { sessions: [], workspaces: [] };
+    },
+  } as unknown as SessionManager;
+  const terminalFramePusher = {
+    stop(sessionId: string): void {
+      stoppedFrames.push(sessionId);
+    },
+  } as unknown as TerminalFramePusher;
+  const handler = new SessionRequestHandler({
+    deviceId: "device-1",
+    defaultCwd: "/tmp",
+    terminalProviders: new TerminalProviderRegistry({
+      providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+    }),
+    workspaces: {} as WorkspaceManager,
+    sessionManager,
+    terminalFramePusher,
+    sendToApp(): void {},
+    closeAgentSurfaceSession(sessionId): void {
+      closedRunnerSessions.push(sessionId);
+    },
+    async handleTerminalSnapshot(): Promise<void> {},
+  });
+
+  await handler.handleClose({
+    ...createMessage("session.close", {}),
+    session_id: "sess_structured",
+  });
+
+  assert.deepEqual(stoppedFrames, ["sess_structured"]);
+  assert.deepEqual(closedRunnerSessions, ["sess_structured"]);
+  assert.deepEqual(closedSessions, ["sess_structured"]);
+});

@@ -82,8 +82,7 @@ terminal:
     codex: codex
     claude: claude
     gemini: gemini
-    trae: traecli
-    trae-cn: traecli
+    traex: traecli
 
   # Optional. Omit this list to use the built-in provider presets.
   # The plain terminal provider is added automatically when creatable.

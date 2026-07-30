@@ -123,8 +123,9 @@ export type KnownAgentCapability =
   | "claude.cli"
   | "claudecode.cli"
   | "gemini.cli"
-  | "trae.cli"
-  | "trae_cn.cli";
+  | "traex.cli"
+  | "trae.ide"
+  | "trae_cn.ide";
 export type AgentCapability = KnownAgentCapability | (string & {});
 
 export type AppClientPlatform = "ios" | "android" | "web" | "desktop";
@@ -496,18 +497,10 @@ export const DEFAULT_TERMINAL_PROVIDER_DEFINITIONS: readonly TerminalProviderDef
       creatable: true,
     },
     {
-      kind: "trae",
-      displayName: "Trae",
-      capability: "trae.cli",
-      summary: "Trae CLI coding agent session",
-      defaultCommand: "traecli",
-      creatable: true,
-    },
-    {
-      kind: "trae-cn",
-      displayName: "Trae CN",
-      capability: "trae_cn.cli",
-      summary: "Trae CN CLI coding agent session",
+      kind: "traex",
+      displayName: "TraeX",
+      capability: "traex.cli",
+      summary: "TraeX CLI coding agent session",
       defaultCommand: "traecli",
       creatable: true,
     },
@@ -546,6 +539,14 @@ export function isCreatableTerminalProviderKind(
   providers: readonly TerminalProviderDefinition[] = DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
 ): kind is TerminalProviderKind {
   return Boolean(getTerminalProviderDefinition(kind, providers)?.creatable);
+}
+
+export function supportsStructuredAgentSurface(
+  kind: TerminalProviderKind,
+): boolean {
+  return ["codex", "claude", "claude-code", "claudecode", "traex"].includes(
+    kind,
+  );
 }
 
 export type SessionOrigin = "managed" | "external";
@@ -900,6 +901,7 @@ export type AgentProbeProvider =
   | "codex"
   | "claude-code"
   | "claudecode"
+  | "traex"
   | "trae"
   | "trae-cn"
   | "opencode"

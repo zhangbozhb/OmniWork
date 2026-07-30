@@ -558,6 +558,8 @@ function providerLabel(provider: string): string {
   switch (provider) {
     case "claude-code":
       return "Claude Code";
+    case "traex":
+      return "TraeX";
     case "trae-cn":
       return "Trae CN";
     default:

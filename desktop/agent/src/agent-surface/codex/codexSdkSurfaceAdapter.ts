@@ -33,6 +33,9 @@ interface CodexSdkThreadBinding {
   turnCounter: number;
 }
 
+/**
+ * Reserved Codex fallback. The primary AgentSurface path uses app-server stdio.
+ */
 export class CodexSdkSurfaceAdapter {
   private readonly logger: Logger;
   private readonly getSession: (

@@ -144,8 +144,8 @@ test("enrichProbeEventWithSessions accepts Trae provider aliases", () => {
       fakeSession({
         session_id: "sess-trae",
         primary_surface_id: "surface_sess-trae_terminal",
-        terminal_provider_kind: "trae",
-        terminal_provider_label: "Trae",
+        terminal_provider_kind: "traex",
+        terminal_provider_label: "TraeX",
         workspace_path: "/tmp/trae-project",
         cwd: "/tmp/trae-project",
         surfaces: [
@@ -155,7 +155,7 @@ test("enrichProbeEventWithSessions accepts Trae provider aliases", () => {
             kind: "terminal",
             title: "Trae 1",
             status: "active",
-            provider: "trae",
+            provider: "traex",
           },
         ],
       }),
@@ -164,4 +164,21 @@ test("enrichProbeEventWithSessions accepts Trae provider aliases", () => {
 
   assert.equal(enriched.session_id, "sess-trae");
   assert.equal(enriched.surface_id, "surface_sess-trae_terminal");
+});
+
+test("enrichProbeEventWithSessions does not bind Trae IDE events to TraeX", () => {
+  const event = probeEvent({
+    provider: "trae",
+    workspace_path: "/tmp/trae-project",
+  });
+  const enriched = enrichProbeEventWithSessions(event, [
+    fakeSession({
+      terminal_provider_kind: "traex",
+      workspace_path: "/tmp/trae-project",
+      cwd: "/tmp/trae-project",
+    }),
+  ]);
+
+  assert.equal(enriched.session_id, event.session_id);
+  assert.equal(enriched.surface_id, undefined);
 });

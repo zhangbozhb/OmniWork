@@ -21,8 +21,9 @@ browser access without introducing a second UI stack.
 - Configured Terminal Provider metadata from the connected computer for capability display and session creation, with App-local hide, sort, and default-provider preferences.
 - Shared ConfirmDialog UI for destructive actions across Android, iOS, and Web.
 - Web SPA entry that reuses the React Native screens and disables QR scanning.
-- Codex `app_server` sessions backed by `@openai/codex-sdk`, with basic prompt
-  submission, conversation rendering, and a separate activity summary.
+- Codex, Claude Code, and TraeX structured sessions, with prompt
+  submission, incremental conversation rendering, and a separate activity
+  summary.
 - Local Agent message inbox with read/handled state, bulk deletion, message
   actions, and notification preferences. APNs/FCM push delivery is not yet
   connected.

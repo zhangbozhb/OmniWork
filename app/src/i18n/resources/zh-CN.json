@@ -109,12 +109,12 @@
   "agentSession": {
     "status": "状态",
     "ready": "Agent 会话已就绪",
-    "waitingForEvents": "正在等待连接电脑上的 Codex 事件。",
+    "waitingForEvents": "正在等待连接电脑上的 {{provider}} 事件。",
     "timeline": "时间线",
     "conversation": "对话",
     "activity": "活动",
     "activityCount": "{{count}} 条",
-    "activityOnly": "Codex 正在处理，过程事件已收进活动区；有文本回复后会显示在对话里。",
+    "activityOnly": "Agent 正在处理，过程事件已收进活动区；有文本回复后会显示在对话里。",
     "activityLabels": {
       "command": "命令",
       "files": "文件变更",
@@ -126,9 +126,9 @@
       "completed": "已完成"
     },
     "emptyTitle": "暂无对话消息",
-    "emptyText": "发送 Prompt 后，你的消息和 Codex 的文本回复会显示在这里；命令、代码变更和工具调用会收进活动区。",
+    "emptyText": "发送 Prompt 后，你的消息和 Agent 的文本回复会显示在这里；命令、代码变更和工具调用会收进活动区。",
     "composerTitle": "Prompt 输入",
-    "composerPlaceholder": "让 Codex 继续处理这个会话...",
+    "composerPlaceholder": "让 {{provider}} 继续处理这个会话...",
     "send": "发送",
     "delivered": "已送达"
   },
@@ -391,7 +391,7 @@
       },
       "appServer": {
         "title": "app_server 结构化模式",
-        "summary": "Codex SDK 驱动的结构化对话体验，支持基础消息、进度和结果回吐；审批和 Diff 详情后续接入。"
+        "summary": "通过 Provider 本地 stdio 协议驱动结构化对话，支持增量消息、进度和结果回吐；交互式审批后续接入。"
       }
     },
     "time": {

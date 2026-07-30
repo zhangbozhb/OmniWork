@@ -196,6 +196,7 @@ test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () =
 });
 
 test("defaultTraeHooksPath separates Trae and Trae CN hooks files", () => {
+  assert.match(defaultTraeHooksPath("traex"), /\/\.trae\/hooks\.json$/u);
   assert.match(defaultTraeHooksPath("trae"), /\/\.trae\/hooks\.json$/u);
   assert.match(defaultTraeHooksPath("trae-cn"), /\/\.trae-cn\/hooks\.json$/u);
 });

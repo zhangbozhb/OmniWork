@@ -25,6 +25,7 @@ import type {
 import {
   getCreatableTerminalProviders,
   isCreatableTerminalProviderKind,
+  supportsStructuredAgentSurface,
 } from "@omni-work/protocol-ts";
 import { Button } from "../../ui/components";
 import { spacing } from "../../ui/theme";
@@ -286,7 +287,7 @@ export function WorkbenchScreen({
   useEffect(() => {
     if (
       createRuntimePreference === "app_server" &&
-      createTerminalProviderKind !== "codex"
+      !supportsStructuredAgentSurface(createTerminalProviderKind)
     ) {
       setCreateRuntimePreference("tmux");
     }

@@ -30,6 +30,7 @@ type SessionRequestHandlerOptions = {
     kind: TerminalProviderKind;
     command: string;
   }): Promise<void>;
+  closeAgentSurfaceSession?(sessionId: string): void;
   handleTerminalSnapshot(
     message: MessageEnvelope,
     context?: AgentDispatchContext,
@@ -128,6 +129,7 @@ export class SessionRequestHandler {
     }
 
     this.options.terminalFramePusher.stop(message.session_id);
+    this.options.closeAgentSurfaceSession?.(message.session_id);
     await this.options.sessionManager.close(message.session_id);
     await this.handleList(message, context);
   }
@@ -141,6 +143,7 @@ export class SessionRequestHandler {
     }
 
     this.options.terminalFramePusher.stop(message.session_id);
+    this.options.closeAgentSurfaceSession?.(message.session_id);
     await this.options.sessionManager.killTerminal(message.session_id);
     await this.handleList(message, context);
   }

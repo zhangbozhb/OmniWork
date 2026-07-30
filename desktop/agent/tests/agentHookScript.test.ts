@@ -54,6 +54,33 @@ test("omniwork-hook-record writes Trae records locally", async () => {
   assert.equal(record.delivery, undefined);
 });
 
+test("omniwork-hook-record keeps TraeX distinct from Trae IDE", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-hook-record-traex-"));
+  const script = new URL(
+    "../../../packages/surface-hook-record/bin/omniwork-hook-record.mjs",
+    import.meta.url,
+  );
+
+  await runHookScript(script, {
+    env: {
+      ...process.env,
+      OMNIWORK_AGENT_HOOK_SOURCE: "traex",
+      OMNIWORK_AGENT_HOOK_EVENT: "SessionStart",
+      OMNIWORK_TRAE_RECORDS_DIR: dir,
+    },
+    input: JSON.stringify({ session_id: "sess-traex" }),
+  });
+
+  const files = await readdir(join(dir, "sessions"));
+  const recordFile = files.find((file) => file.endsWith(".jsonl"));
+  assert.ok(recordFile);
+  const record = JSON.parse(
+    (await readFile(join(dir, "sessions", recordFile), "utf8")).trim(),
+  );
+  assert.equal(record.provider, "traex");
+  assert.equal(record.payload.omniwork_hook_source, "traex");
+});
+
 test("omniwork-hook-record extracts model responses from Stop hooks", async () => {
   const dir = await mkdtemp(join(tmpdir(), "omniwork-hook-record-stop-"));
   const script = new URL(

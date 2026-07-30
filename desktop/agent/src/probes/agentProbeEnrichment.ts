@@ -95,14 +95,14 @@ function toTerminalProviderKind(provider: string): string | undefined {
       return "gemini";
     case "opencode":
       return "opencode";
-    case "trae":
     case "traex":
     case "coco":
-      return "trae";
+      return "traex";
+    case "trae":
     case "trae-cn":
     case "trae_cn":
     case "traecn":
-      return "trae-cn";
+      return undefined;
     default:
       return undefined;
   }

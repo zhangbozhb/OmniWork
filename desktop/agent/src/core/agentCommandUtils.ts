@@ -30,26 +30,24 @@ export function isClaudeTerminalProvider(terminalProvider: {
 export function resolveTraeTerminalProvider(terminalProvider: {
   kind: string;
   command: string;
-}): "trae" | "trae-cn" | null {
+}): "traex" | null {
   if (
-    terminalProvider.kind === "trae-cn" ||
-    terminalProvider.kind === "trae_cn"
-  ) {
-    return "trae-cn";
-  }
-  if (
-    terminalProvider.kind === "trae" ||
     terminalProvider.kind === "traex" ||
     terminalProvider.kind === "coco"
   ) {
-    return "trae";
+    return "traex";
   }
   const command = firstShellWord(terminalProvider.command);
-  if (command === "traecli" || command === "trae-agent" || command === "ta") {
-    return "trae";
+  if (
+    command === "traex" ||
+    command === "traecli" ||
+    command === "trae-agent" ||
+    command === "ta"
+  ) {
+    return "traex";
   }
   if (command === "coco") {
-    return "trae";
+    return "traex";
   }
   return null;
 }

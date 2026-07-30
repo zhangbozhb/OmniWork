@@ -116,8 +116,9 @@ test("normalizeTraeHookPayload ignores unsupported or incomplete payloads", () =
 });
 
 test("normalizeTraeProbeProvider canonicalizes local Trae aliases", () => {
-  assert.equal(normalizeTraeProbeProvider("traex"), "trae");
-  assert.equal(normalizeTraeProbeProvider("coco"), "trae");
+  assert.equal(normalizeTraeProbeProvider("traex"), "traex");
+  assert.equal(normalizeTraeProbeProvider("traecli"), "traex");
+  assert.equal(normalizeTraeProbeProvider("coco"), "traex");
   assert.equal(normalizeTraeProbeProvider("trae_cn"), "trae-cn");
   assert.equal(normalizeTraeProbeProvider("codex"), null);
 });

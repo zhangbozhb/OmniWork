@@ -15,7 +15,7 @@
 - 支持手动、二维码和配对链接导入；Web 不扫描二维码。
 - 以 Workspace 组织 Sessions、Git 和 Files，支持受限 UTF-8 文本编辑、写入冲突检测、只读 Git status/diff。
 - 支持配置化 Terminal Provider、tmux 会话创建/重命名/关闭及 xterm 终端交互。
-- 支持 Codex `app_server` 结构化会话的基础对话与活动时间线；审批回答、完整 diff 详情等能力尚未接入。
+- 支持 Codex、Claude Code 和 TraeX 的结构化会话、增量对话与活动时间线；审批回答、进程重启后恢复等能力尚未接入。
 - 支持 Agent 消息收件箱、已读/已处理状态和通知偏好；平台原生 Push gateway 尚未接入。
 - 支持中英文界面、终端字号和 Relay/P2P 连接偏好。
 - Native App 支持手势应用锁与自动锁定；Web 不持久化应用锁配置。
@@ -24,8 +24,9 @@
 
 - 每次启动生成 32 字符临时 key，用于 App-Agent 配对 proof 和 Noise PSK。
 - 支持 YAML 配置、Relay 重连、tmux 会话、Workspace 发现、文件/Git 请求和终端 snapshot/stream。
-- Terminal Provider 默认包含 Codex、Claude、Gemini、Trae 和 Trae CN，也可通过配置添加其他 CLI provider。
-- Codex 可通过 `@openai/codex-sdk` 驱动基础结构化会话。
+- Terminal Provider 默认包含 Codex、Claude、Gemini 和 TraeX，也可通过配置添加其他 CLI provider；`trae`、`trae-cn` 专指 IDE Probe provider。
+- 结构化 AgentSurface 由 Desktop Agent 本地 stdio runner 驱动：Codex / TraeX 使用 app-server JSONL，Claude Code 使用双向 stream-json。
+- 保留 `@openai/codex-sdk` 与原 Codex SDK adapter 作为未来显式兜底；当前不会在 app-server 失败时自动切换，避免隐藏协议故障。
 - Codex、Claude Code、Trae 和 Trae CN 已接入本机 hook Probe；OpenCode、Gemini 的 Probe 仍是扩展方向。
 - Probe 事件可进入本地 SQLite inbox，并向在线 App 发送 E2E `agent.message`；系统 Push 尚未实现。
 

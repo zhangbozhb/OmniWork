@@ -36,7 +36,7 @@ export interface TraeHookPayload {
 }
 
 export function normalizeTraeHookPayload(
-  provider: "trae" | "trae-cn",
+  provider: "traex" | "trae" | "trae-cn",
   payload: TraeHookPayload,
 ): AgentProbeEvent | null {
   const hookName = readHookName(payload);
@@ -55,7 +55,12 @@ export function normalizeTraeHookPayload(
     readString(payload.tool_name) ?? readString(payload.llm_tool_name);
   const workspacePath =
     readString(payload.workspace_path) ?? readString(payload.cwd);
-  const displayName = provider === "trae-cn" ? "Trae CN" : "Trae";
+  const displayName =
+    provider === "traex"
+      ? "TraeX"
+      : provider === "trae-cn"
+        ? "Trae CN"
+        : "Trae";
 
   return {
     id: hookEventId(provider, payload, hookName, sessionId),
@@ -82,11 +87,13 @@ export function normalizeTraeHookPayload(
 
 export function normalizeTraeProbeProvider(
   provider: AgentProbeProvider,
-): "trae" | "trae-cn" | null {
+): "traex" | "trae" | "trae-cn" | null {
   switch (provider) {
-    case "trae":
     case "traex":
+    case "traecli":
     case "coco":
+      return "traex";
+    case "trae":
       return "trae";
     case "trae-cn":
     case "trae_cn":

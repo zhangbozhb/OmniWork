@@ -496,14 +496,11 @@ function readDefaultTerminalProviderCommandOverrides(
       readNonEmptyString(commands.gemini) ??
       env.OMNIWORK_GEMINI_COMMAND ??
       "gemini",
-    trae:
+    traex:
+      readNonEmptyString(commands.traex) ??
       readNonEmptyString(commands.trae) ??
+      env.OMNIWORK_TRAEX_COMMAND ??
       env.OMNIWORK_TRAE_COMMAND ??
-      "traecli",
-    "trae-cn":
-      readNonEmptyString(commands["trae-cn"]) ??
-      env.OMNIWORK_TRAE_CN_COMMAND ??
-      env.OMNIWORK_TRAECN_COMMAND ??
       "traecli",
   };
 }

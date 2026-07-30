@@ -17,7 +17,9 @@ import type {
 } from "../src/tmux-manager/tmuxManager.ts";
 import type { WorkspaceManager } from "../src/workspace/workspaceManager.ts";
 
-function fakeSession(overrides: Partial<TerminalSession> = {}): TerminalSession {
+function fakeSession(
+  overrides: Partial<TerminalSession> = {},
+): TerminalSession {
   const now = new Date().toISOString();
   return {
     session_id: "sess_known",
@@ -176,7 +178,10 @@ function terminalProviders(): TerminalProviderRegistry {
 
   await manager.remove(created.session_id);
   assert.equal(manager.getKnown(created.session_id), undefined);
-  assert.equal(manager.getKnownBySurfaceId(created.primary_surface_id), undefined);
+  assert.equal(
+    manager.getKnownBySurfaceId(created.primary_surface_id),
+    undefined,
+  );
 }
 
 // Codex app_server runtime 创建结构化 Agent surface，不应启动 tmux 会话。
@@ -211,10 +216,49 @@ function terminalProviders(): TerminalProviderRegistry {
   assert.equal(created.runtime?.capabilities.terminal_io, false);
   assert.equal(created.primary_surface_id.endsWith("_agent"), true);
   assert.equal(created.surfaces[0]?.kind, "agent");
-  assert.equal(manager.getKnownBySurfaceId(created.primary_surface_id)?.session_id, created.session_id);
+  assert.equal(
+    manager.getKnownBySurfaceId(created.primary_surface_id)?.session_id,
+    created.session_id,
+  );
 
   const listed = await manager.list();
-  assert.equal(listed.some((session) => session.session_id === created.session_id), true);
+  assert.equal(
+    listed.some((session) => session.session_id === created.session_id),
+    true,
+  );
+}
+
+// Claude Code 与 TraeX 也通过结构化 stdio 协议创建 Agent surface。
+for (const provider of ["claude", "traex"]) {
+  const store = await newStore();
+  let tmuxCreateCalls = 0;
+  const tmux = {
+    async listSessions(): Promise<TmuxSessionInfo[]> {
+      return [];
+    },
+    async createSession(): Promise<{ serverPid: number; sessionUid: string }> {
+      tmuxCreateCalls += 1;
+      return { serverPid: 6262, sessionUid: "$3" };
+    },
+  } as unknown as TmuxManager;
+  const manager = new SessionManager(
+    store,
+    tmux,
+    terminalProviders(),
+    undefined,
+    { cwd: "/tmp", terminalSize: { cols: 80, rows: 24 } },
+  );
+
+  const created = await manager.create({
+    terminal_provider_kind: provider,
+    runtime_preference: "app_server",
+    cwd: "/tmp/project",
+  });
+
+  assert.equal(tmuxCreateCalls, 0);
+  assert.equal(created.runtime?.kind, "app_server");
+  assert.equal(created.surfaces[0]?.kind, "agent");
+  assert.equal(created.surfaces[0]?.provider, provider);
 }
 
 console.log("sessionManager-known-cache tests passed");

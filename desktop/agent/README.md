@@ -32,6 +32,8 @@ omniwork-agent --check --config /path/to/config.yml
 - Persists user-edited session titles through the `session.rename` protocol message.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.
 - Provides workspace file listing/reading/writing for supported UTF-8 text files, plus read-only Git status/diff messages. File type policy is centralized in `src/files/fileTypePolicy.ts`: untracked Git line stats are bounded by file count, file size, and concurrency limits; binary, lock, generated, archive, media, and database-like files are listed without reading them as text.
+- Runs structured AgentSurface sessions over local stdio subprocesses. Codex and Trae use `app-server --listen stdio://`; Claude Code uses `-p --input-format stream-json --output-format stream-json`. The runner accepts repeated prompts and emits incremental provider-neutral surface events without parsing terminal rendering.
+- Retains the Codex SDK adapter and dependency as an explicit future fallback. The current runtime does not automatically switch from app-server to the SDK.
 - Runs a local Agent Probe hook receiver for Codex / Claude Code / Trae / Trae CN events. Codex and Claude Code hooks use `@omni-work/surface-hook-post`; Trae and Trae CN install both `@omni-work/surface-hook-record` for local records and `@omni-work/surface-hook-post` for realtime POST delivery.
 - Server-driven terminal frames: each attached session runs a ~450ms pusher in `src/core/terminalFramePusher.ts` that captures the current PTY snapshot, hashes it with SHA-1, and emits `terminal.frame` only when the hash changes. Terminal input/resize/frame hot paths use `SessionManager`'s lightweight in-memory session cache before falling back to the authoritative `session.list` reconciliation path.
 - Serves the local Agent Admin UI from `static/admin/index.html`; keep UI HTML/CSS/JS there instead of embedding it in `src/core/adminServer.ts`.
@@ -83,8 +85,7 @@ terminal:
     codex: codex
     claude: claude
     gemini: gemini
-    trae: traecli
-    trae-cn: traecli
+    traex: traecli
 ```
 
 Keychain is macOS-only and does not need a user-facing switch. On macOS, the
@@ -95,9 +96,9 @@ uses `~/.omniwork/agent.json`.
 
 `terminal.providers` is the primary way to choose and extend terminal providers.
 When it is unset, the 桌面端 Agent falls back to the default Codex, Claude,
-Gemini, Trae, and Trae CN presets. `terminal.commands` only overrides those
-fallback preset commands. Trae and Trae CN Probe events are kept as separate
-providers: `trae` and `trae-cn`.
+Gemini, and TraeX presets. `terminal.commands` only overrides those fallback
+preset commands. `traex` is the CLI provider (`traex` and `traecli` are command
+aliases); `trae` and `trae-cn` are kept as separate IDE Probe providers.
 
 Example custom provider set:
 

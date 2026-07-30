@@ -52,12 +52,15 @@ path is inside a Git repository; `Files` is scoped to the workspace boundary
 and supports browsing, previewing, and guarded UTF-8 text editing for supported
 file types.
 
-Codex also supports a basic structured `app_server` session path backed by
-`@openai/codex-sdk`. The App renders conversation and activity events and can
-submit prompts; approval responses and full structured diff handling remain
-future work. Codex, Claude Code, Trae, and Trae CN hooks feed the local Agent
-message inbox. App inbox delivery is implemented, while APNs/FCM push delivery
-is not.
+Codex, Claude Code, and TraeX support structured `app_server` sessions.
+The Desktop Agent owns a local stdio subprocess per active session: Codex and
+Trae use their app-server JSONL protocol, while Claude Code uses bidirectional
+stream-json. The App renders incremental conversation and activity events and
+can submit prompts; interactive approval responses and process-restart resume
+remain future work. The existing Codex SDK adapter remains in the Desktop Agent
+as an explicit future fallback, but is not selected automatically. Provider
+hooks also feed the local Agent message inbox.
+App inbox delivery is implemented, while APNs/FCM push delivery is not.
 
 The client includes English and Simplified Chinese UI, connection preferences,
 terminal text sizing, and a Native-only gesture app lock. The Web target does

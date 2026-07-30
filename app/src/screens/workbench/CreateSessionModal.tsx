@@ -15,6 +15,7 @@ import type {
   TerminalProviderDefinition,
   WorkspaceDefinition,
 } from "@omni-work/protocol-ts";
+import { supportsStructuredAgentSurface } from "@omni-work/protocol-ts";
 
 import { Button, Card } from "../../ui/components";
 import { getWorkspaceDisplayName } from "./workbenchModel";
@@ -61,7 +62,9 @@ export function CreateSessionModal({
   onSelectRuntime(runtime: RuntimePreference): void;
   onConfirm(): void;
 }): JSX.Element {
-  const appServerAvailable = createTerminalProviderKind === "codex";
+  const appServerAvailable = supportsStructuredAgentSurface(
+    createTerminalProviderKind,
+  );
   const runtimeOptions: Array<{
     kind: RuntimePreference;
     title: string;

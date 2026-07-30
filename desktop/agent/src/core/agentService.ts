@@ -13,7 +13,7 @@ import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { TerminalBridge } from "../pty-bridge/terminalBridge.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
 import { Logger } from "../telemetry/logger.ts";
-import { CodexSdkSurfaceAdapter } from "../agent-surface/codex/codexSdkSurfaceAdapter.ts";
+import { AgentSurfaceRunner } from "../agent-surface/agentSurfaceRunner.ts";
 import {
   createPairingQrDetails,
   printPairingDetailsWithoutRelay,
@@ -63,7 +63,7 @@ export class AgentService {
   private readonly terminalRequests: TerminalRequestHandler;
   private readonly inbox: AgentInboxHandler;
   private readonly probeRuntime: AgentProbeRuntime;
-  private readonly codexSdkSurfaceAdapter: CodexSdkSurfaceAdapter;
+  private readonly agentSurfaceRunner: AgentSurfaceRunner;
   private readonly adminRuntime: AgentAdminRuntime;
   private readonly dispatcher: AgentMessageDispatcher;
   private readonly relayController: AgentRelayController;
@@ -119,7 +119,7 @@ export class AgentService {
       getKeyRecord: () => this.requireKeyRecord(),
       onSurfaceEvent: (event) => this.broadcastAgentSurfaceEvent(event),
     });
-    this.codexSdkSurfaceAdapter = new CodexSdkSurfaceAdapter({
+    this.agentSurfaceRunner = new AgentSurfaceRunner({
       logger: this.logger,
       getSession: (sessionId) => this.sessionManager.get(sessionId),
       onSurfaceEvent: (event) => this.broadcastAgentSurfaceEvent(event),
@@ -220,6 +220,8 @@ export class AgentService {
         this.security.sendToApp(context, message),
       prepareTerminalProvider: (terminalProvider) =>
         this.probeRuntime.prepareTerminalProvider(terminalProvider),
+      closeAgentSurfaceSession: (sessionId) =>
+        this.agentSurfaceRunner.closeSession(sessionId),
       handleTerminalSnapshot: (message, context) =>
         this.terminalRequests.handleSnapshot(message, context),
     });
@@ -241,7 +243,7 @@ export class AgentService {
       terminalStreamPusher: this.terminalStreamPusher,
       inbox: this.inbox,
       submitAgentPrompt: (payload) =>
-        this.codexSdkSurfaceAdapter.submitPrompt({
+        this.agentSurfaceRunner.submitPrompt({
           sessionId: payload.session_id,
           surfaceId: payload.surface_id,
           prompt: payload.prompt,
@@ -324,6 +326,7 @@ export class AgentService {
     this.relayController.stop();
     this.adminRuntime.close();
     this.probeRuntime.close();
+    this.agentSurfaceRunner.close();
   }
 
   private relayStatus(): AgentRelayRuntimeStatus {

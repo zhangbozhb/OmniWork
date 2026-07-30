@@ -4,12 +4,12 @@
 
 ## 结论摘要
 
-对 Codex、Claude Code、Trae、Trae-CN、OpenCode、Gemini CLI 这类 coding agent，不采用外部 Agent 直接推送到 App 的模型，也不把不同 Agent 的私有事件协议暴露给 App。
+对 Codex、Claude Code、TraeX CLI、Trae / Trae-CN IDE、OpenCode、Gemini CLI 这类 coding agent，不采用外部 Agent 直接推送到 App 的模型，也不把不同 Agent 的私有事件协议暴露给 App。
 
 最终采用「专属 Agent Probe + Hook 感知 + Desktop Agent 内部 Probe Sink + 本机消息过滤 + 多端投递」架构：
 
 ```text
-Codex / Claude Code / Trae / Trae-CN / OpenCode / Gemini CLI
+Codex / Claude Code / TraeX CLI / Trae IDE / Trae-CN IDE / OpenCode / Gemini CLI
         ↓
 专属 Agent Probe + Hook
         ↓
@@ -44,12 +44,13 @@ Android / iOS / Web App
 - 已落地：`packages/surface-hook-post/bin/omniwork-hook-post.mjs`，用于 Codex / Claude Code / Trae / Trae-CN command hook 将 stdin JSON 转交给本机 receiver。
 - 已落地：Codex hooks 自动安装。Desktop Agent 启动生成 session key 后会立即检测并合并写入 `~/.codex/hooks.json`，该步骤发生在 admin server / hook receiver 监听端口之前；启动 Codex runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Codex 会话启动。
 - 已落地：Claude Code hooks 自动安装。Desktop Agent 启动生成 session key 后会检测并合并写入 `~/.claude/settings.json`；启动 Claude runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Claude 会话启动。当前支持 `claude-code` 与 `claudecode` 输入别名，内部统一归一化为 `claude-code` provider。
-- 已落地：Trae / Trae-CN hook payload normalizer 和本机 HTTP ingest provider 解析，支持 `/api/probes/trae/hooks`、`/api/probes/trae-cn/hooks` 以及共享 `/api/probes/hooks?source=...`。根据本机 `~/.trae/traecli.toml`、`~/.trae/traecli.yaml`、`~/.trae/hooks.json` 和 `~/.trae-cn/hooks.json` 调研，当前只接入 hook 事件语义；不把 Trae / Trae-CN 升级为完整 AgentSurface 主交互协议。Trae / Trae-CN hook 会同时安装 `@omni-work/surface-hook-record` 和 `@omni-work/surface-hook-post`：前者只安装到用户全局 `~/.trae/hooks.json` / `~/.trae-cn/hooks.json`，主动把完整 hook payload 记录写入 provider 全局 records 目录，并额外抽取 `conversation.user_input` 与 `conversation.model_response` 便于分析；后者保持 POST 实时链路。安装器会把 Trae-CN 全局 records 目录加入 sandbox allowPaths，避免 hook 写 `~/.trae-cn/omniwork/records` 被拦截。Desktop Agent 启动后会扫描这些记录，按 `import-index.json` 幂等导入为统一 `AgentProbeEvent`。
-- 已落地：Codex app-server event normalizer 和本机 HTTP ingest endpoint（`/api/probes/codex/app-server`），可把 thread / turn / approval / diff / completion 等结构化事件归一化为 `AgentProbeEvent`。当前尚未接入 app-server 进程管理和主动订阅。
+- 已落地：Trae / Trae-CN hook payload normalizer 和本机 HTTP ingest provider 解析，并保留 records 幂等导入链路。TraeX 主交互同时通过 `app-server --listen stdio://` 接入结构化 AgentSurface；Trae-CN 继续使用 hook / terminal 路径。
+- 已落地：Codex app-server event normalizer、本机 HTTP ingest endpoint，以及 AgentSurface runner 的 app-server 进程管理和主动订阅。runner 与 Trae 复用 JSONL RPC 传输，将 thread / turn / item / diff / completion 增量事件转成 `agent.surface.event`。
+- 已落地：Claude Code stream-json AgentSurface runner，以 `-p --input-format stream-json --output-format stream-json` 启动并双向收发 NDJSON；Claude hooks 继续作为 Probe 补充通道。
 - 已落地：tmux Probe 的最小事件路径，tmux target 消失时会产生 `agent.exited` 并进入消息流。
 - 已落地：通知偏好持久化协议、App 设置页开关、服务端通知资格判断和脱敏系统通知 payload 生成。当前仅形成可接入 Push gateway 的候选通知，尚未接入平台原生 Push。
 - 已落地：App 端 `agent.message` 的基础在线呈现、本地消息 Inbox、已读、已处理、未读 badge、消息跳转和 `agent.message.delivered` 送达回执。Native 端使用 `react-native-quick-sqlite` 保存消息；Web 端使用同接口本地 fallback。
-- 尚未落地：Codex app-server 进程管理和主动订阅、完整 PTY 输出解析、平台原生系统 Push。
+- 尚未落地：AgentSurface 交互式审批回答、进程重启后恢复、完整 PTY 输出解析、平台原生系统 Push。
 
 ## 术语定义
 
@@ -587,7 +588,7 @@ Claude Code hooks 与 Codex hooks 走同一个本机 receiver 和同一个 `@omn
 
 Claude Code 官方配置位置包括用户级 `~/.claude/settings.json`、项目级 `.claude/settings.json`、项目本地 `.claude/settings.local.json` 和 managed policy。当前实现只自动合并用户级 `~/.claude/settings.json`，避免修改项目仓库文件。
 
-自动安装的 hook 事件覆盖 Claude Code 官方生命周期主干：`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`PostToolUseFailure`、`PermissionDenied`、`Notification`、`PreCompact`、`PostCompact`、`SubagentStart`、`SubagentStop`、`Stop`、`SessionEnd`。这让 Claude Code 先以 Probe Channel 进入阶段 5 的统一 Agent 事件语义；在没有等价 app-server 的情况下，不创建 `AgentSurface` 主交互协议。
+自动安装的 hook 事件覆盖 Claude Code 官方生命周期主干：`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`PostToolUseFailure`、`PermissionDenied`、`Notification`、`PreCompact`、`PostCompact`、`SubagentStart`、`SubagentStop`、`Stop`、`SessionEnd`。Hook 进入统一 Probe 事件语义；主交互由 Claude Code stream-json AgentSurface runner 承担。
 
 ```json
 {
@@ -742,7 +743,7 @@ Workspace / Git hook
 
 ### Trae / Trae-CN Probe
 
-Trae 与 Trae-CN 当前按 Coding Agent Probe 接入，不按完整 `AgentSurface` 主协议接入。原因是本地 `~/.trae` 与 `~/.trae-cn` 目录只证明了 CLI hook、skills、agents、MCP schema、memory 和 worktree 组织存在，尚未发现可等价 Codex app-server 的 thread / turn / approval / diff 主交互协议。
+Trae 与 Trae-CN 的 hooks 继续按 Coding Agent Probe 接入；当前 TraeX CLI 已提供与 Codex 同形态的 `app-server --listen stdio://`，因此 TraeX 结构化主交互通过共享 AgentSurface runner 接入。Trae-CN 尚未验证独立配置目录下的同等协议，暂不开放结构化 runtime。
 
 本机调研到的组织方式：
 
@@ -756,9 +757,9 @@ Trae 与 Trae-CN 当前按 Coding Agent Probe 接入，不按完整 `AgentSurfac
 当前实现支持：
 
 - dedicated endpoints：`/api/probes/trae/hooks`、`/api/probes/trae-cn/hooks`、`/api/probes/trae_cn/hooks`。
-- shared endpoint source：`trae`、`traex`、`coco` 归一化为 `trae`；`trae-cn`、`trae_cn`、`traecn` 归一化为 `trae-cn`。
+- shared endpoint source：`traex`、`traecli`、`coco` 归一化为 CLI provider `traex`；`trae` 保持 IDE provider；`trae-cn`、`trae_cn`、`traecn` 归一化为 IDE provider `trae-cn`。
 - hook name alias：支持 PascalCase 和 snake_case 两种事件命名。
-- session/surface 自动关联：`trae`、`traex`、`coco` 匹配 `trae` terminal provider；`trae-cn`、`trae_cn`、`traecn` 匹配 `trae-cn` terminal provider。
+- session/surface 自动关联：`traex`、`traecli`、`coco` 匹配 `traex` terminal provider；IDE provider `trae`、`trae-cn` 不与 CLI terminal session 混合关联。
 - 主动记录：`omniwork-hook-record.mjs` 对 Trae / Trae-CN 的非工具 hook 写本地 JSONL record；`omniwork-hook-post.mjs` 独立负责实时 POST。record hook 只安装到用户全局 `~/.trae/hooks.json` / `~/.trae-cn/hooks.json`。记录默认使用 `payload_mode: "full"`，保存完整 hook payload，并抽取 `conversation.session_id`、`conversation.workspace_path`、`conversation.user_input` 和 `conversation.model_response`。安装后的 Trae / Trae-CN record hook 只写 provider 全局目录；安装器会把 Trae-CN 的 `~/.trae-cn/omniwork` 与 `~/.trae-cn/omniwork/records` 加入 sandbox allowPaths。`OMNIWORK_TRAE_RECORDS_DIR` 仅用于显式覆盖记录根目录；`OMNIWORK_TRAE_RECORDS_SCOPE` 不再参与写入点选择。JSONL 写入通过 lock file 串行化，避免多进程并发追加互相打断。
 - 记录目录：Trae 写入 `~/.trae/omniwork/records/sessions/YYYY-MM-DD.jsonl`，Trae-CN 写入 `~/.trae-cn/omniwork/records/sessions/YYYY-MM-DD.jsonl`。导入状态保存在 provider records 根目录的 `import-index.json`，不移动原始 JSONL 文件。
 - 幂等键：hook script 会为 Trae / Trae-CN payload 注入 `omniwork_record_id`，实时 POST 和后续 records 导入都使用该 id 生成 `AgentProbeEvent.id`，避免重复 App 消息。

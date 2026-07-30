@@ -10,7 +10,10 @@ import type {
   TerminalSize,
   WorkspaceDefinition,
 } from "@omni-work/protocol-ts";
-import { isSupportedSessionStatus } from "@omni-work/protocol-ts";
+import {
+  isSupportedSessionStatus,
+  supportsStructuredAgentSurface,
+} from "@omni-work/protocol-ts";
 import { clampTerminalSize } from "@omni-work/terminal-core";
 import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { formatLocalTimestamp } from "../telemetry/logger.ts";
@@ -223,8 +226,13 @@ export class SessionManager {
     if (runtimePreference !== "tmux" && runtimePreference !== "app_server") {
       throw new Error(runtimeUnavailableReason(runtimePreference));
     }
-    if (runtimePreference === "app_server" && terminalProvider.kind !== "codex") {
-      throw new Error("app_server runtime is currently supported for Codex only");
+    if (
+      runtimePreference === "app_server" &&
+      !supportsStructuredAgentSurface(terminalProvider.kind)
+    ) {
+      throw new Error(
+        `app_server runtime is not supported for ${terminalProvider.kind}`,
+      );
     }
     const resolvedWorkspace = this.workspaces
       ? await this.workspaces.resolveCreateCwd(payload)
@@ -277,7 +285,7 @@ export class SessionManager {
       tmux_session_name: tmuxSessionName,
       runtime:
         runtimePreference === "app_server"
-          ? appServerRuntimeDefinition()
+          ? appServerRuntimeDefinition(terminalProvider.displayName)
           : tmuxRuntimeDefinition(),
       workspace_path: resolvedWorkspace.workspace?.path,
       workspace_name: resolvedWorkspace.workspace?.name,
@@ -658,12 +666,14 @@ function tmuxRuntimeDefinition(): SessionRuntimeDefinition {
   };
 }
 
-function appServerRuntimeDefinition(): SessionRuntimeDefinition {
+function appServerRuntimeDefinition(
+  providerLabel: string,
+): SessionRuntimeDefinition {
   return {
     kind: "app_server",
-    label: "Codex SDK",
+    label: `${providerLabel} structured protocol`,
     description:
-      "Structured Codex runtime managed by OmniWork Agent through the Codex SDK for mobile timeline conversations.",
+      `Structured ${providerLabel} runtime managed by OmniWork Agent over a local stdio protocol.`,
     capabilities: {
       terminal_io: false,
       persistent_resume: false,

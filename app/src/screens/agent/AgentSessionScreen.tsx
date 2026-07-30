@@ -83,7 +83,9 @@ export function AgentSessionScreen({
         <Text style={styles.statusText}>
           {latestActivity?.summary ??
             session.runtime?.description ??
-            t("agentSession.waitingForEvents")}
+            t("agentSession.waitingForEvents", {
+              provider: session.terminal_provider_label,
+            })}
         </Text>
       </Card>
 
@@ -133,7 +135,10 @@ export function AgentSessionScreen({
           </Card>
         ) : (
           conversationEvents.map((event) => {
-            const presentation = conversationPresentation(event);
+            const presentation = conversationPresentation(
+              event,
+              session.terminal_provider_label,
+            );
             return (
               <View
                 key={event.event_id}
@@ -146,7 +151,7 @@ export function AgentSessionScreen({
                   style={[
                     styles.messageBubble,
                     presentation.kind === "user" && styles.userMessageBubble,
-                    presentation.kind === "codex" && styles.codexMessageBubble,
+                    presentation.kind === "agent" && styles.codexMessageBubble,
                     presentation.kind === "system" && styles.systemMessageBubble,
                   ]}
                 >
@@ -154,7 +159,7 @@ export function AgentSessionScreen({
                     style={[
                       styles.messageActor,
                       presentation.kind === "user" && styles.userMessageActor,
-                      presentation.kind === "codex" && styles.codexMessageActor,
+                      presentation.kind === "agent" && styles.codexMessageActor,
                     ]}
                   >
                     {presentation.actor}
@@ -192,7 +197,9 @@ export function AgentSessionScreen({
           autoCapitalize="sentences"
           autoCorrect
           multiline
-          placeholder={t("agentSession.composerPlaceholder")}
+          placeholder={t("agentSession.composerPlaceholder", {
+            provider: session.terminal_provider_label,
+          })}
           placeholderTextColor={colors.textDim}
           returnKeyType="default"
           submitBehavior="newline"
@@ -215,14 +222,17 @@ export function AgentSessionScreen({
 function isConversationEvent(event: AgentSurfaceEventPayload): boolean {
   return (
     event.event_type === "agent.user_prompt_submitted" ||
-    isCodexAgentMessage(event) ||
+    isAgentMessage(event) ||
     event.event_type === "agent.failed"
   );
 }
 
-function conversationPresentation(event: AgentSurfaceEventPayload): {
+function conversationPresentation(
+  event: AgentSurfaceEventPayload,
+  providerLabel: string,
+): {
   actor: string;
-  kind: "user" | "codex" | "system";
+  kind: "user" | "agent" | "system";
   text: string;
 } {
   if (event.event_type === "agent.user_prompt_submitted") {
@@ -232,10 +242,10 @@ function conversationPresentation(event: AgentSurfaceEventPayload): {
       text: event.summary ?? "",
     };
   }
-  if (isCodexAgentMessage(event)) {
+  if (isAgentMessage(event)) {
     return {
-      actor: "Codex",
-      kind: "codex",
+      actor: providerLabel,
+      kind: "agent",
       text: event.summary ?? event.title,
     };
   }
@@ -246,14 +256,13 @@ function conversationPresentation(event: AgentSurfaceEventPayload): {
   };
 }
 
-function isCodexAgentMessage(event: AgentSurfaceEventPayload): boolean {
+function isAgentMessage(event: AgentSurfaceEventPayload): boolean {
   const item = event.payload?.item;
   return (
-    event.provider === "codex" &&
-    (event.source?.kind === "app-server" || event.source?.kind === "sdk") &&
-    Boolean(item) &&
-    typeof item === "object" &&
-    (item as { type?: unknown }).type === "agent_message"
+    event.payload?.message_role === "assistant" ||
+    (Boolean(item) &&
+      typeof item === "object" &&
+      (item as { type?: unknown }).type === "agent_message")
   );
 }
 

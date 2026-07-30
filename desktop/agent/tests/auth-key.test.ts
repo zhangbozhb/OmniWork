@@ -451,14 +451,10 @@ assert.equal(
   }).terminalProviders;
   assert.deepEqual(
     providers.map((provider) => provider.kind),
-    ["codex", "claude", "gemini", "trae", "trae-cn", "terminal"],
+    ["codex", "claude", "gemini", "traex", "terminal"],
   );
   assert.equal(
-    providers.find((provider) => provider.kind === "trae")?.defaultCommand,
-    "traecli",
-  );
-  assert.equal(
-    providers.find((provider) => provider.kind === "trae-cn")?.defaultCommand,
+    providers.find((provider) => provider.kind === "traex")?.defaultCommand,
     "traecli",
   );
 }
@@ -466,21 +462,15 @@ assert.equal(
   const providers = loadIsolatedAgentConfig(
     {
       ...configEnv,
-      OMNIWORK_TRAE_COMMAND: "traecli",
-      OMNIWORK_TRAE_CN_COMMAND: "traecli-cn",
+      OMNIWORK_TRAEX_COMMAND: "traex",
     },
     {
-      commandExists: (command) =>
-        command === "traecli" || command === "traecli-cn",
+      commandExists: (command) => command === "traex",
     },
   ).terminalProviders;
   assert.equal(
-    providers.find((provider) => provider.kind === "trae")?.defaultCommand,
-    "traecli",
-  );
-  assert.equal(
-    providers.find((provider) => provider.kind === "trae-cn")?.defaultCommand,
-    "traecli-cn",
+    providers.find((provider) => provider.kind === "traex")?.defaultCommand,
+    "traex",
   );
 }
 assert.deepEqual(

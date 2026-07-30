@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-export type TraeHookInstallProvider = "trae" | "trae-cn";
+export type TraeHookInstallProvider = "traex" | "trae" | "trae-cn";
 
 interface TraeHookCommand {
   type: "command";
@@ -200,6 +200,14 @@ export function defaultTraeHooksPath(
 export async function discoverTraeHookTargets(
   options: Pick<TraeFamilyHookInstallOptions, "homeDir" | "provider"> = {},
 ): Promise<TraeHookInstallTarget[]> {
+  if (options.provider) {
+    return [
+      {
+        provider: options.provider,
+        hooksPath: defaultTraeHooksPath(options.provider, options.homeDir),
+      },
+    ];
+  }
   const candidates: TraeHookInstallTarget[] = [
     {
       provider: "trae",
