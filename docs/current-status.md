@@ -15,6 +15,7 @@
 - 支持手动、二维码和配对链接导入；Web 不扫描二维码。
 - 以 Workspace 组织 Sessions、Git 和 Files，支持受限 UTF-8 文本编辑、写入冲突检测、只读 Git status/diff。
 - 支持配置化 Terminal Provider、tmux 会话创建/重命名/关闭及 xterm 终端交互。
+- 创建 session 时会在 Desktop Agent 上递归创建不存在的指定目录；目录创建或访问失败时整次 session 创建失败。
 - 支持 Codex、Claude Code 和 TraeX 的结构化会话、增量对话与活动时间线；审批回答、进程重启后恢复等能力尚未接入。
 - 支持 Agent 消息收件箱、已读/已处理状态和通知偏好；平台原生 Push gateway 尚未接入。
 - 支持中英文界面、终端字号和 Relay/P2P 连接偏好。

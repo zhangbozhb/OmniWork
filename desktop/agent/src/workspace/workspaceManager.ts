@@ -1,4 +1,4 @@
-import { access, realpath, stat } from "node:fs/promises";
+import { access, mkdir, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import { resolve } from "node:path";
@@ -15,9 +15,7 @@ export class WorkspaceManager {
   private readonly defaultCwd: string;
   private currentWorkspaces: WorkspaceDefinition[] = [];
 
-  constructor(options: {
-    defaultCwd: string;
-  }) {
+  constructor(options: { defaultCwd: string }) {
     this.defaultCwd = options.defaultCwd;
   }
 
@@ -25,7 +23,9 @@ export class WorkspaceManager {
     return this.currentWorkspaces;
   }
 
-  async list(sessions: readonly TerminalSession[] = []): Promise<WorkspaceDefinition[]> {
+  async list(
+    sessions: readonly TerminalSession[] = [],
+  ): Promise<WorkspaceDefinition[]> {
     const byPath = new Map<string, WorkspaceDefinition>();
 
     for (const session of sessions) {
@@ -36,7 +36,10 @@ export class WorkspaceManager {
         session.cwd,
         session.origin === "external" ? "tmux" : "session",
       );
-      byPath.set(workspace.path, mergeWorkspace(byPath.get(workspace.path), workspace));
+      byPath.set(
+        workspace.path,
+        mergeWorkspace(byPath.get(workspace.path), workspace),
+      );
     }
 
     if (byPath.size === 0) {
@@ -48,16 +51,20 @@ export class WorkspaceManager {
     }
 
     this.currentWorkspaces = Array.from(byPath.values()).sort((left, right) =>
-      getWorkspaceDisplayName(left).localeCompare(getWorkspaceDisplayName(right)),
+      getWorkspaceDisplayName(left).localeCompare(
+        getWorkspaceDisplayName(right),
+      ),
     );
     return this.currentWorkspaces;
   }
 
   async get(workspacePath: string): Promise<WorkspaceDefinition | undefined> {
     const normalizedPath = await safeRealpath(workspacePath);
-    return this.currentWorkspaces.find(
-      (workspace) => workspace.path === normalizedPath,
-    ) ?? this.discoverFromPath(normalizedPath, "recent");
+    return (
+      this.currentWorkspaces.find(
+        (workspace) => workspace.path === normalizedPath,
+      ) ?? this.discoverFromPath(normalizedPath, "recent")
+    );
   }
 
   async resolveSessionWorkspace(
@@ -84,9 +91,10 @@ export class WorkspaceManager {
     workspace?: WorkspaceDefinition;
   }> {
     if (payload.workspace_path) {
-      const workspace = await this.get(payload.workspace_path);
+      const workspacePath = await ensureDirectory(payload.workspace_path);
+      const workspace = await this.get(workspacePath);
       if (!workspace) {
-        throw new Error(`Workspace not found: ${payload.workspace_path}`);
+        throw new Error(`Workspace not found: ${workspacePath}`);
       }
       if (workspace.status !== "available") {
         throw new Error(
@@ -96,9 +104,12 @@ export class WorkspaceManager {
       return { cwd: workspace.path, workspace };
     }
 
-    const cwd = payload.cwd ?? this.defaultCwd;
+    const cwd = await ensureDirectory(payload.cwd ?? this.defaultCwd);
+    if (payload.cwd) {
+      return { cwd, workspace: await this.get(cwd) };
+    }
     const workspace = await this.matchWorkspace(cwd, await this.list());
-    return { cwd, workspace };
+    return { cwd, workspace: workspace ?? (await this.get(cwd)) };
   }
 
   private async matchWorkspace(
@@ -122,7 +133,9 @@ export class WorkspaceManager {
     const status = available ? "available" : "missing";
     const gitRoot = available ? await findGitRoot(normalizedPath) : undefined;
     const workspacePath = gitRoot ?? normalizedPath;
-    const realWorkspacePath = available ? await safeRealpath(workspacePath) : workspacePath;
+    const realWorkspacePath = available
+      ? await safeRealpath(workspacePath)
+      : workspacePath;
     return {
       path: realWorkspacePath,
       name: basename(realWorkspacePath),
@@ -142,6 +155,47 @@ async function isReadableDirectory(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function ensureDirectory(path: string): Promise<string> {
+  const normalizedPath = resolve(path);
+  try {
+    const info = await stat(normalizedPath);
+    if (!info.isDirectory()) {
+      throw new Error(
+        `Working directory is not a directory: ${normalizedPath}`,
+      );
+    }
+  } catch (error) {
+    if (!isMissingPathError(error)) {
+      throw error;
+    }
+    try {
+      await mkdir(normalizedPath, { recursive: true });
+    } catch (mkdirError) {
+      throw new Error(
+        `Failed to create working directory ${normalizedPath}: ${errorMessage(mkdirError)}`,
+      );
+    }
+  }
+  await access(
+    normalizedPath,
+    constants.R_OK | constants.W_OK | constants.X_OK,
+  );
+  return safeRealpath(normalizedPath);
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    ((error as NodeJS.ErrnoException).code === "ENOENT" ||
+      (error as NodeJS.ErrnoException).code === "ENOTDIR")
+  );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function findGitRoot(path: string): Promise<string | undefined> {

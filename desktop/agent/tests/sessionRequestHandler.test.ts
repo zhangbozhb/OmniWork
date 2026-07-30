@@ -230,6 +230,43 @@ test("SessionRequestHandler does not start terminal stream for app_server sessio
   assert.deepEqual(startedSessionIds, []);
 });
 
+test("SessionRequestHandler rejects session creation when cwd setup fails", async () => {
+  const sent: MessageEnvelope[] = [];
+  const sessionManager = {
+    async create(): Promise<TerminalSession> {
+      throw new Error("Failed to create working directory /blocked/project");
+    },
+  } as unknown as SessionManager;
+  const handler = new SessionRequestHandler({
+    deviceId: "device-1",
+    defaultCwd: "/tmp",
+    terminalProviders: new TerminalProviderRegistry({
+      providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+    }),
+    workspaces: {} as WorkspaceManager,
+    sessionManager,
+    terminalFramePusher: {} as TerminalFramePusher,
+    sendToApp(_context, message): void {
+      sent.push(message);
+    },
+    async handleTerminalSnapshot(): Promise<void> {},
+  });
+
+  await handler.handleCreate(
+    createMessage("session.create", {
+      cwd: "/blocked/project",
+      terminal_provider_kind: "codex",
+    }),
+  );
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.type, "terminal.error");
+  assert.deepEqual(sent[0]?.payload, {
+    code: "SESSION_CREATE_FAILED",
+    message: "Failed to create working directory /blocked/project",
+  });
+});
+
 test("SessionRequestHandler closes the structured runner with the session", async () => {
   const closedRunnerSessions: string[] = [];
   const closedSessions: string[] = [];

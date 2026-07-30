@@ -31,6 +31,7 @@ omniwork-agent --check --config /path/to/config.yml
 - Manages configured Terminal provider TUI sessions through `tmux` once tmux is installed.
 - Persists user-edited session titles through the `session.rename` protocol message.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.
+- Creates a user-specified session working directory recursively when it does not exist. Directory creation or access failures reject the whole session creation request.
 - Provides workspace file listing/reading/writing for supported UTF-8 text files, plus read-only Git status/diff messages. File type policy is centralized in `src/files/fileTypePolicy.ts`: untracked Git line stats are bounded by file count, file size, and concurrency limits; binary, lock, generated, archive, media, and database-like files are listed without reading them as text.
 - Runs structured AgentSurface sessions over local stdio subprocesses. Codex and Trae use `app-server --listen stdio://`; Claude Code uses `-p --input-format stream-json --output-format stream-json`. The runner accepts repeated prompts and emits incremental provider-neutral surface events without parsing terminal rendering.
 - Retains the Codex SDK adapter and dependency as an explicit future fallback. The current runtime does not automatically switch from app-server to the SDK.
