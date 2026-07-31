@@ -364,6 +364,35 @@ test("omniwork-hook-record installs hooks only to global Trae config", async () 
   );
 });
 
+test("omniwork-hook-record installs TraeX hooks under the CLI config", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "omniwork-hook-record-home-"));
+  const script = new URL(
+    "../../../packages/surface-hook-record/bin/omniwork-hook-record.mjs",
+    import.meta.url,
+  );
+
+  await runHookScript(script, {
+    args: ["install"],
+    env: {
+      ...process.env,
+      HOME: homeDir,
+      OMNIWORK_AGENT_HOOK_SOURCE: "traex",
+    },
+    input: "",
+  });
+
+  const hooks = JSON.parse(
+    await readFile(join(homeDir, ".trae", "cli", "hooks.json"), "utf8"),
+  );
+  assert.match(
+    hooks.hooks.SessionStart[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_SOURCE='traex'/u,
+  );
+  await assert.rejects(
+    readFile(join(homeDir, ".trae", "hooks.json"), "utf8"),
+  );
+});
+
 async function readFirstJsonl(root: string): Promise<{ file: string; line: string }> {
   const files = await readdir(join(root, "sessions"));
   const file = files.find((candidate) => !candidate.endsWith("-raw.jsonl"));

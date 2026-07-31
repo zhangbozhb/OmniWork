@@ -741,16 +741,16 @@ Workspace / Git hook
   - 辅助判断文件修改和 diff 变化
 ```
 
-### Trae / Trae-CN Probe
+### TraeX / Trae / Trae-CN Probe
 
 Trae 与 Trae-CN 的 hooks 继续按 Coding Agent Probe 接入；当前 TraeX CLI 已提供与 Codex 同形态的 `app-server --listen stdio://`，因此 TraeX 结构化主交互通过共享 AgentSurface runner 接入。Trae-CN 尚未验证独立配置目录下的同等协议，暂不开放结构化 runtime。
 
 本机调研到的组织方式：
 
-- `~/.trae/hooks.json` 与 `~/.trae-cn/hooks.json`：均为 `version + hooks` 结构，当前 record hook 仅自动安装 TRAE 官方事件 `SessionStart`、`UserPromptSubmit`、`Stop`；工具调用事件 `PreToolUse`、`PostToolUse` 与通知事件 `Notification` 不进入本地 records。
+- Hook 配置隔离：TraeX/`traecli` 使用 `~/.trae/cli/hooks.json`，Trae IDE 使用 `~/.trae/hooks.json`，Trae-CN IDE 使用 `~/.trae-cn/hooks.json`。三者均为 `version + hooks` 结构，当前 record hook 仅自动安装 `SessionStart`、`UserPromptSubmit`、`Stop`。
 - `~/.trae/traecli.toml` / `~/.trae/traecli.yaml`：只按 TRAE 官方事件 schema 读取；历史调研中的 `PermissionRequest`、`PostToolUseFailure`、`PermissionDenied`、`PreCompact`、`PostCompact`、`SubagentStart`、`SubagentStop`、`SessionEnd` 不再作为 TRAE 事件安装或归一化。
 - `~/.trae/traecli.yaml`：兼容官方事件的 snake_case 名称，例如 `user_prompt_submit`、`post_tool_use`、`notification`、`stop`。
-- `~/.trae-cn/builtin_skills`、`~/.trae-cn/skills`、`~/.trae/skills`：采用 `SKILL.md + references/scripts/assets` 的能力包组织。
+- Skills 复用：TraeX/`traecli` 与 Trae IDE 共同读取 `~/.trae/skills`，OmniWork 不复制或迁移这些 skills；Trae-CN 使用独立的 `~/.trae-cn/builtin_skills`、`~/.trae-cn/skills`。能力包采用 `SKILL.md + references/scripts/assets` 组织。
 - `~/.trae/agents`：采用 markdown frontmatter `name/description` 加角色、输入、输出约束的 agent 定义。
 - `~/.trae-cn/mcps/.../tools/*.json`：按 workspace/session/agent scope 存放 MCP server metadata 与 tool schema。
 
@@ -760,8 +760,8 @@ Trae 与 Trae-CN 的 hooks 继续按 Coding Agent Probe 接入；当前 TraeX CL
 - shared endpoint source：`traex`、`traecli`、`coco` 归一化为 CLI provider `traex`；`trae` 保持 IDE provider；`trae-cn`、`trae_cn`、`traecn` 归一化为 IDE provider `trae-cn`。
 - hook name alias：支持 PascalCase 和 snake_case 两种事件命名。
 - session/surface 自动关联：`traex`、`traecli`、`coco` 匹配 `traex` terminal provider；IDE provider `trae`、`trae-cn` 不与 CLI terminal session 混合关联。
-- 主动记录：`omniwork-hook-record.mjs` 对 Trae / Trae-CN 的非工具 hook 写本地 JSONL record；`omniwork-hook-post.mjs` 独立负责实时 POST。record hook 只安装到用户全局 `~/.trae/hooks.json` / `~/.trae-cn/hooks.json`。记录默认使用 `payload_mode: "full"`，保存完整 hook payload，并抽取 `conversation.session_id`、`conversation.workspace_path`、`conversation.user_input` 和 `conversation.model_response`。安装后的 Trae / Trae-CN record hook 只写 provider 全局目录；安装器会把 Trae-CN 的 `~/.trae-cn/omniwork` 与 `~/.trae-cn/omniwork/records` 加入 sandbox allowPaths。`OMNIWORK_TRAE_RECORDS_DIR` 仅用于显式覆盖记录根目录；`OMNIWORK_TRAE_RECORDS_SCOPE` 不再参与写入点选择。JSONL 写入通过 lock file 串行化，避免多进程并发追加互相打断。
-- 记录目录：Trae 写入 `~/.trae/omniwork/records/sessions/YYYY-MM-DD.jsonl`，Trae-CN 写入 `~/.trae-cn/omniwork/records/sessions/YYYY-MM-DD.jsonl`。导入状态保存在 provider records 根目录的 `import-index.json`，不移动原始 JSONL 文件。
+- 主动记录：`omniwork-hook-record.mjs` 写本地 JSONL record，`omniwork-hook-post.mjs` 独立负责实时 POST。TraeX、Trae、Trae-CN 的 managed hook 分别安装到 `~/.trae/cli/hooks.json`、`~/.trae/hooks.json`、`~/.trae-cn/hooks.json`。记录默认保存完整 payload，并抽取会话、workspace、用户输入和模型响应。JSONL 写入通过 lock file 串行化。
+- 记录目录：TraeX 与 Trae 当前复用 `~/.trae/omniwork/records/sessions/YYYY-MM-DD.jsonl`，通过 record 内的 `provider` 区分；Trae-CN 写入 `~/.trae-cn/omniwork/records/sessions/YYYY-MM-DD.jsonl`。导入状态保存在 records 根目录的 `import-index.json`。
 - 幂等键：hook script 会为 Trae / Trae-CN payload 注入 `omniwork_record_id`，实时 POST 和后续 records 导入都使用该 id 生成 `AgentProbeEvent.id`，避免重复 App 消息。
 
 ### 其他 Coding Agent Probe

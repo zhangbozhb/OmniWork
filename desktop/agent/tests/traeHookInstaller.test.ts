@@ -195,8 +195,8 @@ test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () =
   );
 });
 
-test("defaultTraeHooksPath separates Trae and Trae CN hooks files", () => {
-  assert.match(defaultTraeHooksPath("traex"), /\/\.trae\/hooks\.json$/u);
+test("defaultTraeHooksPath separates TraeX, Trae, and Trae CN hooks files", () => {
+  assert.match(defaultTraeHooksPath("traex"), /\/\.trae\/cli\/hooks\.json$/u);
   assert.match(defaultTraeHooksPath("trae"), /\/\.trae\/hooks\.json$/u);
   assert.match(defaultTraeHooksPath("trae-cn"), /\/\.trae-cn\/hooks\.json$/u);
 });
@@ -205,6 +205,7 @@ test("ensureTraeFamilyHooksInstalled installs every detected Trae hooks file", a
   const dir = await mkdtemp(join(tmpdir(), "omniwork-trae-hooks-"));
   await writeFile(join(dir, ".keep"), "");
   await ensureDir(join(dir, ".trae"));
+  await ensureDir(join(dir, ".trae", "cli"));
   await ensureDir(join(dir, ".trae-cn"));
 
   const results = await ensureTraeFamilyHooksInstalled({
@@ -212,17 +213,25 @@ test("ensureTraeFamilyHooksInstalled installs every detected Trae hooks file", a
     receiverUrl: "http://127.0.0.1:17669/api/probes/hooks",
   });
 
-  assert.equal(results.length, 2);
+  assert.equal(results.length, 3);
   assert.deepEqual(results.map((result) => result.provider).sort(), [
     "trae",
     "trae-cn",
+    "traex",
   ]);
 
+  const traex = JSON.parse(
+    await readFile(join(dir, ".trae", "cli", "hooks.json"), "utf8"),
+  );
   const trae = JSON.parse(
     await readFile(join(dir, ".trae", "hooks.json"), "utf8"),
   );
   const traeCn = JSON.parse(
     await readFile(join(dir, ".trae-cn", "hooks.json"), "utf8"),
+  );
+  assert.match(
+    traex.hooks.SessionStart[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_SOURCE='traex'/u,
   );
   assert.match(
     trae.hooks.SessionStart[0].hooks[0].command,
@@ -258,6 +267,22 @@ test("discoverTraeHookTargets falls back to requested provider when no config di
     {
       provider: "trae-cn",
       hooksPath: join(dir, ".trae-cn", "hooks.json"),
+    },
+  ]);
+});
+
+test("discoverTraeHookTargets isolates TraeX hooks under the CLI directory", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-traex-hooks-"));
+
+  const targets = await discoverTraeHookTargets({
+    homeDir: dir,
+    provider: "traex",
+  });
+
+  assert.deepEqual(targets, [
+    {
+      provider: "traex",
+      hooksPath: join(dir, ".trae", "cli", "hooks.json"),
     },
   ]);
 });

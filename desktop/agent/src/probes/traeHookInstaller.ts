@@ -190,11 +190,13 @@ export function defaultTraeHooksPath(
   provider: TraeHookInstallProvider = "trae",
   homeDirectory = homedir(),
 ): string {
-  return join(
-    homeDirectory,
-    provider === "trae-cn" ? ".trae-cn" : ".trae",
-    "hooks.json",
-  );
+  if (provider === "trae-cn") {
+    return join(homeDirectory, ".trae-cn", "hooks.json");
+  }
+  if (provider === "traex") {
+    return join(homeDirectory, ".trae", "cli", "hooks.json");
+  }
+  return join(homeDirectory, ".trae", "hooks.json");
 }
 
 export async function discoverTraeHookTargets(
@@ -209,6 +211,10 @@ export async function discoverTraeHookTargets(
     ];
   }
   const candidates: TraeHookInstallTarget[] = [
+    {
+      provider: "traex",
+      hooksPath: defaultTraeHooksPath("traex", options.homeDir),
+    },
     {
       provider: "trae",
       hooksPath: defaultTraeHooksPath("trae", options.homeDir),

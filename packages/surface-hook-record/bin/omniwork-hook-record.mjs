@@ -417,6 +417,10 @@ async function discoverTraeHookTargets(provider) {
   }
   const candidates = [
     {
+      provider: "traex",
+      hooksPath: defaultTraeHooksPath("traex"),
+    },
+    {
       provider: "trae",
       hooksPath: defaultTraeHooksPath("trae"),
     },
@@ -660,11 +664,13 @@ function isOmniWorkHookCommand(command) {
 }
 
 function defaultTraeHooksPath(provider) {
-  return join(
-    homedir(),
-    provider === "trae-cn" ? ".trae-cn" : ".trae",
-    "hooks.json",
-  );
+  if (provider === "trae-cn") {
+    return join(homedir(), ".trae-cn", "hooks.json");
+  }
+  if (provider === "traex") {
+    return join(homedir(), ".trae", "cli", "hooks.json");
+  }
+  return join(homedir(), ".trae", "hooks.json");
 }
 
 async function pathExists(path) {
