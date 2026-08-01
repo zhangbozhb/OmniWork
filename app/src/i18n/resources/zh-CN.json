@@ -125,6 +125,14 @@
       "code": "代码变更",
       "completed": "已完成"
     },
+    "interaction": {
+      "approvalRequired": "需要审批",
+      "inputRequired": "需要补充信息",
+      "decline": "拒绝",
+      "allowOnce": "仅本次允许",
+      "submitAnswers": "提交回答",
+      "answerPlaceholder": "输入回答"
+    },
     "emptyTitle": "暂无对话消息",
     "emptyText": "发送 Prompt 后，你的消息和 Agent 的文本回复会显示在这里；命令、代码变更和工具调用会收进活动区。",
     "composerTitle": "Prompt 输入",

@@ -923,6 +923,162 @@ const agentSurfaceEventPayloadSchema = z
   })
   .strict();
 
+export const agentSurfaceSyncPayloadSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("request"),
+      session_id: z.string().min(1),
+      surface_id: z.string().min(1),
+      after_cursor: z.number().int().nonnegative().optional(),
+      limit: z.number().int().positive().max(500).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("response"),
+      request_id: z.string().min(1),
+      session_id: z.string().min(1),
+      surface_id: z.string().min(1),
+      events: z.array(agentSurfaceEventPayloadSchema),
+      next_cursor: z.number().int().nonnegative(),
+      has_more: z.boolean(),
+    })
+    .strict(),
+]);
+
+const agentInteractionDetailsSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("command_approval"),
+      command: z.string().min(1),
+      cwd: z.string().min(1).optional(),
+      reason: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("file_change_approval"),
+      paths: z.array(z.string().min(1)).min(1),
+      reason: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("permissions_approval"),
+      permissions: z.array(z.string().min(1)).min(1),
+      reason: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("user_input"),
+      questions: z
+        .array(
+          z
+            .object({
+              id: z.string().min(1),
+              prompt: z.string().min(1),
+              options: z
+                .array(
+                  z
+                    .object({
+                      value: z.string().min(1),
+                      label: z.string().min(1),
+                      description: z.string().optional(),
+                    })
+                    .strict(),
+                )
+                .optional(),
+              multiple: z.boolean().optional(),
+              allow_text: z.boolean().optional(),
+              required: z.boolean().optional(),
+            })
+            .strict(),
+        )
+        .min(1),
+    })
+    .strict(),
+]);
+
+const agentInteractionRequestPayloadSchema = z
+  .object({
+    kind: z.literal("request"),
+    interaction_id: z.string().min(1),
+    session_id: z.string().min(1),
+    surface_id: z.string().min(1),
+    provider: z.string().min(1),
+    title: z.string().min(1),
+    summary: z.string().optional(),
+    details: agentInteractionDetailsSchema,
+    status: z.literal("pending"),
+    created_at: isoDateTime,
+    expires_at: isoDateTime,
+  })
+  .strict();
+
+const agentInteractionAnswerBaseSchema = {
+  kind: z.literal("answer"),
+  interaction_id: z.string().min(1),
+  session_id: z.string().min(1),
+  surface_id: z.string().min(1),
+  client_action_id: z.string().min(1),
+  created_at: isoDateTime,
+};
+
+export const agentInteractionPayloadSchema = z.union([
+  agentInteractionRequestPayloadSchema,
+  z
+    .object({
+      ...agentInteractionAnswerBaseSchema,
+      decision: z.enum(["allow_once", "decline"]),
+    })
+    .strict(),
+  z
+    .object({
+      ...agentInteractionAnswerBaseSchema,
+      decision: z.literal("submit_answers"),
+      answers: z.record(z.array(z.string())).refine(
+        (answers) => Object.keys(answers).length > 0,
+        "answers must not be empty",
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("result"),
+      interaction_id: z.string().min(1),
+      session_id: z.string().min(1),
+      surface_id: z.string().min(1),
+      status: z.enum(["resolved", "declined", "expired", "cancelled"]),
+      client_action_id: z.string().min(1).optional(),
+      message: z.string().optional(),
+      resolved_at: isoDateTime,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("sync_request"),
+      session_id: z.string().min(1).optional(),
+      surface_id: z.string().min(1).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("sync_response"),
+      request_id: z.string().min(1),
+      interactions: z.array(agentInteractionRequestPayloadSchema),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("error"),
+      interaction_id: z.string().min(1).optional(),
+      code: z.enum(["not_found", "already_resolved", "invalid_answer"]),
+      message: z.string().min(1),
+    })
+    .strict(),
+]);
+
 const agentPromptSubmitPayloadSchema = z
   .object({
     session_id: z.string().min(1),
@@ -1061,6 +1217,8 @@ const payloadSchemaByType = {
   ]),
   "agent.message.delivered": agentMessageDeliveredPayloadSchema,
   "agent.surface.event": agentSurfaceEventPayloadSchema,
+  "agent.surface.sync": agentSurfaceSyncPayloadSchema,
+  "agent.interaction": agentInteractionPayloadSchema,
   "agent.prompt.submit": agentPromptSubmitPayloadSchema,
   "agent.notification.settings.get": z.union([
     emptyPayloadSchema,

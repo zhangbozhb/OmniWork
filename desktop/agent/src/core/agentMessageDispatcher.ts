@@ -1,11 +1,13 @@
 import { createMessageId } from "@omni-work/protocol-ts";
 import type {
+  AgentInteractionPayload,
   AgentMessageAckPayload,
   AgentMessageDeliveredPayload,
   AgentMessageListRequestPayload,
   AgentMessageReadRequestPayload,
   AgentNotificationSettingsPayload,
   AgentPromptSubmitPayload,
+  AgentSurfaceSyncRequestPayload,
   AppConnectionGoodbyePayload,
   AppConnectionHeartbeatPayload,
   AuthVerifyPayload,
@@ -38,6 +40,8 @@ import type { SessionRequestHandler } from "./sessionRequestHandler.ts";
 import type { TerminalStreamPusher } from "./terminalStreamPusher.ts";
 import type { TerminalRequestHandler } from "./terminalRequestHandler.ts";
 import type { AgentInboxHandler } from "./agentInboxHandler.ts";
+import type { AgentInteractionHandler } from "./agentInteractionHandler.ts";
+import type { AgentSurfaceSyncHandler } from "./agentSurfaceSyncHandler.ts";
 import type { AgentAppSecurityGateway } from "./agentAppSecurityGateway.ts";
 import type { AgentTunnelUpgradeHandler } from "./agentTunnelUpgradeHandler.ts";
 import type { AgentDispatchContext } from "./agentRuntimeTypes.ts";
@@ -52,6 +56,8 @@ interface AgentMessageDispatcherOptions {
   terminalRequests: TerminalRequestHandler;
   terminalStreamPusher: TerminalStreamPusher;
   inbox: AgentInboxHandler;
+  interactions: AgentInteractionHandler;
+  surfaceSync: AgentSurfaceSyncHandler;
   submitAgentPrompt?(payload: AgentPromptSubmitPayload): void;
 }
 
@@ -309,6 +315,26 @@ export class AgentMessageDispatcher {
         }
         this.handlePromptSubmit(
           message as MessageEnvelope<AgentPromptSubmitPayload>,
+        );
+        break;
+      case "agent.surface.sync":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        if ((message.payload as { kind?: unknown }).kind === "request") {
+          this.options.surfaceSync.handleSync(
+            message as MessageEnvelope<AgentSurfaceSyncRequestPayload>,
+            dispatchContext,
+          );
+        }
+        break;
+      case "agent.interaction":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.options.interactions.handle(
+          message as MessageEnvelope<AgentInteractionPayload>,
+          dispatchContext,
         );
         break;
       case "agent.notification.settings.get":

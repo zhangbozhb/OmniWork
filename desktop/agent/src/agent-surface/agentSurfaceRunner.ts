@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type {
+  AgentInteractionAnswerPayload,
+  AgentInteractionDetails,
+  AgentInteractionRequestPayload,
   AgentProbeEventType,
   AgentSurfaceEventPayload,
   TerminalSession,
@@ -17,6 +20,9 @@ interface AgentSurfaceRunnerOptions {
   logger: Logger;
   getSession(sessionId: string): Promise<TerminalSession | undefined>;
   onSurfaceEvent(event: AgentSurfaceEventPayload): void;
+  requestInteraction(
+    request: AgentInteractionRequestPayload,
+  ): Promise<AgentInteractionAnswerPayload>;
 }
 
 export interface AgentSurfacePromptInput {
@@ -145,6 +151,7 @@ export class AgentSurfaceRunner {
       surfaceId: input.surfaceId,
       logger: this.options.logger,
       onSurfaceEvent: this.options.onSurfaceEvent,
+      requestInteraction: this.options.requestInteraction,
     };
     const protocolSession = isClaudeProvider(session.terminal_provider_kind)
       ? new ClaudeStreamJsonSession(common)
@@ -186,6 +193,9 @@ interface ProtocolSessionOptions {
   surfaceId: string;
   logger: Logger;
   onSurfaceEvent(event: AgentSurfaceEventPayload): void;
+  requestInteraction(
+    request: AgentInteractionRequestPayload,
+  ): Promise<AgentInteractionAnswerPayload>;
 }
 
 class AppServerSession implements ProtocolSession {
@@ -265,7 +275,7 @@ class AppServerSession implements ProtocolSession {
     this.process.notify("initialized", {});
     const result = await this.process.request("thread/start", {
       cwd: this.options.session.cwd,
-      approvalPolicy: "never",
+      approvalPolicy: "on-request",
       sandbox: "workspace-write",
       serviceName: "omniwork",
     });
@@ -317,27 +327,35 @@ class AppServerSession implements ProtocolSession {
     });
     this.options.onSurfaceEvent(event);
 
-    let result: JsonObject;
-    switch (method) {
-      case "item/commandExecution/requestApproval":
-      case "item/fileChange/requestApproval":
-        result = { decision: "decline" };
-        break;
-      case "item/permissions/requestApproval":
-        result = { permissions: [] };
-        break;
-      case "item/tool/requestUserInput":
-      case "tool/requestUserInput":
-        result = { answers: {} };
-        break;
-      default:
+    const details = appServerInteractionDetails(method, params);
+    if (!details) {
+      this.process.send({
+        id: message.id,
+        error: { code: -32601, message: `Unsupported request: ${method}` },
+      });
+      return;
+    }
+    void this.options
+      .requestInteraction(
+        createInteractionRequest(this.options, this.provider, details),
+      )
+      .then((answer) => {
         this.process.send({
           id: message.id,
-          error: { code: -32601, message: `Unsupported request: ${method}` },
+          result: appServerInteractionResult(method, params, answer),
         });
-        return;
-    }
-    this.process.send({ id: message.id, result });
+      })
+      .catch((error) => {
+        this.options.logger.warn("agent interaction was not answered", {
+          session_id: this.options.session.session_id,
+          method,
+          error: String(error),
+        });
+        this.process.send({
+          id: message.id,
+          result: declinedAppServerInteractionResult(method),
+        });
+      });
   }
 
   private handleExit(error: Error): void {
@@ -387,7 +405,7 @@ class ClaudeStreamJsonSession implements ProtocolSession {
         "--verbose",
         "--include-partial-messages",
         "--permission-mode",
-        "acceptEdits",
+        "default",
       ],
       cwd: options.session.cwd,
       logger: options.logger,
@@ -497,16 +515,49 @@ class ClaudeStreamJsonSession implements ProtocolSession {
         params: request,
       }),
     );
+    const details = claudeInteractionDetails(request);
+    void this.options
+      .requestInteraction(
+        createInteractionRequest(
+          this.options,
+          "claude-code",
+          details,
+        ),
+      )
+      .then((answer) => {
+        this.sendControlResponse(
+          requestId,
+          answer.decision === "allow_once"
+            ? {
+                behavior: "allow",
+                updatedInput: isRecord(request.input)
+                  ? request.input
+                  : undefined,
+              }
+            : {
+                behavior: "deny",
+                message: "Declined from OmniWork",
+              },
+        );
+      })
+      .catch(() => {
+        this.sendControlResponse(requestId, {
+          behavior: "deny",
+          message: "The OmniWork approval request expired",
+        });
+      });
+  }
+
+  private sendControlResponse(
+    requestId: unknown,
+    response: JsonObject,
+  ): void {
     this.process.send({
       type: "control_response",
       response: {
         subtype: "success",
         request_id: requestId,
-        response: {
-          behavior: "deny",
-          message:
-            "Interactive approval is not supported by this OmniWork version",
-        },
+        response,
       },
     });
   }
@@ -921,6 +972,276 @@ function itemSummary(item: JsonObject): string | undefined {
       .join(", ");
   }
   return undefined;
+}
+
+function createInteractionRequest(
+  options: ProtocolSessionOptions,
+  provider: string,
+  details: AgentInteractionDetails,
+): AgentInteractionRequestPayload {
+  const createdAt = new Date();
+  return {
+    kind: "request",
+    interaction_id: `interaction_${randomUUID()}`,
+    session_id: options.session.session_id,
+    surface_id: options.surfaceId,
+    provider,
+    title: interactionTitle(details),
+    details,
+    status: "pending",
+    created_at: createdAt.toISOString(),
+    expires_at: new Date(createdAt.getTime() + 5 * 60_000).toISOString(),
+  };
+}
+
+function interactionTitle(details: AgentInteractionDetails): string {
+  switch (details.type) {
+    case "command_approval":
+      return "Allow this command?";
+    case "file_change_approval":
+      return "Allow these file changes?";
+    case "permissions_approval":
+      return "Allow these permissions?";
+    case "user_input":
+      return "The Agent needs more information";
+  }
+}
+
+export function appServerInteractionDetails(
+  method: string,
+  params: JsonObject,
+): AgentInteractionDetails | null {
+  const item = isRecord(params.item) ? params.item : {};
+  switch (method) {
+    case "item/commandExecution/requestApproval": {
+      const command =
+        stringValue(params.command) ??
+        stringValue(item.command) ??
+        stringArrayValue(params.command)?.join(" ") ??
+        "Unknown command";
+      return {
+        type: "command_approval",
+        command,
+        cwd: stringValue(params.cwd),
+        reason: stringValue(params.reason),
+      };
+    }
+    case "item/fileChange/requestApproval": {
+      const paths = collectPaths(params);
+      return {
+        type: "file_change_approval",
+        paths: paths.length > 0 ? paths : ["Workspace files"],
+        reason: stringValue(params.reason),
+      };
+    }
+    case "item/permissions/requestApproval": {
+      const permissions = summarizePermissionRequest(params.permissions);
+      return {
+        type: "permissions_approval",
+        permissions:
+          permissions.length > 0 ? permissions : ["Requested permissions"],
+        reason: stringValue(params.reason),
+      };
+    }
+    case "item/tool/requestUserInput":
+    case "tool/requestUserInput":
+      return {
+        type: "user_input",
+        questions: normalizeInteractionQuestions(params.questions),
+      };
+    default:
+      return null;
+  }
+}
+
+export function appServerInteractionResult(
+  method: string,
+  params: JsonObject,
+  answer: AgentInteractionAnswerPayload,
+): JsonObject {
+  if (answer.decision === "decline") {
+    return declinedAppServerInteractionResult(method);
+  }
+  switch (method) {
+    case "item/permissions/requestApproval":
+      return {
+        permissions: grantedPermissions(params.permissions),
+        scope: "turn",
+      };
+    case "item/tool/requestUserInput":
+    case "tool/requestUserInput":
+      return {
+        answers: Object.fromEntries(
+          Object.entries(answer.answers ?? {}).map(([id, values]) => [
+            id,
+            { answers: values },
+          ]),
+        ),
+      };
+    default:
+      return { decision: "accept" };
+  }
+}
+
+function declinedAppServerInteractionResult(method: string): JsonObject {
+  switch (method) {
+    case "item/permissions/requestApproval":
+      return { permissions: {}, scope: "turn" };
+    case "item/tool/requestUserInput":
+    case "tool/requestUserInput":
+      return { answers: {} };
+    default:
+      return { decision: "decline" };
+  }
+}
+
+function claudeInteractionDetails(
+  request: JsonObject,
+): AgentInteractionDetails {
+  const toolName = stringValue(request.tool_name) ?? "Claude Code tool";
+  const input = isRecord(request.input) ? request.input : {};
+  if (toolName === "Bash") {
+    return {
+      type: "command_approval",
+      command: stringValue(input.command) ?? "Unknown command",
+      cwd: stringValue(input.cwd),
+      reason: stringValue(request.decision_reason),
+    };
+  }
+  if (["Edit", "Write", "NotebookEdit"].includes(toolName)) {
+    const path =
+      stringValue(input.file_path) ??
+      stringValue(input.notebook_path) ??
+      "Workspace file";
+    return {
+      type: "file_change_approval",
+      paths: [path],
+      reason: stringValue(request.decision_reason),
+    };
+  }
+  return {
+    type: "permissions_approval",
+    permissions: [toolName],
+    reason: stringValue(request.decision_reason),
+  };
+}
+
+function normalizeInteractionQuestions(
+  value: unknown,
+): Extract<AgentInteractionDetails, { type: "user_input" }>["questions"] {
+  const questions = Array.isArray(value) ? value.filter(isRecord) : [];
+  if (questions.length === 0) {
+    return [
+      {
+        id: "input",
+        prompt: "What should the Agent do?",
+        allow_text: true,
+        required: true,
+      },
+    ];
+  }
+  return questions.map((question, index) => {
+    const options = Array.isArray(question.options)
+      ? question.options.flatMap((option) => {
+          if (typeof option === "string") {
+            return [{ value: option, label: option }];
+          }
+          if (!isRecord(option)) {
+            return [];
+          }
+          const label =
+            stringValue(option.label) ?? stringValue(option.value);
+          if (!label) {
+            return [];
+          }
+          return [
+            {
+              value: stringValue(option.value) ?? label,
+              label,
+              description: stringValue(option.description),
+            },
+          ];
+        })
+      : undefined;
+    return {
+      id:
+        stringValue(question.id) ??
+        stringValue(question.header) ??
+        `question_${index + 1}`,
+      prompt:
+        stringValue(question.question) ??
+        stringValue(question.prompt) ??
+        "What should the Agent do?",
+      options,
+      multiple: question.multiple === true,
+      allow_text:
+        question.isOther === true ||
+        question.allow_text === true ||
+        !options,
+      required: question.required !== false,
+    };
+  });
+}
+
+function collectPaths(params: JsonObject): string[] {
+  const direct = [
+    stringValue(params.path),
+    stringValue(params.file_path),
+    stringValue(params.grantRoot),
+  ].filter((path): path is string => Boolean(path));
+  const changes = Array.isArray(params.changes)
+    ? params.changes
+        .filter(isRecord)
+        .map((change) => stringValue(change.path))
+        .filter((path): path is string => Boolean(path))
+    : [];
+  return [...new Set([...direct, ...changes])];
+}
+
+function summarizePermissionRequest(value: unknown): string[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+  const labels: string[] = [];
+  const network = isRecord(value.network) ? value.network : null;
+  if (network?.enabled === true) {
+    labels.push("Network access");
+  }
+  const fileSystem = isRecord(value.fileSystem) ? value.fileSystem : null;
+  for (const path of stringArrayValue(fileSystem?.read) ?? []) {
+    labels.push(`Read: ${path}`);
+  }
+  for (const path of stringArrayValue(fileSystem?.write) ?? []) {
+    labels.push(`Write: ${path}`);
+  }
+  if (Array.isArray(fileSystem?.entries)) {
+    labels.push(`${fileSystem.entries.length} filesystem rules`);
+  }
+  return labels;
+}
+
+function grantedPermissions(value: unknown): JsonObject {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const granted: JsonObject = {};
+  if (isRecord(value.network)) {
+    granted.network = value.network;
+  }
+  if (isRecord(value.fileSystem)) {
+    granted.fileSystem = value.fileSystem;
+  }
+  return granted;
+}
+
+function stringArrayValue(value: unknown): string[] | undefined {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.filter((item): item is string => typeof item === "string");
 }
 
 function isAppServerProvider(provider: string): boolean {

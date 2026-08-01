@@ -79,6 +79,8 @@ export const AGENT_MESSAGE_TYPES = [
   "agent.message.ack",
   "agent.message.delivered",
   "agent.surface.event",
+  "agent.surface.sync",
+  "agent.interaction",
   "agent.prompt.submit",
   "agent.notification.settings.get",
   "agent.notification.settings.set",

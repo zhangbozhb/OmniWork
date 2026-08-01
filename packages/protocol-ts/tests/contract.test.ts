@@ -358,6 +358,8 @@ describe("e2e business message helpers", () => {
     assert.equal(isE2EBusinessMessage("tunnel.upgrade.offer"), true);
     assert.equal(isE2EBusinessMessage("agent.message"), true);
     assert.equal(isE2EBusinessMessage("agent.message.list"), true);
+    assert.equal(isE2EBusinessMessage("agent.surface.sync"), true);
+    assert.equal(isE2EBusinessMessage("agent.interaction"), true);
     assert.equal(isE2EBusinessMessage("agent.notification.settings.set"), true);
     assert.equal(isE2EBusinessMessage("auth.ok"), false);
     assert.equal(isE2EBusinessMessage("e2e.message"), false);
@@ -435,6 +437,89 @@ describe("agent message payload schemas", () => {
           created_at: new Date().toISOString(),
         }),
       ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.surface.sync", {
+          kind: "request",
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          after_cursor: 12,
+          limit: 100,
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.surface.sync", {
+          kind: "response",
+          request_id: "request_1",
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          events: [],
+          next_cursor: 12,
+          has_more: false,
+        }),
+      ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("agent.surface.sync", {
+          kind: "request",
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          after_cursor: -1,
+        }),
+      ),
+      null,
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.interaction", {
+          kind: "request",
+          interaction_id: "interaction_1",
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          provider: "codex",
+          title: "Command approval required",
+          details: {
+            type: "command_approval",
+            command: "pnpm test",
+            cwd: "/tmp/project",
+          },
+          status: "pending",
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.interaction", {
+          kind: "answer",
+          interaction_id: "interaction_1",
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          client_action_id: "action_1",
+          decision: "allow_once",
+          created_at: new Date().toISOString(),
+        }),
+      ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("agent.interaction", {
+          kind: "answer",
+          interaction_id: "interaction_1",
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          client_action_id: "action_2",
+          decision: "submit_answers",
+          answers: {},
+          created_at: new Date().toISOString(),
+        }),
+      ),
+      null,
     );
     assert.ok(
       parseMessageEnvelope(

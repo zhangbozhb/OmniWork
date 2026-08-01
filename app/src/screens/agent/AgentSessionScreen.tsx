@@ -13,6 +13,8 @@ import {
 import { useTranslation } from "react-i18next";
 
 import type {
+  AgentInteractionAnswerPayload,
+  AgentInteractionRequestPayload,
   AgentSurfaceEventPayload,
   TerminalSession,
 } from "@omni-work/protocol-ts";
@@ -23,13 +25,21 @@ import { colors, radii, spacing, typography } from "../../ui/theme";
 export function AgentSessionScreen({
   session,
   events,
+  interactions,
   onBack,
   onSubmitPrompt,
+  onAnswerInteraction,
 }: {
   session: TerminalSession;
   events: readonly AgentSurfaceEventPayload[];
+  interactions: readonly AgentInteractionRequestPayload[];
   onBack(): void;
   onSubmitPrompt(prompt: string): void;
+  onAnswerInteraction(
+    interaction: AgentInteractionRequestPayload,
+    decision: AgentInteractionAnswerPayload["decision"],
+    answers?: Record<string, string[]>,
+  ): void;
 }): JSX.Element {
   const { t } = useTranslation();
   const [draft, setDraft] = useState("");
@@ -88,6 +98,14 @@ export function AgentSessionScreen({
             })}
         </Text>
       </Card>
+
+      {interactions.map((interaction) => (
+        <InteractionCard
+          key={interaction.interaction_id}
+          interaction={interaction}
+          onAnswer={onAnswerInteraction}
+        />
+      ))}
 
       {activityEvents.length > 0 ? (
         <Card style={styles.activityCard}>
@@ -217,6 +235,182 @@ export function AgentSessionScreen({
       </Card>
     </KeyboardAvoidingView>
   );
+}
+
+function InteractionCard({
+  interaction,
+  onAnswer,
+}: {
+  interaction: AgentInteractionRequestPayload;
+  onAnswer(
+    interaction: AgentInteractionRequestPayload,
+    decision: AgentInteractionAnswerPayload["decision"],
+    answers?: Record<string, string[]>,
+  ): void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const [answers, setAnswers] = useState<Record<string, string[]>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const details = interaction.details;
+  const isQuestion = details.type === "user_input";
+  const canSubmitAnswers =
+    isQuestion &&
+    details.questions.every(
+      (question) =>
+        !question.required || (answers[question.id]?.length ?? 0) > 0,
+    );
+
+  function selectOption(
+    question: Extract<
+      typeof details,
+      { type: "user_input" }
+    >["questions"][number],
+    value: string,
+  ): void {
+    setAnswers((current) => {
+      const selected = current[question.id] ?? [];
+      const next = question.multiple
+        ? selected.includes(value)
+          ? selected.filter((item) => item !== value)
+          : [...selected, value]
+        : [value];
+      return { ...current, [question.id]: next };
+    });
+  }
+
+  function submit(
+    decision: AgentInteractionAnswerPayload["decision"],
+    submittedAnswers?: Record<string, string[]>,
+  ): void {
+    if (submitting) {
+      return;
+    }
+    setSubmitting(true);
+    onAnswer(interaction, decision, submittedAnswers);
+  }
+
+  return (
+    <Card style={styles.interactionCard}>
+      <Text style={styles.interactionEyebrow}>
+        {isQuestion
+          ? t("agentSession.interaction.inputRequired")
+          : t("agentSession.interaction.approvalRequired")}
+      </Text>
+      <Text style={styles.interactionTitle}>{interaction.title}</Text>
+      {interaction.summary ? (
+        <Text style={styles.interactionSummary}>{interaction.summary}</Text>
+      ) : null}
+      <InteractionDetails details={details} />
+      {isQuestion
+        ? details.questions.map((question) => (
+            <View key={question.id} style={styles.questionBlock}>
+              <Text style={styles.questionPrompt}>
+                {question.prompt}
+                {question.required ? " *" : ""}
+              </Text>
+              {question.options ? (
+                <View style={styles.optionRow}>
+                  {question.options.map((option) => {
+                    const selected = (
+                      answers[question.id] ?? []
+                    ).includes(option.value);
+                    return (
+                      <Button
+                        key={option.value}
+                        style={styles.optionButton}
+                        tone={selected ? "primary" : "secondary"}
+                        variant={selected ? "solid" : "outline"}
+                        onPress={() => selectOption(question, option.value)}
+                      >
+                        {option.label}
+                      </Button>
+                    );
+                  })}
+                </View>
+              ) : null}
+              {question.allow_text || !question.options ? (
+                <TextInput
+                  value={answers[question.id]?.[0] ?? ""}
+                  onChangeText={(value) =>
+                    setAnswers((current) => ({
+                      ...current,
+                      [question.id]: value ? [value] : [],
+                    }))
+                  }
+                  placeholder={t("agentSession.interaction.answerPlaceholder")}
+                  placeholderTextColor={colors.textDim}
+                  style={styles.answerInput}
+                />
+              ) : null}
+            </View>
+          ))
+        : null}
+      <View style={styles.interactionActions}>
+        <Button
+          disabled={submitting}
+          tone="danger"
+          onPress={() => submit("decline")}
+        >
+          {t("agentSession.interaction.decline")}
+        </Button>
+        <Button
+          disabled={submitting || (isQuestion && !canSubmitAnswers)}
+          tone="primary"
+          variant="solid"
+          onPress={() =>
+            submit(
+              isQuestion ? "submit_answers" : "allow_once",
+              isQuestion ? answers : undefined,
+            )
+          }
+        >
+          {isQuestion
+            ? t("agentSession.interaction.submitAnswers")
+            : t("agentSession.interaction.allowOnce")}
+        </Button>
+      </View>
+    </Card>
+  );
+}
+
+function InteractionDetails({
+  details,
+}: {
+  details: AgentInteractionRequestPayload["details"];
+}): JSX.Element | null {
+  switch (details.type) {
+    case "command_approval":
+      return (
+        <View style={styles.interactionCodeBlock}>
+          <Text selectable style={styles.interactionCode}>
+            {details.command}
+          </Text>
+          {details.cwd ? (
+            <Text selectable style={styles.interactionPath}>
+              {details.cwd}
+            </Text>
+          ) : null}
+        </View>
+      );
+    case "file_change_approval":
+      return (
+        <View style={styles.interactionCodeBlock}>
+          {details.paths.map((path) => (
+            <Text key={path} selectable style={styles.interactionPath}>
+              {path}
+            </Text>
+          ))}
+        </View>
+      );
+    case "permissions_approval":
+      return (
+        <Text style={styles.interactionSummary}>
+          {details.permissions.join(", ")}
+        </Text>
+      );
+    case "user_input":
+      return null;
+  }
 }
 
 function isConversationEvent(event: AgentSurfaceEventPayload): boolean {
@@ -355,6 +549,76 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
+  },
+  interactionCard: {
+    gap: spacing.sm,
+    borderColor: colors.warning,
+    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.warningSoft,
+  },
+  interactionEyebrow: {
+    color: colors.warning,
+    ...typography.eyebrow,
+  },
+  interactionTitle: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  interactionSummary: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  interactionCodeBlock: {
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    backgroundColor: colors.background,
+  },
+  interactionCode: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontFamily: Platform.select({
+      ios: "Menlo",
+      android: "monospace",
+      default: "monospace",
+    }),
+  },
+  interactionPath: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  interactionActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
+  questionBlock: {
+    gap: spacing.sm,
+  },
+  questionPrompt: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  optionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  optionButton: {
+    minHeight: 36,
+  },
+  answerInput: {
+    minHeight: 44,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background,
   },
   sectionHeader: {
     flexDirection: "row",

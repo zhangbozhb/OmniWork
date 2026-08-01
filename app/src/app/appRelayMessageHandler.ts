@@ -10,7 +10,10 @@ import {
   type AppMessageHandlers,
 } from "./appMessageDispatcher";
 import type { PairingConfig } from "../features/auth/types";
-import { getAgentNotificationSettingsRequest } from "../features/agent/agentMessages";
+import {
+  agentSurfaceSyncRequest,
+  getAgentNotificationSettingsRequest,
+} from "../features/agent/agentMessages";
 import { listSessionsRequest } from "../features/sessions/sessionMessages";
 
 type Confirm = (options: {
@@ -59,6 +62,12 @@ type AppRelayMessageHandlerContext = {
   ): void;
   applyAgentSurfaceEvent(
     payload: Parameters<AppMessageHandlers["onAgentSurfaceEvent"]>[0],
+  ): void;
+  applyAgentSurfaceSync(
+    payload: Parameters<AppMessageHandlers["onAgentSurfaceSync"]>[0],
+  ): void;
+  applyAgentInteraction(
+    payload: Parameters<AppMessageHandlers["onAgentInteraction"]>[0],
   ): void;
   handleAgentNotificationSettings(
     payload: Parameters<AppMessageHandlers["onAgentNotificationSettings"]>[0],
@@ -162,6 +171,22 @@ export function handleAppRelayMessage(
     onAgentSurfaceEvent(payload) {
       context.applyAgentSurfaceEvent(payload);
     },
+    onAgentSurfaceSync(payload) {
+      context.applyAgentSurfaceSync(payload);
+      if (payload.has_more) {
+        relay.send(
+          agentSurfaceSyncRequest(
+            activePairing.deviceId,
+            payload.session_id,
+            payload.surface_id,
+            payload.next_cursor,
+          ),
+        );
+      }
+    },
+      onAgentInteraction(payload) {
+        context.applyAgentInteraction(payload);
+      },
     onAgentNotificationSettings(payload) {
       context.handleAgentNotificationSettings(payload);
     },

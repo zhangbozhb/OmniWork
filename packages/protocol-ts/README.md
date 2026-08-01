@@ -26,5 +26,9 @@ console.log(PROTOCOL_VERSION, parsed);
 
 This package is ESM-only and requires Node.js 20.19 or newer when used in Node.
 
+Structured Agent sessions use `agent.surface.event` plus cursor-based
+`agent.surface.sync` for timeline recovery. Approval and user-input workflows
+use the strict `agent.interaction` request, answer, result, and sync payloads.
+
 Source and issue tracking are available in the
 [OmniWork repository](https://github.com/zhangbozhb/OmniWork).

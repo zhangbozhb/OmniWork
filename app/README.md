@@ -23,7 +23,11 @@ browser access without introducing a second UI stack.
 - Web SPA entry that reuses the React Native screens and disables QR scanning.
 - Codex, Claude Code, and TraeX structured sessions, with prompt
   submission, incremental conversation rendering, and a separate activity
-  summary.
+  summary. Structured Surface events are synchronized from the Desktop Agent
+  with a cursor after session discovery, so reconnecting clients can restore
+  persisted timeline events. Pending command, file, permission, and user-input
+  interactions are restored separately and can be answered from the Agent
+  session screen.
 - Local Agent message inbox with read/handled state, bulk deletion, message
   actions, and notification preferences. APNs/FCM push delivery is not yet
   connected.

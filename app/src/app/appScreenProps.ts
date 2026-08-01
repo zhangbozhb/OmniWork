@@ -124,7 +124,12 @@ type BuildAppRouterPropsOptions = {
     string,
     AgentSessionScreenProps["events"]
   >;
+  pendingAgentInteractionsBySurfaceId: Record<
+    string,
+    AgentSessionScreenProps["interactions"]
+  >;
   handleAgentPromptSubmit: AgentSessionScreenProps["onSubmitPrompt"];
+  handleAgentInteractionAnswer: AgentSessionScreenProps["onAnswerInteraction"];
   selectedFrame: TerminalScreenProps["frame"];
   selectedSessionCapabilities: SessionCapabilities | null | undefined;
   terminalStreamChunk: TerminalScreenProps["streamChunk"] | null;
@@ -297,8 +302,13 @@ export function buildAppRouterProps(
               o.agentSurfaceEventsBySurfaceId[
                 selectedSession.primary_surface_id
               ] ?? [],
+            interactions:
+              o.pendingAgentInteractionsBySurfaceId[
+                selectedSession.primary_surface_id
+              ] ?? [],
             onBack: () => o.setView("workbench"),
             onSubmitPrompt: o.handleAgentPromptSubmit,
+            onAnswerInteraction: o.handleAgentInteractionAnswer,
           }
         : undefined,
     gitReviewScreenProps:

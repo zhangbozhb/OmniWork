@@ -125,6 +125,14 @@
       "code": "Code changes",
       "completed": "Completed"
     },
+    "interaction": {
+      "approvalRequired": "Approval required",
+      "inputRequired": "Input required",
+      "decline": "Decline",
+      "allowOnce": "Allow once",
+      "submitAnswers": "Submit answers",
+      "answerPlaceholder": "Enter an answer"
+    },
     "emptyTitle": "No conversation messages yet",
     "emptyText": "After you send a prompt, your message and Agent text replies appear here. Commands, code changes, and tool calls are grouped under Activity.",
     "composerTitle": "Prompt composer",

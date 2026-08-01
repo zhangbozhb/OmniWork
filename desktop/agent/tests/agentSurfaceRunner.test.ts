@@ -5,6 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  appServerInteractionDetails,
+  appServerInteractionResult,
   normalizeAppServerNotification,
   normalizeClaudeMessage,
 } from "../src/agent-surface/agentSurfaceRunner.ts";
@@ -100,6 +102,98 @@ test("normalizes Claude stream-json text deltas", () => {
   assert.equal(normalized?.text, "Hello");
   assert.equal(normalized?.events[0]?.provider, "claude-code");
   assert.equal(normalized?.events[0]?.payload?.message_role, "assistant");
+});
+
+test("maps app-server approvals to safe interaction details and responses", () => {
+  assert.deepEqual(
+    appServerInteractionDetails(
+      "item/commandExecution/requestApproval",
+      {
+        command: "pnpm test",
+        cwd: "/tmp/project",
+      },
+    ),
+    {
+      type: "command_approval",
+      command: "pnpm test",
+      cwd: "/tmp/project",
+      reason: undefined,
+    },
+  );
+  assert.deepEqual(
+    appServerInteractionDetails("tool/requestUserInput", {
+      questions: [
+        {
+          id: "scope",
+          question: "Which scope?",
+          isOther: false,
+          options: [{ label: "App" }, { label: "Agent" }],
+        },
+      ],
+    }),
+    {
+      type: "user_input",
+      questions: [
+        {
+          id: "scope",
+          prompt: "Which scope?",
+          options: [
+            { value: "App", label: "App", description: undefined },
+            { value: "Agent", label: "Agent", description: undefined },
+          ],
+          multiple: false,
+          allow_text: false,
+          required: true,
+        },
+      ],
+    },
+  );
+
+  const result = appServerInteractionResult(
+    "tool/requestUserInput",
+    {},
+    {
+      kind: "answer",
+      interaction_id: "interaction-1",
+      session_id: "session-1",
+      surface_id: "surface-1",
+      client_action_id: "action-1",
+      decision: "submit_answers",
+      answers: { scope: ["App"] },
+      created_at: "2026-08-01T00:01:00.000Z",
+    },
+  );
+  assert.deepEqual(result, {
+    answers: { scope: { answers: ["App"] } },
+  });
+
+  assert.deepEqual(
+    appServerInteractionResult(
+      "item/permissions/requestApproval",
+      {
+        permissions: {
+          network: { enabled: true },
+          fileSystem: { read: ["/tmp"], write: null },
+        },
+      },
+      {
+        kind: "answer",
+        interaction_id: "interaction-2",
+        session_id: "session-1",
+        surface_id: "surface-1",
+        client_action_id: "action-2",
+        decision: "allow_once",
+        created_at: "2026-08-01T00:01:00.000Z",
+      },
+    ),
+    {
+      permissions: {
+        network: { enabled: true },
+        fileSystem: { read: ["/tmp"], write: null },
+      },
+      scope: "turn",
+    },
+  );
 });
 
 test("keeps server requests separate from responses with the same id", async () => {

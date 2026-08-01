@@ -678,7 +678,7 @@ function appServerRuntimeDefinition(
       terminal_io: false,
       persistent_resume: false,
       reconnect_control: true,
-      native_approval: false,
+      native_approval: true,
       structured_timeline: true,
       diff_view: false,
     },

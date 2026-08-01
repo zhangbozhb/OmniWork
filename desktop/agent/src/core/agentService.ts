@@ -1,6 +1,7 @@
 import { createMessage } from "@omni-work/protocol-ts";
 import type {
   AgentAppMessage,
+  AgentInteractionPayload,
   AgentSurfaceEventPayload,
 } from "@omni-work/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
@@ -14,6 +15,9 @@ import { TerminalBridge } from "../pty-bridge/terminalBridge.ts";
 import { TmuxManager } from "../tmux-manager/tmuxManager.ts";
 import { Logger } from "../telemetry/logger.ts";
 import { AgentSurfaceRunner } from "../agent-surface/agentSurfaceRunner.ts";
+import { AgentSurfaceEventStore } from "../agent-surface/agentSurfaceEventStore.ts";
+import { AgentInteractionStore } from "../agent-surface/agentInteractionStore.ts";
+import { AgentInteractionService } from "../agent-surface/agentInteractionService.ts";
 import {
   createPairingQrDetails,
   printPairingDetailsWithoutRelay,
@@ -31,6 +35,8 @@ import { AgentMessageStore } from "../probes/agentMessageStore.ts";
 import { AgentAdminRuntime } from "./agentAdminRuntime.ts";
 import { AgentAppSecurityGateway } from "./agentAppSecurityGateway.ts";
 import { AgentInboxHandler } from "./agentInboxHandler.ts";
+import { AgentInteractionHandler } from "./agentInteractionHandler.ts";
+import { AgentSurfaceSyncHandler } from "./agentSurfaceSyncHandler.ts";
 import { AgentMessageDispatcher } from "./agentMessageDispatcher.ts";
 import { AgentProbeRuntime } from "./agentProbeRuntime.ts";
 import { AgentRelayController } from "./agentRelayController.ts";
@@ -58,10 +64,14 @@ export class AgentService {
   private readonly terminalBridge: TerminalBridge;
   private readonly appConnections: AppConnectionRegistry;
   private readonly agentMessages: AgentMessageService;
+  private readonly surfaceEvents: AgentSurfaceEventStore;
+  private readonly interactions: AgentInteractionService;
   private readonly security: AgentAppSecurityGateway;
   private readonly tunnelUpgrade: AgentTunnelUpgradeHandler;
   private readonly terminalRequests: TerminalRequestHandler;
   private readonly inbox: AgentInboxHandler;
+  private readonly interactionHandler: AgentInteractionHandler;
+  private readonly surfaceSync: AgentSurfaceSyncHandler;
   private readonly probeRuntime: AgentProbeRuntime;
   private readonly agentSurfaceRunner: AgentSurfaceRunner;
   private readonly adminRuntime: AgentAdminRuntime;
@@ -77,6 +87,12 @@ export class AgentService {
   constructor(config: AgentConfig, options: AgentServiceOptions = {}) {
     this.config = config;
     this.onShutdownRequested = options.onShutdownRequested;
+    this.surfaceEvents = new AgentSurfaceEventStore(config.sessionStorePath);
+    this.interactions = new AgentInteractionService({
+      store: new AgentInteractionStore(config.sessionStorePath),
+      onRequest: (request) => this.broadcastAgentInteraction(request),
+      onResult: (result) => this.broadcastAgentInteraction(result),
+    });
     this.agentMessages = new AgentMessageService({
       store: new AgentMessageStore(config.sessionStorePath),
       onMessage: (message) => this.broadcastAgentMessage(message),
@@ -123,6 +139,7 @@ export class AgentService {
       logger: this.logger,
       getSession: (sessionId) => this.sessionManager.get(sessionId),
       onSurfaceEvent: (event) => this.broadcastAgentSurfaceEvent(event),
+      requestInteraction: (request) => this.interactions.request(request),
     });
     this.security = new AgentAppSecurityGateway({
       config,
@@ -220,8 +237,10 @@ export class AgentService {
         this.security.sendToApp(context, message),
       prepareTerminalProvider: (terminalProvider) =>
         this.probeRuntime.prepareTerminalProvider(terminalProvider),
-      closeAgentSurfaceSession: (sessionId) =>
-        this.agentSurfaceRunner.closeSession(sessionId),
+      closeAgentSurfaceSession: (sessionId) => {
+        this.interactions.cancelSession(sessionId);
+        this.agentSurfaceRunner.closeSession(sessionId);
+      },
       handleTerminalSnapshot: (message, context) =>
         this.terminalRequests.handleSnapshot(message, context),
     });
@@ -229,6 +248,18 @@ export class AgentService {
       deviceId: config.deviceId,
       logger: this.logger,
       agentMessages: this.agentMessages,
+      sendToApp: (context, message) =>
+        this.security.sendToApp(context, message),
+    });
+    this.interactionHandler = new AgentInteractionHandler({
+      deviceId: config.deviceId,
+      interactions: this.interactions,
+      sendToApp: (context, message) =>
+        this.security.sendToApp(context, message),
+    });
+    this.surfaceSync = new AgentSurfaceSyncHandler({
+      deviceId: config.deviceId,
+      store: this.surfaceEvents,
       sendToApp: (context, message) =>
         this.security.sendToApp(context, message),
     });
@@ -242,6 +273,8 @@ export class AgentService {
       terminalRequests: this.terminalRequests,
       terminalStreamPusher: this.terminalStreamPusher,
       inbox: this.inbox,
+      interactions: this.interactionHandler,
+      surfaceSync: this.surfaceSync,
       submitAgentPrompt: (payload) =>
         this.agentSurfaceRunner.submitPrompt({
           sessionId: payload.session_id,
@@ -349,11 +382,24 @@ export class AgentService {
   }
 
   private broadcastAgentSurfaceEvent(event: AgentSurfaceEventPayload): void {
+    this.surfaceEvents.put(event);
     this.security.send(
       createMessage("agent.surface.event", event, {
         device_id: this.config.deviceId,
         session_id: event.session_id,
         surface_id: event.surface_id,
+      }),
+    );
+  }
+
+  private broadcastAgentInteraction(payload: AgentInteractionPayload): void {
+    this.security.send(
+      createMessage("agent.interaction", payload, {
+        device_id: this.config.deviceId,
+        session_id:
+          "session_id" in payload ? payload.session_id : undefined,
+        surface_id:
+          "surface_id" in payload ? payload.surface_id : undefined,
       }),
     );
   }

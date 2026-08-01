@@ -980,6 +980,133 @@ export interface AgentSurfaceEventPayload {
   created_at: string;
 }
 
+export interface AgentSurfaceSyncRequestPayload {
+  kind: "request";
+  session_id: string;
+  surface_id: string;
+  after_cursor?: number;
+  limit?: number;
+}
+
+export interface AgentSurfaceSyncResponsePayload {
+  kind: "response";
+  request_id: string;
+  session_id: string;
+  surface_id: string;
+  events: AgentSurfaceEventPayload[];
+  next_cursor: number;
+  has_more: boolean;
+}
+
+export type AgentSurfaceSyncPayload =
+  | AgentSurfaceSyncRequestPayload
+  | AgentSurfaceSyncResponsePayload;
+
+export type AgentInteractionStatus =
+  | "pending"
+  | "resolved"
+  | "declined"
+  | "expired"
+  | "cancelled";
+
+export interface AgentInteractionQuestion {
+  id: string;
+  prompt: string;
+  options?: Array<{
+    value: string;
+    label: string;
+    description?: string;
+  }>;
+  multiple?: boolean;
+  allow_text?: boolean;
+  required?: boolean;
+}
+
+export type AgentInteractionDetails =
+  | {
+      type: "command_approval";
+      command: string;
+      cwd?: string;
+      reason?: string;
+    }
+  | {
+      type: "file_change_approval";
+      paths: string[];
+      reason?: string;
+    }
+  | {
+      type: "permissions_approval";
+      permissions: string[];
+      reason?: string;
+    }
+  | {
+      type: "user_input";
+      questions: AgentInteractionQuestion[];
+    };
+
+export interface AgentInteractionRequestPayload {
+  kind: "request";
+  interaction_id: string;
+  session_id: string;
+  surface_id: string;
+  provider: string;
+  title: string;
+  summary?: string;
+  details: AgentInteractionDetails;
+  status: "pending";
+  created_at: string;
+  expires_at: string;
+}
+
+export interface AgentInteractionAnswerPayload {
+  kind: "answer";
+  interaction_id: string;
+  session_id: string;
+  surface_id: string;
+  client_action_id: string;
+  decision: "allow_once" | "decline" | "submit_answers";
+  answers?: Record<string, string[]>;
+  created_at: string;
+}
+
+export interface AgentInteractionResultPayload {
+  kind: "result";
+  interaction_id: string;
+  session_id: string;
+  surface_id: string;
+  status: Exclude<AgentInteractionStatus, "pending">;
+  client_action_id?: string;
+  message?: string;
+  resolved_at: string;
+}
+
+export interface AgentInteractionSyncRequestPayload {
+  kind: "sync_request";
+  session_id?: string;
+  surface_id?: string;
+}
+
+export interface AgentInteractionSyncResponsePayload {
+  kind: "sync_response";
+  request_id: string;
+  interactions: AgentInteractionRequestPayload[];
+}
+
+export interface AgentInteractionErrorPayload {
+  kind: "error";
+  interaction_id?: string;
+  code: "not_found" | "already_resolved" | "invalid_answer";
+  message: string;
+}
+
+export type AgentInteractionPayload =
+  | AgentInteractionRequestPayload
+  | AgentInteractionAnswerPayload
+  | AgentInteractionResultPayload
+  | AgentInteractionSyncRequestPayload
+  | AgentInteractionSyncResponsePayload
+  | AgentInteractionErrorPayload;
+
 export interface AgentPromptSubmitPayload {
   session_id: string;
   surface_id: string;

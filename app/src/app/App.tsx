@@ -30,6 +30,12 @@ import { useTerminalController } from "../features/terminal/useTerminalControlle
 import { useWorkspaceController } from "../features/workspaces/useWorkspaceController";
 import { useAgentMessageController } from "../features/agent/useAgentMessageController";
 import { useAgentSurfaceController } from "../features/agent/useAgentSurfaceController";
+import { useAgentInteractionController } from "../features/agent/useAgentInteractionController";
+import {
+  agentInteractionAnswer,
+  agentInteractionSyncRequest,
+  agentSurfaceSyncRequest,
+} from "../features/agent/agentMessages";
 import type { LocalAgentMessageRecord } from "../features/agent/agentMessageStore";
 import type { MessageDetailReason } from "../screens/messages/AgentMessageDetailScreen";
 import { ConfirmProvider, useConfirm } from "../ui/confirm/ConfirmProvider";
@@ -237,8 +243,15 @@ function AppContent(): JSX.Element {
   const {
     agentSurfaceEventsBySurfaceId,
     applyAgentSurfaceEvent,
+    applyAgentSurfaceSync,
+    getAgentSurfaceCursor,
     clearAgentSurfaceEvents,
   } = useAgentSurfaceController();
+  const {
+    pendingAgentInteractionsBySurfaceId,
+    applyAgentInteraction,
+    clearAgentInteractions,
+  } = useAgentInteractionController();
 
   const {
     selectedFrame,
@@ -638,6 +651,7 @@ function AppContent(): JSX.Element {
     clearWorkspaceState();
     clearTerminalState();
     clearAgentSurfaceEvents();
+    clearAgentInteractions();
   }
 
   function handleRelayMessage(
@@ -661,6 +675,25 @@ function AppContent(): JSX.Element {
       handleAuthFailureCleanup,
       applySessionList: (payload) => {
         const remoteSurfaceIds = applySessionList(payload);
+        for (const session of payload.sessions) {
+          if (!session.runtime?.capabilities.structured_timeline) {
+            continue;
+          }
+          for (const surface of session.surfaces) {
+            if (surface.kind !== "agent") {
+              continue;
+            }
+            relay.send(
+              agentSurfaceSyncRequest(
+                activePairing.deviceId,
+                session.session_id,
+                surface.surface_id,
+                getAgentSurfaceCursor(surface.surface_id),
+              ),
+            );
+          }
+        }
+        relay.send(agentInteractionSyncRequest(activePairing.deviceId));
         setSessionListRefreshVersion((version) => version + 1);
         return remoteSurfaceIds;
       },
@@ -674,6 +707,8 @@ function AppContent(): JSX.Element {
       applyGitDiff,
       handleAgentMessage,
       applyAgentSurfaceEvent,
+      applyAgentSurfaceSync,
+      applyAgentInteraction,
       handleAgentNotificationSettings,
       applyTerminalSnapshot,
       applyTerminalFrame,
@@ -701,6 +736,24 @@ function AppContent(): JSX.Element {
           session_id: selectedSession.session_id,
           surface_id: selectedSession.primary_surface_id,
         },
+      ),
+    );
+  }
+
+  function handleAgentInteractionAnswer(
+    interaction: Parameters<typeof agentInteractionAnswer>[1],
+    decision: Parameters<typeof agentInteractionAnswer>[2],
+    answers?: Record<string, string[]>,
+  ): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+    sendToRelay(
+      agentInteractionAnswer(
+        pairing.deviceId,
+        interaction,
+        decision,
+        answers,
       ),
     );
   }
@@ -789,7 +842,9 @@ function AppContent(): JSX.Element {
     selectedWorkspace,
     selectedSession,
     agentSurfaceEventsBySurfaceId,
+    pendingAgentInteractionsBySurfaceId,
     handleAgentPromptSubmit,
+    handleAgentInteractionAnswer,
     selectedFrame,
     selectedSessionCapabilities,
     terminalStreamChunk,

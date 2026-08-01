@@ -1,6 +1,8 @@
 import type {
+  AgentInteractionPayload,
   AgentAppMessage,
   AgentSurfaceEventPayload,
+  AgentSurfaceSyncResponsePayload,
   AgentNotificationSettingsPayload,
   AuthFailedPayload,
   FilesListPayload,
@@ -38,6 +40,14 @@ export type AppMessageHandlers = {
   onAgentMessage(payload: AgentAppMessage, message: MessageEnvelope): void;
   onAgentSurfaceEvent(
     payload: AgentSurfaceEventPayload,
+    message: MessageEnvelope,
+  ): void;
+  onAgentSurfaceSync(
+    payload: AgentSurfaceSyncResponsePayload,
+    message: MessageEnvelope,
+  ): void;
+  onAgentInteraction(
+    payload: AgentInteractionPayload,
     message: MessageEnvelope,
   ): void;
   onAgentNotificationSettings(
@@ -123,6 +133,20 @@ export function dispatchAppMessage(
     case "agent.surface.event":
       handlers.onAgentSurfaceEvent(
         message.payload as AgentSurfaceEventPayload,
+        message,
+      );
+      break;
+    case "agent.surface.sync":
+      if ((message.payload as { kind?: unknown }).kind === "response") {
+        handlers.onAgentSurfaceSync(
+          message.payload as AgentSurfaceSyncResponsePayload,
+          message,
+        );
+      }
+      break;
+    case "agent.interaction":
+      handlers.onAgentInteraction(
+        message.payload as AgentInteractionPayload,
         message,
       );
       break;
