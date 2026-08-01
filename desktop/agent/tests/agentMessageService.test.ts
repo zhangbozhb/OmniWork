@@ -1,7 +1,10 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { AgentProbeEvent } from "@omni-work/protocol-ts";
+import type {
+  AgentInteractionRequestPayload,
+  AgentProbeEvent,
+} from "@omni-work/protocol-ts";
 import {
   AgentMessageService,
   type AgentSystemNotificationPayload,
@@ -25,6 +28,26 @@ function probeEvent(overrides: Partial<AgentProbeEvent>): AgentProbeEvent {
     },
     created_at: "2026-06-24T00:00:00.000Z",
     ...overrides,
+  };
+}
+
+function interactionRequest(
+  details: AgentInteractionRequestPayload["details"] = {
+    type: "command_approval",
+    command: "deploy --token secret-value",
+  },
+): AgentInteractionRequestPayload {
+  return {
+    kind: "request",
+    interaction_id: "interaction-1",
+    session_id: "sess-1",
+    surface_id: "surface_sess-1_agent",
+    provider: "codex",
+    title: "Allow this command?",
+    details,
+    status: "pending",
+    created_at: "2026-08-01T00:00:00.000Z",
+    expires_at: "2026-08-01T00:05:00.000Z",
   };
 }
 
@@ -135,4 +158,40 @@ test("AgentMessageService emits sanitized notification candidates by preference"
   });
   service.publishProbeEvent(probeEvent({ id: "disabled" }));
   assert.equal(notifications.length, 1);
+});
+
+test("AgentMessageService publishes one sanitized message per interaction", () => {
+  const notifications: AgentSystemNotificationPayload[] = [];
+  const service = new AgentMessageService({
+    onNotification: (notification) => notifications.push(notification),
+  });
+
+  const message = service.publishInteractionRequest(interactionRequest());
+
+  assert.equal(message?.message_kind, "approval");
+  assert.equal(message?.priority, "high");
+  assert.equal(message?.action?.type, "open_approval");
+  assert.equal(message?.summary?.includes("secret-value"), false);
+  assert.equal(
+    service.publishInteractionRequest(interactionRequest()),
+    null,
+  );
+  assert.equal(service.list().length, 1);
+  assert.equal(notifications.length, 1);
+
+  const inputMessage = service.publishInteractionRequest({
+    ...interactionRequest({
+      type: "user_input",
+      questions: [
+        {
+          id: "scope",
+          prompt: "Which scope?",
+          required: true,
+        },
+      ],
+    }),
+    interaction_id: "interaction-2",
+  });
+  assert.equal(inputMessage?.message_kind, "input_required");
+  assert.equal(inputMessage?.action?.type, "open_session");
 });

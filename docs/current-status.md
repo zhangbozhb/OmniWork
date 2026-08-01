@@ -18,7 +18,7 @@
 - 创建 session 时会在 Desktop Agent 上递归创建不存在的指定目录；目录创建或访问失败时整次 session 创建失败。
 - 支持 Codex、Claude Code 和 TraeX 的结构化会话、增量对话与活动时间线。Desktop Agent 会将 Surface 事件持久化到 SQLite，App 在获取 Session 列表后按 cursor 增量同步，断线重连可恢复已持久化事件。
 - 支持结构化命令、文件变更、权限审批和 Agent 提问。Pending Interaction 持久化到 SQLite，App 重连后可恢复；首个有效回答生效，重复 action 幂等返回，冲突回答不覆盖。Desktop Agent 重启后会将遗留 Pending 标记为过期，不会伪恢复已经丢失的 Provider 原生请求句柄。
-- 支持 Agent 消息收件箱、已读/已处理状态和通知偏好；平台原生 Push gateway 尚未接入。
+- 支持 Agent 消息收件箱、已读/已处理状态和通知偏好。Pending Interaction 会生成去重且不包含命令正文的高优先级消息，App 连接或重连时同步 Desktop SQLite inbox，并在 Workbench 投影“等待审批/等待输入”状态；平台原生 Push gateway 尚未接入。
 - 支持中英文界面、终端字号和 Relay/P2P 连接偏好。
 - Native App 支持手势应用锁与自动锁定；Web 不持久化应用锁配置。
 

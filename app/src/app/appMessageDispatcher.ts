@@ -1,6 +1,7 @@
 import type {
   AgentInteractionPayload,
   AgentAppMessage,
+  AgentMessageListPayload,
   AgentSurfaceEventPayload,
   AgentSurfaceSyncResponsePayload,
   AgentNotificationSettingsPayload,
@@ -38,6 +39,10 @@ export type AppMessageHandlers = {
   onGitStatus(payload: GitStatusPayload, message: MessageEnvelope): void;
   onGitDiff(payload: GitDiffPayload, message: MessageEnvelope): void;
   onAgentMessage(payload: AgentAppMessage, message: MessageEnvelope): void;
+  onAgentMessageList(
+    payload: AgentMessageListPayload,
+    message: MessageEnvelope,
+  ): void;
   onAgentSurfaceEvent(
     payload: AgentSurfaceEventPayload,
     message: MessageEnvelope,
@@ -129,6 +134,12 @@ export function dispatchAppMessage(
       break;
     case "agent.message":
       handlers.onAgentMessage(message.payload as AgentAppMessage, message);
+      break;
+    case "agent.message.list":
+      handlers.onAgentMessageList(
+        message.payload as AgentMessageListPayload,
+        message,
+      );
       break;
     case "agent.surface.event":
       handlers.onAgentSurfaceEvent(

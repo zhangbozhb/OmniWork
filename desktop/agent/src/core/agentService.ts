@@ -90,7 +90,10 @@ export class AgentService {
     this.surfaceEvents = new AgentSurfaceEventStore(config.sessionStorePath);
     this.interactions = new AgentInteractionService({
       store: new AgentInteractionStore(config.sessionStorePath),
-      onRequest: (request) => this.broadcastAgentInteraction(request),
+      onRequest: (request) => {
+        this.broadcastAgentInteraction(request);
+        this.agentMessages.publishInteractionRequest(request);
+      },
       onResult: (result) => this.broadcastAgentInteraction(result),
     });
     this.agentMessages = new AgentMessageService({

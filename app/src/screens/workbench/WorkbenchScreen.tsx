@@ -29,6 +29,7 @@ import {
 } from "@omni-work/protocol-ts";
 import { Button } from "../../ui/components";
 import { spacing } from "../../ui/theme";
+import type { SessionAttentionState } from "../../features/sessions/sessionCapabilities";
 import { CreateSessionModal } from "./CreateSessionModal";
 import { ManageSessionModal } from "./ManageSessionModal";
 import {
@@ -69,6 +70,7 @@ export interface WorkbenchScreenProps {
   creating: boolean;
   closingSessionIds?: string[];
   killingSessionIds?: string[];
+  sessionAttentionById?: Record<string, SessionAttentionState>;
   defaultCwd: string;
   fileRelativePath: string;
   fileEntries: WorkspaceFileEntry[];
@@ -122,6 +124,7 @@ export function WorkbenchScreen({
   creating,
   closingSessionIds = [],
   killingSessionIds = [],
+  sessionAttentionById = {},
   defaultCwd,
   fileRelativePath,
   fileEntries,
@@ -414,6 +417,7 @@ export function WorkbenchScreen({
         session={session}
         closingSessionIds={closingSessionIds}
         killingSessionIds={killingSessionIds}
+        attention={sessionAttentionById[session.session_id]}
         t={t}
         onOpenSession={onOpenSession}
         onManageSession={setManagingSession}

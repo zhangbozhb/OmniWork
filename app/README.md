@@ -29,8 +29,9 @@ browser access without introducing a second UI stack.
   interactions are restored separately and can be answered from the Agent
   session screen.
 - Local Agent message inbox with read/handled state, bulk deletion, message
-  actions, and notification preferences. APNs/FCM push delivery is not yet
-  connected.
+  actions, and notification preferences. The App synchronizes the Desktop
+  inbox after Relay or P2P authentication, and Workbench session rows surface
+  pending approval or input state. APNs/FCM push delivery is not yet connected.
 - English and Simplified Chinese UI, terminal text-size preferences, and
   Relay/P2P connection preferences.
 - Native gesture app lock with configurable auto-lock timing. The Web target

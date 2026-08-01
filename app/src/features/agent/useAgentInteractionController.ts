@@ -5,6 +5,8 @@ import type {
   AgentInteractionRequestPayload,
 } from "@omni-work/protocol-ts";
 
+import type { SessionAttentionState } from "../sessions/sessionCapabilities";
+
 export function useAgentInteractionController() {
   const [pending, setPending] = useState<AgentInteractionRequestPayload[]>([]);
 
@@ -15,6 +17,10 @@ export function useAgentInteractionController() {
     }
     return grouped;
   }, [pending]);
+  const attentionBySessionId = useMemo(
+    () => deriveAgentSessionAttention(pending),
+    [pending],
+  );
 
   function applyAgentInteraction(payload: AgentInteractionPayload): void {
     setPending((current) => reducePendingAgentInteractions(current, payload));
@@ -26,9 +32,29 @@ export function useAgentInteractionController() {
 
   return {
     pendingAgentInteractionsBySurfaceId: pendingBySurfaceId,
+    agentSessionAttentionBySessionId: attentionBySessionId,
     applyAgentInteraction,
     clearAgentInteractions,
   };
+}
+
+export function deriveAgentSessionAttention(
+  interactions: readonly AgentInteractionRequestPayload[],
+): Record<string, SessionAttentionState> {
+  const attention: Record<string, SessionAttentionState> = {};
+  for (const interaction of interactions) {
+    const current = attention[interaction.session_id];
+    const kind =
+      interaction.details.type === "user_input"
+        ? "waiting_input"
+        : "waiting_approval";
+    attention[interaction.session_id] = {
+      kind:
+        current?.kind === "waiting_input" ? "waiting_input" : kind,
+      count: (current?.count ?? 0) + 1,
+    };
+  }
+  return attention;
 }
 
 export function reducePendingAgentInteractions(

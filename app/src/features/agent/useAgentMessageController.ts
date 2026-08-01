@@ -151,6 +151,28 @@ export function useAgentMessageController({
       });
   }
 
+  function handleAgentMessageList(messages: AgentAppMessage[]): void {
+    const store = agentMessageStoreRef.current;
+    [...messages]
+      .sort(
+        (left, right) =>
+          Date.parse(left.created_at) - Date.parse(right.created_at),
+      )
+      .reduce<Promise<void>>(
+        (pending, message) =>
+          pending.then(() =>
+            store.saveMessage(message).then(() => undefined),
+          ),
+        Promise.resolve(),
+      )
+      .then(refreshAgentMessages)
+      .catch((error: unknown) => {
+        setConnectionMessage(
+          `Agent message sync failed: ${formatErrorMessage(error)}`,
+        );
+      });
+  }
+
   function sendAgentMessageDelivered(messageId: string): void {
     const pairing = getPairing();
     if (!pairing) {
@@ -176,7 +198,8 @@ export function useAgentMessageController({
     }
     if (
       getCurrentSessionId() === message.session_id &&
-      getCurrentView() === "terminal"
+      (getCurrentView() === "terminal" ||
+        getCurrentView() === "agentSession")
     ) {
       return;
     }
@@ -367,6 +390,7 @@ export function useAgentMessageController({
     handleDeleteSelectedAgentMessages,
     handleOpenAgentMessage,
     handleAgentMessage,
+    handleAgentMessageList,
     handleAgentNotificationSettings,
   };
 }

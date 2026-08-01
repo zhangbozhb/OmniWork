@@ -4,9 +4,19 @@ import {
   type AgentInteractionAnswerPayload,
   type AgentInteractionRequestPayload,
   type AgentMessageDeliveredPayload,
+  type AgentMessageListRequestPayload,
   type AgentNotificationSettingsPayload,
   type AgentSurfaceSyncRequestPayload,
 } from "@omni-work/protocol-ts";
+
+export function agentMessageListRequest(
+  deviceId: string,
+  payload: AgentMessageListRequestPayload = {},
+) {
+  return createMessage("agent.message.list", payload, {
+    device_id: deviceId,
+  });
+}
 
 export function agentInteractionSyncRequest(deviceId: string) {
   return createMessage(

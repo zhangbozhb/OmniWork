@@ -3,9 +3,15 @@ import type {
   SessionStatus,
 } from "@omni-work/protocol-ts";
 
+export interface SessionAttentionState {
+  kind: "waiting_approval" | "waiting_input";
+  count: number;
+}
+
 export interface SessionPendingState {
   closing?: boolean;
   killing?: boolean;
+  attention?: SessionAttentionState;
 }
 
 export interface SessionCapabilities {
@@ -29,6 +35,7 @@ export function getSessionCapabilities(
   const external = session.origin === "external";
   const registered = session.registered !== false;
   const pendingAction = Boolean(pending.closing || pending.killing);
+  const attention = pendingAction ? undefined : pending.attention;
   const status = session.status;
   const attachableExternal = external && !registered;
   const operational = status === "running" || status === "detached";
@@ -44,9 +51,17 @@ export function getSessionCapabilities(
       !pendingAction && terminalIo && status !== "archived" && status !== "exited",
     interactive: !pendingAction && registered && status === "running",
     pending: pendingAction,
-    primaryActionLabel: getPrimaryActionLabel(session, pending),
-    statusLabel: getStatusLabel(session),
-    statusTone: getStatusTone(status, attachableExternal),
+    primaryActionLabel: attention
+      ? "Review"
+      : getPrimaryActionLabel(session, pending),
+    statusLabel: attention
+      ? attention.kind === "waiting_input"
+        ? "Waiting for input"
+        : "Waiting for approval"
+      : getStatusLabel(session),
+    statusTone: attention
+      ? "warning"
+      : getStatusTone(status, attachableExternal),
     unavailableReason,
   };
 }

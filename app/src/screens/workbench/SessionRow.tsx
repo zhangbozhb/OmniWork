@@ -3,7 +3,10 @@ import { Pressable, Text, View } from "react-native";
 
 import type { TerminalSession } from "@omni-work/protocol-ts";
 
-import { getSessionCapabilities } from "../../features/sessions/sessionCapabilities";
+import {
+  getSessionCapabilities,
+  type SessionAttentionState,
+} from "../../features/sessions/sessionCapabilities";
 import { formatRelativeTime, getStatusColors } from "./workbenchModel";
 import { styles } from "./styles";
 
@@ -13,6 +16,7 @@ export function SessionRow({
   session,
   closingSessionIds,
   killingSessionIds,
+  attention,
   t,
   onOpenSession,
   onManageSession,
@@ -20,6 +24,7 @@ export function SessionRow({
   session: TerminalSession;
   closingSessionIds: readonly string[];
   killingSessionIds: readonly string[];
+  attention?: SessionAttentionState;
   t: Translate;
   onOpenSession(session: TerminalSession): void;
   onManageSession(session: TerminalSession): void;
@@ -30,6 +35,7 @@ export function SessionRow({
   const capabilities = getSessionCapabilities(session, {
     closing,
     killing,
+    attention,
   });
   const statusColors = getStatusColors(capabilities.statusTone);
   const runtimeLabel =
@@ -52,6 +58,7 @@ export function SessionRow({
           {formatRelativeTime(session.last_active_at, t)}
           {external ? " · ext" : ""}
           {runtimeLabel ? ` · ${runtimeLabel}` : ""}
+          {attention ? ` · ${capabilities.statusLabel}` : ""}
         </Text>
       </View>
       <Pressable

@@ -3,6 +3,7 @@ import {
   type AgentAppMessage,
   type AgentAppMessageKind,
   type AgentAppMessagePriority,
+  type AgentInteractionRequestPayload,
   type AgentMessageListRequestPayload,
   type AgentNotificationSettingsPayload,
   type AgentProbeEvent,
@@ -115,7 +116,7 @@ export class AgentMessageService {
   private readonly onNotification?: (
     notification: AgentSystemNotificationPayload,
   ) => void;
-  private readonly seenProbeEventKeys = new Set<string>();
+  private readonly seenEventKeys = new Set<string>();
   private readonly messages: AgentAppMessage[] = [];
   private notificationSettings: AgentNotificationSettingsPayload = {
     enabled: true,
@@ -133,15 +134,48 @@ export class AgentMessageService {
 
   publishProbeEvent(event: AgentProbeEvent): AgentAppMessage | null {
     const eventKey = `${event.provider}:${event.probe_id}:${event.id}`;
-    if (this.seenProbeEventKeys.has(eventKey)) {
-      return null;
-    }
-    this.seenProbeEventKeys.add(eventKey);
-
     const message = this.toAppMessage(event);
     if (!message) {
       return null;
     }
+    return this.publishMessage(eventKey, message);
+  }
+
+  publishInteractionRequest(
+    request: AgentInteractionRequestPayload,
+  ): AgentAppMessage | null {
+    const inputRequired = request.details.type === "user_input";
+    return this.publishMessage(`interaction:${request.interaction_id}`, {
+      id: createMessageId(),
+      type: "agent.message",
+      provider: request.provider,
+      session_id: request.session_id,
+      surface_id: request.surface_id,
+      message_kind: inputRequired ? "input_required" : "approval",
+      title: inputRequired
+        ? "Agent is waiting for input"
+        : "Agent needs approval",
+      summary: inputRequired
+        ? "Open the Agent session to answer the pending question."
+        : "Open the Agent session to review the pending request.",
+      priority: "high",
+      action: {
+        type: inputRequired ? "open_session" : "open_approval",
+        session_id: request.session_id,
+        surface_id: request.surface_id,
+      },
+      created_at: request.created_at,
+    });
+  }
+
+  private publishMessage(
+    eventKey: string,
+    message: AgentAppMessage,
+  ): AgentAppMessage | null {
+    if (this.seenEventKeys.has(eventKey)) {
+      return null;
+    }
+    this.seenEventKeys.add(eventKey);
     const storedMessage = this.store?.insertMessage(eventKey, message);
     if (this.store && !storedMessage) {
       return null;

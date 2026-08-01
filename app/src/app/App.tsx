@@ -34,7 +34,9 @@ import { useAgentInteractionController } from "../features/agent/useAgentInterac
 import {
   agentInteractionAnswer,
   agentInteractionSyncRequest,
+  agentMessageListRequest,
   agentSurfaceSyncRequest,
+  getAgentNotificationSettingsRequest,
 } from "../features/agent/agentMessages";
 import type { LocalAgentMessageRecord } from "../features/agent/agentMessageStore";
 import type { MessageDetailReason } from "../screens/messages/AgentMessageDetailScreen";
@@ -249,6 +251,7 @@ function AppContent(): JSX.Element {
   } = useAgentSurfaceController();
   const {
     pendingAgentInteractionsBySurfaceId,
+    agentSessionAttentionBySessionId,
     applyAgentInteraction,
     clearAgentInteractions,
   } = useAgentInteractionController();
@@ -332,6 +335,7 @@ function AppContent(): JSX.Element {
     handleDeleteSelectedAgentMessages,
     handleOpenAgentMessage,
     handleAgentMessage,
+    handleAgentMessageList,
     handleAgentNotificationSettings,
   } = useAgentMessageController({
     t,
@@ -637,6 +641,11 @@ function AppContent(): JSX.Element {
   function markDirectConnectionReady(): void {
     setConnectionStatus("authenticated");
     setConnectionMessage("Direct P2P connection is ready.");
+    if (pairing) {
+      sendToRelay(agentMessageListRequest(pairing.deviceId));
+      sendToRelay(agentInteractionSyncRequest(pairing.deviceId));
+      sendToRelay(getAgentNotificationSettingsRequest(pairing.deviceId));
+    }
     if (shouldRefreshWorkbenchOnConnection()) {
       requestSessionListRefresh();
     }
@@ -706,6 +715,7 @@ function AppContent(): JSX.Element {
       applyGitStatus,
       applyGitDiff,
       handleAgentMessage,
+      handleAgentMessageList,
       applyAgentSurfaceEvent,
       applyAgentSurfaceSync,
       applyAgentInteraction,
@@ -843,6 +853,7 @@ function AppContent(): JSX.Element {
     selectedSession,
     agentSurfaceEventsBySurfaceId,
     pendingAgentInteractionsBySurfaceId,
+    agentSessionAttentionBySessionId,
     handleAgentPromptSubmit,
     handleAgentInteractionAnswer,
     selectedFrame,

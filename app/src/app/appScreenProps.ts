@@ -103,6 +103,9 @@ type BuildAppRouterPropsOptions = {
   creatingSession: WorkbenchScreenProps["creating"];
   closingSessionIds: WorkbenchScreenProps["closingSessionIds"];
   killingSessionIds: WorkbenchScreenProps["killingSessionIds"];
+  agentSessionAttentionBySessionId: NonNullable<
+    WorkbenchScreenProps["sessionAttentionById"]
+  >;
   defaultSessionCwd: string;
   fileRelativePath: WorkbenchScreenProps["fileRelativePath"];
   fileEntries: WorkbenchScreenProps["fileEntries"];
@@ -262,6 +265,7 @@ export function buildAppRouterProps(
       creating: o.creatingSession,
       closingSessionIds: o.closingSessionIds,
       killingSessionIds: o.killingSessionIds,
+      sessionAttentionById: o.agentSessionAttentionBySessionId,
       defaultCwd: o.defaultSessionCwd || o.sessions[0]?.cwd || "",
       fileRelativePath: o.fileRelativePath,
       fileEntries: o.fileEntries,

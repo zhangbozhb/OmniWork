@@ -11,6 +11,8 @@ import {
 } from "./appMessageDispatcher";
 import type { PairingConfig } from "../features/auth/types";
 import {
+  agentInteractionSyncRequest,
+  agentMessageListRequest,
   agentSurfaceSyncRequest,
   getAgentNotificationSettingsRequest,
 } from "../features/agent/agentMessages";
@@ -59,6 +61,9 @@ type AppRelayMessageHandlerContext = {
   applyGitDiff(payload: Parameters<AppMessageHandlers["onGitDiff"]>[0]): void;
   handleAgentMessage(
     payload: Parameters<AppMessageHandlers["onAgentMessage"]>[0],
+  ): void;
+  handleAgentMessageList(
+    messages: Parameters<AppMessageHandlers["onAgentMessageList"]>[0]["messages"],
   ): void;
   applyAgentSurfaceEvent(
     payload: Parameters<AppMessageHandlers["onAgentSurfaceEvent"]>[0],
@@ -123,6 +128,8 @@ export function handleAppRelayMessage(
           relay.send(listSessionsRequest(activePairing.deviceId));
         }
         relay.send(getAgentNotificationSettingsRequest(activePairing.deviceId));
+        relay.send(agentMessageListRequest(activePairing.deviceId));
+        relay.send(agentInteractionSyncRequest(activePairing.deviceId));
         if (shouldOpenSessions) {
           context.pendingAutoOpenSessionsRef.current = false;
           context.setView("workbench");
@@ -167,6 +174,9 @@ export function handleAppRelayMessage(
     },
     onAgentMessage(payload) {
       context.handleAgentMessage(payload);
+    },
+    onAgentMessageList(payload) {
+      context.handleAgentMessageList(payload.messages);
     },
     onAgentSurfaceEvent(payload) {
       context.applyAgentSurfaceEvent(payload);

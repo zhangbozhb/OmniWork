@@ -7,6 +7,7 @@ import {
   formatStrictForceCloseMessage,
 } from "../src/app/connectionMessages.ts";
 import { getHeaderSubtitle } from "../src/app/appPresentation.ts";
+import { getSessionCapabilities } from "../src/features/sessions/sessionCapabilities.ts";
 import {
   isSamePairing,
   upsertPairing,
@@ -45,6 +46,25 @@ test("upsertSession inserts and replaces by session_id", () => {
 
   const renamed = { ...baseSession, title: "Renamed" };
   assert.deepEqual(upsertSession([baseSession], renamed), [renamed]);
+});
+
+test("session capabilities project pending Agent attention without changing lifecycle", () => {
+  const capabilities = getSessionCapabilities(baseSession, {
+    attention: { kind: "waiting_approval", count: 1 },
+  });
+
+  assert.equal(baseSession.status, "running");
+  assert.equal(capabilities.statusLabel, "Waiting for approval");
+  assert.equal(capabilities.statusTone, "warning");
+  assert.equal(capabilities.primaryActionLabel, "Review");
+  assert.equal(capabilities.canOpen, true);
+
+  const closing = getSessionCapabilities(baseSession, {
+    closing: true,
+    attention: { kind: "waiting_input", count: 1 },
+  });
+  assert.equal(closing.statusLabel, "Running");
+  assert.equal(closing.primaryActionLabel, "Closing...");
 });
 
 test("upsertPairing replaces by relay URL and device ID", () => {
