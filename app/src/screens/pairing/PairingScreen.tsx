@@ -45,6 +45,7 @@ export function PairingScreen({
     initialPairing?.displayName ?? "",
   );
   const [key, setKey] = useState(initialPairing?.key ?? "");
+  const [keyVisible, setKeyVisible] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // RN `Alert.alert` 在 web 上是 no-op，用本地 inline 错误兜底，避免用户在
@@ -56,6 +57,7 @@ export function PairingScreen({
     setDeviceId(initialPairing?.deviceId ?? "");
     setDisplayName(initialPairing?.displayName ?? "");
     setKey(initialPairing?.key ?? "");
+    setKeyVisible(false);
     setLocalError(undefined);
   }, [initialPairing]);
 
@@ -192,7 +194,21 @@ export function PairingScreen({
         style={styles.input}
       />
 
-      <Text style={styles.label}>{t("pairing.fields.temporaryKey")}</Text>
+      <View style={styles.keyLabelRow}>
+        <Text style={styles.label}>{t("pairing.fields.temporaryKey")}</Text>
+        <Button
+          accessibilityLabel={`${t(
+            keyVisible ? "common.hide" : "common.show",
+          )} ${t("pairing.fields.temporaryKey")}`}
+          icon={keyVisible ? "eyeOff" : "eye"}
+          iconOnly
+          style={styles.keyVisibilityButton}
+          variant="ghost"
+          onPress={() => setKeyVisible((current) => !current)}
+        >
+          {t(keyVisible ? "common.hide" : "common.show")}
+        </Button>
+      </View>
       <TextInput
         autoCapitalize="none"
         autoCorrect={false}
@@ -200,7 +216,7 @@ export function PairingScreen({
         onChangeText={setKey}
         placeholder={t("pairing.fields.keyPlaceholder")}
         placeholderTextColor="#66727c"
-        secureTextEntry
+        secureTextEntry={!keyVisible}
         style={styles.input}
       />
 
@@ -296,6 +312,15 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     paddingHorizontal: spacing.lg,
     backgroundColor: colors.surface,
+  },
+  keyLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  keyVisibilityButton: {
+    minHeight: 32,
+    width: 32,
   },
   primaryButton: {
     minHeight: 48,
