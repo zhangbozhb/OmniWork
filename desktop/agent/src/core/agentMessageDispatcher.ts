@@ -8,6 +8,7 @@ import type {
   AgentNotificationSettingsPayload,
   AgentPromptSubmitPayload,
   AgentSurfaceSyncRequestPayload,
+  AgentSurfaceEventPayload,
   AppConnectionGoodbyePayload,
   AppConnectionHeartbeatPayload,
   AuthVerifyPayload,
@@ -58,6 +59,7 @@ interface AgentMessageDispatcherOptions {
   inbox: AgentInboxHandler;
   interactions: AgentInteractionHandler;
   surfaceSync: AgentSurfaceSyncHandler;
+  publishAgentSurfaceEvent?(event: AgentSurfaceEventPayload): void;
   submitAgentPrompt?(payload: AgentPromptSubmitPayload): void;
 }
 
@@ -442,32 +444,39 @@ export class AgentMessageDispatcher {
   private handlePromptSubmit(
     message: MessageEnvelope<AgentPromptSubmitPayload>,
   ): void {
-    const createdAt = message.payload.created_at ?? new Date().toISOString();
-    this.options.security.send({
-      ...message,
-      id: createMessageId(),
-      type: "agent.surface.event",
-      session_id: message.payload.session_id,
-      surface_id: message.payload.surface_id,
-      payload: {
-        session_id: message.payload.session_id,
-        surface_id: message.payload.surface_id,
-        provider: "user",
-        event_id: createMessageId(),
-        event_type: "agent.user_prompt_submitted",
-        title: "User prompt submitted",
-        summary: message.payload.prompt,
-        payload: {
-          prompt: message.payload.prompt,
-          delivery_status: "delivered_to_agent",
-        },
-        source: {
-          kind: "process",
-          raw_event_id: message.id,
-        },
-        created_at: createdAt,
-      },
-    });
+    this.options.publishAgentSurfaceEvent?.(
+      toAgentPromptSurfaceEvent(message),
+    );
     this.options.submitAgentPrompt?.(message.payload);
   }
+}
+
+export function toAgentPromptSurfaceEvent(
+  message: MessageEnvelope<AgentPromptSubmitPayload>,
+): AgentSurfaceEventPayload {
+  return {
+    session_id: message.payload.session_id,
+    surface_id: message.payload.surface_id,
+    provider: "user",
+    event_id: createMessageId(),
+    event_type: "agent.user_prompt_submitted",
+    title: "User prompt submitted",
+    summary: message.payload.prompt,
+    payload: {
+      prompt: message.payload.prompt,
+      context_files: message.payload.context_files?.map((file) => ({
+        kind: file.kind,
+        workspace_path: file.workspace_path,
+        relative_path: file.relative_path,
+        content_hash: file.content_hash,
+      })),
+      delivery_status: "delivered_to_agent",
+    },
+    source: {
+      kind: "process",
+      raw_event_id: message.id,
+    },
+    created_at:
+      message.payload.created_at ?? new Date().toISOString(),
+  };
 }

@@ -29,6 +29,8 @@ This package is ESM-only and requires Node.js 20.19 or newer when used in Node.
 Structured Agent sessions use `agent.surface.event` plus cursor-based
 `agent.surface.sync` for timeline recovery. Approval and user-input workflows
 use the strict `agent.interaction` request, answer, result, and sync payloads.
+`agent.prompt.submit` can include additive `context_files` Workspace references;
+file contents are resolved and validated by the Desktop Agent.
 
 Source and issue tracking are available in the
 [OmniWork repository](https://github.com/zhangbozhb/OmniWork).

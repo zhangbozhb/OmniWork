@@ -527,9 +527,35 @@ describe("agent message payload schemas", () => {
           session_id: "sess_1",
           surface_id: "surface_sess_1_agent",
           prompt: "Run the tests",
+          context_files: [
+            {
+              kind: "workspace_file",
+              workspace_path: "/tmp/project",
+              relative_path: "package.json",
+              content_hash: "a".repeat(64),
+            },
+          ],
           created_at: new Date().toISOString(),
         }),
       ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("agent.prompt.submit", {
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          prompt: "Run the tests",
+          context_files: [
+            {
+              kind: "workspace_file",
+              workspace_path: "/tmp/project",
+              relative_path: "package.json",
+              content_hash: "not-a-hash",
+            },
+          ],
+        }),
+      ),
+      null,
     );
     assert.ok(
       parseMessageEnvelope(

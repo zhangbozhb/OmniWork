@@ -1,7 +1,11 @@
-import { createMessage } from "@omni-work/protocol-ts";
+import {
+  createMessage,
+  createMessageId,
+} from "@omni-work/protocol-ts";
 import type {
   AgentAppMessage,
   AgentInteractionPayload,
+  AgentPromptSubmitPayload,
   AgentSurfaceEventPayload,
 } from "@omni-work/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
@@ -18,6 +22,7 @@ import { AgentSurfaceRunner } from "../agent-surface/agentSurfaceRunner.ts";
 import { AgentSurfaceEventStore } from "../agent-surface/agentSurfaceEventStore.ts";
 import { AgentInteractionStore } from "../agent-surface/agentInteractionStore.ts";
 import { AgentInteractionService } from "../agent-surface/agentInteractionService.ts";
+import { AgentPromptContextResolver } from "../agent-surface/agentPromptContextResolver.ts";
 import {
   createPairingQrDetails,
   printPairingDetailsWithoutRelay,
@@ -66,6 +71,7 @@ export class AgentService {
   private readonly agentMessages: AgentMessageService;
   private readonly surfaceEvents: AgentSurfaceEventStore;
   private readonly interactions: AgentInteractionService;
+  private readonly promptContext: AgentPromptContextResolver;
   private readonly security: AgentAppSecurityGateway;
   private readonly tunnelUpgrade: AgentTunnelUpgradeHandler;
   private readonly terminalRequests: TerminalRequestHandler;
@@ -128,6 +134,10 @@ export class AgentService {
         terminalSize: config.terminalSize,
       },
     );
+    this.promptContext = new AgentPromptContextResolver({
+      getSession: (sessionId) => this.sessionManager.get(sessionId),
+      getWorkspace: (path) => this.workspaces.get(path),
+    });
     this.terminalBridge = new TerminalBridge(this.tmux);
 
     this.probeRuntime = new AgentProbeRuntime({
@@ -278,12 +288,9 @@ export class AgentService {
       inbox: this.inbox,
       interactions: this.interactionHandler,
       surfaceSync: this.surfaceSync,
-      submitAgentPrompt: (payload) =>
-        this.agentSurfaceRunner.submitPrompt({
-          sessionId: payload.session_id,
-          surfaceId: payload.surface_id,
-          prompt: payload.prompt,
-        }),
+      publishAgentSurfaceEvent: (event) =>
+        this.broadcastAgentSurfaceEvent(event),
+      submitAgentPrompt: (payload) => this.submitAgentPrompt(payload),
     });
     this.relayController = new AgentRelayController({
       config,
@@ -405,6 +412,37 @@ export class AgentService {
           "surface_id" in payload ? payload.surface_id : undefined,
       }),
     );
+  }
+
+  private submitAgentPrompt(payload: AgentPromptSubmitPayload): void {
+    void this.promptContext
+      .resolve(payload)
+      .then((prompt) => {
+        this.agentSurfaceRunner.submitPrompt({
+          sessionId: payload.session_id,
+          surfaceId: payload.surface_id,
+          prompt,
+        });
+      })
+      .catch((error: unknown) => {
+        this.broadcastAgentSurfaceEvent({
+          session_id: payload.session_id,
+          surface_id: payload.surface_id,
+          provider: "omniwork",
+          event_id: createMessageId(),
+          event_type: "agent.failed",
+          title: "Prompt context failed",
+          summary:
+            error instanceof Error
+              ? error.message
+              : "Prompt context could not be resolved.",
+          payload: {
+            context_file_count: payload.context_files?.length ?? 0,
+          },
+          source: { kind: "process" },
+          created_at: new Date().toISOString(),
+        });
+      });
   }
 
   private requireKeyRecord(): SessionKeyRecord {

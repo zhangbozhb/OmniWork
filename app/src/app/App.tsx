@@ -2,6 +2,7 @@ import { type JSX, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
+  AgentPromptFileReference,
   TerminalSession,
   MessageEnvelope,
   WorkspaceDefinition,
@@ -468,6 +469,7 @@ function AppContent(): JSX.Element {
     const workspace = getSessionFilesWorkspace(session, workspaces);
     setSelectedWorkspace(workspace);
     if (session.runtime?.kind === "app_server") {
+      requestWorkspaceDirectory(workspace, "", { activate: true });
       setConnectionMessage(`${session.title} app_server session is ready.`);
       setView("agentSession");
       if (markHandled) {
@@ -598,6 +600,9 @@ function AppContent(): JSX.Element {
 
     setSelectedSession(session);
     if (session.runtime?.kind === "app_server") {
+      const workspace = getSessionFilesWorkspace(session, workspaces);
+      setSelectedWorkspace(workspace);
+      requestWorkspaceDirectory(workspace, "", { activate: true });
       setConnectionMessage(`${session.title} app_server session is ready.`);
       setView("agentSession");
       return;
@@ -728,7 +733,10 @@ function AppContent(): JSX.Element {
     });
   }
 
-  function handleAgentPromptSubmit(prompt: string): void {
+  function handleAgentPromptSubmit(
+    prompt: string,
+    contextFiles: AgentPromptFileReference[],
+  ): void {
     if (!pairing || !selectedSession || connectionStatus !== "authenticated") {
       return;
     }
@@ -739,6 +747,8 @@ function AppContent(): JSX.Element {
           session_id: selectedSession.session_id,
           surface_id: selectedSession.primary_surface_id,
           prompt,
+          context_files:
+            contextFiles.length > 0 ? contextFiles : undefined,
           created_at: new Date().toISOString(),
         },
         {

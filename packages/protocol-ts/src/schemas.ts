@@ -1084,6 +1084,22 @@ const agentPromptSubmitPayloadSchema = z
     session_id: z.string().min(1),
     surface_id: z.string().min(1),
     prompt: z.string().min(1),
+    context_files: z
+      .array(
+        z
+          .object({
+            kind: z.literal("workspace_file"),
+            workspace_path: z.string().min(1),
+            relative_path: z.string().min(1),
+            content_hash: z
+              .string()
+              .regex(/^[a-f0-9]{64}$/i)
+              .optional(),
+          })
+          .strict(),
+      )
+      .max(10)
+      .optional(),
     created_at: isoDateTime.optional(),
   })
   .strict();

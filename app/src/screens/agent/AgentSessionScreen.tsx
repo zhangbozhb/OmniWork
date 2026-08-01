@@ -15,8 +15,10 @@ import { useTranslation } from "react-i18next";
 import type {
   AgentInteractionAnswerPayload,
   AgentInteractionRequestPayload,
+  AgentPromptFileReference,
   AgentSurfaceEventPayload,
   TerminalSession,
+  WorkspaceFileEntry,
 } from "@omni-work/protocol-ts";
 
 import { Button, Card } from "../../ui/components";
@@ -26,23 +28,38 @@ export function AgentSessionScreen({
   session,
   events,
   interactions,
+  contextWorkspacePath,
+  contextDirectoryPath,
+  contextFileEntries,
   onBack,
   onSubmitPrompt,
   onAnswerInteraction,
+  onOpenContextDirectory,
 }: {
   session: TerminalSession;
   events: readonly AgentSurfaceEventPayload[];
   interactions: readonly AgentInteractionRequestPayload[];
+  contextWorkspacePath?: string;
+  contextDirectoryPath: string;
+  contextFileEntries: readonly WorkspaceFileEntry[];
   onBack(): void;
-  onSubmitPrompt(prompt: string): void;
+  onSubmitPrompt(
+    prompt: string,
+    contextFiles: AgentPromptFileReference[],
+  ): void;
   onAnswerInteraction(
     interaction: AgentInteractionRequestPayload,
     decision: AgentInteractionAnswerPayload["decision"],
     answers?: Record<string, string[]>,
   ): void;
+  onOpenContextDirectory(relativePath: string): void;
 }): JSX.Element {
   const { t } = useTranslation();
   const [draft, setDraft] = useState("");
+  const [contextPickerVisible, setContextPickerVisible] = useState(false);
+  const [attachedContextPaths, setAttachedContextPaths] = useState<string[]>(
+    [],
+  );
   const timelineRef = useRef<ScrollView | null>(null);
   const runtimeLabel = session.runtime?.label ?? "app server";
   const conversationEvents = events.filter(isConversationEvent);
@@ -57,14 +74,43 @@ export function AgentSessionScreen({
     timelineRef.current?.scrollToEnd({ animated: true });
   }, [conversationEvents.length]);
 
+  useEffect(() => {
+    setAttachedContextPaths([]);
+    setContextPickerVisible(false);
+  }, [session.session_id]);
+
   function submitPrompt(): void {
     const prompt = draft.trim();
     if (!prompt) {
       return;
     }
     setDraft("");
+    const contextFiles = contextWorkspacePath
+      ? attachedContextPaths.map((relativePath) => ({
+          kind: "workspace_file" as const,
+          workspace_path: contextWorkspacePath,
+          relative_path: relativePath,
+        }))
+      : [];
+    setAttachedContextPaths([]);
+    setContextPickerVisible(false);
     Keyboard.dismiss();
-    onSubmitPrompt(prompt);
+    onSubmitPrompt(prompt, contextFiles);
+  }
+
+  function toggleContextFile(relativePath: string): void {
+    setAttachedContextPaths((current) => {
+      if (current.includes(relativePath)) {
+        return current.filter((path) => path !== relativePath);
+      }
+      return current.length < 10 ? [...current, relativePath] : current;
+    });
+  }
+
+  function openParentContextDirectory(): void {
+    const parts = contextDirectoryPath.split("/").filter(Boolean);
+    parts.pop();
+    onOpenContextDirectory(parts.join("/"));
   }
 
   return (
@@ -208,7 +254,98 @@ export function AgentSessionScreen({
       </ScrollView>
 
       <Card style={styles.composerCard}>
-        <Text style={styles.composerTitle}>{t("agentSession.composerTitle")}</Text>
+        <View style={styles.composerHeader}>
+          <Text style={styles.composerTitle}>
+            {t("agentSession.composerTitle")}
+          </Text>
+          {contextWorkspacePath ? (
+            <Button
+              icon="folder"
+              style={styles.contextToggle}
+              variant="ghost"
+              onPress={() => setContextPickerVisible((visible) => !visible)}
+            >
+              {t("agentSession.context.add", {
+                count: attachedContextPaths.length,
+              })}
+            </Button>
+          ) : null}
+        </View>
+        {attachedContextPaths.length > 0 ? (
+          <ScrollView
+            horizontal
+            contentContainerStyle={styles.contextChipRow}
+            showsHorizontalScrollIndicator={false}
+          >
+            {attachedContextPaths.map((relativePath) => (
+              <Button
+                key={relativePath}
+                icon="close"
+                style={styles.contextChip}
+                onPress={() => toggleContextFile(relativePath)}
+              >
+                {relativePath}
+              </Button>
+            ))}
+          </ScrollView>
+        ) : null}
+        {contextPickerVisible ? (
+          <View style={styles.contextPicker}>
+            <View style={styles.contextPickerHeader}>
+              <Text numberOfLines={1} style={styles.contextDirectory}>
+                {contextDirectoryPath || "/"}
+              </Text>
+              {contextDirectoryPath ? (
+                <Button
+                  icon="arrowLeft"
+                  style={styles.contextBack}
+                  variant="ghost"
+                  onPress={openParentContextDirectory}
+                >
+                  {t("common.back")}
+                </Button>
+              ) : null}
+            </View>
+            <ScrollView
+              nestedScrollEnabled
+              style={styles.contextEntryScroll}
+              contentContainerStyle={styles.contextEntryList}
+            >
+              {contextFileEntries.length === 0 ? (
+                <Text style={styles.contextEmpty}>
+                  {t("agentSession.context.empty")}
+                </Text>
+              ) : (
+                contextFileEntries.map((entry) => {
+                  const selected = attachedContextPaths.includes(
+                    entry.relativePath,
+                  );
+                  return (
+                    <Button
+                      key={entry.relativePath}
+                      disabled={
+                        entry.type === "file" &&
+                        !selected &&
+                        attachedContextPaths.length >= 10
+                      }
+                      icon={entry.type === "directory" ? "folder" : "file"}
+                      style={styles.contextEntry}
+                      tone={selected ? "primary" : "secondary"}
+                      variant={selected ? "solid" : "ghost"}
+                      onPress={() =>
+                        entry.type === "directory"
+                          ? onOpenContextDirectory(entry.relativePath)
+                          : toggleContextFile(entry.relativePath)
+                      }
+                    >
+                      {entry.name}
+                    </Button>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        ) : null}
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -776,10 +913,65 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     gap: spacing.xs,
   },
+  composerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
   composerTitle: {
     color: colors.textSecondary,
     fontSize: 13,
     fontWeight: "800",
+  },
+  contextToggle: {
+    minHeight: 34,
+  },
+  contextChipRow: {
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  contextChip: {
+    minHeight: 34,
+    maxWidth: 240,
+  },
+  contextPicker: {
+    maxHeight: 190,
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.sm,
+    backgroundColor: colors.background,
+  },
+  contextPickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  contextDirectory: {
+    flex: 1,
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  contextBack: {
+    minHeight: 32,
+  },
+  contextEntryScroll: {
+    maxHeight: 140,
+  },
+  contextEntryList: {
+    gap: spacing.xs,
+  },
+  contextEntry: {
+    minHeight: 34,
+    justifyContent: "flex-start",
+  },
+  contextEmpty: {
+    color: colors.textDim,
+    fontSize: 12,
+    paddingVertical: spacing.sm,
   },
   composerInput: {
     minHeight: 72,

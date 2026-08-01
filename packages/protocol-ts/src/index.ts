@@ -1107,10 +1107,18 @@ export type AgentInteractionPayload =
   | AgentInteractionSyncResponsePayload
   | AgentInteractionErrorPayload;
 
+export interface AgentPromptFileReference {
+  kind: "workspace_file";
+  workspace_path: string;
+  relative_path: string;
+  content_hash?: string;
+}
+
 export interface AgentPromptSubmitPayload {
   session_id: string;
   surface_id: string;
   prompt: string;
+  context_files?: AgentPromptFileReference[];
   created_at?: string;
 }
 

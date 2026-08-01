@@ -310,9 +310,13 @@ export function buildAppRouterProps(
               o.pendingAgentInteractionsBySurfaceId[
                 selectedSession.primary_surface_id
               ] ?? [],
+            contextWorkspacePath: selectedWorkspace?.path,
+            contextDirectoryPath: o.fileRelativePath,
+            contextFileEntries: o.fileEntries,
             onBack: () => o.setView("workbench"),
             onSubmitPrompt: o.handleAgentPromptSubmit,
             onAnswerInteraction: o.handleAgentInteractionAnswer,
+            onOpenContextDirectory: o.handleOpenDirectory,
           }
         : undefined,
     gitReviewScreenProps:

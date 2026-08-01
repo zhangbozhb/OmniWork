@@ -27,7 +27,9 @@ browser access without introducing a second UI stack.
   with a cursor after session discovery, so reconnecting clients can restore
   persisted timeline events. Pending command, file, permission, and user-input
   interactions are restored separately and can be answered from the Agent
-  session screen.
+  session screen. The prompt composer can browse the session Workspace and
+  attach up to ten text-file references without uploading file contents from
+  the App.
 - Local Agent message inbox with read/handled state, bulk deletion, message
   actions, and notification preferences. The App synchronizes the Desktop
   inbox after Relay or P2P authentication, and Workbench session rows surface

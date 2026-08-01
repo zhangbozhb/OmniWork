@@ -133,6 +133,10 @@
       "submitAnswers": "提交回答",
       "answerPlaceholder": "输入回答"
     },
+    "context": {
+      "add": "文件（{{count}}）",
+      "empty": "当前目录没有文件"
+    },
     "emptyTitle": "暂无对话消息",
     "emptyText": "发送 Prompt 后，你的消息和 Agent 的文本回复会显示在这里；命令、代码变更和工具调用会收进活动区。",
     "composerTitle": "Prompt 输入",

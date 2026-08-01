@@ -133,6 +133,10 @@
       "submitAnswers": "Submit answers",
       "answerPlaceholder": "Enter an answer"
     },
+    "context": {
+      "add": "Files ({{count}})",
+      "empty": "No files in this directory"
+    },
     "emptyTitle": "No conversation messages yet",
     "emptyText": "After you send a prompt, your message and Agent text replies appear here. Commands, code changes, and tool calls are grouped under Activity.",
     "composerTitle": "Prompt composer",
