@@ -367,6 +367,7 @@ export class AgentRelayController {
             "files.read",
             "files.write",
             "git.read",
+            "git.write.index",
             "agent.message",
             "agent.message.inbox.sqlite",
             "agent.surface.event",

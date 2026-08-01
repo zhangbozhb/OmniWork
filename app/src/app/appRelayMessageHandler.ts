@@ -59,6 +59,9 @@ type AppRelayMessageHandlerContext = {
   applyFilesWrite(payload: Parameters<AppMessageHandlers["onFilesWrite"]>[0]): void;
   applyGitStatus(payload: Parameters<AppMessageHandlers["onGitStatus"]>[0]): void;
   applyGitDiff(payload: Parameters<AppMessageHandlers["onGitDiff"]>[0]): void;
+  applyGitAction(
+    payload: Parameters<AppMessageHandlers["onGitAction"]>[0],
+  ): void;
   handleAgentMessage(
     payload: Parameters<AppMessageHandlers["onAgentMessage"]>[0],
   ): void;
@@ -171,6 +174,9 @@ export function handleAppRelayMessage(
     },
     onGitDiff(payload) {
       context.applyGitDiff(payload);
+    },
+    onGitAction(payload) {
+      context.applyGitAction(payload);
     },
     onAgentMessage(payload) {
       context.handleAgentMessage(payload);

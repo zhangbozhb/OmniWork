@@ -46,3 +46,39 @@ test("dispatchAppMessage routes recovered Agent inbox pages", () => {
     },
   ]);
 });
+
+test("dispatchAppMessage routes Git action responses but not requests", () => {
+  const calls: Array<{ name: string; payload: unknown }> = [];
+  const handlers = new Proxy(
+    {},
+    {
+      get(_target, property) {
+        return (payload: unknown) => {
+          calls.push({ name: String(property), payload });
+        };
+      },
+    },
+  ) as AppMessageHandlers;
+  const response = {
+    kind: "response" as const,
+    request_id: "request-1",
+    action_id: "action-1",
+    workspacePath: "/tmp/project",
+    operation: "stage" as const,
+    paths: ["src/index.ts"],
+    result: "completed" as const,
+  };
+
+  dispatchAppMessage(createMessage("git.action", response), handlers);
+  dispatchAppMessage(
+    createMessage("git.action", {
+      kind: "request",
+      action_id: "action-2",
+      workspacePath: "/tmp/project",
+      operation: { type: "stage", paths: ["src/index.ts"] },
+    }),
+    handlers,
+  );
+
+  assert.deepEqual(calls, [{ name: "onGitAction", payload: response }]);
+});

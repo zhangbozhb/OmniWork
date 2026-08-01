@@ -83,6 +83,7 @@ export interface WorkbenchScreenProps {
   gitFileContentCache?: Record<string, FilesReadPayload>;
   gitFileContentLoadingKeys?: Record<string, boolean>;
   gitLoading?: boolean;
+  gitActionError?: string;
   onBack(): void;
   onRefreshSessions(): void;
   onCreateSession(input: {
@@ -110,6 +111,8 @@ export interface WorkbenchScreenProps {
   ): void;
   onPrefetchGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onReadGitFileContent(relativePath: string): void;
+  onGitAction(relativePath: string, operation: "stage" | "unstage"): void;
+  isGitActionPending(relativePath: string): boolean;
   onOpenSession(session: TerminalSession): void;
   onCloseSession(session: TerminalSession): void;
   onRenameSession(session: TerminalSession, title: string): void;
@@ -137,6 +140,7 @@ export function WorkbenchScreen({
   gitFileContentCache,
   gitFileContentLoadingKeys,
   gitLoading,
+  gitActionError,
   onBack,
   onRefreshSessions,
   onCreateSession,
@@ -152,6 +156,8 @@ export function WorkbenchScreen({
   onOpenGitReview,
   onPrefetchGitDiff,
   onReadGitFileContent,
+  onGitAction,
+  isGitActionPending,
   onOpenSession,
   onCloseSession,
   onRenameSession,
@@ -536,6 +542,7 @@ export function WorkbenchScreen({
           gitFileContentCache={gitFileContentCache}
           gitFileContentLoadingKeys={gitFileContentLoadingKeys}
           gitLoading={gitLoading}
+          gitActionError={gitActionError}
           t={t}
           renderSessionRow={renderSessionRow}
           onPagerLayout={handleWorkspacePagerLayout}
@@ -552,6 +559,8 @@ export function WorkbenchScreen({
           onOpenGitReview={onOpenGitReview}
           onPrefetchGitDiff={onPrefetchGitDiff}
           onReadGitFileContent={onReadGitFileContent}
+          onGitAction={onGitAction}
+          isGitActionPending={isGitActionPending}
         />
       ) : (
         <WorkspaceList

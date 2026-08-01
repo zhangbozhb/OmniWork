@@ -31,6 +31,9 @@ Structured Agent sessions use `agent.surface.event` plus cursor-based
 use the strict `agent.interaction` request, answer, result, and sync payloads.
 `agent.prompt.submit` can include additive `context_files` Workspace references;
 file contents are resolved and validated by the Desktop Agent.
+Controlled Git index writes use the strict `git.action` request/response union.
+Only typed `stage` and `unstage` operations are currently defined; each request
+has an action ID and a bounded list of explicit Workspace-relative paths.
 
 Source and issue tracking are available in the
 [OmniWork repository](https://github.com/zhangbozhb/OmniWork).

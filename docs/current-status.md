@@ -13,7 +13,7 @@
 
 - React Native CLI 代码同时覆盖 iOS、Android 和 `react-native-web`。
 - 支持手动、二维码和配对链接导入；Web 不扫描二维码。
-- 以 Workspace 组织 Sessions、Git 和 Files，支持受限 UTF-8 文本编辑、写入冲突检测、只读 Git status/diff。
+- 以 Workspace 组织 Sessions、Git 和 Files，支持受限 UTF-8 文本编辑、写入冲突检测、Git status/diff，以及文件级 stage/unstage。Git 写操作使用严格 E2E 协议和服务端固定参数，只修改 index；discard、commit、push 与 worktree 删除尚未开放。
 - 支持配置化 Terminal Provider、tmux 会话创建/重命名/关闭及 xterm 终端交互。
 - 创建 session 时会在 Desktop Agent 上递归创建不存在的指定目录；目录创建或访问失败时整次 session 创建失败。
 - 支持 Codex、Claude Code 和 TraeX 的结构化会话、增量对话与活动时间线。Desktop Agent 会将 Surface 事件持久化到 SQLite，App 在获取 Session 列表后按 cursor 增量同步，断线重连可恢复已持久化事件。

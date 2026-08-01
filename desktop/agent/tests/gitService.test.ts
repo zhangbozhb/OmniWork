@@ -108,4 +108,73 @@ function workspace(path: string): WorkspaceDefinition {
   assert.equal(skippedCount, 5);
 }
 
+// Typed Git actions only operate on current changed files and remain reversible.
+{
+  const workspacePath = await createRepo("omniwork-git-actions-");
+  await writeFile(join(workspacePath, "tracked.txt"), "changed\n");
+  await writeFile(join(workspacePath, "new file.txt"), "new\n");
+  const service = new GitService();
+
+  const staged = await service.action(workspace(workspacePath), {
+    type: "stage",
+    paths: ["tracked.txt", "new file.txt"],
+  });
+  assert.equal(
+    staged.files.find((file) => file.path === "tracked.txt")?.staged,
+    true,
+  );
+  assert.equal(
+    staged.files.find((file) => file.path === "new file.txt")?.staged,
+    true,
+  );
+  await service.action(workspace(workspacePath), {
+    type: "stage",
+    paths: ["tracked.txt", "new file.txt"],
+  });
+
+  const unstaged = await service.action(workspace(workspacePath), {
+    type: "unstage",
+    paths: ["tracked.txt"],
+  });
+  assert.equal(
+    unstaged.files.find((file) => file.path === "tracked.txt")?.unstaged,
+    true,
+  );
+  assert.equal(
+    unstaged.files.find((file) => file.path === "tracked.txt")?.staged,
+    false,
+  );
+  await service.action(workspace(workspacePath), {
+    type: "unstage",
+    paths: ["tracked.txt"],
+  });
+  await service.action(workspace(workspacePath), {
+    type: "unstage",
+    paths: ["new file.txt"],
+  });
+  const untrackedReplay = await service.action(workspace(workspacePath), {
+    type: "unstage",
+    paths: ["new file.txt"],
+  });
+  assert.equal(
+    untrackedReplay.files.find((file) => file.path === "new file.txt")?.status,
+    "untracked",
+  );
+
+  await assert.rejects(
+    service.action(workspace(workspacePath), {
+      type: "stage",
+      paths: ["missing.txt"],
+    }),
+    /not a current Git change/,
+  );
+  await assert.rejects(
+    service.action(workspace(workspacePath), {
+      type: "stage",
+      paths: ["../outside.txt"],
+    }),
+    /escapes workspace root/,
+  );
+}
+
 console.log("gitService tests passed");

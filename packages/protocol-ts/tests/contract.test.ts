@@ -475,6 +475,52 @@ describe("agent message payload schemas", () => {
     );
     assert.ok(
       parseMessageEnvelope(
+        createMessage("git.action", {
+          kind: "request",
+          action_id: "action_1",
+          workspacePath: "/tmp/project",
+          operation: {
+            type: "stage",
+            paths: ["src/index.ts"],
+          },
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("git.action", {
+          kind: "response",
+          request_id: "request_1",
+          action_id: "action_1",
+          workspacePath: "/tmp/project",
+          operation: "stage",
+          paths: ["src/index.ts"],
+          result: "completed",
+          git_status: {
+            workspacePath: "/tmp/project",
+            isGitRepository: true,
+            hasChanges: false,
+            files: [],
+          },
+        }),
+      ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("git.action", {
+          kind: "request",
+          action_id: "action_2",
+          workspacePath: "/tmp/project",
+          operation: {
+            type: "stage",
+            paths: [],
+          },
+        }),
+      ),
+      null,
+    );
+    assert.ok(
+      parseMessageEnvelope(
         createMessage("agent.interaction", {
           kind: "request",
           interaction_id: "interaction_1",

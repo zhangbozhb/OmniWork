@@ -85,6 +85,9 @@ export interface GitStatusScreenProps {
   onEditFile?(relativePath: string): void;
   onPrefetchDiff?(relativePath?: string, scope?: GitDiffScope): void;
   onReadFileContent?(relativePath: string): void;
+  onGitAction?(relativePath: string, operation: "stage" | "unstage"): void;
+  isGitActionPending?(relativePath: string): boolean;
+  gitActionError?: string;
 }
 
 export function GitStatusScreen({
@@ -106,6 +109,9 @@ export function GitStatusScreen({
   onEditFile,
   onPrefetchDiff = onOpenDiff,
   onReadFileContent = noop,
+  onGitAction,
+  isGitActionPending = () => false,
+  gitActionError,
 }: GitStatusScreenProps): JSX.Element {
   const { t } = useTranslation();
   const screenRef = useRef<View>(null);
@@ -271,10 +277,17 @@ export function GitStatusScreen({
 
       {files.length > 0 ? (
         <View style={styles.fileStack}>
+          {gitActionError ? (
+            <Text accessibilityLiveRegion="polite" style={styles.actionError}>
+              {gitActionError}
+            </Text>
+          ) : null}
           <FileSection
             files={files.filter((file) => file.staged)}
             scope="staged"
             title={t("git.scope.staged")}
+            isActionPending={isGitActionPending}
+            onAction={onGitAction}
             onCopyText={copyText}
             onOpen={(file) => openReview("staged", file.path)}
           />
@@ -282,6 +295,8 @@ export function GitStatusScreen({
             files={files.filter((file) => file.unstaged && file.status !== "untracked")}
             scope="unstaged"
             title={t("git.scope.unstaged")}
+            isActionPending={isGitActionPending}
+            onAction={onGitAction}
             onCopyText={copyText}
             onOpen={(file) => openReview("unstaged", file.path)}
           />
@@ -289,6 +304,8 @@ export function GitStatusScreen({
             files={files.filter((file) => file.status === "untracked")}
             scope="untracked"
             title={t("git.scope.untracked")}
+            isActionPending={isGitActionPending}
+            onAction={onGitAction}
             onCopyText={copyText}
             onOpen={(file) => openReview("untracked", file.path)}
           />
@@ -844,12 +861,16 @@ function FileSection({
   title,
   onCopyText,
   onOpen,
+  onAction,
+  isActionPending,
 }: {
   files: ChangedFile[];
   scope: FileStatsScope;
   title: string;
   onCopyText(text: string, notice: string, pageY?: number): void;
   onOpen(file: ChangedFile): void;
+  onAction?(relativePath: string, operation: "stage" | "unstage"): void;
+  isActionPending(relativePath: string): boolean;
 }): JSX.Element | null {
   const { t } = useTranslation();
   if (files.length === 0) {
@@ -866,6 +887,19 @@ function FileSection({
           file={file}
           key={`${title}:${file.path}`}
           scope={scope}
+          actionLabel={
+            scope === "staged" ? t("git.actions.unstage") : t("git.actions.stage")
+          }
+          actionPending={isActionPending(file.path)}
+          onAction={
+            onAction
+              ? () =>
+                  onAction(
+                    file.path,
+                    scope === "staged" ? "unstage" : "stage",
+                  )
+              : undefined
+          }
           onLongPress={(event) =>
             onCopyText(
               file.path,
@@ -885,30 +919,49 @@ function FileRow({
   scope,
   onLongPress,
   onPress,
+  actionLabel,
+  actionPending,
+  onAction,
 }: {
   file: ChangedFile;
   scope: FileStatsScope;
   onLongPress(event: GestureResponderEvent): void;
   onPress(): void;
+  actionLabel: string;
+  actionPending: boolean;
+  onAction?(): void;
 }): JSX.Element {
   const status = getScopedStatus(file, scope);
   const statusColor = STATUS_COLOR[status];
   return (
-    <Pressable
-      style={styles.fileRow}
-      onLongPress={onLongPress}
-      onPress={onPress}
-    >
-      <View style={[styles.fileIndicator, { backgroundColor: statusColor }]} />
-      <View style={styles.fileInfo}>
-        <Text numberOfLines={1} style={styles.filePath}>{file.path}</Text>
-        <Text numberOfLines={1} style={styles.fileMeta}>{file.oldPath ?? dirname(file.path)}</Text>
-      </View>
-      <Badge backgroundColor={colors.neutralSoft} color={statusColor}>
-        {statusCode(status)}
-      </Badge>
-      <FileStats file={file} scope={scope} />
-    </Pressable>
+    <View style={styles.fileRow}>
+      <Pressable
+        style={styles.fileRowMain}
+        onLongPress={onLongPress}
+        onPress={onPress}
+      >
+        <View style={[styles.fileIndicator, { backgroundColor: statusColor }]} />
+        <View style={styles.fileInfo}>
+          <Text numberOfLines={1} style={styles.filePath}>{file.path}</Text>
+          <Text numberOfLines={1} style={styles.fileMeta}>{file.oldPath ?? dirname(file.path)}</Text>
+        </View>
+        <Badge backgroundColor={colors.neutralSoft} color={statusColor}>
+          {statusCode(status)}
+        </Badge>
+        <FileStats file={file} scope={scope} />
+      </Pressable>
+      {onAction ? (
+        <Button
+          disabled={actionPending}
+          style={styles.gitActionButton}
+          textStyle={styles.gitActionButtonText}
+          variant="ghost"
+          onPress={onAction}
+        >
+          {actionPending ? "…" : actionLabel}
+        </Button>
+      ) : null}
+    </View>
   );
 }
 
@@ -1236,6 +1289,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.surface,
   },
+  fileRowMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    alignSelf: "stretch",
+  },
   fileIndicator: {
     width: 4,
     alignSelf: "stretch",
@@ -1259,6 +1320,18 @@ const styles = StyleSheet.create({
     minWidth: 52,
     alignItems: "flex-end",
     gap: 2,
+  },
+  gitActionButton: {
+    minHeight: 32,
+    paddingHorizontal: spacing.sm,
+  },
+  gitActionButtonText: {
+    fontSize: 12,
+  },
+  actionError: {
+    color: colors.danger,
+    fontSize: 12,
+    lineHeight: 18,
   },
   addText: {
     color: colors.success,

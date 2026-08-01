@@ -530,6 +530,10 @@
       "unstaged": "Unstaged",
       "untracked": "Untracked"
     },
+    "actions": {
+      "stage": "Stage",
+      "unstage": "Unstage"
+    },
     "review": {
       "title": "Review changes",
       "progress": "{{current}} / {{total}}",

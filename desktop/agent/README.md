@@ -32,7 +32,7 @@ omniwork-agent --check --config /path/to/config.yml
 - Persists user-edited session titles through the `session.rename` protocol message.
 - Discovers remote workspaces from managed/external tmux session working directories, including path availability and Git repository detection.
 - Creates a user-specified session working directory recursively when it does not exist. Directory creation or access failures reject the whole session creation request.
-- Provides workspace file listing/reading/writing for supported UTF-8 text files, plus read-only Git status/diff messages. File type policy is centralized in `src/files/fileTypePolicy.ts`: untracked Git line stats are bounded by file count, file size, and concurrency limits; binary, lock, generated, archive, media, and database-like files are listed without reading them as text.
+- Provides workspace file listing/reading/writing for supported UTF-8 text files, Git status/diff, and controlled index-only stage/unstage actions. Git writes use typed E2E messages, literal pathspecs, current-change checks, and reject directories or paths outside the Workspace. File type policy is centralized in `src/files/fileTypePolicy.ts`: untracked Git line stats are bounded by file count, file size, and concurrency limits; binary, lock, generated, archive, media, and database-like files are listed without reading them as text.
 - Runs structured AgentSurface sessions over local stdio subprocesses. Codex and TraeX use `app-server --listen stdio://`; Claude Code uses `-p --input-format stream-json --output-format stream-json`. The runner accepts repeated prompts and emits incremental provider-neutral surface events without parsing terminal rendering. Surface events are persisted in the session SQLite database and served to reconnecting Apps through cursor-based `agent.surface.sync` pages.
 - Bridges Provider approval and user-input requests through the encrypted `agent.interaction` protocol. Pending requests and idempotent resolutions are stored in SQLite; unanswered requests expire conservatively after a timeout or Desktop Agent restart.
 - Resolves prompt file references on the Desktop instead of trusting App-supplied contents. Context files must belong to the Session Workspace, pass the existing realpath and UTF-8 checks, and fit within ten files and 256 KiB total before read-only snapshots are added to the Provider prompt.
@@ -155,6 +155,13 @@ identifier, and the display name falls back to the final path segment. Git UI
 appears in the App only when the discovered workspace is inside a Git
 repository; non-Git directories still support file browsing, guarded text
 editing for supported file types, and session grouping.
+
+Git index actions are deliberately narrower than a remote shell. The App can
+stage or unstage explicit changed files, but cannot submit arbitrary Git
+arguments, discard worktree content, commit, push, or delete a worktree. Both
+actions are reversible without changing file contents. To roll the capability
+back, stop advertising `git.write.index` and remove the App action controls;
+there is no new persisted state or database migration.
 
 ## Verify
 

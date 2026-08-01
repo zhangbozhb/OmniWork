@@ -18,6 +18,7 @@ import type {
   FilesListRequestPayload,
   FilesReadRequestPayload,
   FilesWriteRequestPayload,
+  GitActionRequestPayload,
   GitDiffRequestPayload,
   GitStatusRequestPayload,
   MessageEnvelope,
@@ -222,6 +223,17 @@ export class AgentMessageDispatcher {
           message as MessageEnvelope<GitDiffRequestPayload>,
           dispatchContext,
         );
+        break;
+      case "git.action":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        if ((message.payload as { kind?: unknown }).kind === "request") {
+          await this.options.resourceRequests.handleGitAction(
+            message as MessageEnvelope<GitActionRequestPayload>,
+            dispatchContext,
+          );
+        }
         break;
       case "terminal.input":
         if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {

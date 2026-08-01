@@ -789,6 +789,35 @@ export const gitDiffPayloadSchema = z
   })
   .strict();
 
+export const gitActionPayloadSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("request"),
+      action_id: z.string().min(1),
+      workspacePath: z.string().min(1),
+      operation: z
+        .object({
+          type: z.enum(["stage", "unstage"]),
+          paths: z.array(z.string().min(1)).min(1).max(100),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("response"),
+      request_id: z.string().min(1),
+      action_id: z.string().min(1),
+      workspacePath: z.string().min(1),
+      operation: z.enum(["stage", "unstage"]),
+      paths: z.array(z.string().min(1)).min(1).max(100),
+      result: z.enum(["completed", "failed"]),
+      git_status: workspaceGitStatusSchema.optional(),
+      error: z.string().min(1).optional(),
+    })
+    .strict(),
+]);
+
 const iceServerConfigSchema = z
   .object({
     urls: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
@@ -1204,6 +1233,7 @@ const payloadSchemaByType = {
     gitStatusPayloadSchema,
   ]),
   "git.diff": z.union([gitDiffRequestPayloadSchema, gitDiffPayloadSchema]),
+  "git.action": gitActionPayloadSchema,
   "terminal.frame": terminalFramePayloadSchema,
   "terminal.input": terminalInputPayloadSchema,
   "terminal.resize": terminalResizePayloadSchema,

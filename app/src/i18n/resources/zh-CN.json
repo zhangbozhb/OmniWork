@@ -530,6 +530,10 @@
       "unstaged": "未暂存",
       "untracked": "未跟踪"
     },
+    "actions": {
+      "stage": "暂存",
+      "unstage": "取消暂存"
+    },
     "review": {
       "title": "审阅变更",
       "progress": "{{current}} / {{total}}",

@@ -3,6 +3,7 @@ import {
   type FilesListRequestPayload,
   type FilesReadRequestPayload,
   type FilesWriteRequestPayload,
+  type GitActionRequestPayload,
   type GitDiffRequestPayload,
   type GitStatusRequestPayload,
   type MessageEnvelope,
@@ -177,6 +178,57 @@ export class ResourceRequestHandler {
         },
       ),
     );
+  }
+
+  async handleGitAction(
+    message: MessageEnvelope<GitActionRequestPayload>,
+    context?: AgentDispatchContext,
+  ): Promise<void> {
+    const response = {
+      kind: "response" as const,
+      request_id: message.id,
+      action_id: message.payload.action_id,
+      workspacePath: message.payload.workspacePath,
+      operation: message.payload.operation.type,
+      paths: message.payload.operation.paths,
+    };
+    try {
+      const workspace = await this.requireWorkspace(
+        message.payload.workspacePath,
+      );
+      const gitStatus = await this.git.action(
+        workspace,
+        message.payload.operation,
+      );
+      this.sendToApp(
+        context,
+        createMessage(
+          "git.action",
+          {
+            ...response,
+            result: "completed",
+            git_status: gitStatus,
+          },
+          { device_id: this.deviceId },
+        ),
+      );
+    } catch (error) {
+      this.sendToApp(
+        context,
+        createMessage(
+          "git.action",
+          {
+            ...response,
+            result: "failed",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Git action failed.",
+          },
+          { device_id: this.deviceId },
+        ),
+      );
+    }
   }
 
   private async requireWorkspace(workspacePath: string) {

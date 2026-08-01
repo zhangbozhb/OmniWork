@@ -48,6 +48,7 @@ export const WORKSPACE_MESSAGE_TYPES = [
   "files.write",
   "git.status",
   "git.diff",
+  "git.action",
 ] as const;
 
 export const TERMINAL_MESSAGE_TYPES = [

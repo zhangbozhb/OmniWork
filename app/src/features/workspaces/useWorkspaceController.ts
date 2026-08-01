@@ -6,9 +6,11 @@ import type {
   GitDiffPayload,
   GitDiffScope,
   GitStatusPayload,
+  GitActionResponsePayload,
   MessageEnvelope,
   WorkspaceDefinition,
 } from "@omni-work/protocol-ts";
+import { createMessageId } from "@omni-work/protocol-ts";
 
 import type { AppView, ConnectionStatus } from "../../app/appTypes";
 import type { PairingConfig } from "../auth/types";
@@ -26,6 +28,7 @@ import {
 } from "./workspaceKeys";
 import {
   gitDiffRequest,
+  gitActionRequest,
   gitStatusRequest,
   listFilesRequest,
   readFileRequest,
@@ -76,6 +79,12 @@ export function useWorkspaceController({
   >({});
   const [lastFileWriteResult, setLastFileWriteResult] = useState<
     FilesWritePayload | undefined
+  >();
+  const [gitActionLoadingKeys, setGitActionLoadingKeys] = useState<
+    Record<string, boolean>
+  >({});
+  const [lastGitActionResult, setLastGitActionResult] = useState<
+    GitActionResponsePayload | undefined
   >();
 
   const selectedWorkspaceCache = selectedWorkspace
@@ -561,6 +570,42 @@ export function useWorkspaceController({
     );
   }
 
+  function handleGitAction(
+    relativePath: string,
+    operation: "stage" | "unstage",
+  ): void {
+    if (
+      !pairing ||
+      !selectedWorkspace ||
+      connectionStatus !== "authenticated"
+    ) {
+      return;
+    }
+    const key = toWorkspaceFileKey(selectedWorkspace.path, relativePath);
+    setGitActionLoadingKeys((current) => ({ ...current, [key]: true }));
+    setLastGitActionResult(undefined);
+    sendToRelay(
+      gitActionRequest(pairing.deviceId, {
+        kind: "request",
+        action_id: createMessageId(),
+        workspacePath: selectedWorkspace.path,
+        operation: {
+          type: operation,
+          paths: [relativePath],
+        },
+      }),
+    );
+  }
+
+  function isGitActionPending(relativePath: string): boolean {
+    return Boolean(
+      selectedWorkspace &&
+        gitActionLoadingKeys[
+          toWorkspaceFileKey(selectedWorkspace.path, relativePath)
+        ],
+    );
+  }
+
   function applyFilesList(payload: FilesListPayload): void {
     updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
       ...cache,
@@ -701,6 +746,30 @@ export function useWorkspaceController({
     }));
   }
 
+  function applyGitAction(payload: GitActionResponsePayload): void {
+    setGitActionLoadingKeys((current) => {
+      let next = current;
+      for (const path of payload.paths) {
+        next = omitKey(
+          next,
+          toWorkspaceFileKey(payload.workspacePath, path),
+        );
+      }
+      return next;
+    });
+    setLastGitActionResult(payload);
+    if (payload.result !== "completed" || !payload.git_status) {
+      return;
+    }
+    updateWorkspaceDataCache(payload.workspacePath, (cache) => ({
+      ...cache,
+      git: {
+        ...createWorkspaceGitCache(),
+        status: payload.git_status,
+      },
+    }));
+  }
+
   return {
     selectedWorkspace,
     workspaceCache,
@@ -722,6 +791,8 @@ export function useWorkspaceController({
     gitDiff,
     gitDiffLoading,
     gitLoading,
+    gitActionLoadingKeys,
+    lastGitActionResult,
     lastFileWriteResult,
     selectWorkspace,
     clearSelectedWorkspace,
@@ -744,10 +815,13 @@ export function useWorkspaceController({
     handleOpenGitReview,
     handlePrefetchGitDiff,
     handleReadGitFileContent,
+    handleGitAction,
+    isGitActionPending,
     applyFilesList,
     applyFilesRead,
     applyFilesWrite,
     applyGitStatus,
     applyGitDiff,
+    applyGitAction,
   };
 }

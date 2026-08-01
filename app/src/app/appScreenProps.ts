@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import type { GitActionResponsePayload } from "@omni-work/protocol-ts";
 
 import { AppRouter } from "./AppRouter";
 import type { ConnectionStatus } from "./appTypes";
@@ -118,6 +119,7 @@ type BuildAppRouterPropsOptions = {
   gitFileContentCache: WorkbenchScreenProps["gitFileContentCache"];
   gitFileContentLoadingKeys: WorkbenchScreenProps["gitFileContentLoadingKeys"];
   gitLoading: WorkbenchScreenProps["gitLoading"];
+  lastGitActionResult?: GitActionResponsePayload;
   gitDiffLoading: GitReviewScreenProps["loading"];
   gitReviewPath: GitReviewScreenProps["initialPath"];
   gitReviewScope: GitReviewScreenProps["initialScope"];
@@ -155,6 +157,8 @@ type BuildAppRouterPropsOptions = {
   handleOpenGitReview: WorkbenchScreenProps["onOpenGitReview"];
   handlePrefetchGitDiff: WorkbenchScreenProps["onPrefetchGitDiff"];
   handleReadGitFileContent: WorkbenchScreenProps["onReadGitFileContent"];
+  handleGitAction: WorkbenchScreenProps["onGitAction"];
+  isGitActionPending: WorkbenchScreenProps["isGitActionPending"];
   handleOpenSession: WorkbenchScreenProps["onOpenSession"];
   handleCloseSession: WorkbenchScreenProps["onCloseSession"];
   handleRenameSession: WorkbenchScreenProps["onRenameSession"];
@@ -278,6 +282,11 @@ export function buildAppRouterProps(
       gitFileContentCache: o.gitFileContentCache,
       gitFileContentLoadingKeys: o.gitFileContentLoadingKeys,
       gitLoading: o.gitLoading,
+      gitActionError:
+        o.lastGitActionResult?.result === "failed" &&
+        o.lastGitActionResult.workspacePath === selectedWorkspace?.path
+          ? o.lastGitActionResult.error
+          : undefined,
       onBack: () => o.setView("devices"),
       onRefreshSessions: o.handleRefreshSessions,
       onCreateSession: o.handleCreateSession,
@@ -293,6 +302,8 @@ export function buildAppRouterProps(
       onOpenGitReview: o.handleOpenGitReview,
       onPrefetchGitDiff: o.handlePrefetchGitDiff,
       onReadGitFileContent: o.handleReadGitFileContent,
+      onGitAction: o.handleGitAction,
+      isGitActionPending: o.isGitActionPending,
       onOpenSession: o.handleOpenSession,
       onCloseSession: o.handleCloseSession,
       onRenameSession: o.handleRenameSession,
@@ -339,6 +350,13 @@ export function buildAppRouterProps(
               o.handleOpenFileEditor(selectedWorkspace, relativePath),
             onPrefetchDiff: o.handlePrefetchGitDiff,
             onReadFileContent: o.handleReadGitFileContent,
+            onGitAction: o.handleGitAction,
+            isGitActionPending: o.isGitActionPending,
+            gitActionError:
+              o.lastGitActionResult?.result === "failed" &&
+              o.lastGitActionResult.workspacePath === selectedWorkspace.path
+                ? o.lastGitActionResult.error
+                : undefined,
           }
         : undefined,
     terminalScreenProps:

@@ -4,6 +4,7 @@ import {
   type FilesReadRequestPayload,
   type FilesWriteRequestPayload,
   type GitDiffRequestPayload,
+  type GitActionRequestPayload,
   type GitStatusRequestPayload,
 } from "@omni-work/protocol-ts";
 
@@ -44,4 +45,11 @@ export function gitDiffRequest(
   payload: GitDiffRequestPayload,
 ) {
   return createMessage("git.diff", payload, { device_id: deviceId });
+}
+
+export function gitActionRequest(
+  deviceId: string,
+  payload: GitActionRequestPayload,
+) {
+  return createMessage("git.action", payload, { device_id: deviceId });
 }

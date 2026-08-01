@@ -59,6 +59,7 @@ export function WorkspacePager({
   gitFileContentCache,
   gitFileContentLoadingKeys,
   gitLoading,
+  gitActionError,
   t,
   renderSessionRow,
   onPagerLayout,
@@ -75,6 +76,8 @@ export function WorkspacePager({
   onOpenGitReview,
   onPrefetchGitDiff,
   onReadGitFileContent,
+  onGitAction,
+  isGitActionPending,
 }: {
   pagerRef: RefObject<ScrollView | null>;
   activeWorkspace: WorkspaceDefinition;
@@ -96,6 +99,7 @@ export function WorkspacePager({
   gitFileContentCache?: Record<string, FilesReadPayload>;
   gitFileContentLoadingKeys?: Record<string, boolean>;
   gitLoading?: boolean;
+  gitActionError?: string;
   t: Translate;
   renderSessionRow(session: TerminalSession): JSX.Element;
   onPagerLayout(event: LayoutChangeEvent): void;
@@ -123,6 +127,8 @@ export function WorkspacePager({
   ): void;
   onPrefetchGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onReadGitFileContent(relativePath: string): void;
+  onGitAction(relativePath: string, operation: "stage" | "unstage"): void;
+  isGitActionPending(relativePath: string): boolean;
 }): JSX.Element {
   function workspaceTabPaneStyle(tab: WorkspaceTab) {
     return [
@@ -249,6 +255,7 @@ export function WorkspacePager({
             fileContentCache={gitFileContentCache}
             fileContentLoadingKeys={gitFileContentLoadingKeys}
             loading={gitLoading}
+            gitActionError={gitActionError}
             onRefresh={() => onRefreshWorkspaceGit(activeWorkspace)}
             onOpenDiff={onOpenGitDiff}
             onOpenReview={(relativePath, scope) =>
@@ -256,6 +263,8 @@ export function WorkspacePager({
             }
             onPrefetchDiff={onPrefetchGitDiff}
             onReadFileContent={onReadGitFileContent}
+            onGitAction={onGitAction}
+            isGitActionPending={isGitActionPending}
             onEditFile={(relativePath) =>
               onEditFile(activeWorkspace, relativePath)
             }

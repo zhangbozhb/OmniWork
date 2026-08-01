@@ -108,6 +108,7 @@ export type KnownAgentCapability =
   | "files.read"
   | "files.write"
   | "git.read"
+  | "git.write.index"
   | "terminal.shell"
   | "codex.cli"
   | "codex.app_server"
@@ -896,6 +897,32 @@ export interface GitDiffPayload {
   scope?: GitDiffScope;
   diff: string;
 }
+
+export interface GitActionRequestPayload {
+  kind: "request";
+  action_id: string;
+  workspacePath: string;
+  operation: {
+    type: "stage" | "unstage";
+    paths: string[];
+  };
+}
+
+export interface GitActionResponsePayload {
+  kind: "response";
+  request_id: string;
+  action_id: string;
+  workspacePath: string;
+  operation: "stage" | "unstage";
+  paths: string[];
+  result: "completed" | "failed";
+  git_status?: WorkspaceGitStatus;
+  error?: string;
+}
+
+export type GitActionPayload =
+  | GitActionRequestPayload
+  | GitActionResponsePayload;
 
 export type AgentProbeProvider =
   | "codex"

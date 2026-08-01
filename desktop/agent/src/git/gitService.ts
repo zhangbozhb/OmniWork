@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type {
   GitDiffPayload,
   GitDiffScope,
+  GitActionRequestPayload,
   GitStatusPayload,
   WorkspaceDefinition,
   WorkspaceGitStatus,
@@ -38,16 +39,13 @@ export class GitService {
       await Promise.all([
         runGit(workspace.path, ["status", "--short", "--branch"]),
         runGit(workspace.path, ["rev-parse", "--short", "HEAD"]),
-        runGit(workspace.path, ["status", "--porcelain"]),
+        runGit(workspace.path, ["status", "--porcelain=v1", "-z"]),
         runGit(workspace.path, ["diff", "--numstat"]),
         runGit(workspace.path, ["diff", "--cached", "--numstat"]),
       ]);
     const unstagedFileStats = parseNumstat(unstagedStats);
     const stagedFileStats = parseNumstat(stagedStats);
-    const parsedFiles = porcelain
-      .split("\n")
-      .filter(Boolean)
-      .map(parseStatusLine);
+    const parsedFiles = parsePorcelainStatus(porcelain);
     const untrackedStatPaths = new Set(
       parsedFiles
         .filter((file) => file.status === "untracked")
@@ -115,6 +113,73 @@ export class GitService {
       diff: await getDiff(workspace.path, scope, relativePath),
     };
   }
+
+  async action(
+    workspace: WorkspaceDefinition,
+    operation: GitActionRequestPayload["operation"],
+  ): Promise<WorkspaceGitStatus> {
+    if (!workspace.isGitRepository) {
+      throw new Error("Workspace is not a Git repository.");
+    }
+    const paths = [...new Set(operation.paths)];
+    const pathsToApply: string[] = [];
+    for (const path of paths) {
+      await assertPathInsideWorkspace(workspace.path, path);
+      const change = await getCurrentGitFileChange(workspace.path, path);
+      if (!change) {
+        throw new Error(`Path is not a current Git change: ${path}`);
+      }
+      if (
+        (operation.type === "stage" && change.unstaged) ||
+        (operation.type === "unstage" && change.staged)
+      ) {
+        pathsToApply.push(path);
+      }
+    }
+
+    if (pathsToApply.length === 0) {
+      return (await this.status(workspace)).status;
+    }
+    if (operation.type === "stage") {
+      await runGit(workspace.path, [
+        "--literal-pathspecs",
+        "add",
+        "--",
+        ...pathsToApply,
+      ]);
+    } else {
+      await runGit(workspace.path, [
+        "--literal-pathspecs",
+        "restore",
+        "--staged",
+        "--",
+        ...pathsToApply,
+      ]);
+    }
+    return (await this.status(workspace)).status;
+  }
+}
+
+async function getCurrentGitFileChange(
+  workspacePath: string,
+  relativePath: string,
+): Promise<WorkspaceGitStatus["files"][number] | undefined> {
+  const target = resolve(workspacePath, relativePath);
+  const info = await lstat(target).catch(() => undefined);
+  if (info?.isDirectory()) {
+    return undefined;
+  }
+  const status = await runGit(workspacePath, [
+    "--literal-pathspecs",
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--",
+    relativePath,
+  ]);
+  return parsePorcelainStatus(status).find(
+    (file) => file.path === relativePath || file.oldPath === relativePath,
+  );
 }
 
 async function runGit(cwd: string, args: string[]): Promise<string> {
@@ -139,13 +204,33 @@ function parseBranchLine(
   };
 }
 
-function parseStatusLine(line: string): WorkspaceGitStatus["files"][number] {
-  const code = line.slice(0, 2);
-  const rawPath = line.slice(3).trim();
-  const [oldPath, nextPath] = rawPath.includes(" -> ")
-    ? rawPath.split(" -> ")
-    : [undefined, rawPath];
-  const path = nextPath ?? rawPath;
+function parsePorcelainStatus(
+  output: string,
+): WorkspaceGitStatus["files"] {
+  const records = output.split("\0");
+  const files: WorkspaceGitStatus["files"] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (!record) {
+      continue;
+    }
+    const code = record.slice(0, 2);
+    const path = record.slice(3);
+    const renamed = code.includes("R") || code.includes("C");
+    const oldPath = renamed ? records[index + 1] : undefined;
+    if (renamed) {
+      index += 1;
+    }
+    files.push(parseStatusRecord(code, path, oldPath));
+  }
+  return files;
+}
+
+function parseStatusRecord(
+  code: string,
+  path: string,
+  oldPath?: string,
+): WorkspaceGitStatus["files"][number] {
   const indexStatus = code[0];
   const worktreeStatus = code[1];
   return {

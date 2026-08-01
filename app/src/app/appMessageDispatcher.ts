@@ -10,6 +10,7 @@ import type {
   FilesReadPayload,
   FilesWritePayload,
   GitDiffPayload,
+  GitActionResponsePayload,
   GitStatusPayload,
   MessageEnvelope,
   ProtocolErrorPayload,
@@ -38,6 +39,10 @@ export type AppMessageHandlers = {
   onFilesWrite(payload: FilesWritePayload, message: MessageEnvelope): void;
   onGitStatus(payload: GitStatusPayload, message: MessageEnvelope): void;
   onGitDiff(payload: GitDiffPayload, message: MessageEnvelope): void;
+  onGitAction(
+    payload: GitActionResponsePayload,
+    message: MessageEnvelope,
+  ): void;
   onAgentMessage(payload: AgentAppMessage, message: MessageEnvelope): void;
   onAgentMessageList(
     payload: AgentMessageListPayload,
@@ -131,6 +136,14 @@ export function dispatchAppMessage(
       break;
     case "git.diff":
       handlers.onGitDiff(message.payload as GitDiffPayload, message);
+      break;
+    case "git.action":
+      if ((message.payload as { kind?: unknown }).kind === "response") {
+        handlers.onGitAction(
+          message.payload as GitActionResponsePayload,
+          message,
+        );
+      }
       break;
     case "agent.message":
       handlers.onAgentMessage(message.payload as AgentAppMessage, message);
