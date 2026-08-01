@@ -34,6 +34,7 @@ import {
   type TerminalTextSize,
   type TerminalViewport,
 } from "../../features/terminal/terminalLayout";
+import { isPcWebEnvironment } from "../../platform/webDevice";
 import { NativeTerminalView } from "../../terminal/NativeTerminalView";
 import { Button } from "../../ui/components";
 import { colors, radii, spacing } from "../../ui/theme";
@@ -180,6 +181,12 @@ export function TerminalScreen({
   const canHideKeyboard =
     (keyboardVisible || terminalInputEnabled) && !hasDraft;
   const readOnly = !canInput;
+  const pcWeb = useMemo(isPcWebEnvironment, []);
+  const showInputControls = !pcWeb;
+  const showReadOnlyBanner = !focusMode && readOnly && Boolean(readOnlyReason);
+  const showBottomDock =
+    showReadOnlyBanner || (!focusMode && showInputControls);
+  const effectiveBottomDockHeight = showBottomDock ? bottomDockHeight : 0;
   // Android uses windowSoftInputMode="adjustResize", so the window is already
   // resized above the keyboard. Re-applying keyboardBottomInset on Android would
   // double-shift the dock and leave a gap above the keyboard.
@@ -196,7 +203,7 @@ export function TerminalScreen({
     [textSize, terminalViewport],
   );
   const floatingControlsBottom =
-    bottomDockHeight +
+    effectiveBottomDockHeight +
     effectiveKeyboardInset +
     BOTTOM_DOCK_BOTTOM_MARGIN +
     spacing.md +
@@ -207,8 +214,10 @@ export function TerminalScreen({
   );
   const terminalAreaBottomSpace =
     Platform.OS === "web" && effectiveKeyboardInset <= 0
-      ? (`calc(${bottomDockHeight + BOTTOM_DOCK_BOTTOM_MARGIN}px + env(safe-area-inset-bottom, 0px))` as unknown as number)
-      : bottomDockHeight + effectiveKeyboardInset + BOTTOM_DOCK_BOTTOM_MARGIN;
+      ? (`calc(${effectiveBottomDockHeight + BOTTOM_DOCK_BOTTOM_MARGIN}px + env(safe-area-inset-bottom, 0px))` as unknown as number)
+      : effectiveBottomDockHeight +
+        effectiveKeyboardInset +
+        BOTTOM_DOCK_BOTTOM_MARGIN;
   const bottomDockBottom =
     effectiveKeyboardInset > 0
       ? effectiveKeyboardInset
@@ -463,27 +472,29 @@ export function TerminalScreen({
             >
               <Text style={styles.textSizeButtonText}>Aa</Text>
             </Pressable>
-            <Button
-              accessibilityLabel={
-                composerVisible
+            {showInputControls ? (
+              <Button
+                accessibilityLabel={
+                  composerVisible
+                    ? t("terminal.hideInput")
+                    : t("terminal.showInput")
+                }
+                icon={composerVisible ? "eyeOff" : "keyboard"}
+                iconOnly
+                style={[
+                  styles.inputToggleButton,
+                  !composerVisible && styles.inputToggleButtonActive,
+                ]}
+                onPress={() => {
+                  dismissTextSizeControls();
+                  toggleComposerVisible();
+                }}
+              >
+                {composerVisible
                   ? t("terminal.hideInput")
-                  : t("terminal.showInput")
-              }
-              icon={composerVisible ? "eyeOff" : "keyboard"}
-              iconOnly
-              style={[
-                styles.inputToggleButton,
-                !composerVisible && styles.inputToggleButtonActive,
-              ]}
-              onPress={() => {
-                dismissTextSizeControls();
-                toggleComposerVisible();
-              }}
-            >
-              {composerVisible
-                ? t("terminal.hideInput")
-                : t("terminal.showInput")}
-            </Button>
+                  : t("terminal.showInput")}
+              </Button>
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -572,6 +583,7 @@ export function TerminalScreen({
       <View
         style={[
           styles.bottomDock,
+          !showBottomDock && styles.hidden,
           {
             bottom: bottomDockBottom,
           },
@@ -582,7 +594,7 @@ export function TerminalScreen({
           return false;
         }}
       >
-        {!focusMode && readOnly && readOnlyReason ? (
+        {showReadOnlyBanner && readOnlyReason ? (
           <View style={styles.readOnlyBanner}>
             <Text style={styles.readOnlyTitle}>
               {t("terminal.readOnlyTitle")}
@@ -597,7 +609,7 @@ export function TerminalScreen({
             </Button>
           </View>
         ) : null}
-        {!focusMode ? (
+        {!focusMode && showInputControls ? (
           <ScrollView
             horizontal
             keyboardShouldPersistTaps="always"
@@ -640,7 +652,7 @@ export function TerminalScreen({
           </ScrollView>
         ) : null}
 
-        {!focusMode && composerVisible ? (
+        {!focusMode && showInputControls && composerVisible ? (
           <View style={styles.composer}>
             <View style={styles.inputRow}>
               <TextInput
@@ -715,7 +727,7 @@ export function TerminalScreen({
         >
           {focusMode ? t("terminal.exitFocus") : t("terminal.focus")}
         </Button>
-        {!focusMode ? (
+        {!focusMode && showInputControls ? (
           <Button
             accessibilityLabel={
               terminalInputEnabled
@@ -806,6 +818,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingTop: spacing.xs,
     backgroundColor: colors.background,
+  },
+  hidden: {
+    display: "none",
   },
   toolbar: {
     flexDirection: "row",

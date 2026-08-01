@@ -53,9 +53,9 @@ module.exports = {
       },
       {
         test: /\.[jt]sx?$/,
+        // Workspace packages already publish browser-compatible ESM from dist.
         include: [
           path.resolve(__dirname),
-          path.resolve(workspaceRoot, "packages"),
           qrcodeSvgRoot,
         ],
         use: {
