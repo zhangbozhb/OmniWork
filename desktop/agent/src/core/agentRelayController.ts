@@ -363,6 +363,7 @@ export class AgentRelayController {
             "session.tmux",
             "session.tmux.attach",
             "session.tmux.kill",
+            "session.managed_worktree.create",
             "workspace.list",
             "files.read",
             "files.write",

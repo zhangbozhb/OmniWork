@@ -11,6 +11,7 @@ import {
   shouldUseUntrackedFileContentFallback,
 } from "../src/screens/workspaces/gitStatusModel.ts";
 import { toGitDiffCacheKey } from "../src/features/workspaces/workspaceKeys.ts";
+import { formatGitReviewNotes } from "../src/screens/workspaces/gitReviewNotes.ts";
 
 type ChangedFile = WorkspaceGitStatus["files"][number];
 
@@ -95,5 +96,30 @@ test("git status model parses diff lines and detects empty untracked diffs", () 
       "untracked",
     ),
     true,
+  );
+});
+
+test("review notes are batched with their immutable diff anchors", () => {
+  assert.equal(
+    formatGitReviewNotes([
+      {
+        headSha: "abc123",
+        path: "src/index.ts",
+        scope: "unstaged",
+        lineIndex: 4,
+        line: "+unsafeCall();",
+        body: "Handle the failure explicitly.",
+      },
+    ]),
+    [
+      "Please address the following review notes as one revision pass.",
+      "Reviewed HEAD: abc123",
+      "",
+      "1. src/index.ts (diff line 5, unstaged)",
+      "   Code: +unsafeCall();",
+      "   Review: Handle the failure explicitly.",
+      "",
+      "Re-check the final diff after applying all notes.",
+    ].join("\n"),
   );
 });

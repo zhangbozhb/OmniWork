@@ -12,6 +12,7 @@ import { TerminalProviderRegistry } from "../src/terminal-provider/terminalProvi
 import { SessionRequestHandler } from "../src/core/sessionRequestHandler.ts";
 import type { SessionManager } from "../src/core/sessionManager.ts";
 import type { TerminalFramePusher } from "../src/core/terminalFramePusher.ts";
+import type { GitService } from "../src/git/gitService.ts";
 import type { WorkspaceManager } from "../src/workspace/workspaceManager.ts";
 
 type TestDispatchContext = {
@@ -98,6 +99,7 @@ test("SessionRequestHandler sends create status updates to the requesting app", 
       providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
     }),
     workspaces: {} as WorkspaceManager,
+    git: {} as GitService,
     sessionManager,
     terminalFramePusher,
     sendToApp(nextContext, message): void {
@@ -206,6 +208,7 @@ test("SessionRequestHandler does not start terminal stream for app_server sessio
       providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
     }),
     workspaces: {} as WorkspaceManager,
+    git: {} as GitService,
     sessionManager,
     terminalFramePusher,
     sendToApp(_nextContext, message): void {
@@ -244,6 +247,7 @@ test("SessionRequestHandler rejects session creation when cwd setup fails", asyn
       providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
     }),
     workspaces: {} as WorkspaceManager,
+    git: {} as GitService,
     sessionManager,
     terminalFramePusher: {} as TerminalFramePusher,
     sendToApp(_context, message): void {
@@ -265,6 +269,93 @@ test("SessionRequestHandler rejects session creation when cwd setup fails", asyn
     code: "SESSION_CREATE_FAILED",
     message: "Failed to create working directory /blocked/project",
   });
+});
+
+test("SessionRequestHandler creates one managed worktree and session for duplicate actions", async () => {
+  const createPayloads: SessionCreatePayload[] = [];
+  let worktreeCreates = 0;
+  const running = fakeSession({
+    cwd: "/managed/feature",
+    workspace_path: "/managed/feature",
+    runtime: {
+      kind: "app_server",
+      label: "app server",
+      description: "Structured Agent runtime.",
+      capabilities: {
+        terminal_io: false,
+        persistent_resume: true,
+        reconnect_control: true,
+        native_approval: true,
+        structured_timeline: true,
+        diff_view: true,
+      },
+    },
+  });
+  const sessionManager = {
+    async create(payload: SessionCreatePayload): Promise<TerminalSession> {
+      createPayloads.push(payload);
+      return running;
+    },
+  } as unknown as SessionManager;
+  const handler = new SessionRequestHandler({
+    deviceId: "device-1",
+    defaultCwd: "/tmp",
+    terminalProviders: new TerminalProviderRegistry({
+      providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
+    }),
+    workspaces: {
+      async get() {
+        return {
+          path: "/repo",
+          name: "repo",
+          isGitRepository: true,
+          status: "available",
+          source: "session",
+        };
+      },
+    } as unknown as WorkspaceManager,
+    git: {
+      async createWorktree() {
+        worktreeCreates += 1;
+        return {
+          created: {
+            path: "/managed/feature",
+            head: "abc123",
+            branch: "omniwork/feature",
+            is_main: false,
+            locked: false,
+            prunable: false,
+          },
+          worktrees: [],
+        };
+      },
+    } as unknown as GitService,
+    sessionManager,
+    terminalFramePusher: {} as TerminalFramePusher,
+    sendToApp(): void {},
+    async handleTerminalSnapshot(): Promise<void> {},
+  });
+  const payload: SessionCreatePayload = {
+    terminal_provider_kind: "codex",
+    runtime_preference: "app_server",
+    workspace_path: "/repo",
+    managed_worktree: {
+      source_workspace_path: "/repo",
+      name: "feature",
+      base: "HEAD",
+    },
+    create_action_id: "create-1",
+  };
+
+  await Promise.all([
+    handler.handleCreate(createMessage("session.create", payload)),
+    handler.handleCreate(createMessage("session.create", payload)),
+  ]);
+
+  assert.equal(worktreeCreates, 1);
+  assert.equal(createPayloads.length, 1);
+  assert.equal(createPayloads[0]?.workspace_path, "/managed/feature");
+  assert.equal(createPayloads[0]?.managed_worktree, undefined);
 });
 
 test("SessionRequestHandler closes the structured runner with the session", async () => {
@@ -291,6 +382,7 @@ test("SessionRequestHandler closes the structured runner with the session", asyn
       providers: DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
     }),
     workspaces: {} as WorkspaceManager,
+    git: {} as GitService,
     sessionManager,
     terminalFramePusher,
     sendToApp(): void {},

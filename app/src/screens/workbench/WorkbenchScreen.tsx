@@ -91,6 +91,7 @@ export interface WorkbenchScreenProps {
     runtimePreference: RuntimePreference;
     terminalProviderKind: CreatableTerminalProviderKind;
     workspacePath?: string;
+    managedWorktreeName?: string;
   }): void;
   onOpenWorkspaceFiles(workspace: WorkspaceDefinition): void;
   onOpenWorkspaceGit(workspace: WorkspaceDefinition): void;
@@ -112,6 +113,7 @@ export interface WorkbenchScreenProps {
   onPrefetchGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onReadGitFileContent(relativePath: string): void;
   onGitAction(relativePath: string, operation: "stage" | "unstage"): void;
+  onSendGitReviewNotes(workspace: WorkspaceDefinition, prompt: string): boolean;
   isGitActionPending(relativePath: string): boolean;
   onOpenSession(session: TerminalSession): void;
   onCloseSession(session: TerminalSession): void;
@@ -157,6 +159,7 @@ export function WorkbenchScreen({
   onPrefetchGitDiff,
   onReadGitFileContent,
   onGitAction,
+  onSendGitReviewNotes,
   isGitActionPending,
   onOpenSession,
   onCloseSession,
@@ -203,6 +206,8 @@ export function WorkbenchScreen({
     );
   const [createRuntimePreference, setCreateRuntimePreference] =
     useState<RuntimePreference>("tmux");
+  const [managedWorktree, setManagedWorktree] = useState(false);
+  const [managedWorktreeName, setManagedWorktreeName] = useState("");
   const [renamingSession, setRenamingSession] =
     useState<TerminalSession | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
@@ -339,6 +344,8 @@ export function WorkbenchScreen({
     setCreateWorkspacePath(workspace?.path);
     setCreateCwd(workspace?.path ?? defaultCwd);
     setCreateRuntimePreference("tmux");
+    setManagedWorktree(false);
+    setManagedWorktreeName("");
     setCreateWorkspaceLocked(lockedWorkspace);
     setCreateModalVisible(true);
   }
@@ -357,6 +364,9 @@ export function WorkbenchScreen({
       terminalProviderKind: createTerminalProviderKind,
       runtimePreference: createRuntimePreference,
       workspacePath: createWorkspacePath,
+      managedWorktreeName: managedWorktree
+        ? managedWorktreeName.trim()
+        : undefined,
     });
   }
 
@@ -560,6 +570,9 @@ export function WorkbenchScreen({
           onPrefetchGitDiff={onPrefetchGitDiff}
           onReadGitFileContent={onReadGitFileContent}
           onGitAction={onGitAction}
+          onSendGitReviewNotes={(prompt) =>
+            onSendGitReviewNotes(activeWorkspace, prompt)
+          }
           isGitActionPending={isGitActionPending}
         />
       ) : (
@@ -596,6 +609,8 @@ export function WorkbenchScreen({
             setCreateCwd("");
             setCreateTerminalProviderKind(preferredCreateTerminalProviderKind);
             setCreateRuntimePreference("tmux");
+            setManagedWorktree(false);
+            setManagedWorktreeName("");
             setCreateModalVisible(true);
           }}
         >
@@ -610,6 +625,14 @@ export function WorkbenchScreen({
         createWorkspacePath={createWorkspacePath}
         createTerminalProviderKind={createTerminalProviderKind}
         createRuntimePreference={createRuntimePreference}
+        managedWorktree={managedWorktree}
+        managedWorktreeAvailable={Boolean(
+          createWorkspacePath &&
+            workspaces.find(
+              (workspace) => workspace.path === createWorkspacePath,
+            )?.isGitRepository,
+        )}
+        managedWorktreeName={managedWorktreeName}
         creatableProviders={creatableProviders}
         workspaces={workspaces}
         creating={creating}
@@ -617,14 +640,22 @@ export function WorkbenchScreen({
         onClose={() => setCreateModalVisible(false)}
         onChangeCwd={(value) => {
           setCreateWorkspacePath(undefined);
+          setManagedWorktree(false);
+          setManagedWorktreeName("");
           setCreateCwd(value);
         }}
         onSelectWorkspace={(workspace) => {
           setCreateWorkspacePath(workspace.path);
           setCreateCwd(workspace.path);
+          if (!workspace.isGitRepository) {
+            setManagedWorktree(false);
+            setManagedWorktreeName("");
+          }
         }}
         onSelectProvider={setCreateTerminalProviderKind}
         onSelectRuntime={setCreateRuntimePreference}
+        onChangeManagedWorktree={setManagedWorktree}
+        onChangeManagedWorktreeName={setManagedWorktreeName}
         onConfirm={confirmCreateSession}
       />
 

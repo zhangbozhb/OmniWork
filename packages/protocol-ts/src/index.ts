@@ -104,6 +104,7 @@ export type KnownAgentCapability =
   | "session.tmux"
   | "session.tmux.attach"
   | "session.tmux.kill"
+  | "session.managed_worktree.create"
   | "workspace.list"
   | "files.read"
   | "files.write"
@@ -680,6 +681,12 @@ export interface SessionCreatePayload {
   title?: string;
   cwd?: string;
   workspace_path?: string;
+  managed_worktree?: {
+    source_workspace_path: string;
+    name: string;
+    base: "HEAD";
+  };
+  create_action_id?: string;
   command?: string;
   terminal_size?: TerminalSize;
 }

@@ -12,8 +12,10 @@ browser access without introducing a second UI stack.
 - Workspace-first session management through the connected computer, with a Workspace Detail bottom-tab layout for `Sessions`, `Git`, and `Files`.
 - Sessions are grouped by Terminal Provider inside each Workspace, with secondary management actions moved behind a `More` dialog.
 - Workspace picker for new sessions, using computer-discovered remote project directories instead of requiring users to type common working directories.
+- Optional managed-worktree isolation when creating a Session in a Git Workspace. The Desktop Agent creates an `omniwork/*` branch from the current `HEAD` and starts the Session in the managed worktree as one request.
 - Workspace file browser and guarded UTF-8 text editor for supported files inside the selected workspace boundary.
 - Git status/diff views and explicit file-level stage/unstage controls, shown only for workspaces that the connected computer reports as Git repositories. These controls modify only the Git index; discard, commit, push, and worktree deletion are not exposed.
+- Git Review line notes are kept locally in the App, rejected after the reviewed `HEAD` changes, and sent as one revision prompt to a running structured Agent in the same Workspace.
 - User-editable session titles, with Terminal screens using the session title as the primary header.
 - Terminal screen with Native WebView/xterm rendering, local generated xterm assets, and quick keys.
 - Shared SVG icon system through `react-native-svg`, used by icon-first buttons across pairing, devices, sessions, terminal, scanner, and confirmation flows.

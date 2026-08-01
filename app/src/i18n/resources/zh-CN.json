@@ -54,6 +54,7 @@
     "refresh": "刷新",
     "reset": "重置",
     "save": "保存",
+    "selected": "已选择",
     "show": "显示",
     "starting": "启动中...",
     "up": "上移",
@@ -391,6 +392,14 @@
       "other": "其他",
       "otherSummary": "未匹配到已配置 Terminal provider 的现有 tmux 会话"
     },
+    "isolation": {
+      "title": "工作区隔离",
+      "name": "Worktree 名称",
+      "managed": {
+        "title": "创建隔离 Worktree",
+        "summary": "从当前 HEAD 创建 omniwork/* 分支，并在 Agent 管理的独立目录中启动此会话。"
+      }
+    },
     "runtime": {
       "title": "运行方式",
       "tmux": {
@@ -538,6 +547,13 @@
       "title": "审阅变更",
       "progress": "{{current}} / {{total}}",
       "noFiles": "此范围内没有文件。"
+    },
+    "reviewNotes": {
+      "placeholder": "描述需要 Agent 修改的内容...",
+      "add": "添加批注",
+      "count": "{{count}} 条审阅批注",
+      "stale": "审阅对应的 HEAD 已变化，请刷新后再发送。",
+      "send": "发送给 Agent"
     },
     "status": {
       "modified": "已修改",

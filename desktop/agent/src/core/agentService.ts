@@ -29,6 +29,7 @@ import {
   printPairingQr,
 } from "../pairing/pairingQr.ts";
 import { WorkspaceManager } from "../workspace/workspaceManager.ts";
+import { GitService } from "../git/gitService.ts";
 import { ResourceRequestHandler } from "./resourceRequestHandler.ts";
 import { SessionManager } from "./sessionManager.ts";
 import { SessionRequestHandler } from "./sessionRequestHandler.ts";
@@ -61,6 +62,7 @@ export class AgentService {
   private readonly tmux = new TmuxManager();
   private readonly terminalProviders: TerminalProviderRegistry;
   private readonly workspaces: WorkspaceManager;
+  private readonly git = new GitService();
   private readonly sessionManager: SessionManager;
   private readonly resourceRequests: ResourceRequestHandler;
   private readonly sessionRequests: SessionRequestHandler;
@@ -182,6 +184,7 @@ export class AgentService {
     this.resourceRequests = new ResourceRequestHandler({
       deviceId: config.deviceId,
       workspaces: this.workspaces,
+      git: this.git,
       listWorkspaces: async () =>
         (await this.sessionManager.listWithWorkspaces()).workspaces,
       sendToApp: (context, message) =>
@@ -244,6 +247,7 @@ export class AgentService {
       defaultCwd: config.defaultCwd,
       terminalProviders: this.terminalProviders,
       workspaces: this.workspaces,
+      git: this.git,
       sessionManager: this.sessionManager,
       terminalFramePusher: this.terminalFramePusher,
       sendToApp: (context, message) =>

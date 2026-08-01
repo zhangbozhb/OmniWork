@@ -54,6 +54,7 @@
     "refresh": "Refresh",
     "reset": "Reset",
     "save": "Save",
+    "selected": "Selected",
     "show": "Show",
     "starting": "Starting...",
     "up": "Up",
@@ -391,6 +392,14 @@
       "other": "Other",
       "otherSummary": "Existing tmux sessions that do not match a configured Terminal provider"
     },
+    "isolation": {
+      "title": "Workspace isolation",
+      "name": "Worktree name",
+      "managed": {
+        "title": "Create an isolated worktree",
+        "summary": "Creates an omniwork/* branch from the current HEAD and starts this session in an Agent-managed directory."
+      }
+    },
     "runtime": {
       "title": "Runtime",
       "tmux": {
@@ -538,6 +547,13 @@
       "title": "Review changes",
       "progress": "{{current}} / {{total}}",
       "noFiles": "No files in this scope."
+    },
+    "reviewNotes": {
+      "placeholder": "Describe what the Agent should change...",
+      "add": "Add note",
+      "count": "{{count}} review notes",
+      "stale": "The reviewed HEAD changed. Refresh before sending these notes.",
+      "send": "Send to Agent"
     },
     "status": {
       "modified": "modified",

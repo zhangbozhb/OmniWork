@@ -603,10 +603,39 @@ export const sessionCreatePayloadSchema = z
     title: z.string().optional(),
     cwd: z.string().optional(),
     workspace_path: z.string().optional(),
+    managed_worktree: z
+      .object({
+        source_workspace_path: z.string().min(1),
+        name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/),
+        base: z.literal("HEAD"),
+      })
+      .strict()
+      .optional(),
+    create_action_id: z.string().min(1).max(128).optional(),
     command: z.string().optional(),
     terminal_size: terminalSizeSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((payload, context) => {
+    if (
+      payload.managed_worktree &&
+      payload.workspace_path &&
+      payload.workspace_path !==
+        payload.managed_worktree.source_workspace_path
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "workspace_path must match managed_worktree.source_workspace_path",
+      });
+    }
+    if (payload.managed_worktree && payload.cwd) {
+      context.addIssue({
+        code: "custom",
+        message: "cwd cannot be combined with managed_worktree",
+      });
+    }
+  });
 
 export const sessionCreatedPayloadSchema = z
   .object({

@@ -34,6 +34,9 @@ export function CreateSessionModal({
   createWorkspacePath,
   createTerminalProviderKind,
   createRuntimePreference,
+  managedWorktree,
+  managedWorktreeAvailable,
+  managedWorktreeName,
   creatableProviders,
   workspaces,
   creating,
@@ -43,6 +46,8 @@ export function CreateSessionModal({
   onSelectWorkspace,
   onSelectProvider,
   onSelectRuntime,
+  onChangeManagedWorktree,
+  onChangeManagedWorktreeName,
   onConfirm,
 }: {
   visible: boolean;
@@ -51,6 +56,9 @@ export function CreateSessionModal({
   createWorkspacePath?: string;
   createTerminalProviderKind: CreatableTerminalProviderKind;
   createRuntimePreference: RuntimePreference;
+  managedWorktree: boolean;
+  managedWorktreeAvailable: boolean;
+  managedWorktreeName: string;
   creatableProviders: readonly TerminalProviderDefinition[];
   workspaces: readonly WorkspaceDefinition[];
   creating: boolean;
@@ -60,6 +68,8 @@ export function CreateSessionModal({
   onSelectWorkspace(workspace: WorkspaceDefinition): void;
   onSelectProvider(providerKind: CreatableTerminalProviderKind): void;
   onSelectRuntime(runtime: RuntimePreference): void;
+  onChangeManagedWorktree(enabled: boolean): void;
+  onChangeManagedWorktreeName(value: string): void;
   onConfirm(): void;
 }): JSX.Element {
   const appServerAvailable = supportsStructuredAgentSurface(
@@ -188,6 +198,46 @@ export function CreateSessionModal({
                   style={styles.cwdInput}
                 />
               ) : null}
+              {managedWorktreeAvailable ? (
+                <View style={styles.runtimeSection}>
+                  <Text style={styles.runtimeSectionTitle}>
+                    {t("workspaces.isolation.title")}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    style={[
+                      styles.runtimeOption,
+                      managedWorktree && styles.runtimeOptionSelected,
+                    ]}
+                    onPress={() => onChangeManagedWorktree(!managedWorktree)}
+                  >
+                    <View style={styles.runtimeOptionHeader}>
+                      <Text style={styles.runtimeOptionTitle}>
+                        {t("workspaces.isolation.managed.title")}
+                      </Text>
+                      {managedWorktree ? (
+                        <Text style={styles.runtimeOptionBadge}>
+                          {t("common.selected")}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.runtimeOptionSummary}>
+                      {t("workspaces.isolation.managed.summary")}
+                    </Text>
+                  </Pressable>
+                  {managedWorktree ? (
+                    <TextInput
+                      value={managedWorktreeName}
+                      onChangeText={onChangeManagedWorktreeName}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      placeholder={t("workspaces.isolation.name")}
+                      placeholderTextColor="#66727c"
+                      style={styles.cwdInput}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
               <View style={styles.runtimeSection}>
                 <Text style={styles.runtimeSectionTitle}>
                   {t("workspaces.runtime.title")}
@@ -230,7 +280,11 @@ export function CreateSessionModal({
                   {t("common.cancel")}
                 </Button>
                 <Button
-                  disabled={!createCwd.trim() || creating}
+                  disabled={
+                    !createCwd.trim() ||
+                    creating ||
+                    (managedWorktree && !managedWorktreeName.trim())
+                  }
                   icon={creating ? "refresh" : "add"}
                   style={styles.modalPrimaryButton}
                   tone="primary"

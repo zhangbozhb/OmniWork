@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -41,6 +42,10 @@ import {
   shouldUseUntrackedFileContentFallback,
   statusCode,
 } from "./gitStatusModel";
+import {
+  formatGitReviewNotes,
+  type GitReviewNote,
+} from "./gitReviewNotes";
 
 type GitViewMode = "overview" | "review";
 type FileStatsScope = GitDiffScope;
@@ -86,6 +91,7 @@ export interface GitStatusScreenProps {
   onPrefetchDiff?(relativePath?: string, scope?: GitDiffScope): void;
   onReadFileContent?(relativePath: string): void;
   onGitAction?(relativePath: string, operation: "stage" | "unstage"): void;
+  onSendReviewNotes?(prompt: string): boolean;
   isGitActionPending?(relativePath: string): boolean;
   gitActionError?: string;
 }
@@ -110,6 +116,7 @@ export function GitStatusScreen({
   onPrefetchDiff = onOpenDiff,
   onReadFileContent = noop,
   onGitAction,
+  onSendReviewNotes,
   isGitActionPending = () => false,
   gitActionError,
 }: GitStatusScreenProps): JSX.Element {
@@ -376,6 +383,8 @@ export function GitStatusScreen({
           onPrefetchDiff={onPrefetchDiff}
           onReadFileContent={onReadFileContent}
           onEditFile={onEditFile}
+          headSha={status?.headSha}
+          onSendReviewNotes={onSendReviewNotes}
           onSelectFile={selectFile}
           onSelectScope={selectScope}
         />
@@ -413,6 +422,7 @@ function GitReviewView({
   fileContentLoadingKeys,
   file,
   files,
+  headSha,
   loading,
   scope,
   selectedIndex,
@@ -421,6 +431,7 @@ function GitReviewView({
   onPrefetchDiff,
   onReadFileContent,
   onEditFile,
+  onSendReviewNotes,
   onSelectFile,
   onSelectScope,
 }: {
@@ -430,6 +441,7 @@ function GitReviewView({
   fileContentLoadingKeys: Record<string, boolean>;
   file?: ChangedFile;
   files: ChangedFile[];
+  headSha?: string;
   loading?: boolean;
   scope: GitDiffScope;
   selectedIndex: number;
@@ -438,11 +450,17 @@ function GitReviewView({
   onPrefetchDiff(relativePath?: string, scope?: GitDiffScope): void;
   onReadFileContent(relativePath: string): void;
   onEditFile?(relativePath: string): void;
+  onSendReviewNotes?(prompt: string): boolean;
   onSelectFile(file: ChangedFile): void;
   onSelectScope(scope: GitDiffScope): void;
 }): JSX.Element {
   const { t } = useTranslation();
   const [cardWidth, setCardWidth] = useState(0);
+  const [reviewNotes, setReviewNotes] = useState<GitReviewNote[]>([]);
+  const [noteTarget, setNoteTarget] = useState<
+    Omit<GitReviewNote, "body"> | undefined
+  >();
+  const [noteDraft, setNoteDraft] = useState("");
   const previousFile =
     selectedIndex > 0 ? files[selectedIndex - 1] : undefined;
   const nextFile =
@@ -465,6 +483,7 @@ function GitReviewView({
   const canMovePrevious = files.length > 1 && selectedIndex > 0;
   const canMoveNext =
     files.length > 1 && selectedIndex >= 0 && selectedIndex < files.length - 1;
+  const notesStale = reviewNotes.some((note) => note.headSha !== headSha);
   const carouselStyle = {
     transform: [
       {
@@ -539,6 +558,27 @@ function GitReviewView({
         onMoveSelection(offset);
       }
     });
+  }
+
+  function saveReviewNote(): void {
+    const body = noteDraft.trim();
+    if (!noteTarget || !body) {
+      return;
+    }
+    setReviewNotes((current) => [...current, { ...noteTarget, body }]);
+    setNoteTarget(undefined);
+    setNoteDraft("");
+  }
+
+  function sendReviewNotes(): void {
+    if (
+      reviewNotes.length === 0 ||
+      notesStale ||
+      !onSendReviewNotes?.(formatGitReviewNotes(reviewNotes))
+    ) {
+      return;
+    }
+    setReviewNotes([]);
   }
 
   const swipeResponder = useMemo(
@@ -682,6 +722,17 @@ function GitReviewView({
               scope={scope}
               onCopyText={onCopyText}
               onEditFile={onEditFile}
+              notes={reviewNotes.filter((note) => note.path === file.path)}
+              onSelectNote={(lineIndex, line) => {
+                setNoteTarget({
+                  headSha,
+                  path: file.path,
+                  scope,
+                  lineIndex,
+                  line,
+                });
+                setNoteDraft("");
+              }}
             />
             <ReviewDiffCard
               active={false}
@@ -701,6 +752,54 @@ function GitReviewView({
           </Card>
         )}
       </View>
+      {noteTarget ? (
+        <View style={styles.reviewNoteComposer}>
+          <Text numberOfLines={2} style={styles.reviewNoteAnchor}>
+            {noteTarget.path}:{noteTarget.lineIndex + 1} {noteTarget.line}
+          </Text>
+          <TextInput
+            multiline
+            value={noteDraft}
+            placeholder={t("git.reviewNotes.placeholder")}
+            placeholderTextColor={colors.textDim}
+            style={styles.reviewNoteInput}
+            onChangeText={setNoteDraft}
+          />
+          <View style={styles.reviewNoteActions}>
+            <Button
+              onPress={() => {
+                setNoteTarget(undefined);
+                setNoteDraft("");
+              }}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={!noteDraft.trim()}
+              tone="primary"
+              onPress={saveReviewNote}
+            >
+              {t("git.reviewNotes.add")}
+            </Button>
+          </View>
+        </View>
+      ) : null}
+      {reviewNotes.length > 0 ? (
+        <View style={styles.reviewNotesSendBar}>
+          <Text style={notesStale ? styles.actionError : styles.meta}>
+            {notesStale
+              ? t("git.reviewNotes.stale")
+              : t("git.reviewNotes.count", { count: reviewNotes.length })}
+          </Text>
+          <Button
+            disabled={notesStale || !onSendReviewNotes}
+            tone="primary"
+            onPress={sendReviewNotes}
+          >
+            {t("git.reviewNotes.send")}
+          </Button>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -716,6 +815,8 @@ function ReviewDiffCard({
   scope,
   onCopyText,
   onEditFile,
+  notes = [],
+  onSelectNote,
 }: {
   active: boolean;
   cardWidth: number;
@@ -727,6 +828,8 @@ function ReviewDiffCard({
   scope: GitDiffScope;
   onCopyText(text: string, notice: string, pageY?: number): void;
   onEditFile?(relativePath: string): void;
+  notes?: GitReviewNote[];
+  onSelectNote?(lineIndex: number, line: string): void;
 }): JSX.Element {
   const { t } = useTranslation();
   const diffMatchesSelection = Boolean(
@@ -800,6 +903,12 @@ function ReviewDiffCard({
                       index={index}
                       key={`${index}:${line.content}`}
                       line={line}
+                      noted={notes.some((note) => note.lineIndex === index)}
+                      onAddNote={
+                        onSelectNote
+                          ? () => onSelectNote(index, line.content)
+                          : undefined
+                      }
                       onCopyLine={(event) =>
                         onCopyText(
                           line.content,
@@ -1040,19 +1149,30 @@ function ReviewFileContent({ file }: { file: FilesReadPayload }): JSX.Element {
 function DiffRow({
   index,
   line,
+  noted,
+  onAddNote,
   onCopyLine,
 }: {
   index: number;
   line: DiffLine;
+  noted?: boolean;
+  onAddNote?(): void;
   onCopyLine(event: GestureResponderEvent): void;
 }): JSX.Element {
   return (
     <Pressable
       accessibilityRole="button"
       style={[styles.diffRow, getDiffRowStyle(line.type)]}
+      onPress={onAddNote}
       onLongPress={onCopyLine}
     >
-      <Text style={styles.diffLineNo}>{line.type === "hunk" || line.type === "meta" ? "" : index + 1}</Text>
+      <Text style={styles.diffLineNo}>
+        {noted
+          ? "•"
+          : line.type === "hunk" || line.type === "meta"
+            ? ""
+            : index + 1}
+      </Text>
       <Text selectable style={[styles.diffText, getDiffTextStyle(line.type)]}>{line.content || " "}</Text>
     </Pressable>
   );
@@ -1365,6 +1485,40 @@ const styles = StyleSheet.create({
   },
   reviewScreen: {
     flex: 1,
+    gap: spacing.sm,
+  },
+  reviewNoteComposer: {
+    gap: spacing.sm,
+    borderColor: colors.borderSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    backgroundColor: colors.surfaceRaised,
+  },
+  reviewNoteAnchor: {
+    color: colors.textMuted,
+    fontFamily: "Menlo",
+    fontSize: 11,
+  },
+  reviewNoteInput: {
+    minHeight: 72,
+    borderColor: colors.borderSubtle,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
+    textAlignVertical: "top",
+  },
+  reviewNoteActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
+  reviewNotesSendBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.sm,
   },
   reviewHeader: {

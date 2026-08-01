@@ -37,6 +37,9 @@ has an action ID and a bounded list of explicit Workspace-relative paths.
 Managed Worktree discovery and creation use `git.worktree`; create requests
 accept only a validated short name, leaving branch, base, and destination
 selection to the Desktop Agent.
+`session.create.managed_worktree` capability allows `session.create` to carry a
+validated `managed_worktree` descriptor and `create_action_id`, so worktree
+creation and Runtime startup are handled as one idempotent in-process intent.
 
 Source and issue tracking are available in the
 [OmniWork repository](https://github.com/zhangbozhb/OmniWork).

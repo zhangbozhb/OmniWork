@@ -765,6 +765,48 @@ function AppContent(): JSX.Element {
     );
   }
 
+  function handleSendGitReviewNotes(
+    workspace: WorkspaceDefinition,
+    prompt: string,
+  ): boolean {
+    if (!pairing || connectionStatus !== "authenticated") {
+      setConnectionMessage("Connect to the Desktop before sending review notes.");
+      return false;
+    }
+    const target = sessions.find(
+      (session) =>
+        session.workspace_path === workspace.path &&
+        session.runtime?.capabilities.structured_timeline === true &&
+        (session.status === "running" || session.status === "detached"),
+    );
+    if (!target) {
+      setConnectionMessage(
+        "Start a structured Agent session in this workspace before sending review notes.",
+      );
+      return false;
+    }
+    sendToRelay(
+      createMessage(
+        "agent.prompt.submit",
+        {
+          session_id: target.session_id,
+          surface_id: target.primary_surface_id,
+          prompt,
+          created_at: new Date().toISOString(),
+        },
+        {
+          device_id: pairing.deviceId,
+          session_id: target.session_id,
+          surface_id: target.primary_surface_id,
+        },
+      ),
+    );
+    setSelectedSession(target);
+    setConnectionMessage(`Sent review notes to ${target.title}.`);
+    setView("agentSession");
+    return true;
+  }
+
   function handleAgentInteractionAnswer(
     interaction: Parameters<typeof agentInteractionAnswer>[1],
     decision: Parameters<typeof agentInteractionAnswer>[2],
@@ -895,6 +937,7 @@ function AppContent(): JSX.Element {
     handlePrefetchGitDiff,
     handleReadGitFileContent,
     handleGitAction,
+    handleSendGitReviewNotes,
     isGitActionPending,
     handleOpenSession,
     handleCloseSession,

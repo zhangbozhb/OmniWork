@@ -77,6 +77,7 @@ export function WorkspacePager({
   onPrefetchGitDiff,
   onReadGitFileContent,
   onGitAction,
+  onSendGitReviewNotes,
   isGitActionPending,
 }: {
   pagerRef: RefObject<ScrollView | null>;
@@ -128,6 +129,7 @@ export function WorkspacePager({
   onPrefetchGitDiff(relativePath?: string, scope?: GitDiffScope): void;
   onReadGitFileContent(relativePath: string): void;
   onGitAction(relativePath: string, operation: "stage" | "unstage"): void;
+  onSendGitReviewNotes(prompt: string): boolean;
   isGitActionPending(relativePath: string): boolean;
 }): JSX.Element {
   function workspaceTabPaneStyle(tab: WorkspaceTab) {
@@ -264,6 +266,7 @@ export function WorkspacePager({
             onPrefetchDiff={onPrefetchGitDiff}
             onReadFileContent={onReadGitFileContent}
             onGitAction={onGitAction}
+            onSendReviewNotes={onSendGitReviewNotes}
             isGitActionPending={isGitActionPending}
             onEditFile={(relativePath) =>
               onEditFile(activeWorkspace, relativePath)

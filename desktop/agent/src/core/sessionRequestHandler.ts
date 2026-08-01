@@ -10,6 +10,7 @@ import {
 } from "@omni-work/protocol-ts";
 import { TerminalProviderRegistry } from "../terminal-provider/terminalProviderRegistry.ts";
 import { WorkspaceManager } from "../workspace/workspaceManager.ts";
+import { GitService } from "../git/gitService.ts";
 import type { SessionManager } from "./sessionManager.ts";
 import type { TerminalFramePusher } from "./terminalFramePusher.ts";
 
@@ -23,6 +24,7 @@ type SessionRequestHandlerOptions = {
   defaultCwd: string;
   terminalProviders: TerminalProviderRegistry;
   workspaces: WorkspaceManager;
+  git: GitService;
   sessionManager: SessionManager;
   terminalFramePusher: TerminalFramePusher;
   sendToApp(context: AgentDispatchContext | undefined, message: MessageEnvelope): void;
@@ -39,6 +41,8 @@ type SessionRequestHandlerOptions = {
 
 export class SessionRequestHandler {
   private readonly options: SessionRequestHandlerOptions;
+  private readonly pendingCreates = new Map<string, Promise<TerminalSession>>();
+  private readonly completedCreates = new Map<string, TerminalSession>();
 
   constructor(options: SessionRequestHandlerOptions) {
     this.options = options;
@@ -71,12 +75,7 @@ export class SessionRequestHandler {
   ): Promise<void> {
     let session;
     try {
-      const terminalProvider = this.options.terminalProviders.get(message.payload?.terminal_provider_kind);
-      await this.options.prepareTerminalProvider?.({
-        kind: terminalProvider.kind,
-        command: message.payload?.command ?? terminalProvider.buildTuiCommand(),
-      });
-      session = await this.options.sessionManager.create(
+      session = await this.createSession(
         message.payload ?? {},
         (nextSession) => this.sendSessionStatus(nextSession, context),
       );
@@ -86,7 +85,10 @@ export class SessionRequestHandler {
         createMessage<TerminalErrorPayload>(
           "terminal.error",
           {
-            code: "SESSION_CREATE_FAILED",
+            code:
+              error instanceof WorktreeRetainedError
+                ? "SESSION_CREATE_FAILED_WORKTREE_RETAINED"
+                : "SESSION_CREATE_FAILED",
             message: formatHandlerError(error),
           },
           { device_id: this.options.deviceId },
@@ -118,6 +120,86 @@ export class SessionRequestHandler {
       );
     }
     this.options.terminalFramePusher.start(session.session_id);
+  }
+
+  private async createSession(
+    payload: SessionCreatePayload,
+    onStatus: (session: TerminalSession) => void,
+  ): Promise<TerminalSession> {
+    const actionId = payload.create_action_id;
+    if (!actionId) {
+      return this.createSessionOnce(payload, onStatus);
+    }
+    const completed = this.completedCreates.get(actionId);
+    if (completed) {
+      return completed;
+    }
+    const pending = this.pendingCreates.get(actionId);
+    if (pending) {
+      return pending;
+    }
+
+    const create = this.createSessionOnce(payload, onStatus);
+    this.pendingCreates.set(actionId, create);
+    try {
+      const session = await create;
+      this.completedCreates.set(actionId, session);
+      if (this.completedCreates.size > 100) {
+        const oldest = this.completedCreates.keys().next().value;
+        if (oldest) {
+          this.completedCreates.delete(oldest);
+        }
+      }
+      return session;
+    } finally {
+      if (this.pendingCreates.get(actionId) === create) {
+        this.pendingCreates.delete(actionId);
+      }
+    }
+  }
+
+  private async createSessionOnce(
+    payload: SessionCreatePayload,
+    onStatus: (session: TerminalSession) => void,
+  ): Promise<TerminalSession> {
+    const terminalProvider = this.options.terminalProviders.get(
+      payload.terminal_provider_kind,
+    );
+    await this.options.prepareTerminalProvider?.({
+      kind: terminalProvider.kind,
+      command: payload.command ?? terminalProvider.buildTuiCommand(),
+    });
+
+    const { managed_worktree: managedWorktree, ...base } = payload;
+    let createPayload: SessionCreatePayload = base;
+    let retainedWorktreePath: string | undefined;
+    if (managedWorktree) {
+      const workspace = await this.options.workspaces.get(
+        managedWorktree.source_workspace_path,
+      );
+      if (!workspace?.isGitRepository) {
+        throw new Error("Managed worktrees require a Git workspace.");
+      }
+      const result = await this.options.git.createWorktree(
+        workspace,
+        managedWorktree.name,
+      );
+      retainedWorktreePath = result.created.path;
+      createPayload = {
+        ...base,
+        cwd: undefined,
+        workspace_path: result.created.path,
+      };
+    }
+
+    try {
+      return await this.options.sessionManager.create(createPayload, onStatus);
+    } catch (error) {
+      if (retainedWorktreePath) {
+        throw new WorktreeRetainedError(retainedWorktreePath, error);
+      }
+      throw error;
+    }
   }
 
   async handleClose(
@@ -228,6 +310,15 @@ export class SessionRequestHandler {
         },
       ),
     );
+  }
+}
+
+class WorktreeRetainedError extends Error {
+  constructor(path: string, cause: unknown) {
+    super(
+      `The managed worktree was created at ${path}, but the session failed to start: ${formatHandlerError(cause)}`,
+    );
+    this.name = "WorktreeRetainedError";
   }
 }
 

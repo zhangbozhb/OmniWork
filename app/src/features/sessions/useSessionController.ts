@@ -11,6 +11,7 @@ import type {
   WorkspaceListPayload,
 } from "@omni-work/protocol-ts";
 import {
+  createMessageId,
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
 } from "@omni-work/protocol-ts";
 
@@ -41,6 +42,7 @@ type CreateSessionInput = {
   runtimePreference: SessionRuntimeKind;
   terminalProviderKind: TerminalProviderKind;
   workspacePath?: string;
+  managedWorktreeName?: string;
 };
 
 type UseSessionControllerOptions = {
@@ -146,13 +148,25 @@ export function useSessionController({
     if (!pairing || connectionStatus !== "authenticated") {
       return;
     }
+    const managedWorktreeName = input.managedWorktreeName?.trim();
     pendingCreateRef.current = true;
     setCreatingSession(true);
     sendToRelay(
       createSessionRequest(pairing.deviceId, {
-        cwd: input.cwd,
+        cwd: managedWorktreeName ? undefined : input.cwd,
         runtime_preference: input.runtimePreference,
         workspace_path: input.workspacePath,
+        managed_worktree:
+          managedWorktreeName && input.workspacePath
+            ? {
+                source_workspace_path: input.workspacePath,
+                name: managedWorktreeName,
+                base: "HEAD",
+              }
+            : undefined,
+        create_action_id: managedWorktreeName
+          ? createMessageId()
+          : undefined,
         terminal_provider_kind: input.terminalProviderKind,
         terminal_size: computeInitialTerminalSize(terminalTextSize),
       }),

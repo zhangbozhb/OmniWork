@@ -1069,6 +1069,17 @@ describe("session payload schemas", () => {
       cwd: "/tmp",
       terminal_size: { cols: 80, rows: 24 },
     });
+    sessionCreatePayloadSchema.parse({
+      terminal_provider_kind: "codex",
+      runtime_preference: "app_server",
+      workspace_path: "/tmp/repo",
+      managed_worktree: {
+        source_workspace_path: "/tmp/repo",
+        name: "feature_login",
+        base: "HEAD",
+      },
+      create_action_id: "create-1",
+    });
   });
 
   it("sessionCreatePayloadSchema rejects extra unknown keys", () => {
@@ -1077,6 +1088,31 @@ describe("session payload schemas", () => {
       forced: true,
     });
     assert.equal(result.success, false);
+  });
+
+  it("sessionCreatePayloadSchema rejects conflicting managed worktree paths", () => {
+    assert.equal(
+      sessionCreatePayloadSchema.safeParse({
+        workspace_path: "/tmp/repo-a",
+        managed_worktree: {
+          source_workspace_path: "/tmp/repo-b",
+          name: "feature",
+          base: "HEAD",
+        },
+      }).success,
+      false,
+    );
+    assert.equal(
+      sessionCreatePayloadSchema.safeParse({
+        cwd: "/tmp/repo",
+        managed_worktree: {
+          source_workspace_path: "/tmp/repo",
+          name: "feature",
+          base: "HEAD",
+        },
+      }).success,
+      false,
+    );
   });
 
   it("sessionCreatedPayloadSchema requires a valid session", () => {

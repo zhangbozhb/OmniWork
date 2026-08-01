@@ -15,12 +15,14 @@
 - 支持手动、二维码和配对链接导入；Web 不扫描二维码。
 - 以 Workspace 组织 Sessions、Git 和 Files，支持受限 UTF-8 文本编辑、写入冲突检测、Git status/diff，以及文件级 stage/unstage。Git 写操作使用严格 E2E 协议和服务端固定参数，只修改 index；discard、commit、push 与 worktree 删除尚未开放。
 - 支持配置化 Terminal Provider、tmux 会话创建/重命名/关闭及 xterm 终端交互。
+- Git Workspace 创建 Session 时可选择从当前 `HEAD` 创建 Agent 管理的隔离 worktree。Desktop Agent 将 worktree 与 Session 创建作为一个请求处理，并按 `create_action_id` 合并进程内重复请求；如果 worktree 已创建但 Runtime 启动失败，会保留 worktree 并允许同名重试复用，不自动执行删除。
 - 创建 session 时会在 Desktop Agent 上递归创建不存在的指定目录；目录创建或访问失败时整次 session 创建失败。
 - 支持 Codex、Claude Code 和 TraeX 的结构化会话、增量对话与活动时间线。Desktop Agent 会将 Surface 事件持久化到 SQLite，App 在获取 Session 列表后按 cursor 增量同步，断线重连可恢复已持久化事件。
 - 支持结构化命令、文件变更、权限审批和 Agent 提问。Pending Interaction 持久化到 SQLite，App 重连后可恢复；首个有效回答生效，重复 action 幂等返回，冲突回答不覆盖。Desktop Agent 重启后会将遗留 Pending 标记为过期，不会伪恢复已经丢失的 Provider 原生请求句柄。
 - Agent Composer 支持从 Session 所属 Workspace 浏览并附加最多 10 个文本文件。App 只发送文件引用，Desktop Agent 在提交 Provider 前重新校验 Session/Workspace、realpath、UTF-8、可选 hash 和 256 KiB 总上下文上限，再注入只读文件快照。
 - 支持 Agent 消息收件箱、已读/已处理状态和通知偏好。Pending Interaction 会生成去重且不包含命令正文的高优先级消息，App 连接或重连时同步 Desktop SQLite inbox，并在 Workbench 投影“等待审批/等待输入”状态；平台原生 Push gateway 尚未接入。
 - 支持中英文界面、终端字号和 Relay/P2P 连接偏好。
+- Git Review 支持对 Diff 行添加 App 本地批注，并将同一轮批注合并发送给同 Workspace 的结构化 Agent；HEAD 变化后旧批注会被标记为过期并禁止发送。
 - Native App 支持手势应用锁与自动锁定；Web 不持久化应用锁配置。
 
 ## Desktop Agent

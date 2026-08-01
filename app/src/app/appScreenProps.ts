@@ -158,6 +158,7 @@ type BuildAppRouterPropsOptions = {
   handlePrefetchGitDiff: WorkbenchScreenProps["onPrefetchGitDiff"];
   handleReadGitFileContent: WorkbenchScreenProps["onReadGitFileContent"];
   handleGitAction: WorkbenchScreenProps["onGitAction"];
+  handleSendGitReviewNotes: WorkbenchScreenProps["onSendGitReviewNotes"];
   isGitActionPending: WorkbenchScreenProps["isGitActionPending"];
   handleOpenSession: WorkbenchScreenProps["onOpenSession"];
   handleCloseSession: WorkbenchScreenProps["onCloseSession"];
@@ -303,6 +304,7 @@ export function buildAppRouterProps(
       onPrefetchGitDiff: o.handlePrefetchGitDiff,
       onReadGitFileContent: o.handleReadGitFileContent,
       onGitAction: o.handleGitAction,
+      onSendGitReviewNotes: o.handleSendGitReviewNotes,
       isGitActionPending: o.isGitActionPending,
       onOpenSession: o.handleOpenSession,
       onCloseSession: o.handleCloseSession,
@@ -351,6 +353,8 @@ export function buildAppRouterProps(
             onPrefetchDiff: o.handlePrefetchGitDiff,
             onReadFileContent: o.handleReadGitFileContent,
             onGitAction: o.handleGitAction,
+            onSendReviewNotes: (prompt: string) =>
+              o.handleSendGitReviewNotes(selectedWorkspace, prompt),
             isGitActionPending: o.isGitActionPending,
             gitActionError:
               o.lastGitActionResult?.result === "failed" &&
