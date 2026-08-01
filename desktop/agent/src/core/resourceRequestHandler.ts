@@ -4,6 +4,7 @@ import {
   type FilesReadRequestPayload,
   type FilesWriteRequestPayload,
   type GitActionRequestPayload,
+  type GitWorktreePayload,
   type GitDiffRequestPayload,
   type GitStatusRequestPayload,
   type MessageEnvelope,
@@ -225,6 +226,78 @@ export class ResourceRequestHandler {
                 ? error.message
                 : "Git action failed.",
           },
+          { device_id: this.deviceId },
+        ),
+      );
+    }
+  }
+
+  async handleGitWorktree(
+    message: MessageEnvelope<
+      Extract<
+        GitWorktreePayload,
+        { kind: "list_request" | "create_request" }
+      >
+    >,
+    context?: AgentDispatchContext,
+  ): Promise<void> {
+    const payload = message.payload;
+    try {
+      const workspace = await this.requireWorkspace(payload.workspacePath);
+      if (payload.kind === "list_request") {
+        const worktrees = await this.git.listWorktrees(workspace);
+        this.sendToApp(
+          context,
+          createMessage(
+            "git.worktree",
+            {
+              kind: "list_response",
+              request_id: message.id,
+              workspacePath: payload.workspacePath,
+              result: "completed",
+              worktrees,
+            },
+            { device_id: this.deviceId },
+          ),
+        );
+        return;
+      }
+      const result = await this.git.createWorktree(workspace, payload.name);
+      this.sendToApp(
+        context,
+        createMessage(
+          "git.worktree",
+          {
+            kind: "create_result",
+            request_id: message.id,
+            action_id: payload.action_id,
+            workspacePath: payload.workspacePath,
+            result: "completed",
+            ...result,
+          },
+          { device_id: this.deviceId },
+        ),
+      );
+    } catch (error) {
+      const common = {
+        request_id: message.id,
+        workspacePath: payload.workspacePath,
+        result: "failed" as const,
+        worktrees: [],
+        error:
+          error instanceof Error ? error.message : "Git worktree request failed.",
+      };
+      this.sendToApp(
+        context,
+        createMessage(
+          "git.worktree",
+          payload.kind === "list_request"
+            ? { kind: "list_response", ...common }
+            : {
+                kind: "create_result",
+                action_id: payload.action_id,
+                ...common,
+              },
           { device_id: this.deviceId },
         ),
       );

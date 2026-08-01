@@ -109,6 +109,7 @@ export type KnownAgentCapability =
   | "files.write"
   | "git.read"
   | "git.write.index"
+  | "git.worktree.create"
   | "terminal.shell"
   | "codex.cli"
   | "codex.app_server"
@@ -923,6 +924,45 @@ export interface GitActionResponsePayload {
 export type GitActionPayload =
   | GitActionRequestPayload
   | GitActionResponsePayload;
+
+export interface GitWorktree {
+  path: string;
+  head: string;
+  branch?: string;
+  is_main: boolean;
+  locked: boolean;
+  prunable: boolean;
+}
+
+export type GitWorktreePayload =
+  | {
+      kind: "list_request";
+      workspacePath: string;
+    }
+  | {
+      kind: "list_response";
+      request_id: string;
+      workspacePath: string;
+      result: "completed" | "failed";
+      worktrees: GitWorktree[];
+      error?: string;
+    }
+  | {
+      kind: "create_request";
+      action_id: string;
+      workspacePath: string;
+      name: string;
+    }
+  | {
+      kind: "create_result";
+      request_id: string;
+      action_id: string;
+      workspacePath: string;
+      result: "completed" | "failed";
+      worktrees: GitWorktree[];
+      created?: GitWorktree;
+      error?: string;
+    };
 
 export type AgentProbeProvider =
   | "codex"

@@ -19,6 +19,7 @@ import type {
   FilesReadRequestPayload,
   FilesWriteRequestPayload,
   GitActionRequestPayload,
+  GitWorktreePayload,
   GitDiffRequestPayload,
   GitStatusRequestPayload,
   MessageEnvelope,
@@ -231,6 +232,25 @@ export class AgentMessageDispatcher {
         if ((message.payload as { kind?: unknown }).kind === "request") {
           await this.options.resourceRequests.handleGitAction(
             message as MessageEnvelope<GitActionRequestPayload>,
+            dispatchContext,
+          );
+        }
+        break;
+      case "git.worktree":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        if (
+          (message.payload as { kind?: unknown }).kind === "list_request" ||
+          (message.payload as { kind?: unknown }).kind === "create_request"
+        ) {
+          await this.options.resourceRequests.handleGitWorktree(
+            message as MessageEnvelope<
+              Extract<
+                GitWorktreePayload,
+                { kind: "list_request" | "create_request" }
+              >
+            >,
             dispatchContext,
           );
         }

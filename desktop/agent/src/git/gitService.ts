@@ -1,12 +1,15 @@
 import { execFile } from "node:child_process";
-import { lstat, readFile, realpath } from "node:fs/promises";
-import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { lstat, mkdir, readFile, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import type {
   GitDiffPayload,
   GitDiffScope,
   GitActionRequestPayload,
+  GitWorktree,
   GitStatusPayload,
   WorkspaceDefinition,
   WorkspaceGitStatus,
@@ -22,6 +25,18 @@ import {
 const execFileAsync = promisify(execFile);
 
 export class GitService {
+  private readonly managedWorktreeRoot: string;
+  private readonly pendingWorktreeCreates = new Map<
+    string,
+    Promise<{ created: GitWorktree; worktrees: GitWorktree[] }>
+  >();
+
+  constructor(options: { managedWorktreeRoot?: string } = {}) {
+    this.managedWorktreeRoot =
+      options.managedWorktreeRoot ??
+      join(homedir(), ".omniwork", "worktrees");
+  }
+
   async status(workspace: WorkspaceDefinition): Promise<GitStatusPayload> {
     if (!workspace.isGitRepository) {
       return {
@@ -158,6 +173,128 @@ export class GitService {
     }
     return (await this.status(workspace)).status;
   }
+
+  async listWorktrees(workspace: WorkspaceDefinition): Promise<GitWorktree[]> {
+    if (!workspace.isGitRepository) {
+      throw new Error("Workspace is not a Git repository.");
+    }
+    const output = await runGit(workspace.path, [
+      "worktree",
+      "list",
+      "--porcelain",
+      "-z",
+    ]);
+    const mainWorkspacePath = await realpath(workspace.path);
+    return parseWorktreeList(output, mainWorkspacePath);
+  }
+
+  async createWorktree(
+    workspace: WorkspaceDefinition,
+    name: string,
+  ): Promise<{ created: GitWorktree; worktrees: GitWorktree[] }> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(name)) {
+      throw new Error("Worktree name is invalid.");
+    }
+    const key = `${workspace.path}\0${name}`;
+    const pending = this.pendingWorktreeCreates.get(key);
+    if (pending) {
+      return pending;
+    }
+    const create = this.createWorktreeOnce(workspace, name);
+    this.pendingWorktreeCreates.set(key, create);
+    try {
+      return await create;
+    } finally {
+      if (this.pendingWorktreeCreates.get(key) === create) {
+        this.pendingWorktreeCreates.delete(key);
+      }
+    }
+  }
+
+  private async createWorktreeOnce(
+    workspace: WorkspaceDefinition,
+    name: string,
+  ): Promise<{ created: GitWorktree; worktrees: GitWorktree[] }> {
+    const branch = `omniwork/${name}`;
+    const workspaceRoot = await realpath(workspace.path);
+    const workspaceKey = createHash("sha256")
+      .update(workspaceRoot)
+      .digest("hex")
+      .slice(0, 16);
+    const parent = join(this.managedWorktreeRoot, workspaceKey);
+    const target = join(parent, name);
+    const existing = (await this.listWorktrees(workspace)).find(
+      (worktree) => worktree.branch === branch,
+    );
+    if (existing) {
+      const [existingPath, targetPath] = await Promise.all([
+        realpath(existing.path),
+        realpath(target).catch(() => resolve(target)),
+      ]);
+      if (existingPath !== targetPath) {
+        throw new Error(`Managed branch already exists at ${existing.path}.`);
+      }
+      return {
+        created: existing,
+        worktrees: await this.listWorktrees(workspace),
+      };
+    }
+    if (await lstat(target).catch(() => undefined)) {
+      throw new Error("Managed worktree destination already exists.");
+    }
+
+    await mkdir(parent, { recursive: true, mode: 0o700 });
+    await runGit(workspace.path, [
+      "worktree",
+      "add",
+      "-b",
+      branch,
+      target,
+      "HEAD",
+    ]);
+    const worktrees = await this.listWorktrees(workspace);
+    const created = worktrees.find((worktree) => worktree.branch === branch);
+    if (
+      !created ||
+      (await realpath(created.path)) !== (await realpath(target))
+    ) {
+      throw new Error("Git created no matching managed worktree.");
+    }
+    return { created, worktrees };
+  }
+}
+
+function parseWorktreeList(
+  output: string,
+  mainWorkspacePath: string,
+): GitWorktree[] {
+  const result: GitWorktree[] = [];
+  let current: Partial<GitWorktree> = {};
+  for (const field of output.split("\0")) {
+    if (!field) {
+      if (current.path && current.head) {
+        result.push({
+          path: current.path,
+          head: current.head,
+          branch: current.branch,
+          is_main: resolve(current.path) === resolve(mainWorkspacePath),
+          locked: current.locked ?? false,
+          prunable: current.prunable ?? false,
+        });
+      }
+      current = {};
+      continue;
+    }
+    const separator = field.indexOf(" ");
+    const key = separator < 0 ? field : field.slice(0, separator);
+    const value = separator < 0 ? "" : field.slice(separator + 1);
+    if (key === "worktree") current.path = value;
+    if (key === "HEAD") current.head = value;
+    if (key === "branch") current.branch = value.replace(/^refs\/heads\//, "");
+    if (key === "locked") current.locked = true;
+    if (key === "prunable") current.prunable = true;
+  }
+  return result;
 }
 
 async function getCurrentGitFileChange(

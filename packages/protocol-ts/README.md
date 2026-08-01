@@ -34,6 +34,9 @@ file contents are resolved and validated by the Desktop Agent.
 Controlled Git index writes use the strict `git.action` request/response union.
 Only typed `stage` and `unstage` operations are currently defined; each request
 has an action ID and a bounded list of explicit Workspace-relative paths.
+Managed Worktree discovery and creation use `git.worktree`; create requests
+accept only a validated short name, leaving branch, base, and destination
+selection to the Desktop Agent.
 
 Source and issue tracking are available in the
 [OmniWork repository](https://github.com/zhangbozhb/OmniWork).

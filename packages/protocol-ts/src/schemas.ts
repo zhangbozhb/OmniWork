@@ -818,6 +818,56 @@ export const gitActionPayloadSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+const gitWorktreeSchema = z
+  .object({
+    path: z.string().min(1),
+    head: z.string().min(1),
+    branch: z.string().min(1).optional(),
+    is_main: z.boolean(),
+    locked: z.boolean(),
+    prunable: z.boolean(),
+  })
+  .strict();
+
+export const gitWorktreePayloadSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("list_request"),
+      workspacePath: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("list_response"),
+      request_id: z.string().min(1),
+      workspacePath: z.string().min(1),
+      result: z.enum(["completed", "failed"]),
+      worktrees: z.array(gitWorktreeSchema),
+      error: z.string().min(1).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("create_request"),
+      action_id: z.string().min(1),
+      workspacePath: z.string().min(1),
+      name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("create_result"),
+      request_id: z.string().min(1),
+      action_id: z.string().min(1),
+      workspacePath: z.string().min(1),
+      result: z.enum(["completed", "failed"]),
+      worktrees: z.array(gitWorktreeSchema),
+      created: gitWorktreeSchema.optional(),
+      error: z.string().min(1).optional(),
+    })
+    .strict(),
+]);
+
 const iceServerConfigSchema = z
   .object({
     urls: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
@@ -1234,6 +1284,7 @@ const payloadSchemaByType = {
   ]),
   "git.diff": z.union([gitDiffRequestPayloadSchema, gitDiffPayloadSchema]),
   "git.action": gitActionPayloadSchema,
+  "git.worktree": gitWorktreePayloadSchema,
   "terminal.frame": terminalFramePayloadSchema,
   "terminal.input": terminalInputPayloadSchema,
   "terminal.resize": terminalResizePayloadSchema,

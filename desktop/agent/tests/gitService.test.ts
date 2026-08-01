@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { execFile } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -174,6 +174,40 @@ function workspace(path: string): WorkspaceDefinition {
       paths: ["../outside.txt"],
     }),
     /escapes workspace root/,
+  );
+}
+
+// Managed worktrees use a generated branch and an Agent-owned destination.
+{
+  const workspacePath = await createRepo("omniwork-git-worktree-");
+  const managedRoot = await mkdtemp(join(tmpdir(), "omniwork-managed-"));
+  const service = new GitService({ managedWorktreeRoot: managedRoot });
+
+  const initial = await service.listWorktrees(workspace(workspacePath));
+  assert.equal(initial.length, 1);
+  assert.equal(initial[0]?.is_main, true);
+
+  const [first, concurrent] = await Promise.all([
+    service.createWorktree(workspace(workspacePath), "review_1"),
+    service.createWorktree(workspace(workspacePath), "review_1"),
+  ]);
+  assert.equal(first.created.branch, "omniwork/review_1");
+  assert.equal(concurrent.created.path, first.created.path);
+  assert.equal(
+    (await realpath(first.created.path)).startsWith(await realpath(managedRoot)),
+    true,
+  );
+  assert.equal(first.worktrees.length, 2);
+
+  const replay = await service.createWorktree(
+    workspace(workspacePath),
+    "review_1",
+  );
+  assert.equal(replay.created.path, first.created.path);
+  assert.equal(replay.worktrees.length, 2);
+  await assert.rejects(
+    service.createWorktree(workspace(workspacePath), "../outside"),
+    /invalid/,
   );
 }
 

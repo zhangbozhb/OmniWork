@@ -475,6 +475,27 @@ describe("agent message payload schemas", () => {
     );
     assert.ok(
       parseMessageEnvelope(
+        createMessage("git.worktree", {
+          kind: "create_request",
+          action_id: "worktree_action_1",
+          workspacePath: "/tmp/project",
+          name: "review_1",
+        }),
+      ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("git.worktree", {
+          kind: "create_request",
+          action_id: "worktree_action_2",
+          workspacePath: "/tmp/project",
+          name: "../outside",
+        }),
+      ),
+      null,
+    );
+    assert.ok(
+      parseMessageEnvelope(
         createMessage("git.action", {
           kind: "request",
           action_id: "action_1",
