@@ -21,18 +21,18 @@ test("ensureClaudeHooksInstalled creates user settings with OmniWork hooks", asy
   assert.equal(result.changed, true);
   assert.equal(parsed.hooks.SessionStart.length, 1);
   assert.equal(parsed.hooks.UserPromptSubmit.length, 1);
-  assert.equal(parsed.hooks.PreToolUse.length, 1);
   assert.equal(parsed.hooks.PermissionRequest.length, 1);
-  assert.equal(parsed.hooks.PostToolUse.length, 1);
-  assert.equal(parsed.hooks.PostToolUseFailure.length, 1);
-  assert.equal(parsed.hooks.PermissionDenied.length, 1);
   assert.equal(parsed.hooks.Notification.length, 1);
-  assert.equal(parsed.hooks.PreCompact.length, 1);
-  assert.equal(parsed.hooks.PostCompact.length, 1);
-  assert.equal(parsed.hooks.SubagentStart.length, 1);
-  assert.equal(parsed.hooks.SubagentStop.length, 1);
   assert.equal(parsed.hooks.Stop.length, 1);
   assert.equal(parsed.hooks.SessionEnd.length, 1);
+  assert.equal(parsed.hooks.PreToolUse, undefined);
+  assert.equal(parsed.hooks.PostToolUse, undefined);
+  assert.equal(parsed.hooks.PostToolUseFailure, undefined);
+  assert.equal(parsed.hooks.PermissionDenied, undefined);
+  assert.equal(parsed.hooks.PreCompact, undefined);
+  assert.equal(parsed.hooks.PostCompact, undefined);
+  assert.equal(parsed.hooks.SubagentStart, undefined);
+  assert.equal(parsed.hooks.SubagentStop, undefined);
   assert.match(
     parsed.hooks.SessionStart[0].hooks[0].command,
     /OMNIWORK_AGENT_HOOK_SOURCE='claude-code'/u,
@@ -61,6 +61,8 @@ test("ensureClaudeHooksInstalled creates user settings with OmniWork hooks", asy
     parsed.hooks.Stop[0].hooks[0].command,
     /omniwork-hook-post\.mjs/u,
   );
+  assert.equal(parsed.hooks.Stop[0].hooks[0].timeout, 1);
+  assert.equal(parsed.hooks.Stop[0].hooks[0].async, true);
 });
 
 test("ensureClaudeHooksInstalled preserves existing hooks and is idempotent", async () => {
@@ -96,6 +98,23 @@ test("ensureClaudeHooksInstalled preserves existing hooks and is idempotent", as
   assert.equal(parsed.hooks.Stop[0].hooks[0].command, "echo existing");
 });
 
+test("ensureClaudeHooksInstalled upgrades managed hooks to async", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-claude-hooks-"));
+  const settingsPath = join(dir, "settings.json");
+  await ensureClaudeHooksInstalled({ settingsPath });
+  const synchronous = JSON.parse(await readFile(settingsPath, "utf8"));
+  synchronous.hooks.Stop[0].hooks[0].async = false;
+  await writeFile(settingsPath, JSON.stringify(synchronous));
+
+  const first = await ensureClaudeHooksInstalled({ settingsPath });
+  const second = await ensureClaudeHooksInstalled({ settingsPath });
+  const parsed = JSON.parse(await readFile(settingsPath, "utf8"));
+
+  assert.equal(first.changed, true);
+  assert.equal(second.changed, false);
+  assert.equal(parsed.hooks.Stop[0].hooks[0].async, true);
+});
+
 test("ensureClaudeHooksInstalled removes stale OmniWork hook commands", async () => {
   const dir = await mkdtemp(join(tmpdir(), "omniwork-claude-hooks-"));
   const settingsPath = join(dir, "settings.json");
@@ -123,6 +142,20 @@ test("ensureClaudeHooksInstalled removes stale OmniWork hook commands", async ()
               {
                 type: "command",
                 command: "node /old/path/omniwork-agent-hook.mjs",
+              },
+            ],
+          },
+        ],
+        PostToolUse: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "node /old/path/omniwork-hook-post.mjs",
+              },
+              {
+                type: "command",
+                command: "echo keep user tool hook",
               },
             ],
           },
@@ -158,6 +191,11 @@ test("ensureClaudeHooksInstalled removes stale OmniWork hook commands", async ()
   assert.match(
     parsed.hooks.PermissionRequest[0].hooks[0].command,
     /OMNIWORK_AGENT_HOOK_EVENT='PermissionRequest'/u,
+  );
+  assert.equal(parsed.hooks.PostToolUse.length, 1);
+  assert.equal(
+    parsed.hooks.PostToolUse[0].hooks[0].command,
+    "echo keep user tool hook",
   );
 });
 

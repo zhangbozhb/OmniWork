@@ -56,6 +56,8 @@ test("ensureTraeHooksInstalled creates hooks.json with OmniWork hooks", async ()
     parsed.hooks.SessionStart[0].hooks[1].command,
     /omniwork-hook-post\.mjs/u,
   );
+  assert.equal(parsed.hooks.SessionStart[0].hooks[0].timeout, 2);
+  assert.equal(parsed.hooks.SessionStart[0].hooks[1].timeout, 1);
 });
 
 test("ensureTraeHooksInstalled preserves existing hooks and is idempotent", async () => {
@@ -195,6 +197,43 @@ test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () =
   );
 });
 
+test("ensureTraeHooksInstalled removes duplicate managed commands", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-trae-hooks-"));
+  const hooksPath = join(dir, "hooks.json");
+  await ensureTraeHooksInstalled({
+    hooksPath,
+    provider: "traex",
+  });
+  const duplicated = JSON.parse(await readFile(hooksPath, "utf8"));
+  const recordHook = duplicated.hooks.SessionStart[0].hooks[0];
+  duplicated.hooks.SessionStart[0].hooks.splice(1, 0, recordHook);
+  await writeFile(
+    hooksPath,
+    JSON.stringify(duplicated),
+  );
+
+  const first = await ensureTraeHooksInstalled({
+    hooksPath,
+    provider: "traex",
+  });
+  const second = await ensureTraeHooksInstalled({
+    hooksPath,
+    provider: "traex",
+  });
+  const parsed = JSON.parse(await readFile(hooksPath, "utf8"));
+
+  assert.equal(first.changed, true);
+  assert.equal(second.changed, false);
+  assert.equal(
+    parsed.hooks.SessionStart.flatMap(
+      (group: { hooks: unknown[] }) => group.hooks,
+    ).filter(
+      (hook: { command?: string }) => hook.command === recordHook.command,
+    ).length,
+    1,
+  );
+});
+
 test("defaultTraeHooksPath separates TraeX, Trae, and Trae CN hooks files", () => {
   assert.match(defaultTraeHooksPath("traex"), /\/\.trae\/cli\/hooks\.json$/u);
   assert.match(defaultTraeHooksPath("trae"), /\/\.trae\/hooks\.json$/u);
@@ -252,6 +291,26 @@ test("ensureTraeFamilyHooksInstalled installs every detected Trae hooks file", a
   assert.match(
     trae.hooks.SessionStart[0].hooks[1].command,
     /omniwork-hook-post\.mjs/u,
+  );
+});
+
+test("ensureTraeFamilyHooksInstalled uses the requested fallback without config dirs", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omniwork-trae-hooks-"));
+
+  const results = await ensureTraeFamilyHooksInstalled({
+    homeDir: dir,
+    provider: "traex",
+  });
+
+  assert.deepEqual(
+    results.map((result) => result.provider),
+    ["traex"],
+  );
+  assert.equal(
+    await readFile(join(dir, ".trae", "cli", "hooks.json"), "utf8").then(
+      () => true,
+    ),
+    true,
   );
 });
 

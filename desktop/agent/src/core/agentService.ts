@@ -1,7 +1,4 @@
-import {
-  createMessage,
-  createMessageId,
-} from "@omni-work/protocol-ts";
+import { createMessage, createMessageId } from "@omni-work/protocol-ts";
 import type {
   AgentAppMessage,
   AgentInteractionPayload,
@@ -185,7 +182,9 @@ export class AgentService {
       },
     );
     this.promptContext = new AgentPromptContextResolver({
-      getSession: (sessionId) => this.sessionManager.get(sessionId),
+      getSession: async (sessionId) =>
+        this.sessionManager.getKnown(sessionId) ??
+        (await this.sessionManager.get(sessionId)),
       getWorkspace: (path) => this.workspaces.get(path),
     });
     this.terminalBridge = new TerminalBridge(this.tmux);
@@ -197,14 +196,14 @@ export class AgentService {
       sessionManager: this.sessionManager,
       getKeyRecord: () => this.requireKeyRecord(),
       onObservation: (event) =>
-        this.applyLearningObservation(
-          this.observations.putProbeEvent(event),
-        ),
+        this.applyLearningObservation(this.observations.putProbeEvent(event)),
       onSurfaceEvent: (event) => this.broadcastAgentSurfaceEvent(event),
     });
     this.agentSurfaceRunner = new AgentSurfaceRunner({
       logger: this.logger,
-      getSession: (sessionId) => this.sessionManager.get(sessionId),
+      getSession: async (sessionId) =>
+        this.sessionManager.getKnown(sessionId) ??
+        (await this.sessionManager.get(sessionId)),
       onSurfaceEvent: (event) => this.broadcastAgentSurfaceEvent(event),
       requestInteraction: (request) => this.interactions.request(request),
     });
@@ -325,8 +324,7 @@ export class AgentService {
       store: this.episodes,
       candidateStore: this.experienceCandidates,
       evaluationStore: this.experienceEvaluation,
-      onExperienceChange: (change) =>
-        this.publishExperienceChange(change),
+      onExperienceChange: (change) => this.publishExperienceChange(change),
       onEvaluation: (result) => this.publishEvaluation(result),
       sendToApp: (context, message) =>
         this.security.sendToApp(context, message),
@@ -337,8 +335,7 @@ export class AgentService {
       shadowStore: this.experienceShadow,
       activationStore: this.experienceActivation,
       evaluationStore: this.experienceEvaluation,
-      onExperienceChange: (change) =>
-        this.publishExperienceChange(change),
+      onExperienceChange: (change) => this.publishExperienceChange(change),
       sendToApp: (context, message) =>
         this.security.sendToApp(context, message),
     });
@@ -370,8 +367,7 @@ export class AgentService {
       surfaceSync: this.surfaceSync,
       publishAgentSurfaceEvent: (event) =>
         this.broadcastAgentSurfaceEvent(event),
-      prepareAgentPrompt: (payload) =>
-        this.prepareExperiencePrompt(payload),
+      prepareAgentPrompt: (payload) => this.prepareExperiencePrompt(payload),
       submitAgentPrompt: (payload) => this.submitAgentPrompt(payload),
     });
     this.relayController = new AgentRelayController({
@@ -444,6 +440,9 @@ export class AgentService {
       }
 
       await this.sessionManager.applyStartupPatches();
+      if (tmuxAvailable) {
+        await this.sessionManager.listWithWorkspaces();
+      }
       await this.adminRuntime.start();
       await this.probeRuntime.start();
       this.relayController.start();
@@ -496,9 +495,7 @@ export class AgentService {
     );
   }
 
-  private publishEpisodeUpdate(
-    episode: DeliveryEpisode | undefined,
-  ): void {
+  private publishEpisodeUpdate(episode: DeliveryEpisode | undefined): void {
     if (!episode || episode.status === "working") {
       return;
     }
@@ -543,9 +540,7 @@ export class AgentService {
     this.publishEpisodeUpdate(this.episodes.apply(observation));
   }
 
-  private publishExperienceChange(
-    change: ExperienceCandidateChange,
-  ): void {
+  private publishExperienceChange(change: ExperienceCandidateChange): void {
     const payload =
       change.kind === "updated"
         ? {
@@ -654,10 +649,8 @@ export class AgentService {
     this.security.send(
       createMessage("agent.interaction", payload, {
         device_id: this.config.deviceId,
-        session_id:
-          "session_id" in payload ? payload.session_id : undefined,
-        surface_id:
-          "surface_id" in payload ? payload.surface_id : undefined,
+        session_id: "session_id" in payload ? payload.session_id : undefined,
+        surface_id: "surface_id" in payload ? payload.surface_id : undefined,
       }),
     );
   }

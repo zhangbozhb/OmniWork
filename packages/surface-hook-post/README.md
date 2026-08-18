@@ -17,7 +17,7 @@ be configured with:
 - `OMNIWORK_AGENT_PROBE_URL`
 - `OMNIWORK_AGENT_PROBE_TOKEN`
 - `OMNIWORK_SESSION_KEY_PATH`
-- `OMNIWORK_AGENT_PROBE_TIMEOUT_MS`
+- `OMNIWORK_AGENT_PROBE_TIMEOUT_MS` (default `250`; the hook always fails open)
 
 Missing credentials or an unavailable local agent are treated as a no-op so
 the originating coding agent is not interrupted.

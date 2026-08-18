@@ -32,10 +32,12 @@ export interface AgentHookReceiverOptions {
   token: string;
   maxBodyBytes?: number;
   onProbeEvent(event: AgentProbeEvent): void | Promise<void>;
+  onProcessingError?(error: unknown, event: AgentProbeEvent): void;
 }
 
 export class AgentHookReceiver {
   private readonly options: AgentHookReceiverOptions;
+  private processingQueue = Promise.resolve();
   private readonly server = createServer((request, response) => {
     this.handleRequest(request, response).catch(() => {
       this.writeJson(response, 500, { error: "internal_error" });
@@ -94,8 +96,18 @@ export class AgentHookReceiver {
       return;
     }
 
-    await this.options.onProbeEvent(event);
     this.writeJson(response, 202, { accepted: true, event_id: event.id });
+    this.processingQueue = this.processingQueue.then(async () => {
+      try {
+        await this.options.onProbeEvent(event);
+      } catch (error) {
+        try {
+          this.options.onProcessingError?.(error, event);
+        } catch {
+          // Keep the event queue available even if error reporting fails.
+        }
+      }
+    });
   }
 
   private isAuthorized(request: IncomingMessage): boolean {

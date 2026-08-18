@@ -125,9 +125,13 @@ function terminalProviders(): TerminalProviderRegistry {
 
   const byId = manager.getKnown("sess_known");
   const bySurface = manager.getKnownBySurfaceId("surface_sess_known_terminal");
+  const known = manager.listKnown();
   assert.equal(byId?.session_id, "sess_known");
   assert.equal(bySurface?.session_id, "sess_known");
   assert.equal(bySurface?.workspace_path, "/tmp/project");
+  assert.deepEqual(known.map((session) => session.session_id), ["sess_known"]);
+  known[0]!.title = "mutated clone";
+  assert.equal(manager.getKnown("sess_known")?.title, "Known");
   assert.equal(tmuxListCalls, 0);
   assert.equal(workspaceListCalls, 0);
   assert.equal(resolveWorkspaceCalls, 0);

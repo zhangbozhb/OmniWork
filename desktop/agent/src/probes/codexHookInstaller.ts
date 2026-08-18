@@ -33,17 +33,18 @@ const MANAGED_CODEX_HOOK_EVENTS: ManagedCodexHookEvent[] = [
     statusMessage: "OmniWork collecting Codex session event",
   },
   {
-    name: "PermissionRequest",
-    matcher: "*",
+    name: "UserPromptSubmit",
   },
   {
-    name: "PostToolUse",
+    name: "PermissionRequest",
     matcher: "*",
   },
   {
     name: "Stop",
   },
 ];
+
+const DEPRECATED_CODEX_HOOK_EVENTS = ["PostToolUse"];
 
 export interface CodexHookInstallOptions {
   hooksPath?: string;
@@ -84,6 +85,22 @@ export async function ensureCodexHooksInstalled(
   }
 
   let changed = false;
+  for (const eventName of DEPRECATED_CODEX_HOOK_EVENTS) {
+    const currentGroups = Array.isArray(hooks[eventName])
+      ? (hooks[eventName] as unknown[])
+      : [];
+    const cleanup = cleanupOmniWorkHookCommands(currentGroups);
+    if (!cleanup.changed) {
+      continue;
+    }
+    changed = true;
+    if (cleanup.groups.length > 0) {
+      hooks[eventName] = cleanup.groups;
+    } else {
+      delete hooks[eventName];
+    }
+  }
+
   for (const [eventName, group] of omniworkHooks) {
     const currentGroups = Array.isArray(hooks[eventName])
       ? (hooks[eventName] as unknown[])
@@ -92,7 +109,11 @@ export async function ensureCodexHooksInstalled(
     if (!hookCommand) {
       continue;
     }
-    const cleanup = cleanupOmniWorkHookCommands(currentGroups, hookCommand);
+    const cleanup = cleanupOmniWorkHookCommands(
+      currentGroups,
+      hookCommand,
+      group.hooks[0]?.timeout,
+    );
     if (cleanup.changed) {
       changed = true;
     }
@@ -160,7 +181,7 @@ function createOmniWorkHooks(
         {
           type: "command",
           command: buildHookCommand(options, event.name),
-          timeout: 10,
+          timeout: 1,
           ...(event.statusMessage
             ? { statusMessage: event.statusMessage }
             : {}),
@@ -197,9 +218,11 @@ function hasHookCommand(groups: unknown[], command: string): boolean {
 
 function cleanupOmniWorkHookCommands(
   groups: unknown[],
-  validCommand: string,
+  validCommand?: string,
+  validTimeout?: number,
 ): { groups: unknown[]; changed: boolean } {
   let changed = false;
+  let keptValidCommand = false;
   const cleanedGroups = groups.flatMap((group) => {
     if (!isRecord(group) || !Array.isArray(group.hooks)) {
       return [group];
@@ -212,7 +235,13 @@ function cleanupOmniWorkHookCommands(
       if (!isOmniWorkHookCommand(command)) {
         return true;
       }
-      const keep = command === validCommand;
+      const keep =
+        command === validCommand &&
+        hook.timeout === validTimeout &&
+        !keptValidCommand;
+      if (keep) {
+        keptValidCommand = true;
+      }
       if (!keep) {
         changed = true;
       }

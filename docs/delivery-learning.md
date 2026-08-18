@@ -45,6 +45,7 @@ Observation
 ## 验证记录
 
 - L1：Desktop Agent 类型检查通过；Desktop Agent 完整测试 121/121 通过。
+- L1 性能边界：外部 Coding Agent Hook 只采集低频关键事件；Claude Code 观察 Hook 使用原生 `async: true`，Codex 因官方会跳过异步 command 而使用短同步 Hook。有效请求在标准化后立即返回 `202`，后续 Observation/Episode/消息处理按序异步执行。Hook 路径只读内存 Session 快照，不触发 tmux 和 Workspace 全量刷新；POST 默认 250ms fail-open。Codex/Claude 不安装工具级 OmniWork Hook，Trae 系列保持三类低频事件并去重本地 record/post 命令。本机同步 Hook 基准的 P50/P95 从 103.9/109ms 降至 80.4/83.9ms，慢 Receiver 故障等待从约 1062ms 降至约 313ms，工具调用次数不再成为额外耗时乘数。
 - L1 未覆盖：跨设备稳定项目身份、历史 `agent_surface_events` 回填和原始 payload 保留策略，分别留给后续项目身份、迁移和治理节点。
 - L2：Prompt 开启 Episode；只有 hook Stop、结构化 turn result/complete 或进程退出等强信号关闭 Episode。助手消息完成和工具失败不会误判为交付结束；事件修订与重放保持幂等。
 - L2：Desktop Agent 完整测试 128/128 通过。使用 19 个现有 fallback JSONL 文件在临时库回放 2016 条 observation，组装 996 个 Episode；995 个含目标，750 个含最终回复并进入 `delivered`，167 个 `abandoned`，79 个保持 `working`。
@@ -53,7 +54,7 @@ Observation
 - L3：Desktop Agent 以 `delivery_episode_outcomes` 追加表审计每次结果动作，并用 `outcome_source` 区分显式用户反馈和 Git Review 推断；重复 action 幂等，冲突 action 拒绝，迟到动作不覆盖较新结果，显式用户 Outcome 不会被后续自动信号覆盖。
 - L3：专用 Git Review 发送链路携带 `git_review` 来源，对同 Surface 最近一个未评价 delivered Episode 记录 `review_revision_requested`，并保守推断 `revision_requested`。该推断可被后续用户 Outcome 覆盖，但不会生成经验候选。
 - L3：结构化命令事件中的测试命令会写入 `delivery_episode_signals`，区分 `test_passed/test_failed` 并关联原 Observation；测试通过只作为验证证据，不自动等同用户接受。Agent 会话页展示 Outcome 来源和验证信号。
-- L3：旧版已有 Outcome 在迁移时回填为 `user` 来源；协议测试 62/62、Desktop Agent 测试 162/162、App 测试 43/43 通过，正式 SQLite 已创建信号表和来源列。
+- L3：旧版已有 Outcome 在迁移时回填为 `user` 来源；协议测试 62/62、Desktop Agent 测试 166/166、App 测试 43/43 通过，正式 SQLite 已创建信号表和来源列。
 - L3 未覆盖：通用构建结果和外部 CI/代码托管 Review 尚无标准化输入；它们不能仅凭命令文本自动推断用户接受。
 - L4：只有带备注的 `revision_requested` Outcome 才生成 `user_correction` 候选；任务目标作为 trigger，用户修改要求作为 guidance。候选按项目和规范化文本指纹去重，支持与反例 Episode 分开保存。
 - L4：候选证据随 Outcome 重算；反馈撤回会移除未审核候选，已批准且失去全部证据的候选自动转为 `deprecated`。来源指纹保证候选经人工编辑后，Outcome 重放不会生成重复候选。
@@ -76,7 +77,7 @@ Observation
 - L7：App 可暂停、恢复或废弃经验，动作追加审计并校验项目范围。180 天没有新证据的 `approved/shadow/active` 经验在 Agent 启动时自动暂停并记录 `stale_evidence`，不会自动删除。
 - L7：项目效果卡分别统计已应用与未应用 Episode 的接受率、样本数和差值，并显示最近一次应用结果。该统计是观察性对比，任务构成和时间窗口未控制时不得解释为因果收益。
 - L7：相同 trigger/guidance 在至少两个本地项目中独立通过审核且无反例时，生成本地晋升资格；不会自动复制经验、改变 scope 或跨项目注入。
-- L7：协议测试 62/62、Desktop Agent 测试 162/162、App 测试 43/43 通过；Outcome 主链路归因、正负证据、自动暂停/废弃、人工恢复门槛、历史回填、基线对比、180 天衰减、跨项目资格、自动信号边界和 schema 迁移均有测试。
+- L7：协议测试 62/62、Desktop Agent 测试 166/166、App 测试 43/43 通过；Outcome 主链路归因、正负证据、自动暂停/废弃、人工恢复门槛、历史回填、基线对比、180 天衰减、跨项目资格、自动信号边界和 schema 迁移均有测试。
 - L7：Web 开发 bundle 已在独立浏览器标签完成冷加载检查，Pair Desktop 页面正常渲染，无 runtime error、错误覆盖层或失败资源请求；控制台仅有既有的 React Native Web `shadow*` 弃用警告。
 - L7：Desktop Agent 已重启到新实现，正式 `sessions.sqlite` 已创建全部 learning 表；首次启动回放 19 个 fallback 文件中的 2016 条记录。运行态检查时账本含 2040 条 Observation 和 1006 个 Episode，管理端返回 HTTP 200 且 Relay 已重新连接。
 - Learning schema 已一次性切换为显式 v1：切换前备份正式 SQLite，集中补齐旧列、回填历史 Outcome 来源、执行完整性检查并写入 `omniwork_learning_schema`。正式库切换前后均为 2152 条 Observation、1070 个 Episode，业务样本计数无变化，备份权限为 `0600`。

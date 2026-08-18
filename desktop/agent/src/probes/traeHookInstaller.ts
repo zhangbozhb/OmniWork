@@ -84,7 +84,12 @@ const DEPRECATED_TRAE_HOOK_EVENTS = [
 export async function ensureTraeFamilyHooksInstalled(
   options: TraeFamilyHookInstallOptions = {},
 ): Promise<TraeHookInstallResult[]> {
-  const targets = options.targets ?? (await discoverTraeHookTargets(options));
+  const targets =
+    options.targets ??
+    (await discoverTraeHookTargets({
+      homeDir: options.homeDir,
+      fallbackProvider: options.provider,
+    }));
   return Promise.all(
     targets.map((target) =>
       ensureTraeHooksInstalled({
@@ -149,13 +154,16 @@ export async function ensureTraeHooksInstalled(
     const currentGroups = Array.isArray(hooks[eventName])
       ? (hooks[eventName] as unknown[])
       : [];
-    const hookCommands = group.hooks
-      .map((hook) => hook.command)
-      .filter((command): command is string => Boolean(command));
+    const managedHooks = group.hooks.flatMap((hook) =>
+      hook.command
+        ? [{ command: hook.command, timeout: hook.timeout }]
+        : [],
+    );
+    const hookCommands = managedHooks.map((hook) => hook.command);
     if (hookCommands.length === 0) {
       continue;
     }
-    const cleanup = cleanupOmniWorkHookCommands(currentGroups, hookCommands);
+    const cleanup = cleanupOmniWorkHookCommands(currentGroups, managedHooks);
     if (cleanup.changed) {
       changed = true;
     }
@@ -200,7 +208,9 @@ export function defaultTraeHooksPath(
 }
 
 export async function discoverTraeHookTargets(
-  options: Pick<TraeFamilyHookInstallOptions, "homeDir" | "provider"> = {},
+  options: Pick<TraeFamilyHookInstallOptions, "homeDir" | "provider"> & {
+    fallbackProvider?: TraeHookInstallProvider;
+  } = {},
 ): Promise<TraeHookInstallTarget[]> {
   if (options.provider) {
     return [
@@ -233,7 +243,7 @@ export async function discoverTraeHookTargets(
   if (existingTargets.length > 0) {
     return existingTargets;
   }
-  const provider = options.provider ?? "trae";
+  const provider = options.fallbackProvider ?? "trae";
   return [
     {
       provider,
@@ -297,12 +307,12 @@ function createOmniWorkHooks(
         {
           type: "command",
           command: buildRecordHookCommand(provider, event.name),
-          timeout: 10,
+          timeout: 2,
         },
         {
           type: "command",
           command: buildPostHookCommand(options, provider, event.name),
-          timeout: 10,
+          timeout: 1,
         },
       ],
     },
@@ -340,9 +350,12 @@ function hasHookCommand(groups: unknown[], command: string): boolean {
 
 function cleanupOmniWorkHookCommands(
   groups: unknown[],
-  validCommands: string[],
+  validHooks: Array<{ command: string; timeout?: number }>,
 ): { groups: unknown[]; changed: boolean } {
-  const validCommandSet = new Set(validCommands);
+  const validHooksByCommand = new Map(
+    validHooks.map((hook) => [hook.command, hook]),
+  );
+  const keptValidCommands = new Set<string>();
   let changed = false;
   const cleanedGroups = groups.flatMap((group) => {
     if (!isRecord(group) || !Array.isArray(group.hooks)) {
@@ -356,7 +369,14 @@ function cleanupOmniWorkHookCommands(
       if (!isOmniWorkHookCommand(command)) {
         return true;
       }
-      const keep = validCommandSet.has(command);
+      const expected = validHooksByCommand.get(command);
+      const keep =
+        expected !== undefined &&
+        hook.timeout === expected.timeout &&
+        !keptValidCommands.has(command);
+      if (keep) {
+        keptValidCommands.add(command);
+      }
       if (!keep) {
         changed = true;
       }

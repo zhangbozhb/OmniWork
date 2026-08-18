@@ -36,6 +36,7 @@
 - 保留 `@openai/codex-sdk` 与原 Codex SDK adapter 作为未来显式兜底；当前不会在 app-server 失败时自动切换，避免隐藏协议故障。
 - Codex、Claude Code、Trae 和 Trae CN 已接入本机 hook Probe；OpenCode、Gemini 的 Probe 仍是扩展方向。
 - Probe 事件可进入本地 SQLite inbox，并向在线 App 发送 E2E `agent.message`；系统 Push 尚未实现。
+- Coding Agent Hook 已按耗时收敛：只安装低频生命周期、Prompt、审批/注意和 Stop 事件，不再为每次工具调用安装 OmniWork Hook；Claude Code 使用原生 `async: true`，Codex 因官方不支持异步 command 而保持短同步 Hook。Receiver 在校验后立即返回 `202`，后台按序持久化，Session 关联使用内存缓存且不执行 `tmux list-sessions`。POST 内部超时为 250ms 并始终 fail-open，Trae 系列安装会删除重复 record/post 命令。本机 30 次基准中，同步完整 Hook 管线 P50 从 103.9ms 降至 80.4ms、P95 从 109ms 降至 83.9ms；慢 Receiver 的故障等待从约 1062ms 降至约 313ms。剩余正常同步耗时主要是每事件 Node 冷启动。
 - Desktop Agent 将归一化 Probe 事件和结构化 AgentSurface 事件写入本地 `agent_observations` 账本，保留来源、关联键、session/surface 和可用的项目范围信息；Trae records 导入同时扫描 provider 默认目录和 OmniWork fallback 目录，并通过 importer index v2 一次性重放旧记录。
 - 当前本机 Desktop Agent 已加载 learning schema 并完成首次 fallback 回放；正式迁移前后均包含 2152 条 Observation 和 1070 个 Episode，升级后重启已继续写入新 Observation/Episode。Outcome、经验候选、Shadow、应用和评估仍无真实样本。
 - Learning 本地表已切换为显式 schema v1。正式库切换前创建独立 `0600` SQLite 备份，切换后通过完整性和行数校验；当前表结构统一由 `learningSchema.ts` 维护。Store 不再执行 `PRAGMA table_info`、`ALTER TABLE` 或历史 Outcome 回填，代码库也不再提供旧 schema 迁移入口；非 v1 既有库会明确拒绝启动。

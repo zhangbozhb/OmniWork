@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const DEFAULT_URL = "http://127.0.0.1:17669/api/probes/hooks";
-const DEFAULT_TIMEOUT_MS = 1000;
+const DEFAULT_TIMEOUT_MS = 250;
 
 async function main() {
   const body = await readHookPayload();

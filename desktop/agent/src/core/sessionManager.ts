@@ -133,6 +133,10 @@ export class SessionManager {
     return sessionId ? this.getKnown(sessionId) : undefined;
   }
 
+  listKnown(): TerminalSession[] {
+    return [...this.knownSessionsById.values()].map(cloneSession);
+  }
+
   async listWithWorkspaces(): Promise<SessionListResult> {
     if (this.listWithWorkspacesInFlight) {
       return this.listWithWorkspacesInFlight;

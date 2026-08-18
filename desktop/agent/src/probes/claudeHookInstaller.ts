@@ -7,6 +7,7 @@ interface ClaudeHookCommand {
   type: "command";
   command: string;
   timeout?: number;
+  async?: boolean;
 }
 
 interface ClaudeHookGroup {
@@ -33,41 +34,11 @@ const MANAGED_CLAUDE_HOOK_EVENTS: ManagedClaudeHookEvent[] = [
     name: "UserPromptSubmit",
   },
   {
-    name: "PreToolUse",
-    matcher: "*",
-  },
-  {
     name: "PermissionRequest",
     matcher: "*",
   },
   {
-    name: "PostToolUse",
-    matcher: "*",
-  },
-  {
-    name: "PostToolUseFailure",
-    matcher: "*",
-  },
-  {
-    name: "PermissionDenied",
-    matcher: "*",
-  },
-  {
     name: "Notification",
-  },
-  {
-    name: "PreCompact",
-  },
-  {
-    name: "PostCompact",
-  },
-  {
-    name: "SubagentStart",
-    matcher: "*",
-  },
-  {
-    name: "SubagentStop",
-    matcher: "*",
   },
   {
     name: "Stop",
@@ -75,6 +46,17 @@ const MANAGED_CLAUDE_HOOK_EVENTS: ManagedClaudeHookEvent[] = [
   {
     name: "SessionEnd",
   },
+];
+
+const DEPRECATED_CLAUDE_HOOK_EVENTS = [
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "PermissionDenied",
+  "PreCompact",
+  "PostCompact",
+  "SubagentStart",
+  "SubagentStop",
 ];
 
 export interface ClaudeHookInstallOptions {
@@ -116,6 +98,22 @@ export async function ensureClaudeHooksInstalled(
   }
 
   let changed = false;
+  for (const eventName of DEPRECATED_CLAUDE_HOOK_EVENTS) {
+    const currentGroups = Array.isArray(hooks[eventName])
+      ? (hooks[eventName] as unknown[])
+      : [];
+    const cleanup = cleanupOmniWorkHookCommands(currentGroups);
+    if (!cleanup.changed) {
+      continue;
+    }
+    changed = true;
+    if (cleanup.groups.length > 0) {
+      hooks[eventName] = cleanup.groups;
+    } else {
+      delete hooks[eventName];
+    }
+  }
+
   for (const [eventName, group] of omniworkHooks) {
     const currentGroups = Array.isArray(hooks[eventName])
       ? (hooks[eventName] as unknown[])
@@ -124,7 +122,12 @@ export async function ensureClaudeHooksInstalled(
     if (!hookCommand) {
       continue;
     }
-    const cleanup = cleanupOmniWorkHookCommands(currentGroups, hookCommand);
+    const cleanup = cleanupOmniWorkHookCommands(
+      currentGroups,
+      hookCommand,
+      group.hooks[0]?.timeout,
+      group.hooks[0]?.async,
+    );
     if (cleanup.changed) {
       changed = true;
     }
@@ -192,7 +195,8 @@ function createOmniWorkHooks(
         {
           type: "command",
           command: buildHookCommand(options, event.name),
-          timeout: 10,
+          timeout: 1,
+          async: true,
         },
       ],
     },
@@ -228,9 +232,12 @@ function hasHookCommand(groups: unknown[], command: string): boolean {
 
 function cleanupOmniWorkHookCommands(
   groups: unknown[],
-  validCommand: string,
+  validCommand?: string,
+  validTimeout?: number,
+  validAsync?: boolean,
 ): { groups: unknown[]; changed: boolean } {
   let changed = false;
+  let keptValidCommand = false;
   const cleanedGroups = groups.flatMap((group) => {
     if (!isRecord(group) || !Array.isArray(group.hooks)) {
       return [group];
@@ -243,7 +250,14 @@ function cleanupOmniWorkHookCommands(
       if (!isOmniWorkHookCommand(command)) {
         return true;
       }
-      const keep = command === validCommand;
+      const keep =
+        command === validCommand &&
+        hook.timeout === validTimeout &&
+        hook.async === validAsync &&
+        !keptValidCommand;
+      if (keep) {
+        keptValidCommand = true;
+      }
       if (!keep) {
         changed = true;
       }

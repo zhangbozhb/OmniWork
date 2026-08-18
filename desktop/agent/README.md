@@ -43,7 +43,13 @@ omniwork-agent --check --config /path/to/config.yml
 - Publishes each Pending Interaction once to the SQLite Agent inbox with a high-priority, content-minimized notification summary. Reconnecting Apps recover the inbox through `agent.message.list`; native APNs/FCM delivery remains outside the Desktop Agent.
 - Retains the Codex SDK adapter and dependency as an explicit future fallback. The current runtime does not automatically switch from app-server to the SDK.
 - Trae IDE and TraeX/`traecli` reuse skills from `~/.trae/skills`, but keep separate hook configuration: Trae uses `~/.trae/hooks.json`, while TraeX uses `~/.trae/cli/hooks.json`. Trae CN remains isolated under `~/.trae-cn`.
-- Runs a local Agent Probe hook receiver for Codex / Claude Code / Trae / Trae CN events. Codex and Claude Code hooks use `@omni-work/surface-hook-post`; Trae and Trae CN install both `@omni-work/surface-hook-record` for local records and `@omni-work/surface-hook-post` for realtime POST delivery.
+- Runs a local Agent Probe hook receiver for low-frequency Codex / Claude Code / Trae / Trae CN lifecycle and attention events. The receiver acknowledges valid requests before ordered background persistence, and hook session enrichment uses the in-memory Session cache instead of invoking `tmux list-sessions`. Codex and Claude Code do not install per-tool OmniWork hooks. POST hooks fail open after 250ms; Trae and Trae CN also keep one deduplicated local record hook for SessionStart, UserPromptSubmit, and Stop.
+
+Claude Code observation hooks use its native `async: true` mode. Do not apply
+that field to Codex: current Codex parses it but skips asynchronous command
+handlers. Trae does not document an equivalent portable mode, so its
+non-blocking boundary remains the local receiver's immediate acknowledgement
+followed by ordered Desktop-side processing.
 - Server-driven terminal frames: each attached session runs a ~450ms pusher in `src/core/terminalFramePusher.ts` that captures the current PTY snapshot, hashes it with SHA-1, and emits `terminal.frame` only when the hash changes. Terminal input/resize/frame hot paths use `SessionManager`'s lightweight in-memory session cache before falling back to the authoritative `session.list` reconciliation path.
 - Serves the local Agent Admin UI from `static/admin/index.html`; keep UI HTML/CSS/JS there instead of embedding it in `src/core/adminServer.ts`.
 

@@ -66,6 +66,14 @@ export class AgentProbeRuntime {
       onProbeEvent: async (event) => {
         await this.acceptProbeEvent(event, "agent probe event accepted");
       },
+      onProcessingError: (error, event) => {
+        this.logger.warn("agent probe event processing failed", {
+          provider: event.provider,
+          event_type: event.event_type,
+          session_id: event.session_id,
+          error: String(error),
+        });
+      },
     });
     try {
       await receiver.start();
@@ -131,7 +139,7 @@ export class AgentProbeRuntime {
   ): Promise<AgentProbeEvent> {
     return enrichProbeEventWithSessions(
       event,
-      await this.sessionManager.list(),
+      this.sessionManager.listKnown(),
     );
   }
 

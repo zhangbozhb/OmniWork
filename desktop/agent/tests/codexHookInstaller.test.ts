@@ -20,8 +20,9 @@ test("ensureCodexHooksInstalled creates user hooks file with OmniWork hooks", as
   assert.equal(result.installed, true);
   assert.equal(result.changed, true);
   assert.equal(parsed.hooks.SessionStart.length, 1);
+  assert.equal(parsed.hooks.UserPromptSubmit.length, 1);
   assert.equal(parsed.hooks.PermissionRequest.length, 1);
-  assert.equal(parsed.hooks.PostToolUse.length, 1);
+  assert.equal(parsed.hooks.PostToolUse, undefined);
   assert.equal(parsed.hooks.Stop.length, 1);
   assert.match(
     parsed.hooks.SessionStart[0].hooks[0].command,
@@ -36,8 +37,8 @@ test("ensureCodexHooksInstalled creates user hooks file with OmniWork hooks", as
     /OMNIWORK_AGENT_HOOK_EVENT='PermissionRequest'/u,
   );
   assert.match(
-    parsed.hooks.PostToolUse[0].hooks[0].command,
-    /OMNIWORK_AGENT_HOOK_EVENT='PostToolUse'/u,
+    parsed.hooks.UserPromptSubmit[0].hooks[0].command,
+    /OMNIWORK_AGENT_HOOK_EVENT='UserPromptSubmit'/u,
   );
   assert.match(
     parsed.hooks.Stop[0].hooks[0].command,
@@ -55,6 +56,7 @@ test("ensureCodexHooksInstalled creates user hooks file with OmniWork hooks", as
     parsed.hooks.Stop[0].hooks[0].command,
     /omniwork-hook-post\.mjs/u,
   );
+  assert.equal(parsed.hooks.Stop[0].hooks[0].timeout, 1);
 });
 
 test("ensureCodexHooksInstalled preserves existing hooks and is idempotent", async () => {
@@ -121,6 +123,20 @@ test("ensureCodexHooksInstalled removes stale OmniWork hook commands", async () 
             ],
           },
         ],
+        PostToolUse: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "node /old/path/omniwork-hook-post.mjs",
+              },
+              {
+                type: "command",
+                command: "echo keep user tool hook",
+              },
+            ],
+          },
+        ],
       },
     }),
   );
@@ -156,6 +172,11 @@ test("ensureCodexHooksInstalled removes stale OmniWork hook commands", async () 
   assert.match(
     parsed.hooks.PermissionRequest[0].hooks[0].command,
     /OMNIWORK_AGENT_HOOK_EVENT='PermissionRequest'/u,
+  );
+  assert.equal(parsed.hooks.PostToolUse.length, 1);
+  assert.equal(
+    parsed.hooks.PostToolUse[0].hooks[0].command,
+    "echo keep user tool hook",
   );
 });
 
