@@ -12,6 +12,7 @@ export interface SessionKeyRecord {
 
 export interface CreateSessionKeyOptions {
   path: string;
+  key?: string;
   relayUrl?: string;
   now?: Date;
 }
@@ -19,9 +20,13 @@ export interface CreateSessionKeyOptions {
 export async function createAndPersistSessionKey(
   options: CreateSessionKeyOptions,
 ): Promise<SessionKeyRecord> {
+  const key = options.key ?? generateSessionKey();
+  if (!isValidSessionKey(key)) {
+    throw new Error("Session key must be exactly 32 base64url characters.");
+  }
   const record: SessionKeyRecord = {
     version: 1,
-    key: generateSessionKey(),
+    key,
     created_at: (options.now ?? new Date()).toISOString(),
     relay_url: options.relayUrl,
   };
@@ -32,6 +37,10 @@ export async function createAndPersistSessionKey(
 
 export function generateSessionKey(): string {
   return randomBytes(24).toString("base64url");
+}
+
+export function isValidSessionKey(value: string): boolean {
+  return /^[A-Za-z0-9_-]{32}$/u.test(value);
 }
 
 export function createAuthProofInput(

@@ -24,6 +24,10 @@ relay:
   # devicePrivateKey: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 
 agent:
+  # Optional. Must be exactly 32 base64url characters (A-Z, a-z, 0-9, _ or -).
+  # If omitted or empty, a new random key is generated on every startup.
+  # key: q8LDuJppTK3BU9X3et9bF3gAej-vbLQS
+
   # Optional. If omitted, the agent uses relay device credentials, then the
   # local persisted identity file.
   # deviceId: my-desktop

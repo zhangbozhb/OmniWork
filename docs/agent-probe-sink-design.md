@@ -42,8 +42,8 @@ Android / iOS / Web App
 - 已落地：桌面端 Agent 内部 `AgentMessageService`，支持 Probe Event 幂等去重、基础过滤和在线 App 广播。目标模型下 Desktop Agent 不维护多 App 一致的消息状态；消息列表、已读和处理状态由各 App 本地 SQLite 自维护，Desktop Agent 只关心消息是否送达任一 App。
 - 已落地：Codex / Claude Code / Trae / Trae-CN Hooks Channel 的本机 HTTP receiver，默认监听 `127.0.0.1:17669/api/probes/hooks`，通过 `Authorization: Bearer <token>` 校验，并按 `omniwork_hook_source` 分发到对应 Probe。
 - 已落地：`packages/surface-hook-post/bin/omniwork-hook-post.mjs`，用于 Codex / Claude Code / Trae / Trae-CN command hook 将 stdin JSON 转交给本机 receiver。
-- 已落地：Codex hooks 自动安装。Desktop Agent 启动生成 session key 后会立即检测并合并写入 `~/.codex/hooks.json`，该步骤发生在 admin server / hook receiver 监听端口之前；启动 Codex runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Codex 会话启动。
-- 已落地：Claude Code hooks 自动安装。Desktop Agent 启动生成 session key 后会检测并合并写入 `~/.claude/settings.json`；启动 Claude runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Claude 会话启动。当前支持 `claude-code` 与 `claudecode` 输入别名，内部统一归一化为 `claude-code` provider。
+- 已落地：Codex hooks 自动安装。Desktop Agent 启动确定 session key 后会立即检测并合并写入 `~/.codex/hooks.json`，该步骤发生在 admin server / hook receiver 监听端口之前；启动 Codex runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Codex 会话启动。
+- 已落地：Claude Code hooks 自动安装。Desktop Agent 启动确定 session key 后会检测并合并写入 `~/.claude/settings.json`；启动 Claude runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Claude 会话启动。当前支持 `claude-code` 与 `claudecode` 输入别名，内部统一归一化为 `claude-code` provider。
 - 已落地：Trae / Trae-CN hook payload normalizer 和本机 HTTP ingest provider 解析，并保留 records 幂等导入链路。TraeX 主交互同时通过 `app-server --listen stdio://` 接入结构化 AgentSurface；Trae-CN 继续使用 hook / terminal 路径。
 - 已落地：Codex app-server event normalizer、本机 HTTP ingest endpoint，以及 AgentSurface runner 的 app-server 进程管理和主动订阅。runner 与 Trae 复用 JSONL RPC 传输，将 thread / turn / item / diff / completion 增量事件转成 `agent.surface.event`。
 - 已落地：Claude Code stream-json AgentSurface runner，以 `-p --input-format stream-json --output-format stream-json` 启动并双向收发 NDJSON；Claude hooks 继续作为 Probe 补充通道。
@@ -563,7 +563,7 @@ Agent Probe Sink
 Hook receiver 约束：
 
 - receiver 只监听本机 loopback 或 Unix socket。
-- hook receiver 必须校验 token；当前 MVP 默认复用桌面端 Agent 临时 session key，也可通过 `OMNIWORK_AGENT_PROBE_TOKEN` 覆盖。
+- hook receiver 必须校验 token；当前 MVP 默认复用桌面端 Agent session key，也可通过 `OMNIWORK_AGENT_PROBE_TOKEN` 覆盖。
 - hook 自动安装在 Desktop Agent 启动后立即触发一次；启动具体 runtime 前也会二次触发，二次触发的识别规则是 `runtime.kind === "codex"` 或启动命令首词为 `codex`。
 - hook 自动安装采用合并策略：只追加 OmniWork 缺失的 command hook，不修改或删除用户已有的非 OmniWork hooks。
 - hook 自动安装按阶段生成 command，每个阶段都会写入对应的 `OMNIWORK_AGENT_HOOK_EVENT`，例如 `SessionStart`、`PermissionRequest`、`PostToolUse`、`Stop`；hook 脚本会用该值补齐缺失的 `hook_event_name`。

@@ -272,7 +272,8 @@ desktop/
 - 管理 PTY 输入输出。
 - 处理 backpressure、snapshot、重连。
 - 保存本地状态（默认文件存储于 `~/Library/Application Support/OmniWork/agent/`）。
-- 每次启动若无持久化 key 则生成 32 字符临时 key，并保存到本地文件。
+- 启动时优先使用合法的用户配置 key；未配置或配置为空时生成 32 字符临时
+  key，并保存到本地文件。非空配置不合法时拒绝启动。
 - 处理 `tunnel.upgrade.*` 协议族，按需把会话从 Relay 升级到 P2P。
 - 提供文件与 git 浏览能力（`files/` `git/`）。
 
@@ -322,7 +323,8 @@ desktop/
 - 允许使用必要的 Node native addon（PTY、WebRTC native、Keychain bridge），但 native addon 必须封装在清晰模块后面。
 - PTY 输入/快照能力通过 `pty-bridge/` 调用 `tmux-manager/` 完成；如演进引入 `node-pty`，也必须封装在 `pty-bridge/`，业务模块不直接调用 native addon。
 - `tmux` 操作必须通过 `tmux-manager/`，不能在业务代码中散落 shell 命令。
-- MVP 登录不使用持久凭证；临时 key 写入 `session-key.json`，文件权限必须为 `0600`。
+- 运行 key 写入 `session-key.json`，文件权限必须为 `0600`；如配置固定 key，
+  配置文件也必须按 secret 管理并限制读取权限。
 - 演进持久凭证必须存入 电脑系统 Keychain，不能写入明文配置文件。
 - WebRTC 使用 `@roamhq/wrtc`；动态 import 时需做 `default` 解包以兼容 Node ESM 包装。
 - 打包时需要内嵌或固定 Node runtime，避免依赖用户机器上的全局 Node 版本。

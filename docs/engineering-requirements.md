@@ -97,7 +97,8 @@ Relay 安全约束（`relay/server`）：
 
 - Agent 默认不监听局域网地址。
 - Agent 只主动连接公司内网 Relay。
-- Agent 每次启动必须生成新的 32 字符随机 key。
+- Agent 应优先使用用户配置的 32 字符 Base64URL key；未配置或配置为空时，
+  每次启动生成新的 32 字符随机 key。非空配置不满足格式要求时启动失败。
 - 临时 key 必须写入 `~/Library/Application Support/OmniWork/agent/session-key.json`。
 - key 文件权限必须为 `0600`，目录权限必须为 `0700`。
 - 自启动使用 LaunchAgent / SMAppService 方向。
@@ -111,8 +112,9 @@ MVP 范围不使用 SSO、OIDC、持久设备绑定或 refresh token。
 MVP 鉴权模型：
 
 - 桌面端 Agent 是 key 来源。
-- 桌面端 Agent 每次启动临时生成一个固定 32 字符长度的随机字符串作为 key。
-- key 使用加密安全随机数生成器。
+- 桌面端 Agent 使用配置的 32 字符 Base64URL key，或在未配置时临时生成
+  一个固定 32 字符长度的随机字符串作为 key。
+- 自动生成 key 时使用加密安全随机数生成器。
 - key 保存到 电脑 本地文件。
 - App 通过手动输入、扫码或演进本机展示方式获得 key。
 - App 使用该 key 完成本次连接授权。
@@ -219,11 +221,11 @@ MVP 范围至少验证：
 
 企业化能力至少验证：
 
-- 桌面端 Agent 每次启动生成 32 字符临时 key。
+- 桌面端 Agent 使用合法配置 key，未配置时生成 32 字符临时 key。
 - key 文件路径、权限和内容格式正确。
 - App 使用正确 key 可连接。
 - App 使用错误 key 不能连接。
-- 桌面端 Agent 重启后旧 key 失效。
+- 使用自动生成 key 时，桌面端 Agent 重启后旧 key 失效。
 - Relay 不记录完整 key。
 - LaunchAgent 自启动。
 - 审计日志。

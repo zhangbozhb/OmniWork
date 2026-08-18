@@ -19,7 +19,9 @@ omniwork-agent --check --config /path/to/config.yml
 
 ## Current MVP
 
-- Generates a fresh 32-character temporary key on every start.
+- Uses `agent.key` or `OMNIWORK_AGENT_KEY` when configured; the value must be
+  exactly 32 base64url characters. If unset or empty, generates a fresh key on
+  every start.
 - Saves the key to `~/Library/Application Support/OmniWork/agent/session-key.json`.
 - Persists a local `dev_` device ID in `~/.omniwork/agent.json`, with `sha256(deviceId + sha256(ip + hostname))` checksum validation. On macOS, the agent also uses Keychain when it is safely available.
 - Uses `0600` file permissions and `0700` parent directory permissions.
@@ -83,6 +85,8 @@ relay:
   url: wss://relay.company.example/relay/ws/agent
 
 agent:
+  # Optional; exactly 32 base64url characters. Empty or omitted generates one.
+  key: q8LDuJppTK3BU9X3et9bF3gAej-vbLQS
   deviceId: my-desktop
   displayName: Alice DesktopBook
   identityPath: /Users/me/.omniwork/agent.json

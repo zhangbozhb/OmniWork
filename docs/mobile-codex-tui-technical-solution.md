@@ -82,7 +82,9 @@ MVP 可以采用兼容通道。正式企业版建议兼容通道与主通道并�
 - 原始 TUI 快照通过 React Native 原生组件渲染；完整 ANSI renderer 作为可替换能力。
 - 结构化 Codex UI 使用 React Native 原生组件实现。
 - App 和 桌面端 Agent 共享 TypeScript 协议类型和纯逻辑 SDK。
-- 登录鉴权不接入 SSO；桌面端 Agent 每次启动生成 32 字符临时 key，保存到本地文件，App 使用该 key 完成本次连接授权。
+- 登录鉴权不接入 SSO；桌面端 Agent 使用用户配置的合法 32 字符
+  Base64URL key，未配置时自动生成，并保存到本地文件。App 使用该 key
+  完成本次连接授权。
 - App 移动端交付 Android APK 和 iOS IPA 安装包；Web 端以 `react-native-web` 输出静态 SPA，不作为 PWA 或扫码入口。
 
 「手机 PWA 优先」和「电脑 企业版迁移 Rust/Swift」不作为主方案。App 继续以 React Native 为唯一 UI 技术栈，移动端按 APK/IPA 交付，Web 端只作为同代码库 SPA 目标；Rust/Swift 只作为 Relay 可选实现或极薄 电脑系统 原生桥接。
@@ -200,7 +202,8 @@ WebTransport 是更现代的 HTTP/3 传输能力，支持多 stream、单向 str
 桌面端 Agent 是公司设备上的本地常驻组件，应优先使用 Apple 官方系统能力：
 
 - 电脑系统 13+ 使用 `SMAppService` 注册和管理 LoginItems、LaunchAgents、LaunchDaemons。
-- MVP 不使用持久认证 token；Agent 每次启动生成临时 key，并以权限受限的本地文件保存。
+- Agent 可使用用户配置的固定 key；未配置时每次启动生成临时 key。运行 key
+  始终以权限受限的本地文件保存。
 - 如演进引入持久凭证，再使用 Keychain 保存设备凭证或 relay secret。
 - 企业分发需要签名和 notarization。
 - 如果公司 MDM 支持，可使用 Managed Device Attestation 参与设备信任判断。
@@ -314,7 +317,7 @@ flowchart LR
 - 对 Probe 事件执行归一化、去重、频控、敏感信息过滤和通知升级。
 - 将本地 PTY / app-server 事件转换为企业中继协议。
 - 存储本地会话 registry。
-- 每次启动生成 32 字符临时 key。
+- 使用合法配置 key，未配置时生成 32 字符临时 key。
 - 将临时 key 保存到权限受限的本地文件。
 - 上报审计事件。
 
@@ -412,7 +415,11 @@ agent.hello: device_id
 e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 ```
 
-其中 `session_key` 是 桌面端 Agent 本次启动生成的 32 字符临时 key。Relay 不应持久化或打印完整 key；推荐由 Relay 发起 nonce，App 计算 proof，桌面端 Agent 使用本地 key 校验。鉴权成功后还必须完成 App-Agent Noise E2E 握手，业务消息只能封装在 `e2e.message` 中。
+其中 `session_key` 是桌面端 Agent 本次启动选择的 32 字符 Base64URL key，
+来源可以是用户配置或自动生成。Relay 不应持久化或打印完整 key；推荐由
+Relay 发起 nonce，App 计算 proof，桌面端 Agent 使用本地 key 校验。鉴权
+成功后还必须完成 App-Agent Noise E2E 握手，业务消息只能封装在
+`e2e.message` 中。
 
 ### 消息 Envelope
 
@@ -651,12 +658,13 @@ MVP 不接入 SSO / OIDC / 持久设备绑定。
 
 临时 key：
 
-- 桌面端 Agent 每次启动生成一个新的 32 字符随机 key。
-- key 使用加密安全随机数生成器。
+- 桌面端 Agent 使用配置的 32 字符 Base64URL key；未配置或配置为空时，
+  每次启动生成一个新的随机 key。
+- 自动生成 key 时使用加密安全随机数生成器。
 - key 保存到 `~/Library/Application Support/OmniWork/agent/session-key.json`。
 - key 文件权限必须为 `0600`，目录权限必须为 `0700`。
 - App 通过手动输入、扫码或演进本机展示方式获得 key。
-- 桌面端 Agent 重启后旧 key 失效。
+- 使用自动生成 key 时，桌面端 Agent 重启后旧 key 失效。
 
 推荐握手：
 

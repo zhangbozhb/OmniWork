@@ -410,12 +410,18 @@ export class AgentService {
       this.agentStartedAt = Date.now();
       this.keyRecord = await createAndPersistSessionKey({
         path: this.config.sessionKeyPath,
+        key: this.config.sessionKey,
         relayUrl: this.config.relayUrl,
       });
 
-      this.logger.info("generated temporary session key", {
-        key_path: this.config.sessionKeyPath,
-      });
+      this.logger.info(
+        this.config.sessionKey
+          ? "persisted configured session key"
+          : "generated temporary session key",
+        {
+          key_path: this.config.sessionKeyPath,
+        },
+      );
       const pairingQr = createPairingQrDetails(this.config, this.keyRecord);
       if (pairingQr) {
         printPairingQr(pairingQr);

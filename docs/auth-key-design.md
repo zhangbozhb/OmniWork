@@ -10,21 +10,24 @@
 
 MVP 范围不接入 SSO，不做企业身份体系，不做持久设备绑定。
 
-MVP 鉴权采用临时共享 key：
+MVP 鉴权采用共享 key：
 
-- 桌面端 Agent 每次启动时生成一个新的 32 字符随机字符串。
+- 用户可通过 `agent.key` 或 `OMNIWORK_AGENT_KEY` 配置固定 key。
+- 配置值必须是 32 个 Base64URL 字符；非空但格式不合法时 Agent
+  启动失败。未配置或配置为空时，每次启动自动生成新的随机 key。
 - 该 key 保存到 电脑 本地文件。
 - 手机 App 通过手动输入、扫码或演进的本机展示方式获得该 key。
 - App 使用该 key 与 桌面端 Agent 建立本次连接授权。
-- 桌面端 Agent 重启后 key 失效，需要重新获取新的 key。
+- 自动生成的 key 在桌面端 Agent 重启后失效；配置的 key 保持不变。
 
-## Key 生成规则
+## Key 格式和生成规则
 
 要求：
 
 - 长度固定为 32 个字符。
-- 必须使用加密安全随机数生成器。
-- 推荐字符集：Base64URL 字符集，即 `A-Z`、`a-z`、`0-9`、`_`、`-`。
+- 用户配置和自动生成的 key 都只允许 Base64URL 字符集，即
+  `A-Z`、`a-z`、`0-9`、`_`、`-`。
+- 自动生成时必须使用加密安全随机数生成器。
 - 推荐生成方式：生成 24 bytes 随机数，再做 base64url 无 padding 编码，结果正好 32 字符。
 - 不使用时间戳、用户名、设备名、UUID 截断等可预测材料。
 
@@ -69,7 +72,7 @@ mode: 0600
 
 说明：
 
-- `key` 是本次 Agent 启动生成的临时共享 key。
+- `key` 是本次 Agent 启动选择的共享 key，来源可以是用户配置或自动生成。
 - Agent 不再自生成运行实例 ID；Relay 在 `agent.hello` 鉴权通过后生成 `agent_connection_id`，用于标识当前 Agent WebSocket 连接。
 - 文件只保存在本机，不提交仓库，不同步到云盘。
 
@@ -95,7 +98,8 @@ App 侧要求：
 
 - key 不进入普通明文持久存储。
 - 如果为了重连临时保存，必须使用 iOS Keychain / Android Keystore / 安全存储封装。
-- 当 桌面端 Agent 重启导致认证失败时，App 清理旧 key 并提示重新输入。
+- 当自动生成的 key 因桌面端 Agent 重启而变化并导致认证失败时，App
+  清理旧 key 并提示重新输入。
 
 App 收到 `auth.failed` 后的具体清理动作（由 `app/src/app/App.tsx` 实现）：
 
@@ -142,7 +146,7 @@ sequenceDiagram
 - 桌面端 Agent 是 key 校验真相源。
 - 握手成功后，Relay 只维护内存态连接授权。
 - 连接断开后可以重新 challenge。
-- 桌面端 Agent 重启后 key 会变化；Relay 会为新连接分配新的 `agent_connection_id`，并顶替同一 `device_id` 下的旧 Agent 连接。
+- 桌面端 Agent 使用自动生成 key 时，重启后 key 会变化；Relay 会为新连接分配新的 `agent_connection_id`，并顶替同一 `device_id` 下的旧 Agent 连接。
 
 Agent 设备身份校验流程：
 
@@ -219,7 +223,8 @@ malformed_proof
 
 必须实现：
 
-- key 每次 桌面端 Agent 启动重新生成。
+- 未配置 key 时，每次桌面端 Agent 启动重新生成。
+- 配置的 key 必须严格满足 32 字符 Base64URL 格式。
 - key 文件权限为 `0600`。
 - key 所在目录权限为 `0700`。
 - Relay 对失败次数限流（仅对失败的 `auth.proof` 计数：relay 端 `malformed_proof` / agent 端返回 `auth.failed` 两个真实失败分支才 consume token；合法 `auth.proof` → `auth.ok` 不消耗桶，避免频繁重连或切换 `transport_preference` 被误封禁）。

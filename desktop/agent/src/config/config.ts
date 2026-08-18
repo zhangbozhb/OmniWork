@@ -11,6 +11,7 @@ import {
   type TerminalProviderDefinition,
 } from "@omni-work/protocol-ts";
 import type { TerminalSize } from "@omni-work/protocol-ts";
+import { isValidSessionKey } from "../auth-key/authKey.ts";
 import { resolveAgentDeviceId } from "./deviceIdentity.ts";
 import {
   defaultRelayDeviceCredentialsPath,
@@ -25,6 +26,7 @@ export interface AgentConfig {
   deviceId: string;
   hostname: string;
   displayName: string;
+  sessionKey?: string;
   relayUrl: string;
   relayDeviceCredentialsPath: string;
   relayDevicePrivateKey?: string;
@@ -96,6 +98,7 @@ export function loadAgentConfig(
     deviceId: resolveDeviceId(rawConfig, env, relayDeviceCredentials),
     hostname: host,
     displayName: resolveAgentDisplayName(rawConfig, env, host),
+    sessionKey: resolveSessionKey(rawConfig, env),
     relayUrl,
     relayDeviceCredentialsPath,
     relayDevicePrivateKey:
@@ -721,6 +724,29 @@ function resolveAgentDisplayName(
     readConfigString(config, "agent", "displayName") ??
     env.OMNIWORK_AGENT_DISPLAY_NAME?.trim();
   return configuredDisplayName || defaultAgentDisplayName(host);
+}
+
+function resolveSessionKey(
+  config: Record<string, unknown>,
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  const configuredKey = readConfigString(config, "agent", "key");
+  if (configuredKey && !isValidSessionKey(configuredKey)) {
+    throw new Error(
+      "agent.key must be exactly 32 base64url characters.",
+    );
+  }
+  if (configuredKey) {
+    return configuredKey;
+  }
+
+  const environmentKey = readNonEmptyString(env.OMNIWORK_AGENT_KEY);
+  if (environmentKey && !isValidSessionKey(environmentKey)) {
+    throw new Error(
+      "OMNIWORK_AGENT_KEY must be exactly 32 base64url characters.",
+    );
+  }
+  return environmentKey;
 }
 
 function resolveBusinessSecurityMode(

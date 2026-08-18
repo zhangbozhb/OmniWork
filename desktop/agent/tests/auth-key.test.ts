@@ -14,6 +14,7 @@ import {
   createAndPersistSessionKey,
   createProof,
   generateSessionKey,
+  isValidSessionKey,
   verifyProof,
 } from "../src/auth-key/authKey.ts";
 import {
@@ -34,6 +35,10 @@ import {
 const key = generateSessionKey();
 assert.equal(key.length, 32);
 assert.match(key, /^[A-Za-z0-9_-]{32}$/);
+assert.equal(isValidSessionKey(key), true);
+assert.equal(isValidSessionKey("short"), false);
+assert.equal(isValidSessionKey("a".repeat(33)), false);
+assert.equal(isValidSessionKey("a".repeat(31) + "!"), false);
 
 const nonce = "nonce_for_test_123456";
 const appInfo = {
@@ -72,6 +77,21 @@ const raw = await readFile(path, "utf8");
 assert.equal(JSON.parse(raw).key, record.key);
 assert.equal((await stat(join(dir, "nested"))).mode & 0o777, 0o700);
 assert.equal((await stat(path)).mode & 0o777, 0o600);
+
+const configuredKey = "a".repeat(32);
+const configuredRecord = await createAndPersistSessionKey({
+  path: join(dir, "configured-session-key.json"),
+  key: configuredKey,
+  relayUrl: "wss://relay.example/relay/ws/agent",
+});
+assert.equal(configuredRecord.key, configuredKey);
+await assert.rejects(
+  createAndPersistSessionKey({
+    path: join(dir, "invalid-session-key.json"),
+    key: "too-short",
+  }),
+  /exactly 32 base64url characters/,
+);
 
 const baseConfig: AgentConfig = {
   agentVersion: "test",
@@ -206,6 +226,7 @@ relay:
 agent:
   deviceId: yaml-device
   displayName: YAML Desktop
+  key: yaml-key-12345678901234567890123
   requireE2e: false
 admin:
   enabled: false
@@ -253,6 +274,7 @@ paths:
   assert.equal(config.agentVersion, "0.1.1");
   assert.equal(config.deviceId, "yaml-device");
   assert.equal(config.displayName, "YAML Desktop");
+  assert.equal(config.sessionKey, "yaml-key-12345678901234567890123");
   assert.equal(config.adminEnabled, false);
   assert.equal(config.adminPort, 18000);
   assert.equal(config.agentProbeEnabled, false);
@@ -276,6 +298,65 @@ paths:
     config.terminalProviders.find((provider) => provider.kind === "opencode")
       ?.summary,
     "OpenCode YAML session",
+  );
+}
+
+{
+  const config = loadIsolatedAgentConfig({
+    OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
+    OMNIWORK_DEVICE_ID: "mac-1",
+    OMNIWORK_AGENT_KEY: "env-key-123456789012345678901234",
+  });
+  assert.equal(config.sessionKey, "env-key-123456789012345678901234");
+  assert.equal(
+    loadIsolatedAgentConfig({
+      OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
+      OMNIWORK_DEVICE_ID: "mac-1",
+      OMNIWORK_AGENT_KEY: "   ",
+    }).sessionKey,
+    undefined,
+  );
+  assert.throws(
+    () =>
+      loadIsolatedAgentConfig({
+        OMNIWORK_RELAY_URL: "wss://relay.example/relay/ws/agent",
+        OMNIWORK_DEVICE_ID: "mac-1",
+        OMNIWORK_AGENT_KEY: "too-short",
+      }),
+    /OMNIWORK_AGENT_KEY must be exactly 32 base64url characters/,
+  );
+}
+
+{
+  const yamlConfigPath = join(dir, "session-key-config.yml");
+  await writeFile(
+    yamlConfigPath,
+    `
+relay:
+  url: wss://relay.example/relay/ws/agent
+agent:
+  deviceId: mac-1
+  key: ""
+`,
+  );
+  assert.equal(
+    loadAgentConfig({}, { configPath: yamlConfigPath }).sessionKey,
+    undefined,
+  );
+
+  await writeFile(
+    yamlConfigPath,
+    `
+relay:
+  url: wss://relay.example/relay/ws/agent
+agent:
+  deviceId: mac-1
+  key: too-short
+`,
+  );
+  assert.throws(
+    () => loadAgentConfig({}, { configPath: yamlConfigPath }),
+    /agent\.key must be exactly 32 base64url characters/,
   );
 }
 

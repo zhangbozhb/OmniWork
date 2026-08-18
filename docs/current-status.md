@@ -27,7 +27,8 @@
 
 ## Desktop Agent
 
-- 每次启动生成 32 字符临时 key，用于 App-Agent 配对 proof 和 Noise PSK。
+- 使用用户配置的合法 32 字符 key，未配置时每次启动自动生成，用于
+  App-Agent 配对 proof 和 Noise PSK。
 - 支持 YAML 配置、Relay 重连、tmux 会话、Workspace 发现、文件/Git 请求和终端 snapshot/stream。
 - Terminal Provider 默认包含 Codex、Claude、Gemini 和 TraeX，也可通过配置添加其他 CLI provider；`trae`、`trae-cn` 专指 IDE Probe provider。
 - TraeX/`traecli` 与 Trae IDE 复用 `~/.trae/skills`，但 Hook 配置隔离：分别使用 `~/.trae/cli/hooks.json` 与 `~/.trae/hooks.json`；Trae-CN 使用 `~/.trae-cn/hooks.json`。
