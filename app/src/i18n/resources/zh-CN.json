@@ -143,7 +143,83 @@
     "composerTitle": "Prompt 输入",
     "composerPlaceholder": "让 {{provider}} 继续处理这个会话...",
     "send": "发送",
-    "delivered": "已送达"
+    "delivered": "已送达",
+    "deliveryOutcome": {
+      "title": "交付结果",
+      "notePlaceholder": "补充修改要求或备注",
+      "accept": "接受",
+      "revise": "需要修改",
+      "abandon": "放弃",
+      "sources": {
+        "user": "来自用户明确反馈",
+        "git_review": "根据已提交的 Git 审核意见推断"
+      },
+      "signals": {
+        "test_passed": "验证信号：测试通过",
+        "test_failed": "验证信号：测试失败",
+        "review_revision_requested": "审核信号：要求修订"
+      },
+      "outcomes": {
+        "pending": "未评价",
+        "accepted": "已接受",
+        "revision_requested": "需要修改",
+        "abandoned": "已放弃"
+      }
+    },
+    "experience": {
+      "title": "经验候选",
+      "evidence": "{{count}} 个交付证据",
+      "trigger": "适用情形",
+      "guidance": "建议动作",
+      "reviewNotePlaceholder": "补充审核备注",
+      "approve": "批准",
+      "reject": "拒绝",
+      "pause": "暂停",
+      "resume": "恢复",
+      "deprecate": "废弃",
+      "status": {
+        "candidate": "待审核",
+        "approved": "已批准",
+        "rejected": "已拒绝",
+        "shadow": "影子验证",
+        "active": "已生效",
+        "paused": "已暂停",
+        "deprecated": "已废弃"
+      }
+    },
+    "shadow": {
+      "title": "影子命中",
+      "stats": "{{relevant}} / {{reviewed}} 条相关",
+      "relevant": "相关",
+      "notRelevant": "不相关",
+      "reason": {
+        "exact_trigger": "适用情形精确匹配",
+        "token_overlap": "适用情形关键词相关"
+      }
+    },
+    "activation": {
+      "title": "项目经验",
+      "feedback": "已评价 {{reviewed}} 条 · 相关率 {{relevance}}",
+      "budget": "最多 {{matches}} 条 · {{kilobytes}} KB",
+      "applied": "本次交付已应用 {{count}} 条经验",
+      "status": {
+        "collecting": "正在收集影子反馈",
+        "ready": "可以启用",
+        "active": "已生效",
+        "paused": "质量门槛暂停"
+      }
+    },
+    "effect": {
+      "title": "交付效果",
+      "assisted": "已应用经验 · {{count}}",
+      "baseline": "未应用经验 · {{count}}",
+      "delta": "接受率差值",
+      "promotionEligible": "已在 {{count}} 个本地项目验证 · 可申请晋升",
+      "latest": {
+        "positive": "最近一次已接受",
+        "negative": "最近一次需要关注"
+      }
+    }
   },
   "devices": {
     "refreshing": "刷新中...",

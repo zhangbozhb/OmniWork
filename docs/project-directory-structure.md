@@ -243,6 +243,7 @@ desktop/
 |   |   |-- workspace/           # workspaceManager
 |   |   |-- files/               # fileService
 |   |   |-- git/                 # gitService
+|   |   |-- learning/            # Agent observation 账本与后续交付学习能力
 |   |   |-- pairing/             # pairingQr
 |   |   |-- auth-key/            # authKey（生成/持久化 32 字符 key）
 |   |   |-- keychain/            # keychain（电脑系统 Keychain 桥）
@@ -299,6 +300,8 @@ desktop/
 `session-store/`：本地会话状态持久化（默认 SQLite `sessions.sqlite`；旧 `sessions.json` 仅作为首次导入来源）。
 
 `workspace/` / `files/` / `git/`：手机端 workspace/files/git 协议消息的 Agent 端实现。
+
+`learning/`：Desktop Agent 本地交付学习域。包含统一 Observation、Delivery Episode、带来源的 Outcome、测试/Review 验证信号、项目经验候选与审核、Shadow 检索和反馈、受门槛保护的有限注入，以及应用结果评估、证据归因、衰减和生命周期审计；全部保存在本机并按项目隔离，不进入 Relay。`learningSchema.ts` 集中维护当前表结构和版本校验；各 Store 不再自行建表或执行旧列修补。
 
 `pairing/`：生成 `omniwork://pair?...` 链接与 ASCII QR 码。
 

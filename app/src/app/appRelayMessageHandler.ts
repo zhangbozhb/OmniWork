@@ -74,6 +74,12 @@ type AppRelayMessageHandlerContext = {
   applyAgentSurfaceSync(
     payload: Parameters<AppMessageHandlers["onAgentSurfaceSync"]>[0],
   ): void;
+  applyAgentDelivery(
+    payload: Parameters<AppMessageHandlers["onAgentDelivery"]>[0],
+  ): void;
+  applyAgentExperience(
+    payload: Parameters<AppMessageHandlers["onAgentExperience"]>[0],
+  ): void;
   applyAgentInteraction(
     payload: Parameters<AppMessageHandlers["onAgentInteraction"]>[0],
   ): void;
@@ -200,9 +206,21 @@ export function handleAppRelayMessage(
         );
       }
     },
-      onAgentInteraction(payload) {
-        context.applyAgentInteraction(payload);
-      },
+    onAgentDelivery(payload) {
+      context.applyAgentDelivery(payload);
+      if (payload.kind === "error") {
+        context.setConnectionMessage(payload.message);
+      }
+    },
+    onAgentExperience(payload) {
+      context.applyAgentExperience(payload);
+      if (payload.kind === "error") {
+        context.setConnectionMessage(payload.message);
+      }
+    },
+    onAgentInteraction(payload) {
+      context.applyAgentInteraction(payload);
+    },
     onAgentNotificationSettings(payload) {
       context.handleAgentNotificationSettings(payload);
     },

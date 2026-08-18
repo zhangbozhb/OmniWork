@@ -1,12 +1,21 @@
 import {
   createMessage,
   createMessageId,
+  type DeliveryEpisodeSummary,
+  type DeliveryOutcome,
+  type ExperienceCandidateSummary,
+  type ExperienceShadowFeedback,
   type AgentInteractionAnswerPayload,
   type AgentInteractionRequestPayload,
   type AgentMessageDeliveredPayload,
   type AgentMessageListRequestPayload,
   type AgentNotificationSettingsPayload,
   type AgentSurfaceSyncRequestPayload,
+  type AgentDeliveryOutcomeSetPayload,
+  type AgentExperienceReviewSetPayload,
+  type AgentExperienceShadowFeedbackSetPayload,
+  type AgentExperienceActivationSetPayload,
+  type AgentExperienceLifecycleSetPayload,
 } from "@omni-work/protocol-ts";
 
 export function agentMessageListRequest(
@@ -14,6 +23,148 @@ export function agentMessageListRequest(
   payload: AgentMessageListRequestPayload = {},
 ) {
   return createMessage("agent.message.list", payload, {
+    device_id: deviceId,
+  });
+}
+
+export function agentDeliverySyncRequest(
+  deviceId: string,
+  sessionId: string,
+  surfaceId: string,
+) {
+  return createMessage(
+    "agent.delivery",
+    {
+      kind: "sync_request" as const,
+      session_id: sessionId,
+      surface_id: surfaceId,
+      limit: 100,
+    },
+    {
+      device_id: deviceId,
+      session_id: sessionId,
+      surface_id: surfaceId,
+    },
+  );
+}
+
+export function agentDeliveryOutcomeSet(
+  deviceId: string,
+  episode: DeliveryEpisodeSummary,
+  outcome: DeliveryOutcome,
+  note?: string,
+) {
+  const payload: AgentDeliveryOutcomeSetPayload = {
+    kind: "outcome_set",
+    episode_id: episode.episode_id,
+    session_id: episode.session_id,
+    surface_id: episode.surface_id,
+    client_action_id: createMessageId(),
+    outcome,
+    ...(note?.trim() ? { note: note.trim() } : {}),
+    created_at: new Date().toISOString(),
+  };
+  return createMessage("agent.delivery", payload, {
+    device_id: deviceId,
+    session_id: episode.session_id,
+    surface_id: episode.surface_id,
+  });
+}
+
+export function agentExperienceSyncRequest(
+  deviceId: string,
+  sessionId: string,
+) {
+  return createMessage(
+    "agent.experience",
+    {
+      kind: "sync_request" as const,
+      session_id: sessionId,
+      limit: 100,
+    },
+    {
+      device_id: deviceId,
+      session_id: sessionId,
+    },
+  );
+}
+
+export function agentExperienceReviewSet(
+  deviceId: string,
+  candidate: ExperienceCandidateSummary,
+  decision: "approved" | "rejected",
+  trigger: string,
+  guidance: string,
+  note?: string,
+) {
+  const payload: AgentExperienceReviewSetPayload = {
+    kind: "review_set",
+    candidate_id: candidate.candidate_id,
+    project_id: candidate.project_id,
+    client_action_id: createMessageId(),
+    decision,
+    trigger: trigger.trim(),
+    guidance: guidance.trim(),
+    ...(note?.trim() ? { note: note.trim() } : {}),
+    created_at: new Date().toISOString(),
+  };
+  return createMessage("agent.experience", payload, {
+    device_id: deviceId,
+  });
+}
+
+export function agentExperienceShadowFeedbackSet(
+  deviceId: string,
+  runId: string,
+  candidateId: string,
+  feedback: ExperienceShadowFeedback,
+) {
+  const payload: AgentExperienceShadowFeedbackSetPayload = {
+    kind: "shadow_feedback_set",
+    run_id: runId,
+    candidate_id: candidateId,
+    client_action_id: createMessageId(),
+    feedback,
+    created_at: new Date().toISOString(),
+  };
+  return createMessage("agent.experience", payload, {
+    device_id: deviceId,
+  });
+}
+
+export function agentExperienceActivationSet(
+  deviceId: string,
+  projectId: string,
+  enabled: boolean,
+) {
+  const payload: AgentExperienceActivationSetPayload = {
+    kind: "activation_set",
+    project_id: projectId,
+    client_action_id: createMessageId(),
+    enabled,
+    created_at: new Date().toISOString(),
+  };
+  return createMessage("agent.experience", payload, {
+    device_id: deviceId,
+  });
+}
+
+export function agentExperienceLifecycleSet(
+  deviceId: string,
+  candidate: ExperienceCandidateSummary,
+  action: AgentExperienceLifecycleSetPayload["action"],
+  note?: string,
+) {
+  const payload: AgentExperienceLifecycleSetPayload = {
+    kind: "lifecycle_set",
+    candidate_id: candidate.candidate_id,
+    project_id: candidate.project_id,
+    client_action_id: createMessageId(),
+    action,
+    ...(note?.trim() ? { note: note.trim() } : {}),
+    created_at: new Date().toISOString(),
+  };
+  return createMessage("agent.experience", payload, {
     device_id: deviceId,
   });
 }

@@ -1054,6 +1054,405 @@ export const agentSurfaceSyncPayloadSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+const deliveryEpisodeStatusSchema = z.enum([
+  "working",
+  "delivered",
+  "failed",
+  "abandoned",
+]);
+
+const deliveryOutcomeSchema = z.enum([
+  "accepted",
+  "revision_requested",
+  "abandoned",
+]);
+
+const deliverySignalSummarySchema = z
+  .object({
+    signal_id: z.string().min(1),
+    kind: z.enum([
+      "test_passed",
+      "test_failed",
+      "review_revision_requested",
+    ]),
+    source: z.enum(["agent_observation", "git_review"]),
+    observation_key: z.string().min(1),
+    created_at: isoDateTime,
+  })
+  .strict();
+
+const deliveryEpisodeSummarySchema = z
+  .object({
+    episode_id: z.string().min(1),
+    project_id: z.string().min(1).optional(),
+    session_id: z.string().min(1),
+    surface_id: z.string().min(1).optional(),
+    provider: z.string().min(1).optional(),
+    status: deliveryEpisodeStatusSchema,
+    outcome: deliveryOutcomeSchema.optional(),
+    outcome_source: z.enum(["user", "git_review"]).optional(),
+    outcome_note: z.string().max(2_000).optional(),
+    objective: z.string().optional(),
+    final_response: z.string().optional(),
+    started_at: isoDateTime,
+    delivered_at: isoDateTime.optional(),
+    outcome_at: isoDateTime.optional(),
+    updated_at: isoDateTime,
+    observation_count: z.number().int().nonnegative(),
+    signals: z.array(deliverySignalSummarySchema).max(200).optional(),
+  })
+  .strict();
+
+export const agentDeliveryPayloadSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("sync_request"),
+      session_id: z.string().min(1).optional(),
+      surface_id: z.string().min(1).optional(),
+      limit: z.number().int().positive().max(200).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("sync_response"),
+      request_id: z.string().min(1),
+      episodes: z.array(deliveryEpisodeSummarySchema).max(200),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("episode_updated"),
+      episode: deliveryEpisodeSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("outcome_set"),
+      episode_id: z.string().min(1),
+      session_id: z.string().min(1),
+      surface_id: z.string().min(1).optional(),
+      client_action_id: z.string().min(1),
+      outcome: deliveryOutcomeSchema,
+      note: z.string().max(2_000).optional(),
+      created_at: isoDateTime,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("outcome_result"),
+      request_id: z.string().min(1),
+      client_action_id: z.string().min(1),
+      episode: deliveryEpisodeSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("error"),
+      request_id: z.string().min(1).optional(),
+      client_action_id: z.string().min(1).optional(),
+      episode_id: z.string().min(1).optional(),
+      code: z.enum(["not_found", "invalid_state", "conflict"]),
+      message: z.string().min(1),
+    })
+    .strict(),
+]);
+
+const experienceCandidateStatusSchema = z.enum([
+  "candidate",
+  "approved",
+  "rejected",
+  "shadow",
+  "active",
+  "paused",
+  "deprecated",
+]);
+
+const experienceCandidateSummarySchema = z
+  .object({
+    candidate_id: z.string().min(1),
+    project_id: z.string().min(1),
+    kind: z.literal("user_correction"),
+    trigger: z.string().min(1).max(8_000),
+    guidance: z.string().min(1).max(8_000),
+    status: experienceCandidateStatusSchema,
+    support_count: z.number().int().nonnegative(),
+    contradiction_count: z.number().int().nonnegative(),
+    supporting_episode_ids: z.array(z.string().min(1)).max(200),
+    contradicting_episode_ids: z.array(z.string().min(1)).max(200),
+    created_at: isoDateTime,
+    updated_at: isoDateTime,
+    reviewed_at: isoDateTime.optional(),
+    review_note: z.string().max(2_000).optional(),
+  })
+  .strict();
+
+const experienceShadowFeedbackSchema = z.enum([
+  "relevant",
+  "not_relevant",
+]);
+
+const experienceShadowMatchSummarySchema = z
+  .object({
+    candidate_id: z.string().min(1),
+    trigger: z.string().min(1).max(8_000),
+    guidance: z.string().min(1).max(8_000),
+    rank: z.number().int().positive().max(3),
+    score: z.number().min(0).max(1),
+    reason: z.enum(["exact_trigger", "token_overlap"]),
+    feedback: experienceShadowFeedbackSchema.optional(),
+    feedback_at: isoDateTime.optional(),
+  })
+  .strict();
+
+const experienceShadowRunSummarySchema = z
+  .object({
+    run_id: z.string().min(1),
+    episode_id: z.string().min(1),
+    project_id: z.string().min(1),
+    session_id: z.string().min(1),
+    surface_id: z.string().min(1).optional(),
+    created_at: isoDateTime,
+    matches: z.array(experienceShadowMatchSummarySchema).max(3),
+  })
+  .strict();
+
+const experienceShadowStatsSchema = z
+  .object({
+    total_matches: z.number().int().nonnegative(),
+    reviewed_matches: z.number().int().nonnegative(),
+    relevant_matches: z.number().int().nonnegative(),
+    not_relevant_matches: z.number().int().nonnegative(),
+    relevance_rate: z.number().min(0).max(1).optional(),
+    activation_ready: z.boolean(),
+  })
+  .strict();
+
+const experienceActivationSummarySchema = z
+  .object({
+    project_id: z.string().min(1),
+    requested_enabled: z.boolean(),
+    effective_enabled: z.boolean(),
+    activation_ready: z.boolean(),
+    reviewed_matches: z.number().int().nonnegative(),
+    relevance_rate: z.number().min(0).max(1).optional(),
+    max_matches: z.number().int().positive().max(3),
+    max_injected_bytes: z.number().int().positive().max(16_384),
+    updated_at: isoDateTime.optional(),
+  })
+  .strict();
+
+const experienceApplicationSummarySchema = z
+  .object({
+    application_id: z.string().min(1),
+    run_id: z.string().min(1),
+    episode_id: z.string().min(1),
+    project_id: z.string().min(1),
+    candidate_ids: z.array(z.string().min(1)).min(1).max(3),
+    injected_bytes: z.number().int().positive().max(16_384),
+    created_at: isoDateTime,
+  })
+  .strict();
+
+const experienceApplicationOutcomeSchema = z.enum([
+  "accepted",
+  "revision_requested",
+  "abandoned",
+]);
+
+const experienceApplicationEvaluationSummarySchema = z
+  .object({
+    evaluation_id: z.string().min(1),
+    application_id: z.string().min(1),
+    episode_id: z.string().min(1),
+    project_id: z.string().min(1),
+    candidate_ids: z.array(z.string().min(1)).min(1).max(3),
+    outcome: experienceApplicationOutcomeSchema,
+    effect: z.enum(["positive", "negative"]),
+    evaluated_at: isoDateTime,
+  })
+  .strict();
+
+const experienceProjectEffectSummarySchema = z
+  .object({
+    project_id: z.string().min(1),
+    assisted_evaluated: z.number().int().nonnegative(),
+    assisted_accepted: z.number().int().nonnegative(),
+    assisted_revision_requested: z.number().int().nonnegative(),
+    assisted_abandoned: z.number().int().nonnegative(),
+    assisted_acceptance_rate: z.number().min(0).max(1).optional(),
+    baseline_evaluated: z.number().int().nonnegative(),
+    baseline_accepted: z.number().int().nonnegative(),
+    baseline_acceptance_rate: z.number().min(0).max(1).optional(),
+    acceptance_rate_delta: z.number().min(-1).max(1).optional(),
+  })
+  .strict();
+
+const experiencePromotionEligibilitySummarySchema = z
+  .object({
+    promotion_key: z.string().min(1),
+    candidate_ids: z.array(z.string().min(1)).min(2).max(200),
+    project_ids: z.array(z.string().min(1)).min(2).max(200),
+    project_count: z.number().int().min(2),
+    support_count: z.number().int().nonnegative(),
+    contradiction_count: z.number().int().nonnegative(),
+    eligible: z.boolean(),
+  })
+  .strict();
+
+export const agentExperiencePayloadSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("sync_request"),
+      project_id: z.string().min(1).optional(),
+      session_id: z.string().min(1).optional(),
+      limit: z.number().int().positive().max(200).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("sync_response"),
+      request_id: z.string().min(1),
+      session_id: z.string().min(1).optional(),
+      candidates: z.array(experienceCandidateSummarySchema).max(200),
+      shadow_runs: z.array(experienceShadowRunSummarySchema).max(100),
+      shadow_stats: experienceShadowStatsSchema,
+      activations: z.array(experienceActivationSummarySchema).max(100),
+      applications: z.array(experienceApplicationSummarySchema).max(100),
+      evaluations: z
+        .array(experienceApplicationEvaluationSummarySchema)
+        .max(100),
+      effects: z.array(experienceProjectEffectSummarySchema).max(100),
+      promotions: z
+        .array(experiencePromotionEligibilitySummarySchema)
+        .max(100),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("candidate_updated"),
+      candidate: experienceCandidateSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("shadow_result"),
+      run: experienceShadowRunSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("shadow_feedback_set"),
+      run_id: z.string().min(1),
+      candidate_id: z.string().min(1),
+      client_action_id: z.string().min(1),
+      feedback: experienceShadowFeedbackSchema,
+      created_at: isoDateTime,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("shadow_feedback_result"),
+      request_id: z.string().min(1),
+      client_action_id: z.string().min(1),
+      run: experienceShadowRunSummarySchema,
+      shadow_stats: experienceShadowStatsSchema,
+      activation: experienceActivationSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("activation_set"),
+      project_id: z.string().min(1),
+      client_action_id: z.string().min(1),
+      enabled: z.boolean(),
+      created_at: isoDateTime,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("activation_result"),
+      request_id: z.string().min(1),
+      client_action_id: z.string().min(1),
+      activation: experienceActivationSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("application_recorded"),
+      application: experienceApplicationSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("evaluation_recorded"),
+      evaluation: experienceApplicationEvaluationSummarySchema,
+      effect: experienceProjectEffectSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("lifecycle_set"),
+      candidate_id: z.string().min(1),
+      project_id: z.string().min(1),
+      client_action_id: z.string().min(1),
+      action: z.enum(["pause", "resume", "deprecate"]),
+      note: z.string().max(2_000).optional(),
+      created_at: isoDateTime,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("lifecycle_result"),
+      request_id: z.string().min(1),
+      client_action_id: z.string().min(1),
+      candidate: experienceCandidateSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("candidate_removed"),
+      candidate_id: z.string().min(1),
+      project_id: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("review_set"),
+      candidate_id: z.string().min(1),
+      project_id: z.string().min(1),
+      client_action_id: z.string().min(1),
+      decision: z.enum(["approved", "rejected"]),
+      trigger: z.string().min(1).max(8_000).optional(),
+      guidance: z.string().min(1).max(8_000).optional(),
+      note: z.string().max(2_000).optional(),
+      created_at: isoDateTime,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("review_result"),
+      request_id: z.string().min(1),
+      client_action_id: z.string().min(1),
+      candidate: experienceCandidateSummarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("error"),
+      request_id: z.string().min(1).optional(),
+      client_action_id: z.string().min(1).optional(),
+      candidate_id: z.string().min(1).optional(),
+      code: z.enum([
+        "not_found",
+        "invalid_state",
+        "conflict",
+        "gate_not_ready",
+      ]),
+      message: z.string().min(1),
+    })
+    .strict(),
+]);
+
 const agentInteractionDetailsSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -1192,6 +1591,7 @@ const agentPromptSubmitPayloadSchema = z
     session_id: z.string().min(1),
     surface_id: z.string().min(1),
     prompt: z.string().min(1),
+    origin: z.enum(["composer", "git_review"]).optional(),
     context_files: z
       .array(
         z
@@ -1344,6 +1744,8 @@ const payloadSchemaByType = {
   "agent.message.delivered": agentMessageDeliveredPayloadSchema,
   "agent.surface.event": agentSurfaceEventPayloadSchema,
   "agent.surface.sync": agentSurfaceSyncPayloadSchema,
+  "agent.delivery": agentDeliveryPayloadSchema,
+  "agent.experience": agentExperiencePayloadSchema,
   "agent.interaction": agentInteractionPayloadSchema,
   "agent.prompt.submit": agentPromptSubmitPayloadSchema,
   "agent.notification.settings.get": z.union([

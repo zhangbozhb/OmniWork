@@ -129,11 +129,31 @@ type BuildAppRouterPropsOptions = {
     string,
     AgentSessionScreenProps["events"]
   >;
+  deliveryEpisodesBySurfaceId: Record<
+    string,
+    AgentSessionScreenProps["episodes"]
+  >;
+  experienceCandidates: AgentSessionScreenProps["experienceCandidates"];
+  experienceShadowRuns: AgentSessionScreenProps["shadowRuns"];
+  experienceShadowStatsBySessionId: Record<
+    string,
+    NonNullable<AgentSessionScreenProps["shadowStats"]>
+  >;
+  experienceActivations: AgentSessionScreenProps["activations"];
+  experienceApplications: AgentSessionScreenProps["applications"];
+  experienceEvaluations: AgentSessionScreenProps["evaluations"];
+  experienceEffects: AgentSessionScreenProps["effects"];
+  experiencePromotions: AgentSessionScreenProps["promotions"];
   pendingAgentInteractionsBySurfaceId: Record<
     string,
     AgentSessionScreenProps["interactions"]
   >;
   handleAgentPromptSubmit: AgentSessionScreenProps["onSubmitPrompt"];
+  handleDeliveryOutcome: AgentSessionScreenProps["onSetDeliveryOutcome"];
+  handleExperienceReview: AgentSessionScreenProps["onReviewExperience"];
+  handleExperienceShadowFeedback: AgentSessionScreenProps["onSetShadowFeedback"];
+  handleExperienceActivation: AgentSessionScreenProps["onSetExperienceActivation"];
+  handleExperienceLifecycle: AgentSessionScreenProps["onSetExperienceLifecycle"];
   handleAgentInteractionAnswer: AgentSessionScreenProps["onAnswerInteraction"];
   selectedFrame: TerminalScreenProps["frame"];
   selectedSessionCapabilities: SessionCapabilities | null | undefined;
@@ -319,6 +339,21 @@ export function buildAppRouterProps(
               o.agentSurfaceEventsBySurfaceId[
                 selectedSession.primary_surface_id
               ] ?? [],
+            episodes:
+              o.deliveryEpisodesBySurfaceId[
+                selectedSession.primary_surface_id
+              ] ?? [],
+            experienceCandidates: o.experienceCandidates,
+            shadowRuns: o.experienceShadowRuns,
+            shadowStats:
+              o.experienceShadowStatsBySessionId[
+                selectedSession.session_id
+              ],
+            activations: o.experienceActivations,
+            applications: o.experienceApplications,
+            evaluations: o.experienceEvaluations,
+            effects: o.experienceEffects,
+            promotions: o.experiencePromotions,
             interactions:
               o.pendingAgentInteractionsBySurfaceId[
                 selectedSession.primary_surface_id
@@ -328,6 +363,11 @@ export function buildAppRouterProps(
             contextFileEntries: o.fileEntries,
             onBack: () => o.setView("workbench"),
             onSubmitPrompt: o.handleAgentPromptSubmit,
+            onSetDeliveryOutcome: o.handleDeliveryOutcome,
+            onReviewExperience: o.handleExperienceReview,
+            onSetShadowFeedback: o.handleExperienceShadowFeedback,
+            onSetExperienceActivation: o.handleExperienceActivation,
+            onSetExperienceLifecycle: o.handleExperienceLifecycle,
             onAnswerInteraction: o.handleAgentInteractionAnswer,
             onOpenContextDirectory: o.handleOpenDirectory,
           }

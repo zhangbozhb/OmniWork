@@ -35,6 +35,17 @@
 - 保留 `@openai/codex-sdk` 与原 Codex SDK adapter 作为未来显式兜底；当前不会在 app-server 失败时自动切换，避免隐藏协议故障。
 - Codex、Claude Code、Trae 和 Trae CN 已接入本机 hook Probe；OpenCode、Gemini 的 Probe 仍是扩展方向。
 - Probe 事件可进入本地 SQLite inbox，并向在线 App 发送 E2E `agent.message`；系统 Push 尚未实现。
+- Desktop Agent 将归一化 Probe 事件和结构化 AgentSurface 事件写入本地 `agent_observations` 账本，保留来源、关联键、session/surface 和可用的项目范围信息；Trae records 导入同时扫描 provider 默认目录和 OmniWork fallback 目录，并通过 importer index v2 一次性重放旧记录。
+- 当前本机 Desktop Agent 已加载 learning schema 并完成首次 fallback 回放；正式迁移前后均包含 2152 条 Observation 和 1070 个 Episode，升级后重启已继续写入新 Observation/Episode。Outcome、经验候选、Shadow、应用和评估仍无真实样本。
+- Learning 本地表已切换为显式 schema v1。正式库切换前创建独立 `0600` SQLite 备份，切换后通过完整性和行数校验；当前表结构统一由 `learningSchema.ts` 维护。Store 不再执行 `PRAGMA table_info`、`ALTER TABLE` 或历史 Outcome 回填，代码库也不再提供旧 schema 迁移入口；非 v1 既有库会明确拒绝启动。
+- 用户 Prompt 会开启本地 Delivery Episode，后续 Observation 按 session/surface 归并；只有 hook Stop、结构化 turn complete/result 或进程退出等强信号关闭 Episode。`delivered` 仅表示 Agent 已交付，不表示用户接受。
+- E2E `agent.delivery` 支持 Episode 同步、完成推送和用户 Outcome 回执；App 的 Agent 会话页可对最新 delivered Episode 标记接受、需要修改或放弃并附带备注。Outcome 在本地追加审计、标注来源且与执行状态分离。
+- 专用 Git Review Prompt 会对同 Surface 最近一个未评价交付记录修订信号并保守推断 `revision_requested`，但显式用户 Outcome 始终优先。结构化测试命令会记录通过/失败信号；测试通过不会自动判为接受。来源和信号均在 Agent 会话页可见。
+- 只有来自显式用户反馈、带备注的“需要修改”Outcome 会在本地提炼为项目级 `user_correction` 经验候选；Git Review 推断不会自动生成经验。候选按 trigger/guidance 指纹去重并关联支持/反例 Episode。E2E `agent.experience` 支持候选同步、实时更新和人工审核；Agent 会话页可编辑候选后批准或拒绝。
+- 新 Prompt 会对同项目已批准候选执行本地 Shadow 检索，记录关联 Episode 的 run、Prompt 哈希、最多 3 条命中、分数和匹配理由，但不会修改 Provider Prompt。App 可将命中标为相关或不相关，并查看 session 反馈统计。受控激活要求至少 10 条已评价命中且相关率不低于 70%；当前尚无真实反馈，Prompt 注入保持关闭。
+- [delivery-learning.md](./delivery-learning.md) 的“真实验证 Runbook”规定了重新配对、候选建立、Shadow 采样、门槛判断、应用评估和立即回退顺序；禁止用历史回填或合成反馈满足真实门槛。
+- 项目达到 Shadow 门槛后，用户可通过 Agent 会话页显式启用受控经验注入。实际生效会在每次 Prompt 前重新检查门槛和候选状态，最多应用 2 条、经验块不超过 4 KiB；应用记录只保存哈希、候选引用和字节数。当前项目没有真实门槛样本，默认状态仍为关闭。
+- 应用 Episode 的接受、需要修改和放弃会归因为正向或反例证据；App 展示已应用与未应用交付的接受率和样本数。负向结果可自动暂停或废弃 active 经验，用户也可手动暂停、恢复和废弃；180 天无新证据会自动暂停。跨项目一致经验只产生本地晋升资格，不自动共享或全局生效。
 
 ## Relay 与传输
 

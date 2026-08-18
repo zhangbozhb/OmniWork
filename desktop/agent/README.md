@@ -53,6 +53,11 @@ For repository development:
 node --experimental-strip-types src/main.ts
 ```
 
+The delivery-learning tables use an explicit local schema version. New
+databases are created at the current version. Existing databases must already
+match that version; the runtime does not contain old-schema migration or
+column-repair branches.
+
 By convention, the Agent looks for `config.yml` in this order:
 
 ```text

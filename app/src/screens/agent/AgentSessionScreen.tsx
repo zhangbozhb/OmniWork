@@ -6,6 +6,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -17,6 +18,17 @@ import type {
   AgentInteractionRequestPayload,
   AgentPromptFileReference,
   AgentSurfaceEventPayload,
+  DeliveryEpisodeSummary,
+  DeliveryOutcome,
+  ExperienceCandidateSummary,
+  ExperienceActivationSummary,
+  ExperienceApplicationSummary,
+  ExperienceApplicationEvaluationSummary,
+  ExperienceProjectEffectSummary,
+  ExperiencePromotionEligibilitySummary,
+  ExperienceShadowFeedback,
+  ExperienceShadowRunSummary,
+  ExperienceShadowStats,
   TerminalSession,
   WorkspaceFileEntry,
 } from "@omni-work/protocol-ts";
@@ -27,17 +39,40 @@ import { colors, radii, spacing, typography } from "../../ui/theme";
 export function AgentSessionScreen({
   session,
   events,
+  episodes,
+  experienceCandidates,
+  shadowRuns,
+  shadowStats,
+  activations,
+  applications,
+  evaluations,
+  effects,
+  promotions,
   interactions,
   contextWorkspacePath,
   contextDirectoryPath,
   contextFileEntries,
   onBack,
   onSubmitPrompt,
+  onSetDeliveryOutcome,
+  onReviewExperience,
+  onSetShadowFeedback,
+  onSetExperienceActivation,
+  onSetExperienceLifecycle,
   onAnswerInteraction,
   onOpenContextDirectory,
 }: {
   session: TerminalSession;
   events: readonly AgentSurfaceEventPayload[];
+  episodes: readonly DeliveryEpisodeSummary[];
+  experienceCandidates: readonly ExperienceCandidateSummary[];
+  shadowRuns: readonly ExperienceShadowRunSummary[];
+  shadowStats?: ExperienceShadowStats;
+  activations: readonly ExperienceActivationSummary[];
+  applications: readonly ExperienceApplicationSummary[];
+  evaluations: readonly ExperienceApplicationEvaluationSummary[];
+  effects: readonly ExperienceProjectEffectSummary[];
+  promotions: readonly ExperiencePromotionEligibilitySummary[];
   interactions: readonly AgentInteractionRequestPayload[];
   contextWorkspacePath?: string;
   contextDirectoryPath: string;
@@ -46,6 +81,29 @@ export function AgentSessionScreen({
   onSubmitPrompt(
     prompt: string,
     contextFiles: AgentPromptFileReference[],
+  ): void;
+  onSetDeliveryOutcome(
+    episode: DeliveryEpisodeSummary,
+    outcome: DeliveryOutcome,
+    note?: string,
+  ): void;
+  onReviewExperience(
+    candidate: ExperienceCandidateSummary,
+    decision: "approved" | "rejected",
+    trigger: string,
+    guidance: string,
+    note?: string,
+  ): void;
+  onSetShadowFeedback(
+    runId: string,
+    candidateId: string,
+    feedback: ExperienceShadowFeedback,
+  ): void;
+  onSetExperienceActivation(projectId: string, enabled: boolean): void;
+  onSetExperienceLifecycle(
+    candidate: ExperienceCandidateSummary,
+    action: "pause" | "resume" | "deprecate",
+    note?: string,
   ): void;
   onAnswerInteraction(
     interaction: AgentInteractionRequestPayload,
@@ -65,6 +123,46 @@ export function AgentSessionScreen({
   const conversationEvents = events.filter(isConversationEvent);
   const activityEvents = events.filter((event) => !isConversationEvent(event));
   const latestActivity = [...activityEvents].reverse()[0];
+  const latestEpisode = episodes[episodes.length - 1];
+  const latestDeliveredEpisode =
+    latestEpisode?.status === "delivered" ? latestEpisode : undefined;
+  const episodeIds = new Set(episodes.map((episode) => episode.episode_id));
+  const sessionExperienceCandidates = experienceCandidates.filter(
+    (candidate) =>
+      [
+        ...candidate.supporting_episode_ids,
+        ...candidate.contradicting_episode_ids,
+      ].some((episodeId) => episodeIds.has(episodeId)),
+  );
+  const latestShadowRun = [...shadowRuns]
+    .reverse()
+    .find(
+      (run) =>
+        run.session_id === session.session_id &&
+        run.surface_id === session.primary_surface_id,
+    );
+  const currentProjectId =
+    latestEpisode?.project_id ??
+    latestShadowRun?.project_id ??
+    sessionExperienceCandidates[0]?.project_id;
+  const activation = activations.find(
+    (item) => item.project_id === currentProjectId,
+  );
+  const latestApplication = [...applications]
+    .reverse()
+    .find((application) => episodeIds.has(application.episode_id));
+  const currentEffect = effects.find(
+    (effect) => effect.project_id === currentProjectId,
+  );
+  const currentPromotion = promotions.find((promotion) =>
+    currentProjectId
+      ? promotion.project_ids.includes(currentProjectId)
+      : false,
+  );
+  const latestEvaluation = evaluations.find(
+    (evaluation) =>
+      evaluation.application_id === latestApplication?.application_id,
+  );
   const canSubmit = draft.trim().length > 0;
   const statusTitle = latestActivity
     ? activityTitle(latestActivity, t)
@@ -150,6 +248,46 @@ export function AgentSessionScreen({
           key={interaction.interaction_id}
           interaction={interaction}
           onAnswer={onAnswerInteraction}
+        />
+      ))}
+
+      {latestDeliveredEpisode ? (
+        <DeliveryOutcomeCard
+          episode={latestDeliveredEpisode}
+          onSetOutcome={onSetDeliveryOutcome}
+        />
+      ) : null}
+
+      {activation ? (
+        <ExperienceActivationCard
+          activation={activation}
+          latestApplication={latestApplication}
+          onSetActivation={onSetExperienceActivation}
+        />
+      ) : null}
+
+      {currentEffect ? (
+        <ExperienceEffectCard
+          effect={currentEffect}
+          latestEvaluation={latestEvaluation}
+          promotion={currentPromotion}
+        />
+      ) : null}
+
+      {latestShadowRun && latestShadowRun.matches.length > 0 ? (
+        <ShadowRunCard
+          run={latestShadowRun}
+          stats={shadowStats}
+          onSetFeedback={onSetShadowFeedback}
+        />
+      ) : null}
+
+      {sessionExperienceCandidates.map((candidate) => (
+        <ExperienceCandidateCard
+          key={candidate.candidate_id}
+          candidate={candidate}
+          onReview={onReviewExperience}
+          onLifecycle={onSetExperienceLifecycle}
         />
       ))}
 
@@ -371,6 +509,489 @@ export function AgentSessionScreen({
         </Button>
       </Card>
     </KeyboardAvoidingView>
+  );
+}
+
+function ExperienceEffectCard({
+  effect,
+  latestEvaluation,
+  promotion,
+}: {
+  effect: ExperienceProjectEffectSummary;
+  latestEvaluation?: ExperienceApplicationEvaluationSummary;
+  promotion?: ExperiencePromotionEligibilitySummary;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <Card style={styles.effectCard}>
+      <View style={styles.deliveryOutcomeHeader}>
+        <Text style={styles.deliveryOutcomeTitle}>
+          {t("agentSession.effect.title")}
+        </Text>
+        {latestEvaluation ? (
+          <Text style={styles.deliveryOutcomeStatus}>
+            {t(
+              `agentSession.effect.latest.${latestEvaluation.effect}`,
+            )}
+          </Text>
+        ) : null}
+      </View>
+      <View style={styles.effectMetrics}>
+        <View style={styles.effectMetric}>
+          <Text style={styles.effectMetricValue}>
+            {formatPercent(effect.assisted_acceptance_rate)}
+          </Text>
+          <Text style={styles.experienceEvidence}>
+            {t("agentSession.effect.assisted", {
+              count: effect.assisted_evaluated,
+            })}
+          </Text>
+        </View>
+        <View style={styles.effectMetric}>
+          <Text style={styles.effectMetricValue}>
+            {formatPercent(effect.baseline_acceptance_rate)}
+          </Text>
+          <Text style={styles.experienceEvidence}>
+            {t("agentSession.effect.baseline", {
+              count: effect.baseline_evaluated,
+            })}
+          </Text>
+        </View>
+        <View style={styles.effectMetric}>
+          <Text style={styles.effectMetricValue}>
+            {formatDelta(effect.acceptance_rate_delta)}
+          </Text>
+          <Text style={styles.experienceEvidence}>
+            {t("agentSession.effect.delta")}
+          </Text>
+        </View>
+      </View>
+      {promotion?.eligible ? (
+        <Text style={styles.activationApplied}>
+          {t("agentSession.effect.promotionEligible", {
+            count: promotion.project_count,
+          })}
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
+
+function ExperienceActivationCard({
+  activation,
+  latestApplication,
+  onSetActivation,
+}: {
+  activation: ExperienceActivationSummary;
+  latestApplication?: ExperienceApplicationSummary;
+  onSetActivation(projectId: string, enabled: boolean): void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const status = activation.effective_enabled
+    ? "active"
+    : activation.requested_enabled
+      ? "paused"
+      : activation.activation_ready
+        ? "ready"
+        : "collecting";
+  const relevance =
+    activation.relevance_rate === undefined
+      ? "-"
+      : `${Math.round(activation.relevance_rate * 100)}%`;
+
+  return (
+    <Card style={styles.activationCard}>
+      <View style={styles.activationHeader}>
+        <View style={styles.activationTitleArea}>
+          <Text style={styles.deliveryOutcomeTitle}>
+            {t("agentSession.activation.title")}
+          </Text>
+          <Text style={styles.deliveryOutcomeStatus}>
+            {t(`agentSession.activation.status.${status}`)}
+          </Text>
+        </View>
+        <Switch
+          accessibilityLabel={t("agentSession.activation.title")}
+          value={activation.requested_enabled}
+          disabled={
+            !activation.activation_ready &&
+            !activation.requested_enabled
+          }
+          trackColor={{
+            false: colors.borderSubtle,
+            true: colors.successSoft,
+          }}
+          thumbColor={
+            activation.requested_enabled
+              ? colors.success
+              : colors.textDim
+          }
+          onValueChange={(enabled) =>
+            onSetActivation(activation.project_id, enabled)
+          }
+        />
+      </View>
+      <View style={styles.activationMetrics}>
+        <Text style={styles.experienceEvidence}>
+          {t("agentSession.activation.feedback", {
+            reviewed: activation.reviewed_matches,
+            relevance,
+          })}
+        </Text>
+        <Text style={styles.experienceEvidence}>
+          {t("agentSession.activation.budget", {
+            matches: activation.max_matches,
+            kilobytes: Math.round(
+              activation.max_injected_bytes / 1024,
+            ),
+          })}
+        </Text>
+      </View>
+      {latestApplication ? (
+        <Text style={styles.activationApplied}>
+          {t("agentSession.activation.applied", {
+            count: latestApplication.candidate_ids.length,
+          })}
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
+
+function ShadowRunCard({
+  run,
+  stats,
+  onSetFeedback,
+}: {
+  run: ExperienceShadowRunSummary;
+  stats?: ExperienceShadowStats;
+  onSetFeedback(
+    runId: string,
+    candidateId: string,
+    feedback: ExperienceShadowFeedback,
+  ): void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <Card style={styles.shadowCard}>
+      <View style={styles.deliveryOutcomeHeader}>
+        <Text style={styles.deliveryOutcomeTitle}>
+          {t("agentSession.shadow.title")}
+        </Text>
+        {stats ? (
+          <Text style={styles.deliveryOutcomeStatus}>
+            {t("agentSession.shadow.stats", {
+              relevant: stats.relevant_matches,
+              reviewed: stats.reviewed_matches,
+            })}
+          </Text>
+        ) : null}
+      </View>
+      {run.matches.map((match, index) => (
+        <View
+          key={match.candidate_id}
+          style={[
+            styles.shadowMatch,
+            index > 0 ? styles.shadowMatchBorder : null,
+          ]}
+        >
+          <View style={styles.shadowMatchHeader}>
+            <Text style={styles.shadowMatchTitle} numberOfLines={2}>
+              {match.trigger}
+            </Text>
+            <Text style={styles.shadowScore}>
+              {Math.round(match.score * 100)}%
+            </Text>
+          </View>
+          <Text style={styles.shadowGuidance}>{match.guidance}</Text>
+          <Text style={styles.experienceEvidence}>
+            {t(`agentSession.shadow.reason.${match.reason}`)}
+          </Text>
+          <View style={styles.deliveryOutcomeActions}>
+            <Button
+              icon="check"
+              tone="primary"
+              variant={match.feedback === "relevant" ? "solid" : "outline"}
+              onPress={() =>
+                onSetFeedback(
+                  run.run_id,
+                  match.candidate_id,
+                  "relevant",
+                )
+              }
+            >
+              {t("agentSession.shadow.relevant")}
+            </Button>
+            <Button
+              icon="xCircle"
+              tone="danger"
+              variant={
+                match.feedback === "not_relevant" ? "solid" : "outline"
+              }
+              onPress={() =>
+                onSetFeedback(
+                  run.run_id,
+                  match.candidate_id,
+                  "not_relevant",
+                )
+              }
+            >
+              {t("agentSession.shadow.notRelevant")}
+            </Button>
+          </View>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+function DeliveryOutcomeCard({
+  episode,
+  onSetOutcome,
+}: {
+  episode: DeliveryEpisodeSummary;
+  onSetOutcome(
+    episode: DeliveryEpisodeSummary,
+    outcome: DeliveryOutcome,
+    note?: string,
+  ): void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const [note, setNote] = useState(episode.outcome_note ?? "");
+
+  return (
+    <Card style={styles.deliveryOutcomeCard}>
+      <View style={styles.deliveryOutcomeHeader}>
+        <Text style={styles.deliveryOutcomeTitle}>
+          {t("agentSession.deliveryOutcome.title")}
+        </Text>
+        <Text style={styles.deliveryOutcomeStatus}>
+          {t(
+            `agentSession.deliveryOutcome.outcomes.${
+              episode.outcome ?? "pending"
+            }`,
+          )}
+        </Text>
+      </View>
+      {episode.outcome_source ? (
+        <Text style={styles.experienceEvidence}>
+          {t(
+            `agentSession.deliveryOutcome.sources.${episode.outcome_source}`,
+          )}
+        </Text>
+      ) : null}
+      {episode.signals?.map((signal) => (
+        <Text key={signal.signal_id} style={styles.experienceEvidence}>
+          {t(`agentSession.deliveryOutcome.signals.${signal.kind}`)}
+        </Text>
+      ))}
+      <TextInput
+        value={note}
+        onChangeText={setNote}
+        maxLength={2000}
+        multiline
+        placeholder={t("agentSession.deliveryOutcome.notePlaceholder")}
+        placeholderTextColor={colors.textDim}
+        style={styles.deliveryOutcomeInput}
+      />
+      <View style={styles.deliveryOutcomeActions}>
+        <Button
+          icon="check"
+          tone="primary"
+          variant={episode.outcome === "accepted" ? "solid" : "outline"}
+          onPress={() => onSetOutcome(episode, "accepted", note)}
+        >
+          {t("agentSession.deliveryOutcome.accept")}
+        </Button>
+        <Button
+          icon="edit"
+          variant={
+            episode.outcome === "revision_requested" ? "solid" : "outline"
+          }
+          onPress={() => onSetOutcome(episode, "revision_requested", note)}
+        >
+          {t("agentSession.deliveryOutcome.revise")}
+        </Button>
+        <Button
+          icon="xCircle"
+          tone="danger"
+          variant={episode.outcome === "abandoned" ? "solid" : "outline"}
+          onPress={() => onSetOutcome(episode, "abandoned", note)}
+        >
+          {t("agentSession.deliveryOutcome.abandon")}
+        </Button>
+      </View>
+    </Card>
+  );
+}
+
+function ExperienceCandidateCard({
+  candidate,
+  onReview,
+  onLifecycle,
+}: {
+  candidate: ExperienceCandidateSummary;
+  onReview(
+    candidate: ExperienceCandidateSummary,
+    decision: "approved" | "rejected",
+    trigger: string,
+    guidance: string,
+    note?: string,
+  ): void;
+  onLifecycle(
+    candidate: ExperienceCandidateSummary,
+    action: "pause" | "resume" | "deprecate",
+    note?: string,
+  ): void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const [trigger, setTrigger] = useState(candidate.trigger);
+  const [guidance, setGuidance] = useState(candidate.guidance);
+  const [note, setNote] = useState(candidate.review_note ?? "");
+  const reviewable =
+    candidate.status === "candidate" ||
+    candidate.status === "approved" ||
+    candidate.status === "rejected" ||
+    candidate.status === "shadow" ||
+    candidate.status === "active";
+
+  useEffect(() => {
+    setTrigger(candidate.trigger);
+    setGuidance(candidate.guidance);
+    setNote(candidate.review_note ?? "");
+  }, [
+    candidate.guidance,
+    candidate.review_note,
+    candidate.trigger,
+  ]);
+
+  return (
+    <Card style={styles.experienceCard}>
+      <View style={styles.deliveryOutcomeHeader}>
+        <Text style={styles.deliveryOutcomeTitle}>
+          {t("agentSession.experience.title")}
+        </Text>
+        <Text style={styles.deliveryOutcomeStatus}>
+          {t(`agentSession.experience.status.${candidate.status}`)}
+        </Text>
+      </View>
+      <Text style={styles.experienceEvidence}>
+        {t("agentSession.experience.evidence", {
+          count: candidate.support_count,
+        })}
+      </Text>
+      <Text style={styles.experienceLabel}>
+        {t("agentSession.experience.trigger")}
+      </Text>
+      <TextInput
+        value={trigger}
+        editable={reviewable}
+        onChangeText={setTrigger}
+        maxLength={8000}
+        multiline
+        style={styles.experienceInput}
+      />
+      <Text style={styles.experienceLabel}>
+        {t("agentSession.experience.guidance")}
+      </Text>
+      <TextInput
+        value={guidance}
+        editable={reviewable}
+        onChangeText={setGuidance}
+        maxLength={8000}
+        multiline
+        style={styles.experienceInput}
+      />
+      {reviewable ? (
+        <>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            maxLength={2000}
+            placeholder={t("agentSession.experience.reviewNotePlaceholder")}
+            placeholderTextColor={colors.textDim}
+            style={styles.deliveryOutcomeInput}
+          />
+          <View style={styles.deliveryOutcomeActions}>
+            <Button
+              icon="check"
+              tone="primary"
+              variant={
+                candidate.status === "approved" ? "solid" : "outline"
+              }
+              disabled={!trigger.trim() || !guidance.trim()}
+              onPress={() =>
+                onReview(
+                  candidate,
+                  "approved",
+                  trigger,
+                  guidance,
+                  note,
+                )
+              }
+            >
+              {t("agentSession.experience.approve")}
+            </Button>
+            <Button
+              icon="xCircle"
+              tone="danger"
+              variant={
+                candidate.status === "rejected" ? "solid" : "outline"
+              }
+              onPress={() =>
+                onReview(
+                  candidate,
+                  "rejected",
+                  trigger,
+                  guidance,
+                  note,
+                )
+              }
+            >
+              {t("agentSession.experience.reject")}
+            </Button>
+          </View>
+        </>
+      ) : null}
+      <View style={styles.deliveryOutcomeActions}>
+        {candidate.status === "approved" ||
+        candidate.status === "shadow" ||
+        candidate.status === "active" ? (
+          <Button
+            icon="eyeOff"
+            variant="outline"
+            onPress={() => onLifecycle(candidate, "pause", note)}
+          >
+            {t("agentSession.experience.pause")}
+          </Button>
+        ) : null}
+        {candidate.status === "paused" ? (
+          <Button
+            disabled={
+              candidate.support_count <= candidate.contradiction_count
+            }
+            icon="refresh"
+            tone="primary"
+            variant="outline"
+            onPress={() => onLifecycle(candidate, "resume", note)}
+          >
+            {t("agentSession.experience.resume")}
+          </Button>
+        ) : null}
+        {candidate.status !== "deprecated" ? (
+          <Button
+            icon="trash"
+            tone="danger"
+            variant="outline"
+            onPress={() =>
+              onLifecycle(candidate, "deprecate", note)
+            }
+          >
+            {t("agentSession.experience.deprecate")}
+          </Button>
+        ) : null}
+      </View>
+    </Card>
   );
 }
 
@@ -638,6 +1259,18 @@ function activityTitle(
   }
 }
 
+function formatPercent(value: number | undefined): string {
+  return value === undefined ? "-" : `${Math.round(value * 100)}%`;
+}
+
+function formatDelta(value: number | undefined): string {
+  if (value === undefined) {
+    return "-";
+  }
+  const percent = Math.round(value * 100);
+  return `${percent > 0 ? "+" : ""}${percent} pp`;
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -686,6 +1319,137 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
+  },
+  deliveryOutcomeCard: {
+    gap: spacing.sm,
+  },
+  deliveryOutcomeHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  deliveryOutcomeTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  deliveryOutcomeStatus: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  deliveryOutcomeInput: {
+    minHeight: 44,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background,
+  },
+  deliveryOutcomeActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  activationCard: {
+    gap: spacing.sm,
+  },
+  activationHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between",
+  },
+  activationTitleArea: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  activationMetrics: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+  },
+  activationApplied: {
+    color: colors.success,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  effectCard: {
+    gap: spacing.sm,
+  },
+  effectMetrics: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  effectMetric: {
+    flex: 1,
+    gap: spacing.xs,
+    minWidth: 0,
+  },
+  effectMetricValue: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  shadowCard: {
+    gap: spacing.sm,
+  },
+  shadowMatch: {
+    gap: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  shadowMatchBorder: {
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: spacing.md,
+  },
+  shadowMatchHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+  },
+  shadowMatchTitle: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19,
+  },
+  shadowScore: {
+    color: colors.success,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  shadowGuidance: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  experienceCard: {
+    gap: spacing.sm,
+  },
+  experienceEvidence: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  experienceLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  experienceInput: {
+    minHeight: 52,
+    maxHeight: 132,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background,
   },
   interactionCard: {
     gap: spacing.sm,

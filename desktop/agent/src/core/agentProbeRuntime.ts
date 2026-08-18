@@ -30,6 +30,7 @@ interface AgentProbeRuntimeOptions {
   agentMessages: AgentMessageService;
   sessionManager: SessionManager;
   getKeyRecord(): SessionKeyRecord;
+  onObservation?(event: AgentProbeEvent): void;
   onSurfaceEvent?(event: AgentSurfaceEventPayload): void;
 }
 
@@ -39,6 +40,7 @@ export class AgentProbeRuntime {
   private readonly agentMessages: AgentMessageService;
   private readonly sessionManager: SessionManager;
   private readonly getKeyRecord: () => SessionKeyRecord;
+  private readonly onObservation?: (event: AgentProbeEvent) => void;
   private readonly onSurfaceEvent?: (event: AgentSurfaceEventPayload) => void;
   private receiver: AgentHookReceiver | null = null;
 
@@ -48,6 +50,7 @@ export class AgentProbeRuntime {
     this.agentMessages = options.agentMessages;
     this.sessionManager = options.sessionManager;
     this.getKeyRecord = options.getKeyRecord;
+    this.onObservation = options.onObservation;
     this.onSurfaceEvent = options.onSurfaceEvent;
   }
 
@@ -109,6 +112,7 @@ export class AgentProbeRuntime {
   }
 
   publishLocalProbeEvent(event: AgentProbeEvent): void {
+    this.onObservation?.(event);
     const message = this.agentMessages.publishProbeEvent(event);
     this.publishSurfaceEvent(event);
     if (message) {
@@ -144,6 +148,7 @@ export class AgentProbeRuntime {
       });
       return event;
     });
+    this.onObservation?.(enrichedEvent);
     const message = this.agentMessages.publishProbeEvent(enrichedEvent);
     this.publishSurfaceEvent(enrichedEvent);
     if (message) {

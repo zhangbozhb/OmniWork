@@ -51,6 +51,17 @@ test("normalizeClaudeHookPayload creates stable ids for duplicate hook payloads"
     normalizeClaudeHookPayload(payload)?.id,
     normalizeClaudeHookPayload(payload)?.id,
   );
+  assert.equal(normalizeClaudeHookPayload(payload)?.payload?.message, "Done");
+});
+
+test("normalizeClaudeHookPayload preserves prompts for local episode assembly", () => {
+  const event = normalizeClaudeHookPayload({
+    session_id: "sess-1",
+    hook_event_name: "UserPromptSubmit",
+    prompt: "Implement the feature",
+  });
+
+  assert.equal(event?.payload?.prompt, "Implement the feature");
 });
 
 test("normalizeClaudeHookPayload can use OmniWork hook event fallback", () => {

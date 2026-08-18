@@ -42,6 +42,13 @@ test("importTraeHookRecords imports Trae records and records an import index", a
       },
     })}\n`,
   );
+  await writeFile(
+    join(recordsRoot, "import-index.json"),
+    `${JSON.stringify({
+      version: 1,
+      imported_record_ids: ["record-1"],
+    })}\n`,
+  );
 
   const events: AgentProbeEvent[] = [];
   const first = await importTraeHookRecords({
@@ -69,5 +76,52 @@ test("importTraeHookRecords imports Trae records and records an import index", a
   assert.equal(events[0]?.id, "record-1");
   assert.equal(events[0]?.event_type, "agent.completed");
   assert.equal(events[0]?.created_at, "2026-07-23T10:20:30.000Z");
+  assert.equal(index.version, 2);
   assert.deepEqual(index.imported_record_ids, ["record-1"]);
+});
+
+test("importTraeHookRecords scans the local fallback records directory", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "omniwork-fallback-records-"));
+  const sessionsDir = join(
+    homeDir,
+    ".local",
+    "share",
+    "OmniWork",
+    "trae-cn",
+    "records",
+    "sessions",
+  );
+  await mkdir(sessionsDir, { recursive: true });
+  await writeFile(
+    join(sessionsDir, "2026-08-15.jsonl"),
+    `${JSON.stringify({
+      schema_version: 1,
+      record_id: "fallback-record-1",
+      provider: "trae-cn",
+      hook_event: "Stop",
+      created_at: "2026-08-15T00:00:00.000Z",
+      payload: {
+        session_id: "fallback-session",
+        last_assistant_message: "Done",
+      },
+    })}\n`,
+  );
+
+  const events: AgentProbeEvent[] = [];
+  const results = await importTraeHookRecords({
+    homeDir,
+    onProbeEvent: (event) => {
+      events.push(event);
+    },
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.id, "fallback-record-1");
+  assert.equal(events[0]?.provider, "trae-cn");
+  assert.equal(
+    results.find((result) =>
+      result.recordsRoot.includes(".local/share/OmniWork/trae-cn"),
+    )?.imported,
+    1,
+  );
 });

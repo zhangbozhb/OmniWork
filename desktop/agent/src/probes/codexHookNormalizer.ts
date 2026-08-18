@@ -185,6 +185,8 @@ function sanitizePayload(payload: CodexHookPayload): Record<string, unknown> {
     cwd: readString(payload.cwd),
     model: readString(payload.model),
     turn_id: readString(payload.turn_id),
+    prompt: readString(payload.prompt),
+    last_assistant_message: readString(payload.last_assistant_message),
     source: readString(payload.source),
     tool_name: readString(payload.tool_name),
     tool_use_id: readString(payload.tool_use_id),

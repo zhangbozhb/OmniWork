@@ -245,6 +245,7 @@ function sanitizePayload(payload: TraeHookPayload): Record<string, unknown> {
     omniwork_record_id: readString(payload.omniwork_record_id),
     cwd: readString(payload.cwd),
     workspace_path: readString(payload.workspace_path),
+    prompt: readString(payload.prompt),
     source: readString(payload.source),
     tool_name: readString(payload.tool_name),
     llm_tool_name: readString(payload.llm_tool_name),

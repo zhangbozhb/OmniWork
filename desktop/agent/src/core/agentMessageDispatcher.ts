@@ -1,5 +1,7 @@
 import { createMessageId } from "@omni-work/protocol-ts";
 import type {
+  AgentDeliveryPayload,
+  AgentExperiencePayload,
   AgentInteractionPayload,
   AgentMessageAckPayload,
   AgentMessageDeliveredPayload,
@@ -44,6 +46,8 @@ import type { TerminalStreamPusher } from "./terminalStreamPusher.ts";
 import type { TerminalRequestHandler } from "./terminalRequestHandler.ts";
 import type { AgentInboxHandler } from "./agentInboxHandler.ts";
 import type { AgentInteractionHandler } from "./agentInteractionHandler.ts";
+import type { AgentDeliveryHandler } from "./agentDeliveryHandler.ts";
+import type { AgentExperienceHandler } from "./agentExperienceHandler.ts";
 import type { AgentSurfaceSyncHandler } from "./agentSurfaceSyncHandler.ts";
 import type { AgentAppSecurityGateway } from "./agentAppSecurityGateway.ts";
 import type { AgentTunnelUpgradeHandler } from "./agentTunnelUpgradeHandler.ts";
@@ -59,9 +63,14 @@ interface AgentMessageDispatcherOptions {
   terminalRequests: TerminalRequestHandler;
   terminalStreamPusher: TerminalStreamPusher;
   inbox: AgentInboxHandler;
+  delivery: AgentDeliveryHandler;
+  experience: AgentExperienceHandler;
   interactions: AgentInteractionHandler;
   surfaceSync: AgentSurfaceSyncHandler;
   publishAgentSurfaceEvent?(event: AgentSurfaceEventPayload): void;
+  prepareAgentPrompt?(
+    payload: AgentPromptSubmitPayload,
+  ): AgentPromptSubmitPayload;
   submitAgentPrompt?(payload: AgentPromptSubmitPayload): void;
 }
 
@@ -362,6 +371,24 @@ export class AgentMessageDispatcher {
           );
         }
         break;
+      case "agent.delivery":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.options.delivery.handle(
+          message as MessageEnvelope<AgentDeliveryPayload>,
+          dispatchContext,
+        );
+        break;
+      case "agent.experience":
+        if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
+          return;
+        }
+        this.options.experience.handle(
+          message as MessageEnvelope<AgentExperiencePayload>,
+          dispatchContext,
+        );
+        break;
       case "agent.interaction":
         if (!this.recordInboundBusiness(message, dispatchContext, trustedE2E)) {
           return;
@@ -479,7 +506,9 @@ export class AgentMessageDispatcher {
     this.options.publishAgentSurfaceEvent?.(
       toAgentPromptSurfaceEvent(message),
     );
-    this.options.submitAgentPrompt?.(message.payload);
+    const prepared =
+      this.options.prepareAgentPrompt?.(message.payload) ?? message.payload;
+    this.options.submitAgentPrompt?.(prepared);
   }
 }
 
@@ -496,6 +525,7 @@ export function toAgentPromptSurfaceEvent(
     summary: message.payload.prompt,
     payload: {
       prompt: message.payload.prompt,
+      prompt_origin: message.payload.origin ?? "composer",
       context_files: message.payload.context_files?.map((file) => ({
         kind: file.kind,
         workspace_path: file.workspace_path,

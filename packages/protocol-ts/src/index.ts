@@ -1076,6 +1076,374 @@ export type AgentSurfaceSyncPayload =
   | AgentSurfaceSyncRequestPayload
   | AgentSurfaceSyncResponsePayload;
 
+export type DeliveryEpisodeStatus =
+  | "working"
+  | "delivered"
+  | "failed"
+  | "abandoned";
+
+export type DeliveryOutcome =
+  | "accepted"
+  | "revision_requested"
+  | "abandoned";
+
+export type DeliveryOutcomeSource = "user" | "git_review";
+
+export type DeliverySignalKind =
+  | "test_passed"
+  | "test_failed"
+  | "review_revision_requested";
+
+export interface DeliverySignalSummary {
+  signal_id: string;
+  kind: DeliverySignalKind;
+  source: "agent_observation" | "git_review";
+  observation_key: string;
+  created_at: string;
+}
+
+export interface DeliveryEpisodeSummary {
+  episode_id: string;
+  project_id?: string;
+  session_id: string;
+  surface_id?: string;
+  provider?: string;
+  status: DeliveryEpisodeStatus;
+  outcome?: DeliveryOutcome;
+  outcome_source?: DeliveryOutcomeSource;
+  outcome_note?: string;
+  objective?: string;
+  final_response?: string;
+  started_at: string;
+  delivered_at?: string;
+  outcome_at?: string;
+  updated_at: string;
+  observation_count: number;
+  signals?: DeliverySignalSummary[];
+}
+
+export interface AgentDeliverySyncRequestPayload {
+  kind: "sync_request";
+  session_id?: string;
+  surface_id?: string;
+  limit?: number;
+}
+
+export interface AgentDeliverySyncResponsePayload {
+  kind: "sync_response";
+  request_id: string;
+  episodes: DeliveryEpisodeSummary[];
+}
+
+export interface AgentDeliveryEpisodeUpdatedPayload {
+  kind: "episode_updated";
+  episode: DeliveryEpisodeSummary;
+}
+
+export interface AgentDeliveryOutcomeSetPayload {
+  kind: "outcome_set";
+  episode_id: string;
+  session_id: string;
+  surface_id?: string;
+  client_action_id: string;
+  outcome: DeliveryOutcome;
+  note?: string;
+  created_at: string;
+}
+
+export interface AgentDeliveryOutcomeResultPayload {
+  kind: "outcome_result";
+  request_id: string;
+  client_action_id: string;
+  episode: DeliveryEpisodeSummary;
+}
+
+export interface AgentDeliveryErrorPayload {
+  kind: "error";
+  request_id?: string;
+  client_action_id?: string;
+  episode_id?: string;
+  code: "not_found" | "invalid_state" | "conflict";
+  message: string;
+}
+
+export type AgentDeliveryPayload =
+  | AgentDeliverySyncRequestPayload
+  | AgentDeliverySyncResponsePayload
+  | AgentDeliveryEpisodeUpdatedPayload
+  | AgentDeliveryOutcomeSetPayload
+  | AgentDeliveryOutcomeResultPayload
+  | AgentDeliveryErrorPayload;
+
+export type ExperienceCandidateKind = "user_correction";
+
+export type ExperienceCandidateStatus =
+  | "candidate"
+  | "approved"
+  | "rejected"
+  | "shadow"
+  | "active"
+  | "paused"
+  | "deprecated";
+
+export interface ExperienceCandidateSummary {
+  candidate_id: string;
+  project_id: string;
+  kind: ExperienceCandidateKind;
+  trigger: string;
+  guidance: string;
+  status: ExperienceCandidateStatus;
+  support_count: number;
+  contradiction_count: number;
+  supporting_episode_ids: string[];
+  contradicting_episode_ids: string[];
+  created_at: string;
+  updated_at: string;
+  reviewed_at?: string;
+  review_note?: string;
+}
+
+export type ExperienceShadowFeedback = "relevant" | "not_relevant";
+
+export interface ExperienceShadowMatchSummary {
+  candidate_id: string;
+  trigger: string;
+  guidance: string;
+  rank: number;
+  score: number;
+  reason: "exact_trigger" | "token_overlap";
+  feedback?: ExperienceShadowFeedback;
+  feedback_at?: string;
+}
+
+export interface ExperienceShadowRunSummary {
+  run_id: string;
+  episode_id: string;
+  project_id: string;
+  session_id: string;
+  surface_id?: string;
+  created_at: string;
+  matches: ExperienceShadowMatchSummary[];
+}
+
+export interface ExperienceShadowStats {
+  total_matches: number;
+  reviewed_matches: number;
+  relevant_matches: number;
+  not_relevant_matches: number;
+  relevance_rate?: number;
+  activation_ready: boolean;
+}
+
+export interface ExperienceActivationSummary {
+  project_id: string;
+  requested_enabled: boolean;
+  effective_enabled: boolean;
+  activation_ready: boolean;
+  reviewed_matches: number;
+  relevance_rate?: number;
+  max_matches: number;
+  max_injected_bytes: number;
+  updated_at?: string;
+}
+
+export interface ExperienceApplicationSummary {
+  application_id: string;
+  run_id: string;
+  episode_id: string;
+  project_id: string;
+  candidate_ids: string[];
+  injected_bytes: number;
+  created_at: string;
+}
+
+export type ExperienceApplicationOutcome =
+  | "accepted"
+  | "revision_requested"
+  | "abandoned";
+
+export interface ExperienceApplicationEvaluationSummary {
+  evaluation_id: string;
+  application_id: string;
+  episode_id: string;
+  project_id: string;
+  candidate_ids: string[];
+  outcome: ExperienceApplicationOutcome;
+  effect: "positive" | "negative";
+  evaluated_at: string;
+}
+
+export interface ExperienceProjectEffectSummary {
+  project_id: string;
+  assisted_evaluated: number;
+  assisted_accepted: number;
+  assisted_revision_requested: number;
+  assisted_abandoned: number;
+  assisted_acceptance_rate?: number;
+  baseline_evaluated: number;
+  baseline_accepted: number;
+  baseline_acceptance_rate?: number;
+  acceptance_rate_delta?: number;
+}
+
+export interface ExperiencePromotionEligibilitySummary {
+  promotion_key: string;
+  candidate_ids: string[];
+  project_ids: string[];
+  project_count: number;
+  support_count: number;
+  contradiction_count: number;
+  eligible: boolean;
+}
+
+export interface AgentExperienceSyncRequestPayload {
+  kind: "sync_request";
+  project_id?: string;
+  session_id?: string;
+  limit?: number;
+}
+
+export interface AgentExperienceSyncResponsePayload {
+  kind: "sync_response";
+  request_id: string;
+  session_id?: string;
+  candidates: ExperienceCandidateSummary[];
+  shadow_runs: ExperienceShadowRunSummary[];
+  shadow_stats: ExperienceShadowStats;
+  activations: ExperienceActivationSummary[];
+  applications: ExperienceApplicationSummary[];
+  evaluations: ExperienceApplicationEvaluationSummary[];
+  effects: ExperienceProjectEffectSummary[];
+  promotions: ExperiencePromotionEligibilitySummary[];
+}
+
+export interface AgentExperienceCandidateUpdatedPayload {
+  kind: "candidate_updated";
+  candidate: ExperienceCandidateSummary;
+}
+
+export interface AgentExperienceCandidateRemovedPayload {
+  kind: "candidate_removed";
+  candidate_id: string;
+  project_id: string;
+}
+
+export interface AgentExperienceReviewSetPayload {
+  kind: "review_set";
+  candidate_id: string;
+  project_id: string;
+  client_action_id: string;
+  decision: "approved" | "rejected";
+  trigger?: string;
+  guidance?: string;
+  note?: string;
+  created_at: string;
+}
+
+export interface AgentExperienceReviewResultPayload {
+  kind: "review_result";
+  request_id: string;
+  client_action_id: string;
+  candidate: ExperienceCandidateSummary;
+}
+
+export interface AgentExperienceShadowResultPayload {
+  kind: "shadow_result";
+  run: ExperienceShadowRunSummary;
+}
+
+export interface AgentExperienceShadowFeedbackSetPayload {
+  kind: "shadow_feedback_set";
+  run_id: string;
+  candidate_id: string;
+  client_action_id: string;
+  feedback: ExperienceShadowFeedback;
+  created_at: string;
+}
+
+export interface AgentExperienceShadowFeedbackResultPayload {
+  kind: "shadow_feedback_result";
+  request_id: string;
+  client_action_id: string;
+  run: ExperienceShadowRunSummary;
+  shadow_stats: ExperienceShadowStats;
+  activation: ExperienceActivationSummary;
+}
+
+export interface AgentExperienceActivationSetPayload {
+  kind: "activation_set";
+  project_id: string;
+  client_action_id: string;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface AgentExperienceActivationResultPayload {
+  kind: "activation_result";
+  request_id: string;
+  client_action_id: string;
+  activation: ExperienceActivationSummary;
+}
+
+export interface AgentExperienceApplicationRecordedPayload {
+  kind: "application_recorded";
+  application: ExperienceApplicationSummary;
+}
+
+export interface AgentExperienceEvaluationRecordedPayload {
+  kind: "evaluation_recorded";
+  evaluation: ExperienceApplicationEvaluationSummary;
+  effect: ExperienceProjectEffectSummary;
+}
+
+export interface AgentExperienceLifecycleSetPayload {
+  kind: "lifecycle_set";
+  candidate_id: string;
+  project_id: string;
+  client_action_id: string;
+  action: "pause" | "resume" | "deprecate";
+  note?: string;
+  created_at: string;
+}
+
+export interface AgentExperienceLifecycleResultPayload {
+  kind: "lifecycle_result";
+  request_id: string;
+  client_action_id: string;
+  candidate: ExperienceCandidateSummary;
+}
+
+export interface AgentExperienceErrorPayload {
+  kind: "error";
+  request_id?: string;
+  client_action_id?: string;
+  candidate_id?: string;
+  code:
+    | "not_found"
+    | "invalid_state"
+    | "conflict"
+    | "gate_not_ready";
+  message: string;
+}
+
+export type AgentExperiencePayload =
+  | AgentExperienceSyncRequestPayload
+  | AgentExperienceSyncResponsePayload
+  | AgentExperienceCandidateUpdatedPayload
+  | AgentExperienceCandidateRemovedPayload
+  | AgentExperienceReviewSetPayload
+  | AgentExperienceReviewResultPayload
+  | AgentExperienceShadowResultPayload
+  | AgentExperienceShadowFeedbackSetPayload
+  | AgentExperienceShadowFeedbackResultPayload
+  | AgentExperienceActivationSetPayload
+  | AgentExperienceActivationResultPayload
+  | AgentExperienceApplicationRecordedPayload
+  | AgentExperienceEvaluationRecordedPayload
+  | AgentExperienceLifecycleSetPayload
+  | AgentExperienceLifecycleResultPayload
+  | AgentExperienceErrorPayload;
+
 export type AgentInteractionStatus =
   | "pending"
   | "resolved"
@@ -1192,6 +1560,7 @@ export interface AgentPromptSubmitPayload {
   session_id: string;
   surface_id: string;
   prompt: string;
+  origin?: "composer" | "git_review";
   context_files?: AgentPromptFileReference[];
   created_at?: string;
 }

@@ -1,4 +1,6 @@
 import type {
+  AgentDeliveryPayload,
+  AgentExperiencePayload,
   AgentInteractionPayload,
   AgentAppMessage,
   AgentMessageListPayload,
@@ -54,6 +56,14 @@ export type AppMessageHandlers = {
   ): void;
   onAgentSurfaceSync(
     payload: AgentSurfaceSyncResponsePayload,
+    message: MessageEnvelope,
+  ): void;
+  onAgentDelivery(
+    payload: AgentDeliveryPayload,
+    message: MessageEnvelope,
+  ): void;
+  onAgentExperience(
+    payload: AgentExperiencePayload,
     message: MessageEnvelope,
   ): void;
   onAgentInteraction(
@@ -167,6 +177,18 @@ export function dispatchAppMessage(
           message,
         );
       }
+      break;
+    case "agent.delivery":
+      handlers.onAgentDelivery(
+        message.payload as AgentDeliveryPayload,
+        message,
+      );
+      break;
+    case "agent.experience":
+      handlers.onAgentExperience(
+        message.payload as AgentExperiencePayload,
+        message,
+      );
       break;
     case "agent.interaction":
       handlers.onAgentInteraction(

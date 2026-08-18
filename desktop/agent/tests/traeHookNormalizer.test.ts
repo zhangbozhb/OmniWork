@@ -51,6 +51,16 @@ test("normalizeTraeHookPayload accepts official snake_case event aliases", () =>
   assert.equal(event.payload?.tool_use_id, "tool-1");
 });
 
+test("normalizeTraeHookPayload preserves prompts for local episode assembly", () => {
+  const event = normalizeTraeHookPayload("trae-cn", {
+    session_id: "sess-1",
+    hook_event_name: "UserPromptSubmit",
+    prompt: "Implement the feature",
+  });
+
+  assert.equal(event?.payload?.prompt, "Implement the feature");
+});
+
 test("normalizeTraeHookPayload maps notification hooks", () => {
   const event = normalizeTraeHookPayload("trae", {
     session_id: "sess-1",

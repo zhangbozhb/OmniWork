@@ -15,6 +15,8 @@ export function isE2EBusinessMessage(type: string): boolean {
     type.startsWith("codex.") ||
     type.startsWith("agent.message") ||
     type.startsWith("agent.surface.") ||
+    type === "agent.delivery" ||
+    type === "agent.experience" ||
     type === "agent.interaction" ||
     type.startsWith("agent.prompt.") ||
     type.startsWith("agent.notification.") ||

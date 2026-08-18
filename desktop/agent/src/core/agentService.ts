@@ -23,6 +23,21 @@ import { AgentSurfaceEventStore } from "../agent-surface/agentSurfaceEventStore.
 import { AgentInteractionStore } from "../agent-surface/agentInteractionStore.ts";
 import { AgentInteractionService } from "../agent-surface/agentInteractionService.ts";
 import { AgentPromptContextResolver } from "../agent-surface/agentPromptContextResolver.ts";
+import { AgentObservationStore } from "../learning/agentObservationStore.ts";
+import {
+  DeliveryEpisodeStore,
+  type DeliveryEpisode,
+} from "../learning/deliveryEpisodeStore.ts";
+import {
+  ExperienceCandidateStore,
+  type ExperienceCandidateChange,
+} from "../learning/experienceCandidateStore.ts";
+import { ExperienceShadowStore } from "../learning/experienceShadowStore.ts";
+import { ExperienceActivationStore } from "../learning/experienceActivationStore.ts";
+import {
+  ExperienceEvaluationStore,
+  type ExperienceEvaluationResult,
+} from "../learning/experienceEvaluationStore.ts";
 import {
   createPairingQrDetails,
   printPairingDetailsWithoutRelay,
@@ -42,6 +57,8 @@ import { AgentAdminRuntime } from "./agentAdminRuntime.ts";
 import { AgentAppSecurityGateway } from "./agentAppSecurityGateway.ts";
 import { AgentInboxHandler } from "./agentInboxHandler.ts";
 import { AgentInteractionHandler } from "./agentInteractionHandler.ts";
+import { AgentDeliveryHandler } from "./agentDeliveryHandler.ts";
+import { AgentExperienceHandler } from "./agentExperienceHandler.ts";
 import { AgentSurfaceSyncHandler } from "./agentSurfaceSyncHandler.ts";
 import { AgentMessageDispatcher } from "./agentMessageDispatcher.ts";
 import { AgentProbeRuntime } from "./agentProbeRuntime.ts";
@@ -72,12 +89,20 @@ export class AgentService {
   private readonly appConnections: AppConnectionRegistry;
   private readonly agentMessages: AgentMessageService;
   private readonly surfaceEvents: AgentSurfaceEventStore;
+  private readonly observations: AgentObservationStore;
+  private readonly episodes: DeliveryEpisodeStore;
+  private readonly experienceCandidates: ExperienceCandidateStore;
+  private readonly experienceShadow: ExperienceShadowStore;
+  private readonly experienceActivation: ExperienceActivationStore;
+  private readonly experienceEvaluation: ExperienceEvaluationStore;
   private readonly interactions: AgentInteractionService;
   private readonly promptContext: AgentPromptContextResolver;
   private readonly security: AgentAppSecurityGateway;
   private readonly tunnelUpgrade: AgentTunnelUpgradeHandler;
   private readonly terminalRequests: TerminalRequestHandler;
   private readonly inbox: AgentInboxHandler;
+  private readonly deliveryHandler: AgentDeliveryHandler;
+  private readonly experienceHandler: AgentExperienceHandler;
   private readonly interactionHandler: AgentInteractionHandler;
   private readonly surfaceSync: AgentSurfaceSyncHandler;
   private readonly probeRuntime: AgentProbeRuntime;
@@ -96,6 +121,29 @@ export class AgentService {
     this.config = config;
     this.onShutdownRequested = options.onShutdownRequested;
     this.surfaceEvents = new AgentSurfaceEventStore(config.sessionStorePath);
+    this.observations = new AgentObservationStore(config.sessionStorePath);
+    this.episodes = new DeliveryEpisodeStore(config.sessionStorePath);
+    this.experienceCandidates = new ExperienceCandidateStore(
+      config.sessionStorePath,
+    );
+    this.experienceShadow = new ExperienceShadowStore(
+      config.sessionStorePath,
+      this.experienceCandidates,
+    );
+    this.experienceActivation = new ExperienceActivationStore(
+      config.sessionStorePath,
+      this.experienceShadow,
+      this.experienceCandidates,
+    );
+    this.experienceEvaluation = new ExperienceEvaluationStore(
+      config.sessionStorePath,
+      this.experienceCandidates,
+    );
+    for (const episode of this.episodes.listWithOutcomes()) {
+      this.experienceCandidates.reconcileEpisode(episode);
+    }
+    this.experienceEvaluation.backfill();
+    this.experienceCandidates.applyStaleness(new Date().toISOString());
     this.interactions = new AgentInteractionService({
       store: new AgentInteractionStore(config.sessionStorePath),
       onRequest: (request) => {
@@ -148,6 +196,10 @@ export class AgentService {
       agentMessages: this.agentMessages,
       sessionManager: this.sessionManager,
       getKeyRecord: () => this.requireKeyRecord(),
+      onObservation: (event) =>
+        this.applyLearningObservation(
+          this.observations.putProbeEvent(event),
+        ),
       onSurfaceEvent: (event) => this.broadcastAgentSurfaceEvent(event),
     });
     this.agentSurfaceRunner = new AgentSurfaceRunner({
@@ -268,6 +320,28 @@ export class AgentService {
       sendToApp: (context, message) =>
         this.security.sendToApp(context, message),
     });
+    this.deliveryHandler = new AgentDeliveryHandler({
+      deviceId: config.deviceId,
+      store: this.episodes,
+      candidateStore: this.experienceCandidates,
+      evaluationStore: this.experienceEvaluation,
+      onExperienceChange: (change) =>
+        this.publishExperienceChange(change),
+      onEvaluation: (result) => this.publishEvaluation(result),
+      sendToApp: (context, message) =>
+        this.security.sendToApp(context, message),
+    });
+    this.experienceHandler = new AgentExperienceHandler({
+      deviceId: config.deviceId,
+      store: this.experienceCandidates,
+      shadowStore: this.experienceShadow,
+      activationStore: this.experienceActivation,
+      evaluationStore: this.experienceEvaluation,
+      onExperienceChange: (change) =>
+        this.publishExperienceChange(change),
+      sendToApp: (context, message) =>
+        this.security.sendToApp(context, message),
+    });
     this.interactionHandler = new AgentInteractionHandler({
       deviceId: config.deviceId,
       interactions: this.interactions,
@@ -290,10 +364,14 @@ export class AgentService {
       terminalRequests: this.terminalRequests,
       terminalStreamPusher: this.terminalStreamPusher,
       inbox: this.inbox,
+      delivery: this.deliveryHandler,
+      experience: this.experienceHandler,
       interactions: this.interactionHandler,
       surfaceSync: this.surfaceSync,
       publishAgentSurfaceEvent: (event) =>
         this.broadcastAgentSurfaceEvent(event),
+      prepareAgentPrompt: (payload) =>
+        this.prepareExperiencePrompt(payload),
       submitAgentPrompt: (payload) => this.submitAgentPrompt(payload),
     });
     this.relayController = new AgentRelayController({
@@ -397,6 +475,12 @@ export class AgentService {
 
   private broadcastAgentSurfaceEvent(event: AgentSurfaceEventPayload): void {
     this.surfaceEvents.put(event);
+    const session = this.sessionManager.getKnown(event.session_id);
+    const observation = this.observations.putSurfaceEvent(
+      event,
+      session?.workspace_path ?? session?.cwd,
+    );
+    this.applyLearningObservation(observation);
     this.security.send(
       createMessage("agent.surface.event", event, {
         device_id: this.config.deviceId,
@@ -404,6 +488,160 @@ export class AgentService {
         surface_id: event.surface_id,
       }),
     );
+  }
+
+  private publishEpisodeUpdate(
+    episode: DeliveryEpisode | undefined,
+  ): void {
+    if (!episode || episode.status === "working") {
+      return;
+    }
+    this.security.send(
+      createMessage(
+        "agent.delivery",
+        {
+          kind: "episode_updated",
+          episode: this.episodes.toSummary(episode),
+        },
+        {
+          device_id: this.config.deviceId,
+          session_id: episode.sessionId,
+          surface_id: episode.surfaceId,
+        },
+      ),
+    );
+  }
+
+  private applyLearningObservation(
+    observation: ReturnType<AgentObservationStore["putSurfaceEvent"]>,
+  ): void {
+    const revised = this.episodes.recordGitReviewRevision(observation);
+    if (revised) {
+      this.publishEpisodeUpdate(revised);
+      if (
+        revised.outcomeSource === "git_review" &&
+        revised.outcome &&
+        revised.outcomeAt
+      ) {
+        const evaluation = this.experienceEvaluation.evaluateEpisode({
+          episodeId: revised.episodeId,
+          outcome: revised.outcome,
+          outcomeAt: revised.outcomeAt,
+          sourceActionId: `inferred:git_review:${observation.observationKey}`,
+        });
+        if (evaluation) {
+          this.publishEvaluation(evaluation);
+        }
+      }
+    }
+    this.publishEpisodeUpdate(this.episodes.apply(observation));
+  }
+
+  private publishExperienceChange(
+    change: ExperienceCandidateChange,
+  ): void {
+    const payload =
+      change.kind === "updated"
+        ? {
+            kind: "candidate_updated" as const,
+            candidate: change.candidate,
+          }
+        : {
+            kind: "candidate_removed" as const,
+            candidate_id: change.candidateId,
+            project_id: change.projectId,
+          };
+    this.security.send(
+      createMessage("agent.experience", payload, {
+        device_id: this.config.deviceId,
+      }),
+    );
+  }
+
+  private publishEvaluation(result: ExperienceEvaluationResult): void {
+    for (const change of result.candidateChanges) {
+      this.publishExperienceChange(change);
+    }
+    this.security.send(
+      createMessage(
+        "agent.experience",
+        {
+          kind: "evaluation_recorded",
+          evaluation: result.evaluation,
+          effect: result.effect,
+        },
+        {
+          device_id: this.config.deviceId,
+        },
+      ),
+    );
+  }
+
+  private prepareExperiencePrompt(
+    payload: AgentPromptSubmitPayload,
+  ): AgentPromptSubmitPayload {
+    const episode = this.episodes.findWorkingForSurface(
+      payload.session_id,
+      payload.surface_id,
+    );
+    if (!episode?.projectId || !episode.objective) {
+      return payload;
+    }
+    const evaluation = this.experienceShadow.evaluate({
+      episodeId: episode.episodeId,
+      projectId: episode.projectId,
+      sessionId: episode.sessionId,
+      surfaceId: episode.surfaceId,
+      prompt: episode.objective,
+      createdAt: episode.startedAt,
+    });
+    for (const candidate of evaluation.updatedCandidates) {
+      this.publishExperienceChange({ kind: "updated", candidate });
+    }
+    this.security.send(
+      createMessage(
+        "agent.experience",
+        {
+          kind: "shadow_result",
+          run: evaluation.run,
+        },
+        {
+          device_id: this.config.deviceId,
+          session_id: episode.sessionId,
+          surface_id: episode.surfaceId,
+        },
+      ),
+    );
+    const prepared = this.experienceActivation.prepareApplication({
+      run: evaluation.run,
+      prompt: payload.prompt,
+      createdAt: episode.startedAt,
+    });
+    for (const candidateId of prepared.updatedCandidateIds) {
+      const candidate = this.experienceCandidates.get(candidateId);
+      if (candidate) {
+        this.publishExperienceChange({ kind: "updated", candidate });
+      }
+    }
+    if (prepared.application) {
+      this.security.send(
+        createMessage(
+          "agent.experience",
+          {
+            kind: "application_recorded",
+            application: prepared.application,
+          },
+          {
+            device_id: this.config.deviceId,
+            session_id: episode.sessionId,
+            surface_id: episode.surfaceId,
+          },
+        ),
+      );
+    }
+    return prepared.prompt === payload.prompt
+      ? payload
+      : { ...payload, prompt: prepared.prompt };
   }
 
   private broadcastAgentInteraction(payload: AgentInteractionPayload): void {

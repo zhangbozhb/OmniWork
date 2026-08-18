@@ -16,12 +16,12 @@ export interface TraeHookRecordImportOptions {
 }
 
 export interface TraeHookRecordRoot {
-  provider: "trae" | "trae-cn";
+  provider: "traex" | "trae" | "trae-cn";
   recordsRoot: string;
 }
 
 export interface TraeHookRecordImportResult {
-  provider: "trae" | "trae-cn";
+  provider: "traex" | "trae" | "trae-cn";
   recordsRoot: string;
   files: number;
   imported: number;
@@ -40,7 +40,7 @@ interface TraeHookRecord {
 }
 
 interface TraeImportIndex {
-  version: 1;
+  version: 2;
   imported_record_ids: string[];
 }
 
@@ -66,6 +66,39 @@ export function defaultTraeHookRecordRoots(
     {
       provider: "trae-cn",
       recordsRoot: join(homeDirectory, ".trae-cn", "omniwork", "records"),
+    },
+    {
+      provider: "traex",
+      recordsRoot: join(
+        homeDirectory,
+        ".local",
+        "share",
+        "OmniWork",
+        "traex",
+        "records",
+      ),
+    },
+    {
+      provider: "trae",
+      recordsRoot: join(
+        homeDirectory,
+        ".local",
+        "share",
+        "OmniWork",
+        "trae",
+        "records",
+      ),
+    },
+    {
+      provider: "trae-cn",
+      recordsRoot: join(
+        homeDirectory,
+        ".local",
+        "share",
+        "OmniWork",
+        "trae-cn",
+        "records",
+      ),
     },
   ];
 }
@@ -148,7 +181,7 @@ async function readJsonlLines(path: string): Promise<string[]> {
 }
 
 function normalizeRecord(
-  fallbackProvider: "trae" | "trae-cn",
+  fallbackProvider: "traex" | "trae" | "trae-cn",
   record: TraeHookRecord,
 ): AgentProbeEvent | null {
   const provider =
@@ -197,11 +230,15 @@ function parseRecord(line: string): TraeHookRecord | null {
 async function readImportIndex(path: string): Promise<TraeImportIndex> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
-    if (!isRecord(parsed) || !Array.isArray(parsed.imported_record_ids)) {
+    if (
+      !isRecord(parsed) ||
+      parsed.version !== 2 ||
+      !Array.isArray(parsed.imported_record_ids)
+    ) {
       return emptyImportIndex();
     }
     return {
-      version: 1,
+      version: 2,
       imported_record_ids: parsed.imported_record_ids.filter(
         (id): id is string => typeof id === "string" && id.length > 0,
       ),
@@ -220,7 +257,7 @@ async function writeImportIndex(
     path,
     `${JSON.stringify(
       {
-        version: 1,
+        version: 2,
         imported_record_ids: [...importedIds].sort(),
       },
       null,
@@ -232,7 +269,7 @@ async function writeImportIndex(
 
 function emptyImportIndex(): TraeImportIndex {
   return {
-    version: 1,
+    version: 2,
     imported_record_ids: [],
   };
 }

@@ -54,6 +54,20 @@ test("normalizeCodexHookPayload creates stable ids for duplicate hook payloads",
     normalizeCodexHookPayload(payload)?.id,
     normalizeCodexHookPayload(payload)?.id,
   );
+  assert.equal(
+    normalizeCodexHookPayload(payload)?.payload?.last_assistant_message,
+    "Done",
+  );
+});
+
+test("normalizeCodexHookPayload preserves prompts for local episode assembly", () => {
+  const event = normalizeCodexHookPayload({
+    session_id: "sess-1",
+    hook_event_name: "UserPromptSubmit",
+    prompt: "Implement the feature",
+  });
+
+  assert.equal(event?.payload?.prompt, "Implement the feature");
 });
 
 test("normalizeCodexHookPayload can use OmniWork hook event fallback", () => {

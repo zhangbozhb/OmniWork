@@ -226,6 +226,8 @@ function sanitizePayload(payload: ClaudeHookPayload): Record<string, unknown> {
     omniwork_hook_event: readString(payload.omniwork_hook_event),
     omniwork_hook_source: readString(payload.omniwork_hook_source),
     cwd: readString(payload.cwd),
+    prompt: readString(payload.prompt),
+    message: readString(payload.message),
     source: readString(payload.source),
     tool_name: readString(payload.tool_name),
     notification_type: readString(payload.notification_type),

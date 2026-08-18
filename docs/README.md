@@ -23,6 +23,7 @@
 - [p2p-per-app-connection.md](./p2p-per-app-connection.md)：多 App 连接下的 per-App P2P 升级粒度。
 - [e2e-noise-roadmap.md](./e2e-noise-roadmap.md)：E2E Noise 基线、落地状态和安全边界。
 - [mobile-file-editing.md](./mobile-file-editing.md)：移动端文件编辑实现、冲突检测与安全边界。
+- [delivery-learning.md](./delivery-learning.md)：交付学习闭环的目标卡、能力边界、实施节点和验证状态。
 
 ## 安全与交付
 
@@ -37,6 +38,7 @@
 - [mobile-codex-tui-workbench-design.md](./mobile-codex-tui-workbench-design.md)：产品设计、MVP 目标、非目标和验收口径。
 - [mobile-codex-tui-technical-solution.md](./mobile-codex-tui-technical-solution.md)：技术方案、风险与演进方向。
 - [agent-probe-sink-design.md](./agent-probe-sink-design.md)：Codex、Claude Code 等 coding agent 的 Probe/Sink 消息感知、过滤与多端投递设计。
+- [delivery-learning.md](./delivery-learning.md)：从观察事件到交付 Episode、经验审核、Shadow 应用和效果评估的持续实施方案。
 
 ## 长期架构边界
 

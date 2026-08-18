@@ -359,6 +359,8 @@ describe("e2e business message helpers", () => {
     assert.equal(isE2EBusinessMessage("agent.message"), true);
     assert.equal(isE2EBusinessMessage("agent.message.list"), true);
     assert.equal(isE2EBusinessMessage("agent.surface.sync"), true);
+    assert.equal(isE2EBusinessMessage("agent.delivery"), true);
+    assert.equal(isE2EBusinessMessage("agent.experience"), true);
     assert.equal(isE2EBusinessMessage("agent.interaction"), true);
     assert.equal(isE2EBusinessMessage("agent.notification.settings.set"), true);
     assert.equal(isE2EBusinessMessage("auth.ok"), false);
@@ -462,6 +464,72 @@ describe("agent message payload schemas", () => {
         }),
       ),
     );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "shadow_result",
+          run: {
+            run_id: "shadow_1",
+            episode_id: "episode_1",
+            project_id: "project_1",
+            session_id: "session_1",
+            surface_id: "surface_1",
+            created_at: new Date().toISOString(),
+            matches: [
+              {
+                candidate_id: "candidate_1",
+                trigger: "When implementing",
+                guidance: "Add focused tests",
+                rank: 1,
+                score: 0.8,
+                reason: "token_overlap",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "lifecycle_set",
+          candidate_id: "candidate_1",
+          project_id: "project_1",
+          client_action_id: "lifecycle_1",
+          action: "pause",
+          created_at: new Date().toISOString(),
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "evaluation_recorded",
+          evaluation: {
+            evaluation_id: "evaluation_1",
+            application_id: "application_1",
+            episode_id: "episode_1",
+            project_id: "project_1",
+            candidate_ids: ["candidate_1"],
+            outcome: "accepted",
+            effect: "positive",
+            evaluated_at: new Date().toISOString(),
+          },
+          effect: {
+            project_id: "project_1",
+            assisted_evaluated: 1,
+            assisted_accepted: 1,
+            assisted_revision_requested: 0,
+            assisted_abandoned: 0,
+            assisted_acceptance_rate: 1,
+            baseline_evaluated: 1,
+            baseline_accepted: 0,
+            baseline_acceptance_rate: 0,
+            acceptance_rate_delta: 1,
+          },
+        }),
+      ),
+    );
     assert.equal(
       parseMessageEnvelope(
         createMessage("agent.surface.sync", {
@@ -469,6 +537,153 @@ describe("agent message payload schemas", () => {
           session_id: "sess_1",
           surface_id: "surface_sess_1_agent",
           after_cursor: -1,
+        }),
+      ),
+      null,
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "application_recorded",
+          application: {
+            application_id: "application_1",
+            run_id: "shadow_1",
+            episode_id: "episode_1",
+            project_id: "project_1",
+            candidate_ids: ["candidate_1"],
+            injected_bytes: 512,
+            created_at: new Date().toISOString(),
+          },
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "activation_set",
+          project_id: "project_1",
+          client_action_id: "activation_1",
+          enabled: true,
+          created_at: new Date().toISOString(),
+        }),
+      ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "activation_set",
+          project_id: "project_1",
+          client_action_id: "activation_1",
+          enabled: "yes",
+          created_at: new Date().toISOString(),
+        }),
+      ),
+      null,
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "shadow_feedback_set",
+          run_id: "shadow_1",
+          candidate_id: "candidate_1",
+          client_action_id: "feedback_1",
+          feedback: "relevant",
+          created_at: new Date().toISOString(),
+        }),
+      ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "shadow_feedback_set",
+          run_id: "shadow_1",
+          candidate_id: "candidate_1",
+          client_action_id: "feedback_1",
+          feedback: "useful",
+          created_at: new Date().toISOString(),
+        }),
+      ),
+      null,
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "review_set",
+          candidate_id: "candidate_1",
+          project_id: "project_1",
+          client_action_id: "review_1",
+          decision: "approved",
+          trigger: "When implementing",
+          guidance: "Add focused tests",
+          created_at: new Date().toISOString(),
+        }),
+      ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("agent.experience", {
+          kind: "review_set",
+          candidate_id: "candidate_1",
+          project_id: "project_1",
+          client_action_id: "review_1",
+          decision: "active",
+          created_at: new Date().toISOString(),
+        }),
+      ),
+      null,
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.delivery", {
+          kind: "episode_updated",
+          episode: {
+            episode_id: "episode_1",
+            project_id: "project_1",
+            session_id: "sess_1",
+            surface_id: "surface_sess_1_agent",
+            status: "delivered",
+            outcome: "revision_requested",
+            outcome_source: "git_review",
+            started_at: new Date().toISOString(),
+            delivered_at: new Date().toISOString(),
+            outcome_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            observation_count: 3,
+            signals: [
+              {
+                signal_id: "signal_1",
+                kind: "review_revision_requested",
+                source: "git_review",
+                observation_key: "surface:user:surface_1:event_1",
+                created_at: new Date().toISOString(),
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    assert.ok(
+      parseMessageEnvelope(
+        createMessage("agent.delivery", {
+          kind: "outcome_set",
+          episode_id: "episode_1",
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          client_action_id: "action_1",
+          outcome: "accepted",
+          created_at: new Date().toISOString(),
+        }),
+      ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("agent.delivery", {
+          kind: "outcome_set",
+          episode_id: "episode_1",
+          session_id: "sess_1",
+          client_action_id: "action_1",
+          outcome: "completed",
+          created_at: new Date().toISOString(),
         }),
       ),
       null,
@@ -594,6 +809,7 @@ describe("agent message payload schemas", () => {
           session_id: "sess_1",
           surface_id: "surface_sess_1_agent",
           prompt: "Run the tests",
+          origin: "git_review",
           context_files: [
             {
               kind: "workspace_file",
@@ -605,6 +821,17 @@ describe("agent message payload schemas", () => {
           created_at: new Date().toISOString(),
         }),
       ),
+    );
+    assert.equal(
+      parseMessageEnvelope(
+        createMessage("agent.prompt.submit", {
+          session_id: "sess_1",
+          surface_id: "surface_sess_1_agent",
+          prompt: "Run the tests",
+          origin: "automation",
+        }),
+      ),
+      null,
     );
     assert.equal(
       parseMessageEnvelope(

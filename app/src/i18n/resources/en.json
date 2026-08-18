@@ -143,7 +143,83 @@
     "composerTitle": "Prompt composer",
     "composerPlaceholder": "Ask {{provider}} to work on this session...",
     "send": "Send",
-    "delivered": "Delivered"
+    "delivered": "Delivered",
+    "deliveryOutcome": {
+      "title": "Delivery result",
+      "notePlaceholder": "Add a correction or note",
+      "accept": "Accept",
+      "revise": "Needs changes",
+      "abandon": "Abandon",
+      "sources": {
+        "user": "Recorded from explicit user feedback",
+        "git_review": "Inferred from submitted Git review notes"
+      },
+      "signals": {
+        "test_passed": "Verification signal: tests passed",
+        "test_failed": "Verification signal: tests failed",
+        "review_revision_requested": "Review signal: revision requested"
+      },
+      "outcomes": {
+        "pending": "Not reviewed",
+        "accepted": "Accepted",
+        "revision_requested": "Needs changes",
+        "abandoned": "Abandoned"
+      }
+    },
+    "experience": {
+      "title": "Experience candidate",
+      "evidence": "{{count}} supporting delivery",
+      "trigger": "Applies when",
+      "guidance": "Recommended action",
+      "reviewNotePlaceholder": "Add a review note",
+      "approve": "Approve",
+      "reject": "Reject",
+      "pause": "Pause",
+      "resume": "Resume",
+      "deprecate": "Deprecate",
+      "status": {
+        "candidate": "Needs review",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "shadow": "Shadow",
+        "active": "Active",
+        "paused": "Paused",
+        "deprecated": "Deprecated"
+      }
+    },
+    "shadow": {
+      "title": "Shadow matches",
+      "stats": "{{relevant}} / {{reviewed}} relevant",
+      "relevant": "Relevant",
+      "notRelevant": "Not relevant",
+      "reason": {
+        "exact_trigger": "Exact trigger match",
+        "token_overlap": "Related trigger terms"
+      }
+    },
+    "activation": {
+      "title": "Project experience",
+      "feedback": "{{reviewed}} reviewed · {{relevance}} relevant",
+      "budget": "Up to {{matches}} matches · {{kilobytes}} KB",
+      "applied": "{{count}} experience applied to this delivery",
+      "status": {
+        "collecting": "Collecting Shadow feedback",
+        "ready": "Ready to enable",
+        "active": "Active",
+        "paused": "Paused by quality gate"
+      }
+    },
+    "effect": {
+      "title": "Delivery impact",
+      "assisted": "With experience · {{count}}",
+      "baseline": "Without experience · {{count}}",
+      "delta": "Acceptance delta",
+      "promotionEligible": "Validated in {{count}} local projects · eligible for review",
+      "latest": {
+        "positive": "Latest accepted",
+        "negative": "Latest needs attention"
+      }
+    }
   },
   "devices": {
     "refreshing": "Refreshing...",

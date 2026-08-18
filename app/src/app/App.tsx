@@ -31,8 +31,17 @@ import { useTerminalController } from "../features/terminal/useTerminalControlle
 import { useWorkspaceController } from "../features/workspaces/useWorkspaceController";
 import { useAgentMessageController } from "../features/agent/useAgentMessageController";
 import { useAgentSurfaceController } from "../features/agent/useAgentSurfaceController";
+import { useAgentDeliveryController } from "../features/agent/useAgentDeliveryController";
+import { useAgentExperienceController } from "../features/agent/useAgentExperienceController";
 import { useAgentInteractionController } from "../features/agent/useAgentInteractionController";
 import {
+  agentDeliveryOutcomeSet,
+  agentDeliverySyncRequest,
+  agentExperienceReviewSet,
+  agentExperienceActivationSet,
+  agentExperienceLifecycleSet,
+  agentExperienceShadowFeedbackSet,
+  agentExperienceSyncRequest,
   agentInteractionAnswer,
   agentInteractionSyncRequest,
   agentMessageListRequest,
@@ -254,6 +263,23 @@ function AppContent(): JSX.Element {
     getAgentSurfaceCursor,
     clearAgentSurfaceEvents,
   } = useAgentSurfaceController();
+  const {
+    deliveryEpisodesBySurfaceId,
+    applyAgentDelivery,
+    clearAgentDeliveries,
+  } = useAgentDeliveryController();
+  const {
+    experienceCandidates,
+    experienceShadowRuns,
+    experienceShadowStatsBySessionId,
+    experienceActivations,
+    experienceApplications,
+    experienceEvaluations,
+    experienceEffects,
+    experiencePromotions,
+    applyAgentExperience,
+    clearAgentExperiences,
+  } = useAgentExperienceController();
   const {
     pendingAgentInteractionsBySurfaceId,
     agentSessionAttentionBySessionId,
@@ -669,6 +695,8 @@ function AppContent(): JSX.Element {
     clearWorkspaceState();
     clearTerminalState();
     clearAgentSurfaceEvents();
+    clearAgentDeliveries();
+    clearAgentExperiences();
     clearAgentInteractions();
   }
 
@@ -709,7 +737,20 @@ function AppContent(): JSX.Element {
                 getAgentSurfaceCursor(surface.surface_id),
               ),
             );
+            relay.send(
+              agentDeliverySyncRequest(
+                activePairing.deviceId,
+                session.session_id,
+                surface.surface_id,
+              ),
+            );
           }
+          relay.send(
+            agentExperienceSyncRequest(
+              activePairing.deviceId,
+              session.session_id,
+            ),
+          );
         }
         relay.send(agentInteractionSyncRequest(activePairing.deviceId));
         setSessionListRefreshVersion((version) => version + 1);
@@ -728,6 +769,8 @@ function AppContent(): JSX.Element {
       handleAgentMessageList,
       applyAgentSurfaceEvent,
       applyAgentSurfaceSync,
+      applyAgentDelivery,
+      applyAgentExperience,
       applyAgentInteraction,
       handleAgentNotificationSettings,
       applyTerminalSnapshot,
@@ -752,6 +795,7 @@ function AppContent(): JSX.Element {
           session_id: selectedSession.session_id,
           surface_id: selectedSession.primary_surface_id,
           prompt,
+          origin: "composer",
           context_files:
             contextFiles.length > 0 ? contextFiles : undefined,
           created_at: new Date().toISOString(),
@@ -792,6 +836,7 @@ function AppContent(): JSX.Element {
           session_id: target.session_id,
           surface_id: target.primary_surface_id,
           prompt,
+          origin: "git_review",
           created_at: new Date().toISOString(),
         },
         {
@@ -821,6 +866,93 @@ function AppContent(): JSX.Element {
         interaction,
         decision,
         answers,
+      ),
+    );
+  }
+
+  function handleDeliveryOutcome(
+    episode: Parameters<typeof agentDeliveryOutcomeSet>[1],
+    outcome: Parameters<typeof agentDeliveryOutcomeSet>[2],
+    note?: string,
+  ): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+    sendToRelay(
+      agentDeliveryOutcomeSet(pairing.deviceId, episode, outcome, note),
+    );
+  }
+
+  function handleExperienceReview(
+    candidate: Parameters<typeof agentExperienceReviewSet>[1],
+    decision: Parameters<typeof agentExperienceReviewSet>[2],
+    trigger: string,
+    guidance: string,
+    note?: string,
+  ): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+    sendToRelay(
+      agentExperienceReviewSet(
+        pairing.deviceId,
+        candidate,
+        decision,
+        trigger,
+        guidance,
+        note,
+      ),
+    );
+  }
+
+  function handleExperienceShadowFeedback(
+    runId: string,
+    candidateId: string,
+    feedback: Parameters<typeof agentExperienceShadowFeedbackSet>[3],
+  ): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+    sendToRelay(
+      agentExperienceShadowFeedbackSet(
+        pairing.deviceId,
+        runId,
+        candidateId,
+        feedback,
+      ),
+    );
+  }
+
+  function handleExperienceActivation(
+    projectId: string,
+    enabled: boolean,
+  ): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+    sendToRelay(
+      agentExperienceActivationSet(
+        pairing.deviceId,
+        projectId,
+        enabled,
+      ),
+    );
+  }
+
+  function handleExperienceLifecycle(
+    candidate: Parameters<typeof agentExperienceLifecycleSet>[1],
+    action: Parameters<typeof agentExperienceLifecycleSet>[2],
+    note?: string,
+  ): void {
+    if (!pairing || connectionStatus !== "authenticated") {
+      return;
+    }
+    sendToRelay(
+      agentExperienceLifecycleSet(
+        pairing.deviceId,
+        candidate,
+        action,
+        note,
       ),
     );
   }
@@ -910,9 +1042,23 @@ function AppContent(): JSX.Element {
     selectedWorkspace,
     selectedSession,
     agentSurfaceEventsBySurfaceId,
+    deliveryEpisodesBySurfaceId,
+    experienceCandidates,
+    experienceShadowRuns,
+    experienceShadowStatsBySessionId,
+    experienceActivations,
+    experienceApplications,
+    experienceEvaluations,
+    experienceEffects,
+    experiencePromotions,
     pendingAgentInteractionsBySurfaceId,
     agentSessionAttentionBySessionId,
     handleAgentPromptSubmit,
+    handleDeliveryOutcome,
+    handleExperienceReview,
+    handleExperienceShadowFeedback,
+    handleExperienceActivation,
+    handleExperienceLifecycle,
     handleAgentInteractionAnswer,
     selectedFrame,
     selectedSessionCapabilities,
