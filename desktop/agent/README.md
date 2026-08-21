@@ -92,7 +92,7 @@ relay:
 
 agent:
   # Optional; exactly 32 base64url characters. Empty or omitted generates one.
-  key: q8LDuJppTK3BU9X3et9bF3gAej-vbLQS
+  # key: replace-with-a-unique-32-character-base64url-key
   deviceId: my-desktop
   displayName: Alice DesktopBook
   identityPath: /Users/me/.omniwork/agent.json

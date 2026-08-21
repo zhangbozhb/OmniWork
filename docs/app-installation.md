@@ -44,13 +44,15 @@ OMNIWORK_IOS_CODE_SIGN_STYLE=Manual
 OMNIWORK_IOS_CODE_SIGN_IDENTITY=Apple Distribution
 ```
 
-Android Release 签名（CI 注入；缺失任一变量会回退到 debug 签名并打印告警，不应分发）：
+Android Release 签名（公开 Release 必须完整注入）：
 
 ```text
 OMNIWORK_RELEASE_KEYSTORE=/path/to/omniwork-release.keystore
 OMNIWORK_RELEASE_KEYSTORE_PASSWORD=
 OMNIWORK_RELEASE_KEY_ALIAS=omniwork-release
 OMNIWORK_RELEASE_KEY_PASSWORD=
+OMNIWORK_RELEASE_CERT_SHA256=
+OMNIWORK_REQUIRE_RELEASE_SIGNING=true
 ```
 
 > [app/android/app/src/main/AndroidManifest.xml](../app/android/app/src/main/AndroidManifest.xml) 中
@@ -84,7 +86,8 @@ pnpm --filter @omni-work/app build:android:aab
 
 - App 构建脚本会先运行 `pnpm --filter @omni-work/app generate:xterm-assets`，从已安装的 `@xterm/*` 与 CodeMirror 依赖生成 Native WebView 终端和编辑器本地资源；升级 xterm 或 CodeMirror 依赖后重新执行构建即可刷新资源。
 - Gradle 会读取 `OMNIWORK_APP_VERSION` / `OMNIWORK_ANDROID_VERSION_CODE` / `OMNIWORK_ANDROID_PACKAGE` 环境变量注入 versionName / versionCode / applicationId。
-- 当同时提供 `OMNIWORK_RELEASE_KEYSTORE`、`OMNIWORK_RELEASE_KEYSTORE_PASSWORD`、`OMNIWORK_RELEASE_KEY_ALIAS`、`OMNIWORK_RELEASE_KEY_PASSWORD` 时使用 release 签名；否则回退到 debug 签名（仅供 CI 冒烟产物，不可分发）。
+- 当同时提供 `OMNIWORK_RELEASE_KEYSTORE`、`OMNIWORK_RELEASE_KEYSTORE_PASSWORD`、`OMNIWORK_RELEASE_KEY_ALIAS`、`OMNIWORK_RELEASE_KEY_PASSWORD` 时使用 release 签名；本地未启用严格模式时，缺失配置仍可回退到 debug 签名用于冒烟构建。
+- GitHub Release 固定设置 `OMNIWORK_REQUIRE_RELEASE_SIGNING=true`，任一签名 Secret 缺失都会终止构建；产物还必须通过 `apksigner` 校验，证书 SHA-256 与 `OMNIWORK_RELEASE_CERT_SHA256` 一致后才会发布。
 - 默认 release 允许明文 `ws://` 流量（manifest 硬编码 `usesCleartextTraffic="true"`），方便扫码连公网 IP 形态的 Relay；默认业务安全模式由 App-Agent E2E 保护，Relay 不解析业务 payload。
 
 本地调试：

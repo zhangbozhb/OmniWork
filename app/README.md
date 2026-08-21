@@ -100,7 +100,11 @@ The Android Gradle build reads `OMNIWORK_APP_VERSION`,
 `OMNIWORK_RELEASE_KEYSTORE`, `OMNIWORK_RELEASE_KEYSTORE_PASSWORD`,
 `OMNIWORK_RELEASE_KEY_ALIAS`, and `OMNIWORK_RELEASE_KEY_PASSWORD` for a real
 release signature; missing values fall back to the debug signing config (only
-useful for CI smoke artifacts, not for distribution). The current
+useful for local smoke artifacts, not for distribution). Set
+`OMNIWORK_REQUIRE_RELEASE_SIGNING=true` to make incomplete signing
+configuration fatal. The GitHub Release workflow always enables this strict
+mode, requires `OMNIWORK_RELEASE_CERT_SHA256`, and verifies the built APK
+certificate with `apksigner` before publishing. The current
 `AndroidManifest.xml` hard-codes `usesCleartextTraffic="true"` so release builds
 can pair against `ws://` relays during testing — flip it back to `"false"` and
 switch the relay to `wss://` before shipping.

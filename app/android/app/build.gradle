@@ -84,6 +84,11 @@ def releaseKeyAlias = System.getenv("OMNIWORK_RELEASE_KEY_ALIAS")
 def releaseKeyPassword = System.getenv("OMNIWORK_RELEASE_KEY_PASSWORD")
 def hasValue = { value -> value != null && value.toString().trim().length() > 0 }
 def hasReleaseSigning = hasValue(releaseKeystorePath) && hasValue(releaseKeystorePassword) && hasValue(releaseKeyAlias) && hasValue(releaseKeyPassword)
+def requireReleaseSigning = (System.getenv("OMNIWORK_REQUIRE_RELEASE_SIGNING") ?: "false").toBoolean()
+
+if (requireReleaseSigning && !hasReleaseSigning) {
+    throw new GradleException("[OmniWork] Complete Android release signing configuration is required.")
+}
 
 android {
     ndkVersion rootProject.ext.ndkVersion

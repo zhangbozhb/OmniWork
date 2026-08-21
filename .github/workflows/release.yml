@@ -76,15 +76,32 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Prepare Android signing key
+        shell: bash
         env:
           OMNIWORK_RELEASE_KEYSTORE_BASE64: ${{ secrets.OMNIWORK_RELEASE_KEYSTORE_BASE64 }}
+          OMNIWORK_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.OMNIWORK_RELEASE_KEYSTORE_PASSWORD }}
+          OMNIWORK_RELEASE_KEY_ALIAS: ${{ secrets.OMNIWORK_RELEASE_KEY_ALIAS }}
+          OMNIWORK_RELEASE_KEY_PASSWORD: ${{ secrets.OMNIWORK_RELEASE_KEY_PASSWORD }}
+          OMNIWORK_RELEASE_CERT_SHA256: ${{ secrets.OMNIWORK_RELEASE_CERT_SHA256 }}
         run: |
-          if [[ -z "$OMNIWORK_RELEASE_KEYSTORE_BASE64" ]]; then
-            echo "No Android release keystore configured; Gradle will use debug signing fallback."
-            exit 0
+          missing=()
+          for name in \
+            OMNIWORK_RELEASE_KEYSTORE_BASE64 \
+            OMNIWORK_RELEASE_KEYSTORE_PASSWORD \
+            OMNIWORK_RELEASE_KEY_ALIAS \
+            OMNIWORK_RELEASE_KEY_PASSWORD \
+            OMNIWORK_RELEASE_CERT_SHA256; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required Android release signing secret: %s\n' "${missing[@]}" >&2
+            exit 1
           fi
           mkdir -p "$RUNNER_TEMP/omniwork-signing"
-          echo "$OMNIWORK_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/omniwork-signing/release.keystore"
+          printf '%s' "$OMNIWORK_RELEASE_KEYSTORE_BASE64" |
+            base64 --decode > "$RUNNER_TEMP/omniwork-signing/release.keystore"
 
       - name: Build Android APK
         env:
@@ -93,7 +110,37 @@ jobs:
           OMNIWORK_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.OMNIWORK_RELEASE_KEYSTORE_PASSWORD }}
           OMNIWORK_RELEASE_KEY_ALIAS: ${{ secrets.OMNIWORK_RELEASE_KEY_ALIAS }}
           OMNIWORK_RELEASE_KEY_PASSWORD: ${{ secrets.OMNIWORK_RELEASE_KEY_PASSWORD }}
+          OMNIWORK_REQUIRE_RELEASE_SIGNING: "true"
         run: pnpm app:build:android:apk
+
+      - name: Verify Android release certificate
+        shell: bash
+        env:
+          OMNIWORK_RELEASE_CERT_SHA256: ${{ secrets.OMNIWORK_RELEASE_CERT_SHA256 }}
+        run: |
+          apk="app/android/app/build/outputs/apk/release/app-release.apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [[ -z "$apksigner" ]]; then
+            echo "Android apksigner was not found." >&2
+            exit 1
+          fi
+          certificate="$("$apksigner" verify --verbose --print-certs "$apk")"
+          actual="$(
+            printf '%s\n' "$certificate" |
+              sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+              head -n 1 |
+              tr -d '[:space:]:' |
+              tr '[:lower:]' '[:upper:]'
+          )"
+          expected="$(
+            printf '%s' "$OMNIWORK_RELEASE_CERT_SHA256" |
+              tr -d '[:space:]:' |
+              tr '[:lower:]' '[:upper:]'
+          )"
+          if [[ -z "$actual" || "$actual" != "$expected" ]]; then
+            echo "Android release certificate SHA-256 mismatch." >&2
+            exit 1
+          fi
 
       - name: Prepare Release assets
         shell: bash

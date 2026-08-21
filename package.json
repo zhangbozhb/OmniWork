@@ -51,7 +51,8 @@
     "verify:relay": "pnpm --filter @omni-work/relay-server build:deps && node --experimental-strip-types relay/server/src/main.ts --check",
     "verify:desktop-key": "pnpm --filter @omni-work/desktop-agent build:deps && node --experimental-strip-types desktop/agent/tests/auth-key.test.ts",
     "verify:upgrade:simulator": "pnpm --filter @omni-work/app build:deps && node --experimental-strip-types scripts/verify/mobile-upgrade-simulator.mjs",
-    "verify:security": "pnpm --filter @omni-work/e2e-noise test"
+    "verify:release-security": "node --test scripts/verify/release-security.test.mjs",
+    "verify:security": "pnpm --filter @omni-work/e2e-noise test && pnpm verify:release-security"
   },
   "devDependencies": {
     "@react-native-community/cli": "latest",

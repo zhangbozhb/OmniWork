@@ -388,6 +388,13 @@ interface FakeHttpResponse {
   assert.match(sourceHtml, /data-admin-base="\/admin\/"/);
   assert.match(sourceHtml, /data-admin-login="\/admin\/login\.html"/);
   assert.doesNotMatch(sourceHtml, /\/admin\/web/);
+  assert.match(sourceHtml, /function escapeHtml\(value\)/);
+  assert.match(
+    sourceHtml,
+    /"<td>" \+ escapeHtml\(value\) \+ "<\/td>"/,
+  );
+  assert.match(sourceHtml, /encodedAttribute\(agent\.device_id\)/);
+  assert.match(sourceHtml, /escapeHtml\(location\.label\)/);
 
   const html = renderRelayAdminPage();
   assert.match(html, /<!doctype html>/i);

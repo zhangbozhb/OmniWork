@@ -188,6 +188,11 @@ idle connection:
 If Nginx fronts Relay, keep `proxy_read_timeout` above the ping interval. The
 deployment example uses `3600s`.
 
+Relay accepts masked, final client frames with payloads up to 8 MiB. Unsupported
+fragmentation, reserved bits, unmasked client frames, and malformed control
+frames close only the offending connection with code `1002`; oversized frames
+close it with code `1009`.
+
 ### Agent shutdown close code
 
 Relay uses WebSocket close code `4404` only when it intentionally asks the

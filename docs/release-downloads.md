@@ -139,7 +139,8 @@ pnpm site:build
 
 ## GitHub Secrets
 
-Android Release 默认在未提供签名密钥时使用 debug keystore 产出冒烟包。正式分发前，应在 GitHub Secrets 中配置：
+GitHub Release 只允许发布正式签名且证书指纹匹配的 Android APK。以下
+Secrets 缺少任一项时 workflow 会立即失败：
 
 | Secret | 说明 |
 | --- | --- |
@@ -147,7 +148,10 @@ Android Release 默认在未提供签名密钥时使用 debug keystore 产出冒
 | `OMNIWORK_RELEASE_KEYSTORE_PASSWORD` | keystore 密码 |
 | `OMNIWORK_RELEASE_KEY_ALIAS` | release key alias |
 | `OMNIWORK_RELEASE_KEY_PASSWORD` | release key 密码 |
+| `OMNIWORK_RELEASE_CERT_SHA256` | 允许发布的签名证书 SHA-256 指纹，可带或不带冒号 |
 
-当前 workflow 先打通 GitHub Release 发布链路。接入正式 Android 签名时，可在 workflow 中把 `OMNIWORK_RELEASE_KEYSTORE_BASE64` 解码为文件，并将对应环境变量传给 `pnpm app:build:android:apk`。
+workflow 会设置 `OMNIWORK_REQUIRE_RELEASE_SIGNING=true` 禁止 Gradle 回退到
+debug keystore，并在构建后使用 `apksigner verify --print-certs` 比对实际证书
+指纹。debug 签名产物只能由本地冒烟构建生成，不会进入 GitHub Release。
 
 iOS IPA 需要 Apple 证书、Provisioning Profile 与签名身份。由于普通用户主入口是 App Store，GitHub Release 中的 IPA 仍保持可选；证书链路就绪后再把 `pnpm app:build:ios` 接入独立的 macOS job。

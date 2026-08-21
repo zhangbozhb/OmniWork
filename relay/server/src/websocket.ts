@@ -5,6 +5,9 @@ import type { Socket } from "node:net";
 type MessageHandler = (message: string) => void;
 type CloseHandler = () => void;
 
+const MAX_FRAME_PAYLOAD_BYTES = 8 * 1024 * 1024;
+const MAX_FRAME_HEADER_BYTES = 14;
+
 export interface WebSocketConnectionOptions {
   keepaliveIntervalMs?: number;
   pongTimeoutMs?: number;
@@ -62,35 +65,51 @@ export class WebSocketConnection {
   }
 
   private handleData(chunk: Buffer): void {
-    this.buffer = Buffer.concat([this.buffer, chunk]);
+    try {
+      this.buffer = Buffer.concat([this.buffer, chunk]);
 
-    while (this.buffer.length >= 2) {
-      const frame = tryReadFrame(this.buffer);
-      if (!frame) {
-        return;
-      }
+      while (this.buffer.length >= 2) {
+        const frame = tryReadFrame(this.buffer);
+        if (!frame) {
+          if (
+            this.buffer.length >
+            MAX_FRAME_PAYLOAD_BYTES + MAX_FRAME_HEADER_BYTES
+          ) {
+            throw new WebSocketFrameError(1009, "WebSocket frame is too large");
+          }
+          return;
+        }
 
-      this.buffer = this.buffer.subarray(frame.bytesRead);
-      if (frame.opcode === 0x8) {
-        this.close();
-        return;
-      }
-      if (frame.opcode === 0x9) {
-        this.writeFrame(frame.payload, 0xA);
-        continue;
-      }
-      if (frame.opcode === 0xA) {
-        this.markPongReceived();
-        continue;
-      }
-      if (frame.opcode !== 0x1) {
-        continue;
-      }
+        this.buffer = this.buffer.subarray(frame.bytesRead);
+        if (frame.opcode === 0x8) {
+          this.close();
+          return;
+        }
+        if (frame.opcode === 0x9) {
+          this.writeFrame(frame.payload, 0xA);
+          continue;
+        }
+        if (frame.opcode === 0xA) {
+          this.markPongReceived();
+          continue;
+        }
+        if (frame.opcode !== 0x1) {
+          continue;
+        }
 
-      const message = frame.payload.toString("utf8");
-      for (const handler of this.messageHandlers) {
-        handler(message);
+        const message = frame.payload.toString("utf8");
+        for (const handler of this.messageHandlers) {
+          handler(message);
+        }
       }
+    } catch (error) {
+      this.buffer = Buffer.alloc(0);
+      const closeCode =
+        error instanceof WebSocketFrameError ? error.closeCode : 1002;
+      this.close(
+        closeCode,
+        closeCode === 1009 ? "message too large" : "protocol error",
+      );
     }
   }
 
@@ -193,6 +212,15 @@ interface DecodedFrame {
   bytesRead: number;
 }
 
+class WebSocketFrameError extends Error {
+  readonly closeCode: 1002 | 1009;
+
+  constructor(closeCode: 1002 | 1009, message: string) {
+    super(message);
+    this.closeCode = closeCode;
+  }
+}
+
 function tryReadFrame(buffer: Buffer): DecodedFrame | null {
   const first = buffer[0];
   const second = buffer[1];
@@ -202,8 +230,23 @@ function tryReadFrame(buffer: Buffer): DecodedFrame | null {
   let length = second & 0x7f;
   let offset = 2;
 
+  if ((first & 0x70) !== 0) {
+    throw new WebSocketFrameError(
+      1002,
+      "WebSocket reserved bits are unsupported",
+    );
+  }
   if (!fin) {
-    return null;
+    throw new WebSocketFrameError(
+      1002,
+      "Fragmented WebSocket frames are unsupported",
+    );
+  }
+  if (!masked) {
+    throw new WebSocketFrameError(
+      1002,
+      "Client WebSocket frames must be masked",
+    );
   }
 
   if (length === 126) {
@@ -217,25 +260,31 @@ function tryReadFrame(buffer: Buffer): DecodedFrame | null {
       return null;
     }
     const extendedLength = buffer.readBigUInt64BE(offset);
-    if (extendedLength > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new Error("WebSocket frame is too large");
+    if (extendedLength > BigInt(MAX_FRAME_PAYLOAD_BYTES)) {
+      throw new WebSocketFrameError(1009, "WebSocket frame is too large");
     }
     length = Number(extendedLength);
     offset += 8;
   }
+  if (length > MAX_FRAME_PAYLOAD_BYTES) {
+    throw new WebSocketFrameError(1009, "WebSocket frame is too large");
+  }
+  if (opcode >= 0x8 && length > 125) {
+    throw new WebSocketFrameError(
+      1002,
+      "WebSocket control frame is too large",
+    );
+  }
 
-  const maskLength = masked ? 4 : 0;
-  if (buffer.length < offset + maskLength + length) {
+  if (buffer.length < offset + 4 + length) {
     return null;
   }
 
-  const mask = masked ? buffer.subarray(offset, offset + 4) : undefined;
-  offset += maskLength;
+  const mask = buffer.subarray(offset, offset + 4);
+  offset += 4;
   const payload = Buffer.from(buffer.subarray(offset, offset + length));
-  if (mask) {
-    for (let index = 0; index < payload.length; index += 1) {
-      payload[index] ^= mask[index % 4];
-    }
+  for (let index = 0; index < payload.length; index += 1) {
+    payload[index] ^= mask[index % 4];
   }
 
   return {

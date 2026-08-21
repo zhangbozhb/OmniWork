@@ -40,6 +40,17 @@ assert.equal(isValidSessionKey("short"), false);
 assert.equal(isValidSessionKey("a".repeat(33)), false);
 assert.equal(isValidSessionKey("a".repeat(31) + "!"), false);
 
+const publicConfigFiles = await Promise.all([
+  readFile(new URL("../config.example.yml", import.meta.url), "utf8"),
+  readFile(new URL("../README.md", import.meta.url), "utf8"),
+]);
+for (const publicConfig of publicConfigFiles) {
+  assert.doesNotMatch(
+    publicConfig,
+    /^\s*key:\s*[A-Za-z0-9_-]{32}\s*$/mu,
+  );
+}
+
 const nonce = "nonce_for_test_123456";
 const appInfo = {
   instance_id: "app_test_1",
