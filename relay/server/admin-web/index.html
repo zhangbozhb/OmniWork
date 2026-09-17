@@ -1,5 +1,10 @@
 <!doctype html>
-<html lang="en" data-admin-base="/admin/" data-admin-login="/admin/login.html">
+<html
+  lang="en"
+  data-admin-base="/admin/"
+  data-admin-login="/admin/login.html"
+  data-admin-api="/admin/api"
+>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -1102,6 +1107,10 @@
         const base = adminBase();
         return (base.endsWith("/") ? base : base + "/") + name;
       }
+      function adminApi(path) {
+        const base = document.documentElement.dataset.adminApi || "/admin/api";
+        return base + (path.startsWith("/") ? path : "/" + path);
+      }
       async function api(path, options = {}) {
         const headers = Object.assign(
           { "content-type": "application/json" },
@@ -1112,7 +1121,7 @@
           headers["x-csrf-token"] = await ensureCsrfToken();
         }
         const res = await fetch(
-          path,
+          adminApi(path),
           Object.assign({}, options, { headers, credentials: "same-origin" }),
         );
         const body = await res.json();
@@ -1125,7 +1134,7 @@
       }
       async function ensureCsrfToken() {
         if (csrfToken) return csrfToken;
-        const res = await fetch("/admin/api/me", {
+        const res = await fetch(adminApi("/me"), {
           headers: { "content-type": "application/json" },
           credentials: "same-origin",
         });
@@ -1164,11 +1173,11 @@
       async function refresh() {
         const [status, devices, agents, trafficMap, agentAuthorizations] =
           await Promise.all([
-            api("/admin/api/status"),
-            api("/admin/api/devices?include_offline=true&limit=100"),
-            api("/admin/api/agents"),
-            api("/admin/api/traffic-map"),
-            api("/admin/api/agent-authorizations"),
+            api("/status"),
+            api("/devices?include_offline=true&limit=100"),
+            api("/agents"),
+            api("/traffic-map"),
+            api("/agent-authorizations"),
           ]);
         qs("device-count").textContent = status.summary.active_device_count;
         qs("agent-count").textContent = status.summary.active_agent_count;
@@ -1410,7 +1419,7 @@
         );
       }
       async function updateAgentAuthorization(action, deviceId) {
-        await api("/admin/api/agent-authorizations/device-op", {
+        await api("/agent-authorizations/device-op", {
           method: "POST",
           body: JSON.stringify({
             action,
@@ -1430,9 +1439,7 @@
         selectedDevice = deviceId;
         qs("selected-agent").textContent = deviceId;
         const data = await api(
-          "/admin/api/agent-connections/" +
-            encodeURIComponent(connectionId) +
-            "/apps",
+          "/agent-connections/" + encodeURIComponent(connectionId) + "/apps",
         );
         qs("apps").innerHTML = data.apps
           .map((app) => {
@@ -1454,11 +1461,11 @@
       }
       qs("refresh").onclick = () => refresh().catch(showError);
       qs("logout").onclick = async () => {
-        await api("/admin/api/logout", { method: "POST" }).catch(() => {});
+        await api("/logout", { method: "POST" }).catch(() => {});
         location.href = adminBase();
       };
       qs("disable-agent-device-button").onclick = async () => {
-        await api("/admin/api/controls/agent-devices/device-op", {
+        await api("/controls/agent-devices/device-op", {
           method: "POST",
           body: JSON.stringify({
             action: "disable",
@@ -1470,7 +1477,7 @@
         await refresh();
       };
       qs("delete-agent-device-disable").onclick = async () => {
-        await api("/admin/api/controls/agent-devices/device-op", {
+        await api("/controls/agent-devices/device-op", {
           method: "POST",
           body: JSON.stringify({
             action: "delete",
@@ -1481,7 +1488,7 @@
         await refresh();
       };
       qs("ban-ip-btn").onclick = async () => {
-        await api("/admin/api/controls/ip-bans", {
+        await api("/controls/ip-bans", {
           method: "POST",
           body: JSON.stringify({
             action: "ban",
@@ -1493,7 +1500,7 @@
         await refresh();
       };
       qs("unban-ip-btn").onclick = async () => {
-        await api("/admin/api/controls/ip-bans", {
+        await api("/controls/ip-bans", {
           method: "POST",
           body: JSON.stringify({
             action: "unban",

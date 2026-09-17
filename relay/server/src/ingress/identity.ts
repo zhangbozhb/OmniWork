@@ -141,10 +141,14 @@ export function parseRelayEndpoint(
   return null;
 }
 
-export function relayAdminWebUrl(host: string, port: number): string {
+export function relayAdminWebUrl(
+  host: string,
+  port: number,
+  prefix = "",
+): string {
   const displayHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
   const urlHost = displayHost.includes(":") ? `[${displayHost}]` : displayHost;
-  return `http://${urlHost}:${port}/admin/web`;
+  return `http://${urlHost}:${port}${prefix}/admin/web`;
 }
 
 export function rejectWebSocketUpgrade(

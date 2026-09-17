@@ -10,6 +10,7 @@ const tokenDir = mkdtempSync(join(tmpdir(), "omniwork-relay-admin-"));
 
 try {
   const auth = new RelayAdminAuth({
+    prefix: "/xxxxx",
     tokenDir,
     tokenRotateMs: 3_600_000,
     sessionTtlMs: 1_800_000,
@@ -35,6 +36,7 @@ try {
 
   const cookie = auth.sessionCookie(session);
   assert.match(cookie, /Secure/);
+  assert.match(cookie, /Path=\/xxxxx\/admin/);
   assert.equal(auth.authenticate(request({ cookie }), 1002)?.id, session.id);
   assert.equal(auth.authenticate(request({ cookie }), 1_801_001), null);
 
@@ -64,6 +66,7 @@ try {
     join(tmpdir(), "omniwork-relay-admin-insecure-"),
   );
   const insecureAuth = new RelayAdminAuth({
+    prefix: "",
     tokenDir: insecureTokenDir,
     tokenRotateMs: 3_600_000,
     sessionTtlMs: 1_800_000,
@@ -79,6 +82,7 @@ try {
     );
     assert.ok(insecureSession);
     assert.doesNotMatch(insecureAuth.sessionCookie(insecureSession), /Secure/);
+    assert.match(insecureAuth.sessionCookie(insecureSession), /Path=\/admin/);
     assert.doesNotMatch(insecureAuth.clearSessionCookie(), /Secure/);
   } finally {
     insecureAuth.stop();

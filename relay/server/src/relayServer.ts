@@ -323,12 +323,17 @@ export class RelayServer {
       agent_authorization_mode: this.config.agentAuthorization.mode,
       admin_host: this.config.admin.host,
       admin_port: this.config.admin.port,
+      admin_prefix: this.config.admin.prefix,
       controls_db: this.config.admin.controlsDbPath,
     });
     if (this.config.admin.webEnabled) {
       logRelayEvent({
         event: "admin.web.ready",
-        url: relayAdminWebUrl(this.config.admin.host, this.config.admin.port),
+        url: relayAdminWebUrl(
+          this.config.admin.host,
+          this.config.admin.port,
+          this.config.admin.prefix,
+        ),
         https_required: this.config.admin.requireHttps,
       });
     }

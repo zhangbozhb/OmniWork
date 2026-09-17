@@ -10,6 +10,7 @@ import type { IncomingMessage } from "node:http";
 import { join } from "node:path";
 
 export interface RelayAdminAuthConfig {
+  prefix: string;
   tokenDir: string;
   tokenRotateMs: number;
   sessionTtlMs: number;
@@ -109,7 +110,7 @@ export class RelayAdminAuth {
       `${SESSION_COOKIE_NAME}=${session.id}`,
       "HttpOnly",
       "SameSite=Strict",
-      "Path=/admin",
+      `Path=${this.config.prefix}/admin`,
       `Max-Age=${Math.floor(this.config.sessionTtlMs / 1000)}`,
     ];
     if (this.config.requireHttps) {
@@ -123,7 +124,7 @@ export class RelayAdminAuth {
       `${SESSION_COOKIE_NAME}=`,
       "HttpOnly",
       "SameSite=Strict",
-      "Path=/admin",
+      `Path=${this.config.prefix}/admin`,
       "Max-Age=0",
     ];
     if (this.config.requireHttps) {

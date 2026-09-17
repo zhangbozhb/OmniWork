@@ -95,11 +95,12 @@ export class RelayAdminController {
   }
 
   matches(pathname: string): boolean {
+    const adminPathname = this.stripConfiguredPrefix(pathname);
     return (
       (this.config.admin.webEnabled &&
-        (ADMIN_WEB_PATHS.has(pathname) ||
-          pathname.startsWith(ADMIN_WEB_ASSET_PREFIX))) ||
-      pathname.startsWith(`${ADMIN_API_PREFIX}/`)
+        (ADMIN_WEB_PATHS.has(adminPathname) ||
+          adminPathname.startsWith(ADMIN_WEB_ASSET_PREFIX))) ||
+      adminPathname.startsWith(`${ADMIN_API_PREFIX}/`)
     );
   }
 
@@ -108,10 +109,11 @@ export class RelayAdminController {
     response: ServerResponse,
     url: URL,
   ): Promise<void> {
+    const pathname = this.stripConfiguredPrefix(url.pathname);
     if (
       this.config.admin.webEnabled &&
       request.method === "GET" &&
-      ADMIN_WEB_PATHS.has(url.pathname)
+      ADMIN_WEB_PATHS.has(pathname)
     ) {
       this.handleWeb(request, response);
       return;
@@ -120,15 +122,15 @@ export class RelayAdminController {
     if (
       this.config.admin.webEnabled &&
       request.method === "GET" &&
-      url.pathname.startsWith(ADMIN_WEB_ASSET_PREFIX)
+      pathname.startsWith(ADMIN_WEB_ASSET_PREFIX)
     ) {
-      this.handleWebAsset(request, response, url.pathname);
+      this.handleWebAsset(request, response, pathname);
       return;
     }
 
-    if (url.pathname.startsWith(`${ADMIN_API_PREFIX}/`)) {
+    if (pathname.startsWith(`${ADMIN_API_PREFIX}/`)) {
       const adminUrl = new URL(url);
-      adminUrl.pathname = `/api${url.pathname.slice(ADMIN_API_PREFIX.length)}`;
+      adminUrl.pathname = `/api${pathname.slice(ADMIN_API_PREFIX.length)}`;
       await this.handleApiHttp(request, response, adminUrl);
       return;
     }
@@ -214,13 +216,16 @@ export class RelayAdminController {
     const decision = this.authorizeAdminHttp(request, "/", "GET", true, false);
     if (!decision.ok) {
       if (decision.reason === "unauthorized") {
-        this.writeHtml(response, renderRelayAdminLoginPage());
+        this.writeHtml(
+          response,
+          renderRelayAdminLoginPage(this.config.admin.prefix),
+        );
       } else {
         this.authExecutor.execute(decision, { response });
       }
       return;
     }
-    this.writeHtml(response, renderRelayAdminPage());
+    this.writeHtml(response, renderRelayAdminPage(this.config.admin.prefix));
   }
 
   private handleWebAsset(
@@ -609,7 +614,10 @@ export class RelayAdminController {
     this.pendingAgentAuthorizations.delete(deviceId);
     this.controlStore.delete("agent_device_authorization", deviceId);
     if (this.config.agentAuthorization.mode === "manual") {
-      this.closeAgentDevice(deviceId, RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON);
+      this.closeAgentDevice(
+        deviceId,
+        RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON,
+      );
     }
   }
 
@@ -668,6 +676,18 @@ export class RelayAdminController {
 
   private isHttpsRequest(request: IncomingMessage): boolean {
     return !this.config.admin.requireHttps || this.auth.isHttps(request);
+  }
+
+  private stripConfiguredPrefix(pathname: string): string {
+    const prefix = this.config.admin.prefix;
+    if (
+      prefix &&
+      (pathname === `${prefix}/admin` ||
+        pathname.startsWith(`${prefix}/admin/`))
+    ) {
+      return pathname.slice(prefix.length);
+    }
+    return pathname;
   }
 
   private activeRule(
@@ -907,7 +927,9 @@ function readAgentDeviceIds(body: unknown): string[] {
   if (singleId) {
     ids.push(singleId);
   }
-  const uniqueIds = [...new Set(ids.map((id) => normalizeIdentityId(id) ?? id))];
+  const uniqueIds = [
+    ...new Set(ids.map((id) => normalizeIdentityId(id) ?? id)),
+  ];
   if (uniqueIds.length === 0) {
     throw new Error("Missing agent_device_ids.");
   }

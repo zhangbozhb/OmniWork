@@ -62,6 +62,7 @@ server:
 admin:
   host: 127.0.0.1
   port: 8788
+  prefix: ""
 paths:
   runtimeDir: .omniwork-relay
 agentAuthorization:
@@ -386,6 +387,12 @@ connections may assert `X-Forwarded-Proto: https` or `X-Forwarded-For`. The
 fronting Nginx config must overwrite `X-Forwarded-For` with `$remote_addr`
 rather than appending `$proxy_add_x_forwarded_for`, so client-supplied forwarded
 chains cannot affect GeoIP, IP-ban, or auth rate-limit attribution.
+
+When the proxy publishes Admin below a path such as `/xxxxx/`, set
+`admin.prefix: /xxxxx` or `OMNIWORK_RELAY_ADMIN_PREFIX=/xxxxx`. The prefix is
+empty by default. It is applied to browser-facing Admin Web/API URLs and the
+Admin session cookie path. Relay accepts both prefixed requests and requests
+whose prefix was stripped by a trailing-slash `proxy_pass`.
 
 Relay Admin API is provided only by the separate admin listener under
 `/admin/api/...`; the business listener intentionally returns 404 for admin

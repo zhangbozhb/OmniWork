@@ -17,18 +17,29 @@ const adminAssetPaths = new Map([
 ]);
 const DEV_ADMIN_BASE = "/admin/web";
 const DEV_ADMIN_LOGIN = "/admin/web";
+const ADMIN_API_BASE = "/admin/api";
 
 let cachedAdminPage: string | null = null;
 let cachedAdminLoginPage: string | null = null;
 
-export function renderRelayAdminPage(): string {
+export function renderRelayAdminPage(prefix = ""): string {
   cachedAdminPage ??= readFileSync(adminPagePath, "utf8");
-  return withAdminPaths(cachedAdminPage, DEV_ADMIN_BASE, DEV_ADMIN_LOGIN);
+  return withAdminPaths(
+    cachedAdminPage,
+    `${prefix}${DEV_ADMIN_BASE}`,
+    `${prefix}${DEV_ADMIN_LOGIN}`,
+    `${prefix}${ADMIN_API_BASE}`,
+  );
 }
 
-export function renderRelayAdminLoginPage(): string {
+export function renderRelayAdminLoginPage(prefix = ""): string {
   cachedAdminLoginPage ??= readFileSync(adminLoginPagePath, "utf8");
-  return withAdminPaths(cachedAdminLoginPage, DEV_ADMIN_BASE, DEV_ADMIN_LOGIN);
+  return withAdminPaths(
+    cachedAdminLoginPage,
+    `${prefix}${DEV_ADMIN_BASE}`,
+    `${prefix}${DEV_ADMIN_LOGIN}`,
+    `${prefix}${ADMIN_API_BASE}`,
+  );
 }
 
 export function readRelayAdminAsset(
@@ -48,11 +59,13 @@ function withAdminPaths(
   html: string,
   adminBase: string,
   adminLogin: string,
+  adminApi: string,
 ): string {
   return html
     .replace('data-admin-base="/admin/"', `data-admin-base="${adminBase}"`)
     .replace(
       'data-admin-login="/admin/login.html"',
       `data-admin-login="${adminLogin}"`,
-    );
+    )
+    .replace('data-admin-api="/admin/api"', `data-admin-api="${adminApi}"`);
 }

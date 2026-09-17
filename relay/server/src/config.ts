@@ -58,6 +58,7 @@ export interface RelayServerConfig {
   admin: {
     host: string;
     port: number;
+    prefix: string;
     webEnabled: boolean;
     tokenDir: string;
     tokenRotateMs: number;
@@ -167,6 +168,12 @@ export function loadRelayServerConfig(
   const adminPort =
     readConfigNumber(rawConfig, 8788, "admin", "port") ??
     Number(env.OMNIWORK_RELAY_ADMIN_PORT ?? "8788");
+  const rawAdminPrefix = readConfigValue(rawConfig, "admin", "prefix");
+  const adminPrefix = parseAdminPrefix(
+    typeof rawAdminPrefix === "string"
+      ? rawAdminPrefix
+      : env.OMNIWORK_RELAY_ADMIN_PREFIX,
+  );
 
   if (listenersOverlap(host, port, adminHost, adminPort)) {
     throw new RelayConfigError(
@@ -289,6 +296,7 @@ export function loadRelayServerConfig(
     admin: {
       host: adminHost,
       port: adminPort,
+      prefix: adminPrefix,
       webEnabled: parseBoolean(
         readConfigBoolean(rawConfig, false, "admin", "webEnabled"),
         parseBoolean(env.OMNIWORK_RELAY_ADMIN_WEB_ENABLED, false),
@@ -678,6 +686,23 @@ function parseAgentAuthorizationMode(
   throw new RelayConfigError(
     `[omniwork-relay] unsupported OMNIWORK_RELAY_AGENT_AUTHORIZATION_MODE "${value}". Use manual or automatic.`,
   );
+}
+
+function parseAdminPrefix(value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || trimmed === "/") {
+    return "";
+  }
+  const normalized = `${trimmed.startsWith("/") ? "" : "/"}${trimmed}`.replace(
+    /\/+$/u,
+    "",
+  );
+  if (!/^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*$/u.test(normalized)) {
+    throw new RelayConfigError(
+      `[omniwork-relay] invalid OMNIWORK_RELAY_ADMIN_PREFIX "${value}". Use an empty value or a path such as /xxxxx.`,
+    );
+  }
+  return normalized;
 }
 
 function parseMailProvider(value: string | undefined): "console" | "smtp" {

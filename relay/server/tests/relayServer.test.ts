@@ -87,6 +87,7 @@ function loadIsolatedRelayServerConfig(env: NodeJS.ProcessEnv) {
   assert.equal(config.admin.webEnabled, false);
   assert.equal(config.admin.host, "127.0.0.1");
   assert.equal(config.admin.port, 8788);
+  assert.equal(config.admin.prefix, "");
   assert.equal(config.configPath, undefined);
   assert.equal(config.websocket.keepaliveIntervalMs, 3_300_000);
   assert.equal(config.websocket.pongTimeoutMs, 30_000);
@@ -115,6 +116,7 @@ server:
   deviceId: cwd-relay
 admin:
   port: 17889
+  prefix: /cwd-prefix/
 `,
   );
   await writeFile(
@@ -182,6 +184,7 @@ admin:
   assert.equal(cwdConfig.configPath, cwdConfigPath);
   assert.equal(cwdConfig.port, 17888);
   assert.equal(cwdConfig.deviceId, "cwd-relay");
+  assert.equal(cwdConfig.admin.prefix, "/cwd-prefix");
 
   const programConfig = loadRelayServerConfig(
     {},
@@ -262,9 +265,11 @@ admin:
   const config = loadIsolatedRelayServerConfig({
     OMNIWORK_RELAY_HOST: "127.0.0.1",
     OMNIWORK_RELAY_ADMIN_WEB_ENABLED: "true",
+    OMNIWORK_RELAY_ADMIN_PREFIX: " /xxxxx/ ",
   });
 
   assert.equal(config.admin.webEnabled, true);
+  assert.equal(config.admin.prefix, "/xxxxx");
 }
 
 {
@@ -340,6 +345,14 @@ admin:
       }),
     /must use https/,
   );
+  assert.throws(
+    () =>
+      loadIsolatedRelayServerConfig({
+        OMNIWORK_RELAY_HOST: "127.0.0.1",
+        OMNIWORK_RELAY_ADMIN_PREFIX: "/invalid?prefix",
+      }),
+    /invalid OMNIWORK_RELAY_ADMIN_PREFIX/,
+  );
   assert.equal(
     loadIsolatedRelayServerConfig({
       OMNIWORK_RELAY_HOST: "127.0.0.1",
@@ -404,6 +417,7 @@ interface FakeHttpResponse {
   );
   assert.match(sourceHtml, /data-admin-base="\/admin\/"/);
   assert.match(sourceHtml, /data-admin-login="\/admin\/login\.html"/);
+  assert.match(sourceHtml, /data-admin-api="\/admin\/api"/);
   assert.doesNotMatch(sourceHtml, /\/admin\/web/);
   assert.match(sourceHtml, /function escapeHtml\(value\)/);
   assert.match(
@@ -421,19 +435,20 @@ interface FakeHttpResponse {
   assert.match(html, /OmniWork Relay/);
   assert.match(html, /data-admin-base="\/admin\/web"/);
   assert.match(html, /data-admin-login="\/admin\/web"/);
-  assert.match(html, /\/admin\/api\/status/);
-  assert.match(html, /\/admin\/api\/agents/);
-  assert.match(html, /\/admin\/api\/agent-authorizations/);
+  assert.match(html, /data-admin-api="\/admin\/api"/);
+  assert.match(html, /api\("\/status"\)/);
+  assert.match(html, /api\("\/agents"\)/);
+  assert.match(html, /api\("\/agent-authorizations"\)/);
   assert.match(html, /id="pending-agent-detail-dialog"/);
   assert.match(html, /request\.public_ip/);
   assert.match(html, /request\.system_type/);
   assert.match(html, /request\.uname/);
-  assert.match(html, /\/admin\/api\/devices/);
-  assert.match(html, /\/admin\/api\/traffic-map/);
+  assert.match(html, /api\("\/devices\?/);
+  assert.match(html, /api\("\/traffic-map"\)/);
   assert.match(html, /world-land-110m\.geojson/);
-  assert.match(html, /\/admin\/api\/agent-connections/);
-  assert.match(html, /\/admin\/api\/controls\/agent-devices\/device-op/);
-  assert.match(html, /\/admin\/api\/controls\/ip-bans/);
+  assert.match(html, /"\/agent-connections\/"/);
+  assert.match(html, /"\/controls\/agent-devices\/device-op"/);
+  assert.match(html, /"\/controls\/ip-bans"/);
   assert.match(html, /id="language"/);
   assert.match(html, /data-i18n="traffic\.title"/);
   assert.match(html, /"common\.refresh": "刷新"/);
@@ -446,7 +461,8 @@ interface FakeHttpResponse {
   const loginHtml = renderRelayAdminLoginPage();
   assert.match(loginHtml, /Relay Admin Login/);
   assert.match(loginHtml, /data-admin-base="\/admin\/web"/);
-  assert.match(loginHtml, /\/admin\/api\/login/);
+  assert.match(loginHtml, /data-admin-api="\/admin\/api"/);
+  assert.match(loginHtml, /adminApi\("\/login"\)/);
   assert.match(loginHtml, /id="language"/);
   assert.match(loginHtml, /"login\.title": "Relay 管理登录"/);
   assert.match(loginHtml, /navigator\.languages/);
@@ -454,6 +470,13 @@ interface FakeHttpResponse {
   const loginScript = loginHtml.match(/<script>([\s\S]+)<\/script>/u)?.[1];
   assert.ok(loginScript);
   assert.doesNotThrow(() => new Function(loginScript));
+  const prefixedHtml = renderRelayAdminPage("/xxxxx");
+  assert.match(prefixedHtml, /data-admin-base="\/xxxxx\/admin\/web"/);
+  assert.match(prefixedHtml, /data-admin-login="\/xxxxx\/admin\/web"/);
+  assert.match(prefixedHtml, /data-admin-api="\/xxxxx\/admin\/api"/);
+  const prefixedLoginHtml = renderRelayAdminLoginPage("/xxxxx");
+  assert.match(prefixedLoginHtml, /data-admin-base="\/xxxxx\/admin\/web"/);
+  assert.match(prefixedLoginHtml, /data-admin-api="\/xxxxx\/admin\/api"/);
   const worldLand = readRelayAdminAsset("world-land-110m.geojson");
   assert.ok(worldLand);
   assert.equal(worldLand.contentType, "application/geo+json; charset=utf-8");
@@ -475,6 +498,47 @@ interface FakeHttpResponse {
     false,
   );
   assert.equal(internals.admin.matches("/admin/api/status"), true);
+}
+
+// Admin prefix supports both prefix-stripping and prefix-preserving proxies.
+{
+  const server = createServer({
+    OMNIWORK_RELAY_ADMIN_PREFIX: "/xxxxx",
+    OMNIWORK_RELAY_ADMIN_WEB_ENABLED: "true",
+    OMNIWORK_RELAY_ADMIN_REQUIRE_HTTPS: "false",
+  });
+  const internals = server as unknown as {
+    admin: {
+      matches(pathname: string): boolean;
+      handle(
+        request: IncomingMessage,
+        response: FakeHttpResponse,
+        url: URL,
+      ): Promise<void>;
+    };
+  };
+
+  assert.equal(internals.admin.matches("/admin/web"), true);
+  assert.equal(internals.admin.matches("/xxxxx/admin/web"), true);
+  assert.equal(internals.admin.matches("/admin/api/status"), true);
+  assert.equal(internals.admin.matches("/xxxxx/admin/api/status"), true);
+
+  const webResponse = createFakeHttpResponse();
+  await internals.admin.handle(
+    { method: "GET", headers: {} } as IncomingMessage,
+    webResponse,
+    new URL("http://relay.local/xxxxx/admin/web"),
+  );
+  assert.equal(webResponse.statusCode, 200);
+  assert.match(webResponse.body, /data-admin-api="\/xxxxx\/admin\/api"/);
+
+  const apiResponse = createFakeHttpResponse();
+  await internals.admin.handle(
+    { method: "GET", headers: {} } as IncomingMessage,
+    apiResponse,
+    new URL("http://relay.local/xxxxx/admin/api/me"),
+  );
+  assert.equal(apiResponse.statusCode, 401);
 }
 
 // 业务 listener 不挂载 Admin API；Admin 只能通过独立 admin listener 进入。
@@ -1000,12 +1064,13 @@ function createMobileConnection(
   };
 }
 
-function createServer(): RelayServer {
+function createServer(env: NodeJS.ProcessEnv = {}): RelayServer {
   return new RelayServer(
     loadIsolatedRelayServerConfig({
       OMNIWORK_RELAY_HOST: "127.0.0.1",
       OMNIWORK_UPGRADE_PROPOSE_DELAY_MS: "1",
       OMNIWORK_UPGRADE_ICE_SERVERS_JSON: "[]",
+      ...env,
     }),
   );
 }

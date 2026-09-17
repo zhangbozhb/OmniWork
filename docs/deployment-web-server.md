@@ -76,6 +76,7 @@ server:
 admin:
   host: 127.0.0.1
   port: 8788
+  prefix: ""
   requireHttps: true
   webEnabled: false
   trustProxy: true
@@ -97,6 +98,20 @@ OMNIWORK_RELAY_ADMIN_REQUIRE_HTTPS=false pnpm dev:relay
 ```
 
 `pnpm dev:relay` enables the Node-served admin web page at `/admin/web`.
+
+To publish the Node-served Admin Web below a reverse-proxy path while keeping a
+trailing-slash `proxy_pass` that strips that path, configure the public prefix:
+
+```yml
+admin:
+  prefix: /xxxxx
+  webEnabled: true
+```
+
+The browser then uses `/xxxxx/admin/web` and `/xxxxx/admin/api/...`, while Relay
+continues to accept the stripped `/admin/...` upstream paths. The Admin session
+cookie is scoped to `/xxxxx/admin`. An empty prefix keeps the existing
+`/admin/...` behavior.
 
 ## Nginx
 
