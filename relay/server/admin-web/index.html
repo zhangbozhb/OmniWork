@@ -43,6 +43,19 @@
         gap: 16px;
         margin-bottom: 24px;
       }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .language-select {
+        min-width: 104px;
+        border: 1px solid #2b3c52;
+        border-radius: 10px;
+        background: #172332;
+        color: #dbe7f3;
+        padding: 10px 12px;
+      }
       h1 {
         margin: 0;
         font-size: 28px;
@@ -201,6 +214,9 @@
         width: 100%;
         border-collapse: collapse;
       }
+      .table-scroll {
+        overflow-x: auto;
+      }
       th,
       td {
         padding: 12px 10px;
@@ -212,11 +228,122 @@
         color: #8ea2b7;
         font-weight: 600;
       }
+      .action-cell {
+        min-width: 170px;
+        white-space: nowrap;
+      }
+      .action-buttons {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+      }
+      .action-buttons button {
+        flex: 0 0 auto;
+      }
       tr[data-device] {
         cursor: pointer;
       }
       tr[data-device]:hover {
         background: rgba(67, 111, 246, 0.1);
+      }
+      tr[data-pending-agent] {
+        cursor: pointer;
+      }
+      tr[data-pending-agent]:hover {
+        background: rgba(67, 111, 246, 0.1);
+      }
+      .primary-value {
+        color: #f8fbff;
+        font-weight: 700;
+      }
+      .secondary-value {
+        max-width: 260px;
+        margin-top: 4px;
+        overflow: hidden;
+        color: #8ea2b7;
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .uname-cell {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .pending-agent-mobile-meta {
+        display: none;
+      }
+      .pending-agent-mobile-actions {
+        display: none;
+      }
+      .auth-dialog {
+        width: min(680px, calc(100vw - 32px));
+        max-height: min(760px, calc(100vh - 32px));
+        padding: 0;
+        overflow: hidden;
+        border: 1px solid #2b3c52;
+        border-radius: 18px;
+        color: #dbe7f3;
+        background: #0d1620;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
+      }
+      .auth-dialog::backdrop {
+        background: rgba(3, 8, 14, 0.76);
+        backdrop-filter: blur(5px);
+      }
+      .dialog-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px;
+        border-bottom: 1px solid rgba(79, 103, 130, 0.28);
+      }
+      .dialog-head h2 {
+        margin-bottom: 4px;
+      }
+      .dialog-body {
+        display: grid;
+        gap: 14px;
+        max-height: calc(100vh - 180px);
+        padding: 18px;
+        overflow: auto;
+      }
+      .detail-section {
+        padding-bottom: 14px;
+        border-bottom: 1px solid rgba(79, 103, 130, 0.22);
+      }
+      .detail-section:last-of-type {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+      .detail-list {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr);
+        gap: 9px 12px;
+        margin: 0;
+        font-size: 13px;
+      }
+      .detail-list dt {
+        color: #8ea2b7;
+      }
+      .detail-list dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+      .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+      .icon-button {
+        width: 38px;
+        min-height: 38px;
+        padding: 0;
+        font-size: 22px;
+        line-height: 1;
       }
       .muted {
         color: #8ea2b7;
@@ -238,7 +365,8 @@
         grid-template-columns: 1fr 1fr auto;
         gap: 10px;
       }
-      #toast {
+      #toast,
+      #agent-authorization-toast {
         min-height: 20px;
         color: #9fb3c8;
       }
@@ -258,6 +386,28 @@
         header {
           display: block;
         }
+        .header-actions {
+          margin-top: 16px;
+        }
+        .pending-agent-table th:nth-child(2),
+        .pending-agent-table th:nth-child(3),
+        .pending-agent-table th:nth-child(4),
+        .pending-agent-table th:nth-child(5),
+        .pending-agent-table th:nth-child(6),
+        .pending-agent-table td:nth-child(2),
+        .pending-agent-table td:nth-child(3),
+        .pending-agent-table td:nth-child(4),
+        .pending-agent-table td:nth-child(5),
+        .pending-agent-table td:nth-child(6) {
+          display: none;
+        }
+        .pending-agent-mobile-meta {
+          display: block;
+        }
+        .pending-agent-mobile-actions {
+          display: flex;
+          margin-top: 10px;
+        }
       }
     </style>
   </head>
@@ -266,61 +416,98 @@
       <header>
         <div>
           <h1>OmniWork Relay</h1>
-          <p>Live agents, app links, and access controls.</p>
+          <p data-i18n="header.subtitle">
+            Live agents, app links, and access controls.
+          </p>
         </div>
-        <div>
-          <button class="secondary" id="refresh">Refresh</button>
-          <button class="secondary" id="logout">Logout</button>
+        <div class="header-actions">
+          <select
+            class="language-select"
+            id="language"
+            aria-label="Language"
+            data-i18n-aria-label="common.language"
+          >
+            <option value="en">English</option>
+            <option value="zh-CN">中文</option>
+          </select>
+          <button class="secondary" id="refresh" data-i18n="common.refresh">
+            Refresh
+          </button>
+          <button class="secondary" id="logout" data-i18n="common.logout">
+            Logout
+          </button>
         </div>
       </header>
       <section class="grid">
         <div class="card">
-          <div class="muted">Active Devices</div>
+          <div class="muted" data-i18n="metrics.activeDevices">
+            Active Devices
+          </div>
           <div class="metric" id="device-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">Active Agents</div>
+          <div class="muted" data-i18n="metrics.activeAgents">
+            Active Agents
+          </div>
           <div class="metric" id="agent-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">Active Apps</div>
+          <div class="muted" data-i18n="metrics.activeApps">Active Apps</div>
           <div class="metric" id="app-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">Active Links</div>
+          <div class="muted" data-i18n="metrics.activeLinks">Active Links</div>
           <div class="metric" id="link-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">Open Connections</div>
+          <div class="muted" data-i18n="metrics.openConnections">
+            Open Connections
+          </div>
           <div class="metric" id="connection-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">Traffic In</div>
+          <div class="muted" data-i18n="metrics.trafficIn">Traffic In</div>
           <div class="metric" id="traffic-in">-</div>
         </div>
         <div class="card">
-          <div class="muted">Traffic Out</div>
+          <div class="muted" data-i18n="metrics.trafficOut">Traffic Out</div>
           <div class="metric" id="traffic-out">-</div>
         </div>
         <div class="card">
-          <div class="muted">Disabled Agents</div>
+          <div class="muted" data-i18n="metrics.disabledAgents">
+            Disabled Agents
+          </div>
           <div class="metric" id="disabled-count">-</div>
         </div>
         <div class="card">
-          <div class="muted">IP Bans</div>
+          <div class="muted" data-i18n="metrics.authorizedAgents">
+            Authorized Agents
+          </div>
+          <div class="metric" id="authorized-agent-count">-</div>
+        </div>
+        <div class="card">
+          <div class="muted" data-i18n="metrics.pendingAgentApproval">
+            Pending Agent Approval
+          </div>
+          <div class="metric" id="pending-agent-count">-</div>
+        </div>
+        <div class="card">
+          <div class="muted" data-i18n="metrics.ipBans">IP Bans</div>
           <div class="metric" id="ban-count">-</div>
         </div>
       </section>
       <section class="panel">
         <div class="panel-heading">
           <div>
-            <h2>Traffic Map</h2>
-            <p>
+            <h2 data-i18n="traffic.title">Traffic Map</h2>
+            <p data-i18n="traffic.description">
               Node area represents active connection count. Arrows show observed
               relay traffic direction.
             </p>
           </div>
-          <span class="badge" id="traffic-map-meta">loading</span>
+          <span class="badge" id="traffic-map-meta" data-i18n="common.loading"
+            >loading</span
+          >
         </div>
         <div class="dashboard-grid">
           <div class="map-stage">
@@ -329,6 +516,7 @@
               viewBox="0 0 960 420"
               role="img"
               aria-label="Relay traffic world map"
+              data-i18n-aria-label="traffic.mapAria"
             >
               <defs>
                 <marker
@@ -362,11 +550,11 @@
             </svg>
           </div>
           <div>
-            <h2>Top Flows</h2>
+            <h2 data-i18n="traffic.topFlows">Top Flows</h2>
             <ul class="flow-list" id="traffic-flow-list">
-              <li class="muted">No traffic yet.</li>
+              <li class="muted" data-i18n="traffic.empty">No traffic yet.</li>
             </ul>
-            <p class="muted">
+            <p class="muted" data-i18n="traffic.precision">
               Location precision is based on Relay-visible network metadata.
               Unknown public IPs are grouped until GeoIP metadata is configured
               upstream.
@@ -375,37 +563,85 @@
         </div>
       </section>
       <section class="panel">
-        <h2>Devices</h2>
+        <div class="panel-heading">
+          <div>
+            <h2 data-i18n="authorization.title">Agent Authorizations</h2>
+            <p data-i18n="authorization.description">
+              Valid Agent identities waiting for Relay access and previously
+              authorized devices.
+            </p>
+          </div>
+          <span
+            class="badge"
+            id="agent-authorization-mode"
+            data-i18n="common.loading"
+            >loading</span
+          >
+        </div>
+        <p id="agent-authorization-toast"></p>
+        <h3 data-i18n="authorization.pending">Pending</h3>
+        <div class="table-scroll">
+          <table class="pending-agent-table">
+            <thead>
+              <tr>
+                <th data-i18n="table.device">Device</th>
+                <th data-i18n="table.systemType">System Type</th>
+                <th data-i18n="table.publicIp">Public IP</th>
+                <th data-i18n="table.uname">uname</th>
+                <th data-i18n="table.lastAttempt">Last Attempt</th>
+                <th data-i18n="table.actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="pending-agent-authorizations"></tbody>
+          </table>
+        </div>
+        <h3 data-i18n="authorization.authorized">Authorized</h3>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="table.device">Device</th>
+                <th data-i18n="table.authorized">Authorized</th>
+                <th data-i18n="table.reason">Reason</th>
+                <th data-i18n="table.actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="authorized-agent-devices"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel">
+        <h2 data-i18n="devices.title">Devices</h2>
         <table>
           <thead>
             <tr>
-              <th>Device</th>
-              <th>Status</th>
-              <th>Agents</th>
-              <th>Apps</th>
-              <th>Last Seen</th>
-              <th>Offline At</th>
-              <th>Last Agent</th>
-              <th>Agent IP</th>
-              <th>App IP</th>
+              <th data-i18n="table.device">Device</th>
+              <th data-i18n="table.status">Status</th>
+              <th data-i18n="table.agents">Agents</th>
+              <th data-i18n="table.apps">Apps</th>
+              <th data-i18n="table.lastSeen">Last Seen</th>
+              <th data-i18n="table.offlineAt">Offline At</th>
+              <th data-i18n="table.lastAgent">Last Agent</th>
+              <th data-i18n="table.agentIp">Agent IP</th>
+              <th data-i18n="table.appIp">App IP</th>
             </tr>
           </thead>
           <tbody id="devices"></tbody>
         </table>
       </section>
       <section class="panel">
-        <h2>Agents</h2>
+        <h2 data-i18n="agents.title">Agents</h2>
         <table>
           <thead>
             <tr>
-              <th>Device</th>
-              <th>Agent Instance</th>
+              <th data-i18n="table.device">Device</th>
+              <th data-i18n="table.agentInstance">Agent Instance</th>
               <th>IP</th>
-              <th>Apps</th>
-              <th>Security</th>
-              <th>Connected</th>
-              <th>Last Seen</th>
-              <th>State</th>
+              <th data-i18n="table.apps">Apps</th>
+              <th data-i18n="table.security">Security</th>
+              <th data-i18n="table.connected">Connected</th>
+              <th data-i18n="table.lastSeen">Last Seen</th>
+              <th data-i18n="table.state">State</th>
             </tr>
           </thead>
           <tbody id="agents"></tbody>
@@ -413,67 +649,447 @@
       </section>
       <section class="panel">
         <h2>
-          Apps <span class="badge" id="selected-agent">select an agent</span>
+          <span data-i18n="apps.title">Apps</span>
+          <span class="badge" id="selected-agent" data-i18n="apps.selectAgent"
+            >select an agent</span
+          >
         </h2>
         <table>
           <thead>
             <tr>
-              <th>Connection</th>
+              <th data-i18n="table.connection">Connection</th>
               <th>App</th>
-              <th>Platform</th>
-              <th>Version</th>
+              <th data-i18n="table.platform">Platform</th>
+              <th data-i18n="table.version">Version</th>
               <th>IP</th>
-              <th>Auth</th>
-              <th>Path</th>
-              <th>Last Seen</th>
+              <th data-i18n="table.auth">Auth</th>
+              <th data-i18n="table.path">Path</th>
+              <th data-i18n="table.lastSeen">Last Seen</th>
             </tr>
           </thead>
           <tbody id="apps"></tbody>
         </table>
       </section>
       <section class="panel">
-        <h2>Controls</h2>
+        <h2 data-i18n="controls.title">Controls</h2>
         <p id="toast"></p>
         <div class="forms">
           <div>
-            <h2>Disable Agent Device</h2>
+            <h2 data-i18n="controls.disableAgent">Disable Agent Device</h2>
             <div class="form-row">
               <input
                 id="disable-agent-device"
                 placeholder="agent device_id"
-              /><input id="disable-reason" placeholder="reason" /><button
+                data-i18n-placeholder="controls.agentPlaceholder"
+              /><input
+                id="disable-reason"
+                placeholder="reason"
+                data-i18n-placeholder="controls.reasonPlaceholder"
+              /><button
                 class="danger"
                 id="disable-agent-device-button"
+                data-i18n="controls.disable"
               >
                 Disable</button
-              ><button class="secondary" id="delete-agent-device-disable">
+              ><button
+                class="secondary"
+                id="delete-agent-device-disable"
+                data-i18n="controls.deleteRule"
+              >
                 Delete Rule
               </button>
             </div>
           </div>
           <div>
-            <h2>IP Bans</h2>
+            <h2 data-i18n="controls.ipBans">IP Bans</h2>
             <div class="form-row">
-              <input id="ban-ip" placeholder="ips, comma separated" /><input
+              <input
+                id="ban-ip"
+                placeholder="ips, comma separated"
+                data-i18n-placeholder="controls.ipPlaceholder"
+              /><input
                 id="ban-reason"
                 placeholder="reason"
-              /><button class="danger" id="ban-ip-btn">Ban</button
-              ><button class="secondary" id="unban-ip-btn">Unban</button>
+                data-i18n-placeholder="controls.reasonPlaceholder"
+              /><button class="danger" id="ban-ip-btn" data-i18n="controls.ban">
+                Ban</button
+              ><button
+                class="secondary"
+                id="unban-ip-btn"
+                data-i18n="controls.unban"
+              >
+                Unban
+              </button>
             </div>
           </div>
         </div>
-        <p class="muted">
+        <p class="muted" data-i18n="controls.sessionHelp">
           Admin access uses a 30-minute secure session. Read the current
           one-time token from the server token file when the session expires.
         </p>
       </section>
     </main>
+    <dialog
+      class="auth-dialog"
+      id="pending-agent-detail-dialog"
+      aria-label="Agent authorization detail"
+      data-i18n-aria-label="authorization.detailAria"
+    >
+      <div class="dialog-head">
+        <div>
+          <h2 data-i18n="authorization.detailTitle">Agent Authorization</h2>
+          <div class="muted" id="pending-agent-detail-subtitle"></div>
+        </div>
+        <button
+          class="secondary icon-button"
+          id="pending-agent-detail-close"
+          type="button"
+          aria-label="Close"
+          data-i18n-aria-label="common.close"
+          title="Close"
+          data-i18n-title="common.close"
+        >
+          ×
+        </button>
+      </div>
+      <div class="dialog-body" id="pending-agent-detail-body"></div>
+    </dialog>
     <script>
+      const messages = {
+        en: {
+          "page.title": "OmniWork Relay Admin",
+          "common.language": "Language",
+          "common.refresh": "Refresh",
+          "common.logout": "Logout",
+          "common.loading": "loading",
+          "common.unknown": "unknown",
+          "common.close": "Close",
+          "header.subtitle": "Live agents, app links, and access controls.",
+          "metrics.activeDevices": "Active Devices",
+          "metrics.activeAgents": "Active Agents",
+          "metrics.activeApps": "Active Apps",
+          "metrics.activeLinks": "Active Links",
+          "metrics.openConnections": "Open Connections",
+          "metrics.trafficIn": "Traffic In",
+          "metrics.trafficOut": "Traffic Out",
+          "metrics.disabledAgents": "Disabled Agents",
+          "metrics.authorizedAgents": "Authorized Agents",
+          "metrics.pendingAgentApproval": "Pending Agent Approval",
+          "metrics.ipBans": "IP Bans",
+          "traffic.title": "Traffic Map",
+          "traffic.description":
+            "Node area represents active connection count. Arrows show observed relay traffic direction.",
+          "traffic.mapAria": "Relay traffic world map",
+          "traffic.topFlows": "Top Flows",
+          "traffic.empty": "No traffic yet.",
+          "traffic.precision":
+            "Location precision is based on Relay-visible network metadata. Unknown public IPs are grouped until GeoIP metadata is configured upstream.",
+          "traffic.meta": "{nodes} aggregate nodes / {flows} aggregate flows",
+          "traffic.nodeTitle":
+            "{connections} connections, {devices} devices, {accuracy}, {traffic}",
+          "traffic.flowDetail":
+            "App->Agent {appToAgent} | Agent->App {agentToApp} | {links} links / {devices} devices | {paths}",
+          "traffic.mapUnavailable": "map asset unavailable",
+          "authorization.title": "Agent Authorizations",
+          "authorization.description":
+            "Valid Agent identities waiting for Relay access and previously authorized devices.",
+          "authorization.pending": "Pending",
+          "authorization.authorized": "Authorized",
+          "authorization.mode": "{mode} mode",
+          "authorization.noPending": "No pending Agent authorizations.",
+          "authorization.noAuthorized": "No authorized Agent devices.",
+          "authorization.approve": "Approve",
+          "authorization.reject": "Reject",
+          "authorization.remove": "Remove",
+          "authorization.detailAria": "Agent authorization detail",
+          "authorization.detailTitle": "Agent Authorization",
+          "authorization.identity": "Identity",
+          "authorization.system": "System",
+          "authorization.request": "Request",
+          "authorization.approved":
+            "Agent device authorized. It will connect on its next retry.",
+          "authorization.rejected": "Agent device rejected and disabled.",
+          "authorization.removed": "Agent authorization removed.",
+          "devices.title": "Devices",
+          "agents.title": "Agents",
+          "apps.title": "Apps",
+          "apps.selectAgent": "select an agent",
+          "table.device": "Device",
+          "table.fingerprint": "Fingerprint",
+          "table.host": "Host",
+          "table.systemType": "System Type",
+          "table.publicIp": "Public IP",
+          "table.uname": "uname",
+          "table.version": "Version",
+          "table.lastAttempt": "Last Attempt",
+          "table.attempts": "Attempts",
+          "table.requested": "Requested",
+          "table.expires": "Expires",
+          "table.actions": "Actions",
+          "table.authorized": "Authorized",
+          "table.reason": "Reason",
+          "table.status": "Status",
+          "table.agents": "Agents",
+          "table.apps": "Apps",
+          "table.lastSeen": "Last Seen",
+          "table.offlineAt": "Offline At",
+          "table.lastAgent": "Last Agent",
+          "table.agentIp": "Agent IP",
+          "table.appIp": "App IP",
+          "table.agentInstance": "Agent Instance",
+          "table.security": "Security",
+          "table.connected": "Connected",
+          "table.state": "State",
+          "table.connection": "Connection",
+          "table.platform": "Platform",
+          "table.auth": "Auth",
+          "table.path": "Path",
+          "controls.title": "Controls",
+          "controls.disableAgent": "Disable Agent Device",
+          "controls.agentPlaceholder": "agent device_id",
+          "controls.reasonPlaceholder": "reason",
+          "controls.disable": "Disable",
+          "controls.deleteRule": "Delete Rule",
+          "controls.ipBans": "IP Bans",
+          "controls.ipPlaceholder": "ips, comma separated",
+          "controls.ban": "Ban",
+          "controls.unban": "Unban",
+          "controls.sessionHelp":
+            "Admin access uses a 30-minute secure session. Read the current one-time token from the server token file when the session expires.",
+          "controls.agentDisabled": "Agent device disabled.",
+          "controls.disableDeleted": "Agent device disable rule deleted.",
+          "controls.ipBanUpdated": "IP ban updated.",
+          "controls.ipBanRemoved": "IP ban removed.",
+          "security.e2eRequired": "E2E required",
+          "value.manual": "manual",
+          "value.automatic": "automatic",
+          "value.active": "active",
+          "value.offline": "offline",
+          "value.disabled": "disabled",
+          "value.connected": "connected",
+          "value.disconnected": "disconnected",
+          "value.pending": "pending",
+          "value.authorized": "authorized",
+          "value.rejected": "rejected",
+          "value.verified": "verified",
+          "value.relay": "relay",
+          "value.p2p": "p2p",
+          "value.city": "city",
+          "value.country": "country",
+        },
+        "zh-CN": {
+          "page.title": "OmniWork Relay 管理",
+          "common.language": "语言",
+          "common.refresh": "刷新",
+          "common.logout": "退出登录",
+          "common.loading": "加载中",
+          "common.unknown": "未知",
+          "common.close": "关闭",
+          "header.subtitle": "查看在线 Agent、App 链路和访问控制。",
+          "metrics.activeDevices": "活跃设备",
+          "metrics.activeAgents": "活跃 Agent",
+          "metrics.activeApps": "活跃 App",
+          "metrics.activeLinks": "活跃链路",
+          "metrics.openConnections": "打开的连接",
+          "metrics.trafficIn": "入站流量",
+          "metrics.trafficOut": "出站流量",
+          "metrics.disabledAgents": "已禁用 Agent",
+          "metrics.authorizedAgents": "已授权 Agent",
+          "metrics.pendingAgentApproval": "待审批 Agent",
+          "metrics.ipBans": "IP 封禁",
+          "traffic.title": "流量地图",
+          "traffic.description":
+            "节点面积表示活跃连接数，箭头表示观测到的 Relay 流量方向。",
+          "traffic.mapAria": "Relay 全球流量地图",
+          "traffic.topFlows": "主要流量",
+          "traffic.empty": "暂无流量。",
+          "traffic.precision":
+            "位置精度基于 Relay 可见的网络元数据。未配置上游 GeoIP 元数据时，未知公网 IP 会被归组。",
+          "traffic.meta": "{nodes} 个聚合节点 / {flows} 条聚合流量",
+          "traffic.nodeTitle":
+            "{connections} 个连接，{devices} 台设备，{accuracy}，{traffic}",
+          "traffic.flowDetail":
+            "App->Agent {appToAgent} | Agent->App {agentToApp} | {links} 条链路 / {devices} 台设备 | {paths}",
+          "traffic.mapUnavailable": "地图资源不可用",
+          "authorization.title": "Agent 授权",
+          "authorization.description":
+            "查看等待 Relay 准入的有效 Agent 身份和已授权设备。",
+          "authorization.pending": "待处理",
+          "authorization.authorized": "已授权",
+          "authorization.mode": "{mode}模式",
+          "authorization.noPending": "没有待处理的 Agent 授权。",
+          "authorization.noAuthorized": "没有已授权的 Agent 设备。",
+          "authorization.approve": "批准",
+          "authorization.reject": "拒绝",
+          "authorization.remove": "移除",
+          "authorization.detailAria": "Agent 授权详情",
+          "authorization.detailTitle": "Agent 授权",
+          "authorization.identity": "身份",
+          "authorization.system": "系统",
+          "authorization.request": "请求",
+          "authorization.approved": "Agent 设备已授权，将在下次重试时连接。",
+          "authorization.rejected": "Agent 设备已拒绝并禁用。",
+          "authorization.removed": "Agent 授权已移除。",
+          "devices.title": "设备",
+          "agents.title": "Agent",
+          "apps.title": "App",
+          "apps.selectAgent": "选择一个 Agent",
+          "table.device": "设备",
+          "table.fingerprint": "指纹",
+          "table.host": "主机",
+          "table.systemType": "系统类型",
+          "table.publicIp": "公网 IP",
+          "table.uname": "uname",
+          "table.version": "版本",
+          "table.lastAttempt": "最近尝试",
+          "table.attempts": "尝试次数",
+          "table.requested": "申请时间",
+          "table.expires": "过期时间",
+          "table.actions": "操作",
+          "table.authorized": "授权时间",
+          "table.reason": "原因",
+          "table.status": "状态",
+          "table.agents": "Agent",
+          "table.apps": "App",
+          "table.lastSeen": "最后出现",
+          "table.offlineAt": "离线时间",
+          "table.lastAgent": "最近 Agent",
+          "table.agentIp": "Agent IP",
+          "table.appIp": "App IP",
+          "table.agentInstance": "Agent 实例",
+          "table.security": "安全",
+          "table.connected": "连接时间",
+          "table.state": "状态",
+          "table.connection": "连接",
+          "table.platform": "平台",
+          "table.auth": "认证",
+          "table.path": "路径",
+          "controls.title": "控制",
+          "controls.disableAgent": "禁用 Agent 设备",
+          "controls.agentPlaceholder": "Agent device_id",
+          "controls.reasonPlaceholder": "原因",
+          "controls.disable": "禁用",
+          "controls.deleteRule": "删除规则",
+          "controls.ipBans": "IP 封禁",
+          "controls.ipPlaceholder": "多个 IP 用逗号分隔",
+          "controls.ban": "封禁",
+          "controls.unban": "解除封禁",
+          "controls.sessionHelp":
+            "管理访问使用 30 分钟安全会话。会话过期后，请从服务器令牌文件读取当前一次性令牌。",
+          "controls.agentDisabled": "Agent 设备已禁用。",
+          "controls.disableDeleted": "Agent 设备禁用规则已删除。",
+          "controls.ipBanUpdated": "IP 封禁已更新。",
+          "controls.ipBanRemoved": "IP 封禁已移除。",
+          "security.e2eRequired": "要求 E2E",
+          "value.manual": "人工",
+          "value.automatic": "自动",
+          "value.active": "在线",
+          "value.offline": "离线",
+          "value.disabled": "已禁用",
+          "value.connected": "已连接",
+          "value.disconnected": "已断开",
+          "value.pending": "待处理",
+          "value.authorized": "已授权",
+          "value.rejected": "已拒绝",
+          "value.verified": "已验证",
+          "value.relay": "Relay",
+          "value.p2p": "P2P",
+          "value.city": "城市级",
+          "value.country": "国家级",
+        },
+      };
+      const localeCookieName = "omniwork_admin_locale";
+      const simplifiedChineseTimeZones = new Set([
+        "Asia/Shanghai",
+        "Asia/Chongqing",
+        "Asia/Harbin",
+        "Asia/Urumqi",
+      ]);
+      let currentLocale = detectLocale();
       let selectedConnection = null;
       let selectedDevice = null;
+      let agentAuthorizationSnapshot = null;
+      let selectedPendingAgentDeviceId = null;
       let worldLandRendered = false;
       let csrfToken = null;
       const qs = (id) => document.getElementById(id);
+      function detectLocale() {
+        const saved = document.cookie
+          .split(";")
+          .map((part) => part.trim())
+          .find((part) => part.startsWith(localeCookieName + "="))
+          ?.slice(localeCookieName.length + 1);
+        if (saved && messages[saved]) return saved;
+        const languages =
+          Array.isArray(navigator.languages) && navigator.languages.length > 0
+            ? navigator.languages
+            : [navigator.language];
+        for (const language of languages) {
+          const locale = localeFromLanguage(language);
+          if (locale) return locale;
+        }
+        return simplifiedChineseTimeZones.has(
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+        )
+          ? "zh-CN"
+          : "en";
+      }
+      function localeFromLanguage(language) {
+        const normalized = String(language || "").toLowerCase();
+        if (normalized === "zh" || normalized.startsWith("zh-")) {
+          return "zh-CN";
+        }
+        if (normalized === "en" || normalized.startsWith("en-")) {
+          return "en";
+        }
+        return null;
+      }
+      function t(key, values = {}) {
+        const template =
+          messages[currentLocale][key] || messages.en[key] || key;
+        return template.replace(/\{(\w+)\}/g, (_, name) =>
+          String(values[name] ?? ""),
+        );
+      }
+      function translatedValue(value) {
+        const key = "value." + String(value ?? "").toLowerCase();
+        return messages[currentLocale][key] || value;
+      }
+      function applyTranslations() {
+        document.documentElement.lang = currentLocale;
+        document.title = t("page.title");
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+          element.textContent = t(element.dataset.i18n);
+        });
+        document
+          .querySelectorAll("[data-i18n-placeholder]")
+          .forEach((element) => {
+            element.placeholder = t(element.dataset.i18nPlaceholder);
+          });
+        document
+          .querySelectorAll("[data-i18n-aria-label]")
+          .forEach((element) => {
+            element.setAttribute(
+              "aria-label",
+              t(element.dataset.i18nAriaLabel),
+            );
+          });
+        document.querySelectorAll("[data-i18n-title]").forEach((element) => {
+          element.setAttribute("title", t(element.dataset.i18nTitle));
+        });
+        qs("language").value = currentLocale;
+      }
+      function setLocale(locale) {
+        if (!messages[locale]) return;
+        currentLocale = locale;
+        document.cookie =
+          localeCookieName +
+          "=" +
+          encodeURIComponent(locale) +
+          "; Path=/; Max-Age=31536000; SameSite=Lax";
+        applyTranslations();
+        refresh().catch(showError);
+      }
       function adminBase() {
         return document.documentElement.dataset.adminBase || "/admin/";
       }
@@ -540,16 +1156,20 @@
       }
       function td(value) {
         return value === undefined || value === null
-          ? "<td><span class='muted'>unknown</span></td>"
+          ? "<td><span class='muted'>" +
+              escapeHtml(t("common.unknown")) +
+              "</span></td>"
           : "<td>" + escapeHtml(value) + "</td>";
       }
       async function refresh() {
-        const [status, devices, agents, trafficMap] = await Promise.all([
-          api("/admin/api/status"),
-          api("/admin/api/devices?include_offline=true&limit=100"),
-          api("/admin/api/agents"),
-          api("/admin/api/traffic-map"),
-        ]);
+        const [status, devices, agents, trafficMap, agentAuthorizations] =
+          await Promise.all([
+            api("/admin/api/status"),
+            api("/admin/api/devices?include_offline=true&limit=100"),
+            api("/admin/api/agents"),
+            api("/admin/api/traffic-map"),
+            api("/admin/api/agent-authorizations"),
+          ]);
         qs("device-count").textContent = status.summary.active_device_count;
         qs("agent-count").textContent = status.summary.active_agent_count;
         qs("app-count").textContent = status.summary.active_app_count;
@@ -560,18 +1180,23 @@
         qs("traffic-out").textContent = formatBytes(status.traffic.bytes_out);
         qs("disabled-count").textContent =
           status.summary.disabled_agent_device_count;
+        qs("authorized-agent-count").textContent =
+          status.summary.authorized_agent_device_count;
+        qs("pending-agent-count").textContent =
+          status.summary.pending_agent_authorization_count;
         qs("ban-count").textContent = status.summary.ip_ban_count;
+        renderAgentAuthorizations(agentAuthorizations);
         renderTrafficMap(trafficMap);
         qs("devices").innerHTML = devices.devices
           .map(
             (device) =>
               "<tr>" +
               td(device.device_id) +
-              td(device.status) +
+              td(translatedValue(device.status)) +
               td(device.agent_count) +
               td(device.app_count) +
-              td(device.last_seen_at) +
-              td(device.offline_at) +
+              td(formatDate(device.last_seen_at)) +
+              td(formatDate(device.offline_at)) +
               td(device.last_agent_connection_id) +
               td(device.last_agent_remote_ip) +
               td(device.last_app_remote_ip) +
@@ -590,10 +1215,10 @@
               td(agent.connection_id) +
               td(agent.remote_ip) +
               td(agent.app_count) +
-              td(agent.business_security_mode) +
-              td(agent.connected_at) +
-              td(agent.last_seen_at) +
-              td(agent.disabled ? "disabled" : agent.state) +
+              td(t("security.e2eRequired")) +
+              td(formatDate(agent.connected_at)) +
+              td(formatDate(agent.last_seen_at)) +
+              td(translatedValue(agent.disabled ? "disabled" : agent.state)) +
               "</tr>",
           )
           .join("");
@@ -606,6 +1231,199 @@
         }
         if (selectedConnection)
           await loadApps(selectedConnection, selectedDevice);
+      }
+      function renderAgentAuthorizations(data) {
+        agentAuthorizationSnapshot = data;
+        qs("agent-authorization-mode").textContent = t("authorization.mode", {
+          mode: translatedValue(data.mode || "manual"),
+        });
+        const pending = Array.isArray(data.pending) ? data.pending : [];
+        const authorized = Array.isArray(data.authorized)
+          ? data.authorized
+          : [];
+        qs("pending-agent-authorizations").innerHTML =
+          pending.length === 0
+            ? "<tr><td colspan='6' class='muted'>" +
+              escapeHtml(t("authorization.noPending")) +
+              "</td></tr>"
+            : pending
+                .map(
+                  (request) =>
+                    "<tr data-pending-agent='" +
+                    encodedAttribute(request.agent_device_id) +
+                    "'>" +
+                    "<td><div class='primary-value'>" +
+                    escapeHtml(request.hostname || t("common.unknown")) +
+                    "</div><div class='secondary-value'>" +
+                    escapeHtml(request.agent_device_id) +
+                    "</div><div class='secondary-value pending-agent-mobile-meta'>" +
+                    escapeHtml(
+                      (request.system_type || t("common.unknown")) +
+                        " · " +
+                        (request.public_ip || t("common.unknown")),
+                    ) +
+                    "</div><div class='secondary-value pending-agent-mobile-meta'>" +
+                    escapeHtml(request.uname || t("common.unknown")) +
+                    "</div><div class='action-buttons pending-agent-mobile-actions'><button data-agent-auth-action='approve' data-device='" +
+                    encodedAttribute(request.agent_device_id) +
+                    "'>" +
+                    escapeHtml(t("authorization.approve")) +
+                    "</button><button class='danger' data-agent-auth-action='reject' data-device='" +
+                    encodedAttribute(request.agent_device_id) +
+                    "'>" +
+                    escapeHtml(t("authorization.reject")) +
+                    "</div></td>" +
+                    td(request.system_type) +
+                    td(request.public_ip) +
+                    "<td class='uname-cell' title='" +
+                    escapeHtml(request.uname || t("common.unknown")) +
+                    "'>" +
+                    escapeHtml(request.uname || t("common.unknown")) +
+                    "</td>" +
+                    td(formatDate(request.last_attempt_at)) +
+                    "<td class='action-cell'><span class='action-buttons'><button data-agent-auth-action='approve' data-device='" +
+                    encodedAttribute(request.agent_device_id) +
+                    "'>" +
+                    escapeHtml(t("authorization.approve")) +
+                    "</button> <button class='danger' data-agent-auth-action='reject' data-device='" +
+                    encodedAttribute(request.agent_device_id) +
+                    "'>" +
+                    escapeHtml(t("authorization.reject")) +
+                    "</button></span></td></tr>",
+                )
+                .join("");
+        qs("authorized-agent-devices").innerHTML =
+          authorized.length === 0
+            ? "<tr><td colspan='4' class='muted'>" +
+              escapeHtml(t("authorization.noAuthorized")) +
+              "</td></tr>"
+            : authorized
+                .map(
+                  (entry) =>
+                    "<tr>" +
+                    td(entry.agent_device_id) +
+                    td(formatDate(entry.authorized_at)) +
+                    td(entry.reason) +
+                    "<td class='action-cell'><span class='action-buttons'><button class='secondary' data-agent-auth-action='delete' data-device='" +
+                    encodedAttribute(entry.agent_device_id) +
+                    "'>" +
+                    escapeHtml(t("authorization.remove")) +
+                    "</button></span></td></tr>",
+                )
+                .join("");
+        qs("pending-agent-authorizations").closest(".table-scroll").scrollLeft =
+          0;
+        qs("authorized-agent-devices").closest(".table-scroll").scrollLeft = 0;
+        for (const row of document.querySelectorAll("tr[data-pending-agent]")) {
+          row.onclick = () =>
+            openPendingAgentDetail(
+              decodeURIComponent(row.dataset.pendingAgent),
+            );
+        }
+        bindAgentAuthorizationButtons(qs("pending-agent-authorizations"));
+        bindAgentAuthorizationButtons(qs("authorized-agent-devices"));
+        renderPendingAgentDetail();
+      }
+      function bindAgentAuthorizationButtons(root) {
+        for (const button of root.querySelectorAll(
+          "button[data-agent-auth-action]",
+        )) {
+          button.onclick = (event) => {
+            event.stopPropagation();
+            return updateAgentAuthorization(
+              button.dataset.agentAuthAction,
+              decodeURIComponent(button.dataset.device),
+            ).catch(showError);
+          };
+        }
+      }
+      function openPendingAgentDetail(deviceId) {
+        selectedPendingAgentDeviceId = deviceId;
+        renderPendingAgentDetail();
+        const dialog = qs("pending-agent-detail-dialog");
+        if (!dialog.open) dialog.showModal();
+      }
+      function renderPendingAgentDetail() {
+        if (!selectedPendingAgentDeviceId) return;
+        const pending = Array.isArray(agentAuthorizationSnapshot?.pending)
+          ? agentAuthorizationSnapshot.pending
+          : [];
+        const request = pending.find(
+          (item) => item.agent_device_id === selectedPendingAgentDeviceId,
+        );
+        const dialog = qs("pending-agent-detail-dialog");
+        if (!request) {
+          selectedPendingAgentDeviceId = null;
+          if (dialog.open) dialog.close();
+          return;
+        }
+        qs("pending-agent-detail-subtitle").textContent =
+          (request.hostname || t("common.unknown")) +
+          " · " +
+          (request.system_type || t("common.unknown"));
+        qs("pending-agent-detail-body").innerHTML = [
+          authorizationDetailGroup(t("authorization.identity"), [
+            [t("table.device"), request.agent_device_id],
+            [t("table.fingerprint"), request.public_key_fingerprint],
+            [t("table.host"), request.hostname],
+          ]),
+          authorizationDetailGroup(t("authorization.system"), [
+            [t("table.systemType"), request.system_type],
+            [t("table.uname"), request.uname],
+            [t("table.version"), request.agent_version],
+            [t("table.publicIp"), request.public_ip],
+          ]),
+          authorizationDetailGroup(t("authorization.request"), [
+            [t("table.attempts"), request.attempt_count],
+            [t("table.lastAttempt"), formatDate(request.last_attempt_at)],
+            [t("table.requested"), formatDate(request.requested_at)],
+            [t("table.expires"), formatDate(request.expires_at)],
+          ]),
+          "<div class='dialog-actions'><button data-agent-auth-action='approve' data-device='" +
+            encodedAttribute(request.agent_device_id) +
+            "'>" +
+            escapeHtml(t("authorization.approve")) +
+            "</button><button class='danger' data-agent-auth-action='reject' data-device='" +
+            encodedAttribute(request.agent_device_id) +
+            "'>" +
+            escapeHtml(t("authorization.reject")) +
+            "</button></div>",
+        ].join("");
+        bindAgentAuthorizationButtons(qs("pending-agent-detail-body"));
+      }
+      function authorizationDetailGroup(title, rows) {
+        return (
+          "<section class='detail-section'><h2>" +
+          escapeHtml(title) +
+          "</h2><dl class='detail-list'>" +
+          rows
+            .map(
+              ([label, value]) =>
+                "<dt>" +
+                escapeHtml(label) +
+                "</dt><dd>" +
+                escapeHtml(value ?? t("common.unknown")) +
+                "</dd>",
+            )
+            .join("") +
+          "</dl></section>"
+        );
+      }
+      async function updateAgentAuthorization(action, deviceId) {
+        await api("/admin/api/agent-authorizations/device-op", {
+          method: "POST",
+          body: JSON.stringify({
+            action,
+            agent_device_ids: [deviceId],
+          }),
+        });
+        qs("agent-authorization-toast").textContent =
+          action === "approve"
+            ? t("authorization.approved")
+            : action === "reject"
+              ? t("authorization.rejected")
+              : t("authorization.removed");
+        await refresh();
       }
       async function loadApps(connectionId, deviceId) {
         selectedConnection = connectionId;
@@ -626,9 +1444,9 @@
               td(info.platform) +
               td(info.version) +
               td(app.remote_ip) +
-              td(app.auth_state) +
-              td(app.transport_path) +
-              td(app.last_seen_at) +
+              td(translatedValue(app.auth_state)) +
+              td(translatedValue(app.transport_path)) +
+              td(formatDate(app.last_seen_at)) +
               "</tr>"
             );
           })
@@ -648,7 +1466,7 @@
             reason: qs("disable-reason").value || undefined,
           }),
         });
-        qs("toast").textContent = "Agent device disabled.";
+        qs("toast").textContent = t("controls.agentDisabled");
         await refresh();
       };
       qs("delete-agent-device-disable").onclick = async () => {
@@ -659,7 +1477,7 @@
             agent_device_ids: parseCsv(qs("disable-agent-device").value),
           }),
         });
-        qs("toast").textContent = "Agent device disable rule deleted.";
+        qs("toast").textContent = t("controls.disableDeleted");
         await refresh();
       };
       qs("ban-ip-btn").onclick = async () => {
@@ -671,7 +1489,7 @@
             reason: qs("ban-reason").value || undefined,
           }),
         });
-        qs("toast").textContent = "IP ban updated.";
+        qs("toast").textContent = t("controls.ipBanUpdated");
         await refresh();
       };
       qs("unban-ip-btn").onclick = async () => {
@@ -682,7 +1500,7 @@
             ips: parseIps(qs("ban-ip").value),
           }),
         });
-        qs("toast").textContent = "IP ban removed.";
+        qs("toast").textContent = t("controls.ipBanRemoved");
         await refresh();
       };
       function parseCsv(value) {
@@ -760,11 +1578,10 @@
         );
         const nodesLayer = qs("traffic-nodes-layer");
         const flowsLayer = qs("traffic-flows-layer");
-        qs("traffic-map-meta").textContent =
-          locations.length +
-          " aggregate nodes / " +
-          flows.length +
-          " aggregate flows";
+        qs("traffic-map-meta").textContent = t("traffic.meta", {
+          nodes: locations.length,
+          flows: flows.length,
+        });
         flowsLayer.innerHTML = flows
           .slice(0, 24)
           .map((flow, index) => {
@@ -808,14 +1625,15 @@
               "'><title>" +
               escapeHtml(location.label) +
               ": " +
-              count +
-              " connections, " +
-              (location.device_count || 0) +
-              " devices, " +
-              escapeHtml(location.accuracy) +
-              ", " +
-              formatBytes(
-                location.counters.bytes_in + location.counters.bytes_out,
+              escapeHtml(
+                t("traffic.nodeTitle", {
+                  connections: count,
+                  devices: location.device_count || 0,
+                  accuracy: translatedValue(location.accuracy),
+                  traffic: formatBytes(
+                    location.counters.bytes_in + location.counters.bytes_out,
+                  ),
+                }),
               ) +
               "</title></circle>" +
               "<text class='node-label' x='" +
@@ -833,7 +1651,7 @@
           .join("");
         qs("traffic-flow-list").innerHTML =
           flows.length === 0
-            ? "<li class='muted'>No traffic yet.</li>"
+            ? "<li class='muted'>" + escapeHtml(t("traffic.empty")) + "</li>"
             : flows
                 .slice(0, 8)
                 .map((flow) => {
@@ -841,21 +1659,21 @@
                   const to = byId.get(flow.to_location_id);
                   return (
                     "<li><div class='flow-title'><span>" +
-                    escapeHtml(from?.label || "Unknown") +
+                    escapeHtml(from?.label || t("common.unknown")) +
                     " -> " +
-                    escapeHtml(to?.label || "Unknown") +
+                    escapeHtml(to?.label || t("common.unknown")) +
                     "</span><span>" +
                     formatBytes(flow.total_bytes) +
-                    "</span></div><div class='flow-detail'>App->Agent " +
-                    formatBytes(flow.app_to_agent_bytes) +
-                    " | Agent->App " +
-                    formatBytes(flow.agent_to_app_bytes) +
-                    " | " +
-                    (flow.link_count || 0) +
-                    " links / " +
-                    (flow.device_count || 0) +
-                    " devices | " +
-                    escapeHtml(formatTransportPaths(flow.transport_paths)) +
+                    "</span></div><div class='flow-detail'>" +
+                    escapeHtml(
+                      t("traffic.flowDetail", {
+                        appToAgent: formatBytes(flow.app_to_agent_bytes),
+                        agentToApp: formatBytes(flow.agent_to_app_bytes),
+                        links: flow.link_count || 0,
+                        devices: flow.device_count || 0,
+                        paths: formatTransportPaths(flow.transport_paths),
+                      }),
+                    ) +
                     "</div></li>"
                   );
                 })
@@ -928,12 +1746,17 @@
         );
       }
       function formatTransportPaths(paths) {
-        if (!paths || typeof paths !== "object") return "unknown";
+        if (!paths || typeof paths !== "object") return t("common.unknown");
         return (
           Object.keys(paths)
             .map((key) => key + ":" + paths[key])
-            .join(", ") || "unknown"
+            .join(", ") || t("common.unknown")
         );
+      }
+      function formatDate(value) {
+        return value
+          ? new Date(value).toLocaleString(currentLocale)
+          : t("common.unknown");
       }
       function formatBytes(value) {
         if (!Number.isFinite(value)) return "-";
@@ -941,9 +1764,16 @@
         if (value < 1024 * 1024) return (value / 1024).toFixed(1) + "K";
         return (value / 1024 / 1024).toFixed(1) + "M";
       }
+      qs("language").onchange = (event) => setLocale(event.target.value);
+      qs("pending-agent-detail-close").onclick = () =>
+        qs("pending-agent-detail-dialog").close();
+      qs("pending-agent-detail-dialog").onclose = () => {
+        selectedPendingAgentDeviceId = null;
+      };
+      applyTranslations();
       refresh().catch(showError);
       loadWorldLand().catch(() => {
-        qs("traffic-map-meta").textContent = "map asset unavailable";
+        qs("traffic-map-meta").textContent = t("traffic.mapUnavailable");
       });
       setInterval(() => refresh().catch(() => {}), 5000);
     </script>

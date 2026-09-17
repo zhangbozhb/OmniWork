@@ -2,6 +2,8 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import {
+  RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_CODE,
+  RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON,
   RELAY_AGENT_DISABLED_CLOSE_REASON,
   RELAY_AGENT_IP_BANNED_CLOSE_REASON,
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
@@ -38,6 +40,16 @@ test("classifyRelayClose treats explicit relay policy close as terminal", () => 
   );
   assert.equal(classifyRelayClose({ code: 1008, reason: "" }), "terminal");
   assert.equal(classifyRelayClose({ code: 1006, reason: "" }), "retryable");
+});
+
+test("classifyRelayClose retries while Relay approval is pending", () => {
+  assert.equal(
+    classifyRelayClose({
+      code: RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_CODE,
+      reason: RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON,
+    }),
+    "retryable",
+  );
 });
 
 test("isTerminalRelayConnectionError recognizes legacy auth rejection text", () => {

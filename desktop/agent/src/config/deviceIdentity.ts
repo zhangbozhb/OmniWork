@@ -1,33 +1,27 @@
-import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from "node:fs";
-import {
-  homedir,
-  hostname as systemHostname,
-  networkInterfaces,
-} from "node:os";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-export interface AgentIdentityRecord {
-  version: 1;
-  deviceId: string;
-  checksum: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import {
+  generateIdentityKeyPair,
+  validateIdentityKeyPair,
+  type IdentityKeyPair,
+} from "@omni-work/protocol-ts";
 
-export interface ResolveAgentDeviceIdOptions {
+export type AgentIdentityRecord = IdentityKeyPair & { role: "agent" };
+
+export interface ResolveAgentIdentityOptions {
   identityPath?: string;
   keychainEnabled?: boolean;
   now?: Date;
-  hostname?: string;
-  ipAddress?: string;
 }
 
 export interface SafeKeychainOptions {
@@ -42,146 +36,53 @@ export interface SafeKeychainOptions {
 }
 
 const KEYCHAIN_SERVICE = "OmniWork";
-const KEYCHAIN_ACCOUNT = "agent-device-identity";
+const KEYCHAIN_ACCOUNT = "agent-identity-v2";
 
-export function resolveAgentDeviceId(
-  options: ResolveAgentDeviceIdOptions = {},
-): string {
+export function resolveAgentIdentity(
+  options: ResolveAgentIdentityOptions = {},
+): AgentIdentityRecord {
   const identityPath = options.identityPath ?? defaultIdentityPath();
-  const now = options.now ?? new Date();
-  const keychainEnabled = options.keychainEnabled ?? true;
-  const keychainPath = keychainEnabled ? resolveSafeKeychainPath() : null;
-
+  const keychainPath =
+    options.keychainEnabled === false ? null : resolveSafeKeychainPath();
   const keychainRecord = keychainPath
     ? readKeychainIdentity(keychainPath)
     : null;
-  if (keychainRecord && isValidIdentityRecord(keychainRecord, options)) {
+  if (keychainRecord) {
     writeLocalIdentity(identityPath, keychainRecord);
-    return keychainRecord.deviceId;
+    return keychainRecord;
   }
 
   const localRecord = readLocalIdentity(identityPath);
-  if (localRecord && isValidIdentityRecord(localRecord, options)) {
+  if (localRecord) {
     if (keychainPath) {
       writeKeychainIdentity(localRecord, keychainPath);
     }
-    return localRecord.deviceId;
+    return localRecord;
   }
 
-  const record = createIdentityRecord(now, options);
+  if (existsSync(identityPath)) {
+    throw new Error(
+      `Agent identity at ${identityPath} is invalid; restore it or remove it explicitly to create a new identity.`,
+    );
+  }
+
+  const identity = generateIdentityKeyPair(
+    "agent",
+    options.now,
+  ) as AgentIdentityRecord;
+  writeLocalIdentity(identityPath, identity);
   if (keychainPath) {
-    writeKeychainIdentity(record, keychainPath);
+    writeKeychainIdentity(identity, keychainPath);
   }
-  writeLocalIdentity(identityPath, record);
-  return record.deviceId;
+  return identity;
 }
 
-export function defaultIdentityPath(): string {
-  return join(homedir(), ".omniwork", "agent.json");
-}
-
-export function createIdentityRecord(
-  now = new Date(),
-  options: ResolveAgentDeviceIdOptions = {},
-): AgentIdentityRecord {
-  const timestamp = now.toISOString();
-  const deviceId = createDeviceId();
-  return {
-    version: 1,
-    deviceId,
-    checksum: createIdentityChecksum(deviceId, options),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createIdentityChecksum(
-  deviceId: string,
-  options: ResolveAgentDeviceIdOptions = {},
-): string {
-  return sha256(`${deviceId}${createCheckFactorHash(options)}`);
-}
-
-export function createCheckFactorHash(
-  options: ResolveAgentDeviceIdOptions = {},
-): string {
-  return sha256(`${resolveIpAddress(options)}${resolveHostname(options)}`);
-}
-
-export function isValidIdentityRecord(
-  value: unknown,
-  options: ResolveAgentDeviceIdOptions = {},
-): value is AgentIdentityRecord {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (
-    record.version !== 1 ||
-    typeof record.deviceId !== "string" ||
-    typeof record.checksum !== "string" ||
-    typeof record.createdAt !== "string" ||
-    typeof record.updatedAt !== "string"
-  ) {
-    return false;
-  }
-
-  return record.checksum === createIdentityChecksum(record.deviceId, options);
-}
-
-function createDeviceId(): string {
-  return `dev_${randomBytes(8).toString("hex")}`;
-}
-
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function resolveHostname(options: ResolveAgentDeviceIdOptions): string {
-  return options.hostname ?? systemHostname();
-}
-
-function resolveIpAddress(options: ResolveAgentDeviceIdOptions): string {
-  if (options.ipAddress !== undefined) {
-    return options.ipAddress;
-  }
-
-  const candidates: string[] = [];
-  for (const addresses of Object.values(networkInterfaces())) {
-    for (const address of addresses ?? []) {
-      if (address.family === "IPv4" && !address.internal) {
-        candidates.push(address.address);
-      }
-    }
-  }
-
-  return candidates.sort()[0] ?? "";
-}
-
-function readLocalIdentity(path: string): AgentIdentityRecord | null {
-  try {
-    if (!existsSync(path)) {
-      return null;
-    }
-    return JSON.parse(readFileSync(path, "utf8")) as AgentIdentityRecord;
-  } catch {
-    return null;
-  }
-}
-
-function writeLocalIdentity(path: string, record: AgentIdentityRecord): void {
-  try {
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    chmodSync(dirname(path), 0o700);
-    writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    chmodSync(path, 0o600);
-  } catch {
-    // Device identity must not prevent the agent from starting.
-  }
+export function defaultIdentityPath(appSupportDir?: string): string {
+  return join(
+    appSupportDir ??
+      join(homedir(), "Library", "Application Support", "OmniWork", "agent"),
+    "identity-v2.json",
+  );
 }
 
 export function safeKeychainAvailable(
@@ -190,15 +91,48 @@ export function safeKeychainAvailable(
   return resolveSafeKeychainPath(options) !== null;
 }
 
+function readLocalIdentity(path: string): AgentIdentityRecord | null {
+  try {
+    if (!existsSync(path)) {
+      return null;
+    }
+    return parseAgentIdentity(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalIdentity(path: string, identity: AgentIdentityRecord): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  chmodSync(dirname(path), 0o700);
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(identity, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  chmodSync(temporary, 0o600);
+  renameSync(temporary, path);
+  chmodSync(path, 0o600);
+}
+
+function parseAgentIdentity(raw: string): AgentIdentityRecord | null {
+  try {
+    const parsed = JSON.parse(raw) as IdentityKeyPair;
+    return validateIdentityKeyPair(parsed, "agent")
+      ? (parsed as AgentIdentityRecord)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function resolveSafeKeychainPath(
   options: SafeKeychainOptions = {},
 ): string | null {
   if ((options.platform ?? process.platform) !== "darwin") {
     return null;
   }
-
   const fileExists = options.exists ?? existsSync;
-
   try {
     const rawPath = runSecurity(
       ["default-keychain", "-d", "user"],
@@ -208,25 +142,11 @@ function resolveSafeKeychainPath(
     if (!keychainPath || !fileExists(keychainPath)) {
       return null;
     }
-
     runSecurity(["show-keychain-info", keychainPath], options);
     return keychainPath;
   } catch {
     return null;
   }
-}
-
-function runSecurity(args: string[], options: SafeKeychainOptions): string {
-  if (options.execFile) {
-    return options.execFile("security", args, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-  }
-  return execFileSync("security", args, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
 }
 
 function readKeychainIdentity(
@@ -246,14 +166,14 @@ function readKeychainIdentity(
       ],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     ).trim();
-    return JSON.parse(raw) as AgentIdentityRecord;
+    return parseAgentIdentity(raw);
   } catch {
     return null;
   }
 }
 
 function writeKeychainIdentity(
-  record: AgentIdentityRecord,
+  identity: AgentIdentityRecord,
   keychainPath: string,
 ): void {
   try {
@@ -267,7 +187,7 @@ function writeKeychainIdentity(
         "-a",
         KEYCHAIN_ACCOUNT,
         "-w",
-        JSON.stringify(record),
+        JSON.stringify(identity),
         keychainPath,
       ],
       { stdio: "ignore" },
@@ -277,19 +197,28 @@ function writeKeychainIdentity(
   }
 }
 
+function runSecurity(args: string[], options: SafeKeychainOptions): string {
+  if (options.execFile) {
+    return options.execFile("security", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  }
+  return execFileSync("security", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+}
+
 function normalizeKeychainPath(
-  value: string,
+  rawPath: string,
   homeDir = homedir(),
 ): string | null {
-  const unquoted = value.trim().replace(/^"(.+)"$/, "$1");
+  const unquoted = rawPath.replace(/^"(.*)"$/u, "$1").trim();
   if (!unquoted) {
     return null;
   }
-  if (unquoted === "~") {
-    return homeDir;
-  }
-  if (unquoted.startsWith("~/")) {
-    return join(homeDir, unquoted.slice(2));
-  }
-  return unquoted;
+  return unquoted.startsWith("~/")
+    ? join(homeDir, unquoted.slice(2))
+    : unquoted;
 }

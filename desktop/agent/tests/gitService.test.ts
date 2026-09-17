@@ -39,11 +39,11 @@ function workspace(path: string): WorkspaceDefinition {
 {
   const workspacePath = await createRepo("omniwork-git-large-");
   await writeFile(join(workspacePath, "small.txt"), "one\ntwo\n");
-  await writeFile(join(workspacePath, "large.log"), "x".repeat(300 * 1024));
+  await writeFile(join(workspacePath, "large.txt"), "x".repeat(300 * 1024));
 
   const payload = await new GitService().status(workspace(workspacePath));
   const small = payload.status.files.find((file) => file.path === "small.txt");
-  const large = payload.status.files.find((file) => file.path === "large.log");
+  const large = payload.status.files.find((file) => file.path === "large.txt");
 
   assert.equal(small?.status, "untracked");
   assert.equal(small?.unstagedAdditions, 2);

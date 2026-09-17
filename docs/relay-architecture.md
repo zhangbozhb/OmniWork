@@ -5,7 +5,7 @@
 
 - [relay-architecture-implementation.md](./relay-architecture-implementation.md)：实施状态与演进边界
 - [engineering-requirements.md](./engineering-requirements.md)
-- [auth-key-design.md](./auth-key-design.md)
+- [identity-auth-design.md](./identity-auth-design.md)
 
 本篇是 OmniWork 中继与 P2P 升级链路的最终参考。所有客户端、Relay 与运维的预期行为都以本文为准。
 
@@ -27,7 +27,13 @@
 - **Relay**：始终在线、公网可达，承载 WS 业务中继与升级控制面（SDP/ICE 透传）。本身不再持有任何 `RTCPeerConnection`。
 - **Agent**：电脑系统 Node 进程，使用 `@roamhq/wrtc` 充当 P2P answerer。
 - **App**：React Native（`react-native-webrtc`）/ Web（浏览器 `RTCPeerConnection`），充当 P2P offerer；若运行环境缺少 WebRTC 能力则 `peerFactory` 返回 null 并按偏好回退或失败。
-- **业务协议**（`session.*`、`terminal.*`、`auth.*`、`workspace.*`、`files.*`、`git.*`、`agent.heartbeat`）由 E2E 内层 envelope 承载；路径切换由传输层吸收。完整消息族以 [packages/protocol-ts/src/index.ts](../packages/protocol-ts/src/index.ts) 为单一来源，对应 JSON Schema 见 [protocol/](../protocol/)。
+- **连接与认证控制面**（`agent.auth.*`、`agent.hello`、`mobile.connect`、
+  `auth.*`、`e2e.*`）使用外层协议状态机。
+- **业务协议**（`session.*`、`terminal.*`、`workspace.*`、`files.*`、
+  `git.*`、`agent.*` 业务消息）由 E2E 内层 envelope 承载；路径切换由传输层
+  吸收。完整消息族以
+  [packages/protocol-ts/src/](../packages/protocol-ts/src/) 为运行时来源，
+  [protocol/](../protocol/) 维护跨语言 JSON Schema 子集。
 
 ## 2. 关键抽象
 
@@ -59,11 +65,12 @@ Relay 用户体系是可选控制面能力，默认 `OMNIWORK_RELAY_AUTH_MODE=no
 - 用户通过 Relay 网站 `/auth/` 进行邮箱 magic link 注册/登录，邮件发送支持本地 `console` 与 SMTP；非 loopback host 必须配置 HTTPS `OMNIWORK_PUBLIC_BASE_URL`，且不能使用 `console` provider。
 - Relay 使用 SQLite 保存 user/session/device/enrollment，默认路径为 `<OMNIWORK_RELAY_RUNTIME_DIR>/relay-auth.sqlite`。
 - Cookie 会话下的状态变更接口要求携带 `/auth/me` 返回的 `x-csrf-token`；Bearer token 调用不走该 CSRF 校验。
-- Agent 首次设备登记通过网站生成的短期 enrollment token 完成：`omniwork-agent enroll` 自动生成 Ed25519 keypair、提交 public key、保存 Relay 分配的 `device_id` 和本地 private key。后续连接先用 `agent.auth.init` 对 `device_id|device_public_key|timestamp` 做时间签名，Relay 校验登记公钥后返回无状态 `agent.auth.challenge`（默认 60 秒 TTL）；最终 `agent.hello.payload.relay_auth` 签名 `device_id|challenge|timestamp`。Relay 鉴权通过后生成 `agent_connection_id`，并保证同一 `device_id` 只有一个在线 Agent。
+- Agent 首次设备登记通过网站生成的短期 enrollment token 完成：`omniwork-agent enroll` 创建或复用 Ed25519 身份，提交派生 `device_id` 和公钥，私钥始终留在本机身份存储。后续连接先用 `agent.auth.init` 对 `device_id|device_public_key|timestamp` 做时间签名，Relay 校验登记公钥后返回无状态 `agent.auth.challenge`（默认 60 秒 TTL）；最终 `agent.hello.payload.relay_auth` 签名 `device_id|challenge|timestamp`。Relay 身份验证和 Agent 授权均通过后生成 `agent_connection_id`，并保证同一 `device_id` 只有一个在线 Agent。
+- Relay 另有独立的 Agent 授权策略：默认 `manual`，未知 Agent 完成签名证明后进入 Relay Admin 待授权列表；`automatic` 仅在 device ID 与 Relay 可见来源 IP 均未封禁时自动批准。批准记录持久化，设备禁用/IP ban 始终优先。
 - App 的 `mobile.connect.payload.session_token` 必须属于目标 device 的 owner user，否则 Relay 在进入 App-Agent 鉴权前拒绝连接。
 - 该能力只约束 Relay 控制面身份与设备归属，不改变 App-Agent 业务 E2E 边界，Relay 仍不解析业务 payload。
 
-Agent 设备准入的 Relay 校验顺序如下，完整时序见 [auth-key-design.md](./auth-key-design.md#relay-鉴权流程)：
+Agent 设备准入的 Relay 校验顺序如下，完整时序见 [identity-auth-design.md](./identity-auth-design.md#agent-relay-认证)：
 
 ```mermaid
 flowchart LR
@@ -75,17 +82,25 @@ flowchart LR
   F --> G[校验 connection 为 pending]
   G --> H[校验 challenge HMAC/过期/connection]
   H --> I[校验 proof 签名]
-  I --> J[分配 agent_connection_id]
+  I --> J{Agent 授权}
+  J -->|manual 已批准| K[分配 agent_connection_id]
+  J -->|manual 未批准| L[记录待授权并断开重试]
+  J -->|automatic 且未封禁| K
 ```
 
 该流程不把 `device_id` 或 `device_public_key` 当作秘密。攻击者即使知道这些明文，也需要持有登记公钥对应的 `device_private_key`，才能分别生成 init 签名和本次 challenge 的 proof 签名。Agent 准入按 `agent|device_id|public_remote_ip` 与 `agent_ip|public_remote_ip` 两层限流；`public_remote_ip` 只来自 Relay 连接层观测，内网、loopback、链路本地和保留地址不进入该限流。成功发出 init challenge 会消耗公网 IP-only 桶，最终 proof 成功后只重置 device+public IP 桶。同一连接 verified 后重复 `agent.hello` 会被忽略并记录审计日志，避免重复注册触发 App 断连。
 
 ### 3.1 触发
 
-- 安全态：App 通过 `mobile.connect` + `auth.proof` 完成 Relay 接入鉴权后，默认业务安全模式由 App-Agent 继续完成 E2E 握手，并通过 `e2e.message` 承载业务消息；Relay 不解析、不裁决业务 payload。
+- 安全态：App 通过 `mobile.connect` + `auth.proof` 完成双向身份和本机授权
+  后，由 App-Agent 继续完成强制 E2E 握手，并通过 `e2e.message` 承载业务
+  消息；Relay 不解析、不裁决业务 payload。
 - Relay 为每个 mobile WebSocket 分配 canonical `app_connection_id`；E2E 握手、ready 和密文消息都按该连接 ID 绑定并定向路由。
 - Relay 只在对应 App 的 E2E pair ready 后触发 P2P propose；P2P 升级按 `app_connection_id` 独立编排。
-- `tunnel.upgrade.propose` 是 Relay 定向升级提示；offer / answer / candidate / committed / downgrade 属于 P2P 控制面信令，只在 App-Agent E2E pair ready 后由 Relay 按 `app_connection_id` 透传。默认业务安全模式下，业务 payload 由 App-Agent 协商封装为 `e2e.message`；SDP/ICE 信令不被视为业务明文。
+- `tunnel.upgrade.propose` 是 Relay 定向升级提示；offer / answer / candidate /
+  committed / downgrade 属于 P2P 控制面信令，只在 App-Agent E2E pair ready
+  后由 Relay 按 `app_connection_id` 透传。协议 v2 的业务 payload 固定由
+  App-Agent 封装为 `e2e.message`；SDP/ICE 信令不属于业务 payload。
 
 ### 3.2 协商
 
@@ -243,7 +258,7 @@ App 端偏好的双层来源：
 收到 `propose.strict=true` 后：
 
 - **错误前置与数据清空**：用户显式选择 `prefer_p2p` 时，App 收到 `auth.ok` 后不会立即把 Relay 鉴权成功呈现为业务可用，也不会复用旧的 `session.list` / terminal frame；本地业务数据会先清空，UI 保持在 Direct 建链中。只有 P2P path 已切入且 App-Agent E2E business ready 后，才标记 `authenticated` 并重新拉取 `session.list`（响应携带 workspace 摘要）。这样 direct 模式的失败会在进入业务前前置暴露，而不是让用户看到旧数据、进入控制台后才发现不可交互。
-- **控制面准入门 + 业务消息暂存**：`SessionTransport` 在 `currentPath==='relay'` 时只放行控制面消息（`tunnel.upgrade.*` / `transport.*`）。其他业务消息**不再 throw**，而是连同 P2P channel hint 一起暂存到 `strictPendingQueue`（上限 `STRICT_PENDING_QUEUE_LIMIT=256`，与 `WebRtcPeerAdapter.pendingSends` 对齐）；一旦双端 `committed`、`switchPath('p2p')` 完成，队列会被 flush 出去并恢复正常下发。如果 P2P path 先于 App-Agent E2E ready，`encodeForP2p()` 会返回空，消息会重新留在 `strictPendingQueue`，等 `e2e.ready` / plaintext business ready 后再 flush，避免 `auth.ok` 后首批 `session.list` 刷新请求丢失。队列超过上限时直接 emit `pending_drop(reason="queue_overflow", count)` 并触发 `forceClose('strict_pending_overflow')`，不再静默丢弃；`close` / `forceClose` 时若队列非空，亦各自 emit `pending_drop(reason="session_close" | "force_close")`，由业务侧记录度量。Agent 端按 `app_connection_id` 维护 strict route，升级控制信令使用 strict bypass 继续经 Relay/E2E 完成协商，业务消息按对应 App route 暂存或 DataChannel 下发。
+- **控制面准入门 + 业务消息暂存**：`SessionTransport` 在 `currentPath==='relay'` 时只放行控制面消息（`tunnel.upgrade.*` / `transport.*`）。其他业务消息**不再 throw**，而是连同 P2P channel hint 一起暂存到 `strictPendingQueue`（上限 `STRICT_PENDING_QUEUE_LIMIT=256`，与 `WebRtcPeerAdapter.pendingSends` 对齐）；一旦双端 `committed`、`switchPath('p2p')` 完成，队列会被 flush 出去并恢复正常下发。如果 P2P path 先于 App-Agent E2E ready，`encodeForP2p()` 会返回空，消息会重新留在 `strictPendingQueue`，等 `e2e.ready` 后再 flush，避免 `auth.ok` 后首批 `session.list` 刷新请求丢失。队列超过上限时直接 emit `pending_drop(reason="queue_overflow", count)` 并触发 `forceClose('strict_pending_overflow')`，不再静默丢弃；`close` / `forceClose` 时若队列非空，亦各自 emit `pending_drop(reason="session_close" | "force_close")`，由业务侧记录度量。Agent 端按 `app_connection_id` 维护 strict route，升级控制信令使用 strict bypass 继续经 Relay/E2E 完成协商，业务消息按对应 App route 暂存或 DataChannel 下发。
 - **DataChannel 未 open 防丢失**：双端 `WebRtcPeerAdapter.send()` 在目标 DataChannel 尚未 attach（answerer 还未收到 `ondatachannel`）或 `readyState === 'connecting'` 时把消息暂存到 adapter 内部 `pendingSends` 队列（上限 256，超出丢最旧），`attachDataChannel()` / `dataChannel.onopen` 时统一 flush。这样即便 ICE `connected` 抢跑 SCTP 握手，commit 后从 `strictPendingQueue` flush 到 peer 的首批业务消息也不会被静默丢弃。
 - **dispatchSend 守门**：`SessionTransport.dispatchSend()` 在严格模式下若处于 `currentPath==='p2p'` 但 `peer===null` 的脱钩状态（健康降级竞态、forceClose 后状态机未及时复位等），不会 fallback 到 relay path，而是发出 `strict_send_blocked` 事件并触发 `forceClose('peer_missing')` 关闭整个 session，避免业务消息泄漏到 Relay。
 - **forceClose 唯一入口（P2-3D）**：所有 strict 关闭路径——coordinator 协商失败 / 运行期健康降级 / Relay 主动 `strict_unavailable` / `dispatchSend` peer 脱钩——统一汇聚到 `SessionTransport.forceClose(reason)`：先 emit `force_close`、`detachP2pPeer`、`resetPathState`、非空时 emit `pending_drop("force_close")`，再回调 `downgradeHandler` 让 coordinator 发出 `tunnel.upgrade.downgrade`（保留 Relay metrics 与退避计数），最后回调 `forceCloseHandler` 让业务上层提示用户。`forceClose` 自带重入保护，重复调用立即返回。
@@ -282,7 +297,7 @@ P2P propose 恢复后，Relay 只下发按 `app_connection_id` 定向的 propose
 
 ### 8.1 Relay 无法启动
 
-- 错误 `RelayConfigError: refusing to start on non-loopback host`：非 loopback host 使用 `ws://` 时必须设置 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`。`OMNIWORK_RELAY_REQUIRE_E2E` 仅作为旧配置兼容项保留；`wss://` 仍推荐，但业务 payload 安全边界由 App-Agent 协议协商执行。
+- 错误 `RelayConfigError: refusing to start on non-loopback host`：非 loopback host 使用 `ws://` 时必须设置 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`。`wss://` 仍推荐，但业务 payload 始终由 App-Agent E2E 保护。
 
 ### 8.2 始终走 relay path，从未升级
 
@@ -306,11 +321,11 @@ P2P propose 恢复后，Relay 只下发按 `app_connection_id` 定向的 propose
 
 - `getMetrics().active_p2p` 不为 0 但业务无响应：在客户端开 `OMNIWORK_LOG_TRANSPORT=1`，确认是否 `pong_received rtt_ms` 异常增长；可手工 `forceDowngrade("manual")` 切回 relay 验证。
 - `terminal.frame` / `terminal.snapshot` 是全量展示型状态帧，不承载用户输入语义。Agent 会为每个 session 复用外层 `MessageEnvelope.seq` 维护统一画面水位，`terminal.frame` payload 只附加 `captured_at` / `byte_length`；App 仅应用更新的 envelope `seq`，snapshot 会推进水位，避免旧 frame 延迟到达后覆盖刚校准的画面。
-- P2P 使用三条 DataChannel：`control`（可靠有序，控制面/加密业务）、`input`（可靠有序，plaintext 模式下的 `terminal.input` / `terminal.resize`）、`display`（unordered + 有限重传，plaintext 模式下的 `terminal.frame`）。在默认 encrypted-only 模式下，`e2e.message` 受 E2E replay seq 约束，必须固定走 `control` 的可靠有序流；否则 display 的乱序/丢包会破坏 E2E 全局 seq，导致后续密文被判为 replay。display 面优化需要等未来引入按通道独立的 E2E stream/seq 后再承载加密 `terminal.frame`。
-- 当 plaintext / 未来独立 E2E display stream 的 P2P display `bufferedAmount >= 256KB` 时，Agent 不再排队所有旧 `terminal.frame`，而是按 `(app_connection_id, session_id)` 只保留最新帧；待缓冲下降后再发送最新帧。默认 encrypted-only 模式下，业务密文统一走 `control`，因此该优化不会牺牲 E2E replay 顺序。
+- P2P 保留 `control`、`input`、`display` 三条 DataChannel，但协议 v2 的 `e2e.message` 受全局 replay sequence 约束，所有加密业务固定走可靠有序 `control`。`input` 与 `display` 暂不承载业务，直到未来引入按通道独立的 E2E sequence。
+- 当前业务密文统一走 `control`，因此 display 通道的帧合并与背压优化不参与协议 v2 业务传输。
 - App 收到 `terminal.frame` 后按约 16ms 合并渲染，只把最新帧写入 `terminalFrames` 状态，避免弱网或 WebView 大字符串写入时形成 UI 队列。
 - App 在 P2P 切入时会重新请求 `session.list`（该响应携带 workspace 摘要），避免 `auto` 或 `prefer_p2p` 模式下 path 切换后仍展示旧列表；同时在 P2P 切入、前台恢复、网络变化和当前 session 超过 3s 没有新 frame 时，会限频请求 `terminal.snapshot` 校准画面；snapshot 请求最短间隔 2s。
-- 如果 `display_frame_deferred` 日志持续出现，说明 P2P display 面被背压；该日志主要适用于 plaintext / 未来独立 E2E display stream。默认 encrypted-only 模式下若仍出现卡顿，应优先排查 `control` 上的 E2E 密文队列和 RTT。
+- 协议 v2 出现 P2P 卡顿时，应优先排查 `control` 上的 E2E 密文队列和 RTT。
 
 ### 8.5 手工触发 upgrade（调试）
 

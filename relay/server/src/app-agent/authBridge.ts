@@ -1,8 +1,14 @@
 import {
+  SIGNATURE_DOMAINS,
+  appAuthSignatureFields,
   createMessage,
+  identityMatchesPublicKey,
+  verifyIdentityFields,
   type AuthFailedPayload,
   type AuthOkPayload,
+  type AuthPendingPayload,
   type AuthProofPayload,
+  type AuthVerifyPayload,
   type MessageEnvelope,
 } from "@omni-work/protocol-ts";
 
@@ -12,7 +18,6 @@ import { logRelayEvent } from "../relayLog.ts";
 import { appInfoToPayload, buildAuthRateLimitKey } from "./payload.ts";
 import type { RelayStateStore } from "../relayStateStore.ts";
 import { TokenBucketLimiter } from "../tokenBucket.ts";
-import { RelayUpgradeOrchestrator } from "../upgrade/orchestrator.ts";
 import type { PendingAuth, RelayConnection } from "../relayTypes.ts";
 
 export interface AppAuthBridgeOptions {
@@ -21,7 +26,6 @@ export interface AppAuthBridgeOptions {
   state: RelayStateStore;
   pendingAuth: Map<string, PendingAuth>;
   authLimiter: TokenBucketLimiter;
-  orchestrator: RelayUpgradeOrchestrator;
   send(connection: RelayConnection, message: MessageEnvelope): void;
 }
 
@@ -41,90 +45,68 @@ export class AppAuthBridge {
       pending?.deviceId ?? connection.deviceId,
       connection.remoteIp,
     );
-
     if (this.options.authLimiter.isBlocked(limiterKey)) {
       logRelayEvent({
         event: "auth.rate_limit",
         device_id: pending?.deviceId ?? connection.deviceId,
         remote_ip: connection.remoteIp,
       });
-      this.options.send(
-        connection,
-        createMessage<AuthFailedPayload>(
-          "auth.failed",
-          {
-            reason: "too_many_attempts",
-            connection_id: connection.id,
-            retry_after_ms: this.options.config.authRateLimit.blockMs,
-          },
-          { device_id: connection.deviceId },
-        ),
-      );
-      connection.authState = "failed";
-      this.options.state.recordAuthFailed();
+      this.fail(connection, "too_many_attempts");
       connection.socket.close(1008, "auth rate limit");
       return;
     }
 
-    if (
-      !pending ||
-      message.payload.nonce !== pending.nonce ||
-      message.payload.app_info.instance_id !== pending.appInfo.instanceId ||
-      message.payload.app_info.runtime_id !== pending.appInfo.runtimeId
-    ) {
-      // 仅对失败的 proof 计数，避免合法重连/切偏好的连续 proof 把桶耗尽
-      // 触发 60s 误封禁。limiter.reset 在 auth.ok 时清零，所以正常路径
-      // 始终通过；这里 consume 的返回值已经被上面的 isBlocked 覆盖，忽略即可。
+    if (!pending || !this.matchesPending(connection, pending, message.payload)) {
       this.options.authLimiter.consume(limiterKey);
-      this.options.send(
-        connection,
-        createMessage<AuthFailedPayload>(
-          "auth.failed",
-          {
-            reason: "malformed_proof",
-            connection_id: connection.id,
-            retry_after_ms: 2000,
-          },
-          { device_id: connection.deviceId },
-        ),
-      );
-      connection.authState = "failed";
-      this.options.state.recordAuthFailed();
+      this.fail(connection, "malformed_proof");
+      return;
+    }
+    const now = Date.now();
+    if (pending.expiresAt <= now) {
+      this.options.pendingAuth.delete(connection.id);
+      this.options.authLimiter.consume(limiterKey);
+      this.fail(connection, "malformed_proof");
+      return;
+    }
+    if (
+      Math.abs(now - message.payload.timestamp) >
+      this.options.config.auth.nonceTtlMs
+    ) {
+      this.options.authLimiter.consume(limiterKey);
+      this.fail(connection, "malformed_proof");
+      return;
+    }
+    const { signature, ...unsigned } = message.payload;
+    if (
+      !verifyIdentityFields(
+        message.payload.app_public_key,
+        SIGNATURE_DOMAINS.appAuth,
+        appAuthSignatureFields(unsigned),
+        signature,
+      )
+    ) {
+      this.options.authLimiter.consume(limiterKey);
+      this.fail(connection, "invalid_signature");
       return;
     }
 
     const agent = this.options.topology.getPrimaryAgent(pending.deviceId);
-    if (!agent) {
-      this.options.send(
-        connection,
-        createMessage<AuthFailedPayload>(
-          "auth.failed",
-          {
-            reason: "device_not_online",
-            connection_id: connection.id,
-            retry_after_ms: 2000,
-          },
-          { device_id: pending.deviceId },
-        ),
-      );
-      connection.authState = "failed";
-      this.options.state.recordAuthFailed();
+    if (!agent || agent.id !== pending.agentConnectionId) {
+      this.fail(connection, "device_not_online");
       return;
     }
 
+    const forwarded: AuthVerifyPayload = {
+      ...message.payload,
+      app_info: appInfoToPayload(pending.appInfo),
+      observations: connection.observations,
+    };
     this.options.send(
       agent,
-      createMessage(
-        "auth.verify",
-        {
-          nonce: message.payload.nonce,
-          app_info: appInfoToPayload(pending.appInfo),
-          proof: message.payload.proof,
-          connection_id: connection.id,
-          observations: connection.observations,
-        },
-        { device_id: pending.deviceId },
-      ),
+      createMessage("auth.verify", forwarded, {
+        device_id: pending.deviceId,
+        app_connection_id: connection.id,
+      }),
     );
   }
 
@@ -136,46 +118,108 @@ export class AppAuthBridge {
       return;
     }
 
-    const payload = message.payload as AuthOkPayload | AuthFailedPayload;
+    const payload = message.payload as
+      | AuthOkPayload
+      | AuthPendingPayload
+      | AuthFailedPayload;
     const mobile = this.options.topology.getConnection(payload.connection_id);
-    if (!mobile) {
+    if (
+      mobile?.role !== "mobile" ||
+      mobile.deviceId !== connection.deviceId
+    ) {
       return;
     }
 
+    if (message.type === "auth.pending") {
+      const pending = this.options.pendingAuth.get(mobile.id);
+      const approvalExpiresAt = Date.parse(
+        (message.payload as AuthPendingPayload).expires_at,
+      );
+      if (pending && Number.isFinite(approvalExpiresAt)) {
+        pending.expiresAt = approvalExpiresAt;
+        pending.approvalPending = true;
+      }
+      this.options.send(mobile, message);
+      return;
+    }
+
+    const pending = this.options.pendingAuth.get(mobile.id);
     this.options.pendingAuth.delete(mobile.id);
     if (message.type === "auth.ok") {
-      const okPayload = message.payload as AuthOkPayload;
-      const agentMode = connection.businessSecurityMode ?? "e2e_required";
-      okPayload.agent_connection_id = connection.id;
-      okPayload.business_security_mode ??= agentMode;
-      okPayload.e2e ??= connection.e2e;
+      const ok = message.payload as AuthOkPayload;
+      if (
+        !pending ||
+        ok.nonce !== pending.nonce ||
+        ok.device_id !== pending.deviceId ||
+        ok.app_id !== pending.appId ||
+        ok.agent_connection_id !== connection.id ||
+        ok.connection_id !== mobile.id ||
+        ok.agent_public_key !== connection.devicePublicKey
+      ) {
+        this.fail(mobile, "malformed_proof");
+        return;
+      }
       mobile.authenticated = true;
       mobile.authState = "verified";
       mobile.state = "relay_pairing_verified";
       this.options.state.authenticateApp(mobile, connection);
-      // 鉴权成功后释放限流计数，避免合法重连被旧失败拖累。
       this.options.authLimiter.reset(
         buildAuthRateLimitKey(mobile.deviceId, mobile.remoteIp),
       );
       if (mobile.deviceId) {
         this.options.topology.addMobileToDevice(mobile.deviceId, mobile);
-        if (agentMode === "plaintext_allowed") {
-          this.options.orchestrator.notifyMobileAuthenticated(
-            mobile.deviceId,
-            mobile,
-          );
-        }
       }
     } else if (message.type === "auth.failed") {
       mobile.authState = "failed";
       this.options.state.recordAuthFailed();
-      // agent 端确认 key 不匹配 → 这才是真实的鉴权失败，计入限流；
-      // 避免合法 proof 被一并消耗 token 触发 60s 误封禁。
       this.options.authLimiter.consume(
         buildAuthRateLimitKey(mobile.deviceId, mobile.remoteIp),
       );
     }
-
     this.options.send(mobile, message);
+  }
+
+  private matchesPending(
+    connection: RelayConnection,
+    pending: PendingAuth,
+    payload: AuthProofPayload,
+  ): boolean {
+    return (
+      payload.nonce === pending.nonce &&
+      payload.connection_id === connection.id &&
+      payload.agent_connection_id === pending.agentConnectionId &&
+      payload.device_id === pending.deviceId &&
+      payload.agent_public_key === pending.agentPublicKey &&
+      payload.app_id === pending.appId &&
+      payload.app_public_key === pending.appPublicKey &&
+      payload.app_info.instance_id === pending.appInfo.instanceId &&
+      payload.app_info.runtime_id === pending.appInfo.runtimeId &&
+      identityMatchesPublicKey("app", payload.app_id, payload.app_public_key) &&
+      identityMatchesPublicKey(
+        "agent",
+        payload.device_id,
+        payload.agent_public_key,
+      )
+    );
+  }
+
+  private fail(
+    connection: RelayConnection,
+    reason: AuthFailedPayload["reason"],
+  ): void {
+    connection.authState = "failed";
+    this.options.state.recordAuthFailed();
+    this.options.send(
+      connection,
+      createMessage<AuthFailedPayload>(
+        "auth.failed",
+        {
+          reason,
+          connection_id: connection.id,
+          retry_after_ms: 2000,
+        },
+        { device_id: connection.deviceId },
+      ),
+    );
   }
 }

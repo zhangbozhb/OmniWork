@@ -1,19 +1,19 @@
-export const PROTOCOL_VERSION = 1 as const;
-export const E2E_PROTOCOL_VERSION = 1 as const;
+export const PROTOCOL_VERSION = 2 as const;
+export const E2E_PROTOCOL_VERSION = 2 as const;
 export const INNER_PROTOCOL_VERSION = 1 as const;
-export const NOISE_SUITE_NNPSK0_V1 =
-  "Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s" as const;
-export const E2E_NOISE_NNPSK0_CAPABILITY_V1 = "e2e.noise.nnpsk0.v1" as const;
-export const ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1 =
-  "business.encrypted-only.v1" as const;
-export const PLAINTEXT_BUSINESS_CAPABILITY_V1 =
-  "business.plaintext-allowed.v1" as const;
+export const SIGNED_X25519_SUITE_V2 =
+  "OmniWork_SignedX25519_ChaChaPoly_SHA256_v2" as const;
+export const E2E_SIGNED_X25519_CAPABILITY_V2 =
+  "e2e.signed-x25519.v2" as const;
 export const TERMINAL_STREAM_CAPABILITY_V1 = "terminal.stream.v1" as const;
 export const PAIRING_LINK_SCHEME = "omniwork" as const;
 export const PAIRING_LINK_HOST = "pair" as const;
+export const RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_CODE = 4402 as const;
 export const RELAY_AGENT_SHUTDOWN_CLOSE_CODE = 4404 as const;
 export const RELAY_AGENT_DISABLED_CLOSE_REASON = "agent_disabled" as const;
 export const RELAY_AGENT_IP_BANNED_CLOSE_REASON = "ip_banned" as const;
+export const RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON =
+  "agent_approval_required" as const;
 export const RELAY_AGENT_SUPERSEDED_CLOSE_REASON = "agent_superseded" as const;
 
 /**

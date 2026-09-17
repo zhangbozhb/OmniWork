@@ -217,6 +217,7 @@ export class RelayUserAuthStore {
 
   consumeDeviceEnrollment(input: {
     token: string;
+    deviceId: string;
     name?: string;
     publicKey: string;
     maxDevicesPerUser: number;
@@ -224,49 +225,58 @@ export class RelayUserAuthStore {
   }): RelayAuthDevice | null {
     const now = input.now ?? Date.now();
     const db = this.open();
-    const row = db
-      .prepare(
-        `
-          SELECT id, user_id, token_hash, expires_at, consumed_at, created_at
-          FROM device_enrollments
-          WHERE token_hash = ?
-        `,
-      )
-      .get(tokenHash(input.token)) as EnrollmentRow | undefined;
-    if (!row || row.consumed_at || row.expires_at <= now) {
-      return null;
-    }
-    const count = db
-      .prepare(
-        "SELECT COUNT(*) AS count FROM devices WHERE user_id = ? AND revoked_at IS NULL",
-      )
-      .get(row.user_id) as { count: number };
-    if (count.count >= input.maxDevicesPerUser) {
-      return null;
-    }
-    const device: RelayAuthDevice = {
-      id: `dev_${randomUUID()}`,
-      user_id: row.user_id,
-      name: input.name,
-      public_key: input.publicKey,
-      created_at: now,
-    };
-    db.prepare(
-      `
+    db.exec("BEGIN IMMEDIATE");
+    let committed = false;
+    try {
+      const row = db.prepare(`
+        SELECT id, user_id, token_hash, expires_at, consumed_at, created_at
+        FROM device_enrollments WHERE token_hash = ?
+      `).get(tokenHash(input.token)) as EnrollmentRow | undefined;
+      if (!row || row.consumed_at || row.expires_at <= now) {
+        return null;
+      }
+      const existing = this.getDevice(input.deviceId);
+      if (existing && (
+        existing.user_id !== row.user_id || existing.public_key !== input.publicKey
+      )) {
+        return null;
+      }
+      // An active device retry does not consume another device slot.
+      if (!existing || existing.revoked_at != null) {
+        const count = db.prepare(
+          "SELECT COUNT(*) AS count FROM devices WHERE user_id = ? AND revoked_at IS NULL",
+        ).get(row.user_id) as { count: number };
+        if (count.count >= input.maxDevicesPerUser) {
+          return null;
+        }
+      }
+      const device: RelayAuthDevice = {
+        id: input.deviceId,
+        user_id: row.user_id,
+        name: input.name ?? existing?.name,
+        public_key: input.publicKey,
+        created_at: existing?.created_at ?? now,
+        last_seen_at: existing?.last_seen_at,
+      };
+      db.prepare(`
         INSERT INTO devices (id, user_id, name, public_key, created_at)
         VALUES (?, ?, ?, ?, ?)
-      `,
-    ).run(
-      device.id,
-      device.user_id,
-      device.name ?? null,
-      device.public_key,
-      device.created_at,
-    );
-    db.prepare(
-      "UPDATE device_enrollments SET consumed_at = ? WHERE id = ?",
-    ).run(now, row.id);
-    return device;
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, revoked_at = NULL
+      `).run(
+        device.id, device.user_id, device.name ?? null, device.public_key,
+        device.created_at,
+      );
+      db.prepare(
+        "UPDATE device_enrollments SET consumed_at = ? WHERE id = ?",
+      ).run(now, row.id);
+      db.exec("COMMIT");
+      committed = true;
+      return device;
+    } finally {
+      if (!committed) {
+        db.exec("ROLLBACK");
+      }
+    }
   }
 
   getDevice(deviceId: string): RelayAuthDevice | null {

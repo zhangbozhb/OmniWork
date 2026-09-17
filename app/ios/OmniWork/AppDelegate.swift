@@ -5,10 +5,9 @@ import ReactAppDependencyProvider
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
-  var window: UIWindow?
-
   var reactNativeDelegate: ReactNativeDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
+  private var launchOptions: [UIApplication.LaunchOptionsKey: Any]?
 
   func application(
     _ application: UIApplication,
@@ -20,14 +19,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     reactNativeDelegate = delegate
     reactNativeFactory = factory
-
-    window = UIWindow(frame: UIScreen.main.bounds)
-
-    factory.startReactNative(
-      withModuleName: "OmniWork",
-      in: window,
-      launchOptions: launchOptions
-    )
+    self.launchOptions = launchOptions
 
     return true
   }
@@ -38,6 +30,53 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
     return RCTLinkingManager.application(app, open: url, options: options)
+  }
+
+  func startReactNative(
+    in window: UIWindow,
+    connectionOptions: UIScene.ConnectionOptions
+  ) {
+    var reactNativeLaunchOptions = launchOptions ?? [:]
+    if let url = connectionOptions.urlContexts.first?.url {
+      reactNativeLaunchOptions[.url] = url
+    }
+
+    reactNativeFactory?.startReactNative(
+      withModuleName: "OmniWork",
+      in: window,
+      launchOptions: reactNativeLaunchOptions.isEmpty ? nil : reactNativeLaunchOptions
+    )
+  }
+}
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard
+      let windowScene = scene as? UIWindowScene,
+      let appDelegate = UIApplication.shared.delegate as? AppDelegate
+    else {
+      return
+    }
+
+    let window = UIWindow(windowScene: windowScene)
+    self.window = window
+    appDelegate.startReactNative(in: window, connectionOptions: connectionOptions)
+  }
+
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    for urlContext in URLContexts {
+      RCTLinkingManager.application(
+        UIApplication.shared,
+        open: urlContext.url,
+        options: [:]
+      )
+    }
   }
 }
 

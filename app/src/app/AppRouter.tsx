@@ -147,15 +147,15 @@ function isWorkbenchRoute(view: AppView): boolean {
 
 const styles = StyleSheet.create({
   fullScreenPage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#101417",
   },
   fullScreenOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "transparent",
   },
   presentedBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "flex-end",
     backgroundColor: "rgba(0, 0, 0, 0.34)",
   },

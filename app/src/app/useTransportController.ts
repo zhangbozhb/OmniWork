@@ -44,7 +44,7 @@ export function useTransportController({
     useState<ConnectionStatus>("idle");
   const [connectionPath, setConnectionPath] = useState<TransportPath>("relay");
   const [connectionMessage, setConnectionMessage] = useState(
-    "Enter the Desktop key to pair.",
+    "Scan or paste a Desktop pairing link.",
   );
   const relayRef = useRef<AppSessionTransport | null>(null);
   const directBusinessReadyRef = useRef(false);
@@ -70,18 +70,21 @@ export function useTransportController({
       relayRef.current = null;
       setConnectionStatus("idle");
       setConnectionPath("relay");
-      setConnectionMessage("Enter the Desktop key to pair.");
+      setConnectionMessage("Scan or paste a Desktop pairing link.");
       return undefined;
     }
 
     let closed = false;
+    let failed = false;
     const relay = createAppSessionTransport(pairing, transportPreference, {
       onForceClose: (reason) => {
-        if (closed) {
+        if (closed || failed) {
           return;
         }
+        failed = true;
         setConnectionStatus("failed");
         setConnectionMessage(formatStrictForceCloseMessage(reason));
+        relay.close();
       },
     });
     relayRef.current = relay;
@@ -94,19 +97,23 @@ export function useTransportController({
     setConnectionMessage("Opening secure connection...");
 
     const unsubscribe = relay.onMessage((message) => {
-      if (closed) {
+      if (closed || failed) {
         return;
       }
       onMessageRef.current(message, relay, pairing);
     });
     const unsubscribeClose = relay.onClose((event) => {
-      if (closed) {
+      if (closed || failed) {
         return;
       }
+      failed = true;
       setConnectionStatus("failed");
       setConnectionMessage(formatRelayCloseMessage(event));
     });
     const unsubscribePathChange = relay.onPathChange((path) => {
+      if (closed || failed) {
+        return;
+      }
       setConnectionPath(path);
       if (
         transportPreference === "prefer_p2p" &&
@@ -117,25 +124,34 @@ export function useTransportController({
       }
     });
     const unsubscribeBusinessReady = relay.onBusinessReady(() => {
+      if (closed || failed) {
+        return;
+      }
       directBusinessReadyRef.current = true;
-      if (
-        transportPreference === "prefer_p2p" &&
-        relay.getCurrentPath() === "p2p"
-      ) {
-        onDirectConnectionReadyRef.current();
+      if (transportPreference === "prefer_p2p") {
+        if (relay.getCurrentPath() === "p2p") {
+          onDirectConnectionReadyRef.current();
+        }
+      } else {
+        setConnectionStatus("authenticated");
+        setConnectionMessage("Connected to Desktop.");
       }
     });
 
     relay
       .connect()
       .then(() => {
-        if (!closed) {
+        if (!closed && !failed && !directBusinessReadyRef.current) {
           setConnectionStatus("authenticating");
-          setConnectionMessage("Waiting for key proof challenge...");
+          setConnectionMessage(
+            "Waiting for the Agent authentication challenge...",
+          );
         }
       })
       .catch((error: unknown) => {
-        if (!closed) {
+        if (!closed && !failed) {
+          failed = true;
+          relay.close();
           setConnectionStatus("failed");
           setConnectionMessage(
             `Secure connection failed: ${formatErrorMessage(error)}`,

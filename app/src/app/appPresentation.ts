@@ -20,6 +20,9 @@ export function getHeaderSubtitle(
   if (view === "connectionPreference") {
     return t("app.subtitle.connectionSettings");
   }
+  if (view === "pairing") {
+    return "";
+  }
 
   return activePairing ? getPairingDisplayName(activePairing) : "";
 }

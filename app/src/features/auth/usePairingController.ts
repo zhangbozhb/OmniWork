@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
-import { parseEncryptedPairingLink } from "@omni-work/protocol-ts";
 
 import type { ConnectionStatus, AppView } from "../../app/appTypes";
 import { formatErrorMessage } from "../../app/connectionMessages";
@@ -19,11 +18,7 @@ import {
   savePairings,
 } from "../../platform/secure-storage/securePairingStore";
 import type { ConfirmOptions } from "../../ui/confirm/ConfirmProvider";
-import {
-  decryptPairingConfig,
-  isEncryptedPairingConfig,
-  parsePairingConfig,
-} from "./pairingConfig";
+import { parsePairingConfig, retainSavedRelaySession } from "./pairingConfig";
 import type { PairingConfig } from "./types";
 
 type Confirm = (options: ConfirmOptions) => Promise<boolean>;
@@ -61,12 +56,6 @@ export function usePairingController({
     PairingConfig | undefined
   >();
   const [pairingError, setPairingError] = useState<string | undefined>();
-  const [pendingEncryptedPairingLink, setPendingEncryptedPairingLink] =
-    useState<string | undefined>();
-  const [encryptedPairingPassword, setEncryptedPairingPassword] = useState("");
-  const [encryptedPairingError, setEncryptedPairingError] = useState<
-    string | undefined
-  >();
   const pairingRef = useRef<PairingConfig | null>(null);
   const pairingsRef = useRef<PairingConfig[]>([]);
 
@@ -96,30 +85,6 @@ export function usePairingController({
           return;
         }
 
-        if (initialUrl && isEncryptedPairingConfig(initialUrl)) {
-          const encrypted = parseEncryptedPairingLink(initialUrl);
-          if (encrypted && !encrypted.passwordRequired) {
-            const nextPairing = decryptPairingConfig(initialUrl, "");
-            if (nextPairing) {
-              await saveAndActivatePairing(nextPairing, savedPairings, {
-                autoOpenSessions: true,
-              });
-              setConnectionMessage("Pairing imported from link. Connecting...");
-              return;
-            }
-          }
-
-          pairingsRef.current = savedPairings;
-          setPairings(savedPairings);
-          setPairing(savedPairings[0] ?? null);
-          setPendingEncryptedPairingLink(initialUrl);
-          setEncryptedPairingPassword("");
-          setEncryptedPairingError(undefined);
-          setConnectionMessage("Encrypted pairing link detected.");
-          setView(savedPairings.length > 0 ? "devices" : "pairing");
-          return;
-        }
-
         pairingsRef.current = savedPairings;
         setPairings(savedPairings);
         setPairing(savedPairings[0] ?? null);
@@ -128,7 +93,7 @@ export function usePairingController({
       .catch(() => {
         if (active) {
           setPairingError(
-            "Could not restore the saved pairing. Enter the latest key again.",
+            "Could not restore the saved pairing. Scan a fresh pairing link.",
           );
         }
       });
@@ -152,6 +117,9 @@ export function usePairingController({
 
   async function handlePair(nextPairing: PairingConfig): Promise<void> {
     setPairingError(undefined);
+    if (!editingPairing) {
+      nextPairing = retainSavedRelaySession(nextPairing, pairingsRef.current);
+    }
     const nextPairings = editingPairing
       ? pairings.map((item) =>
           isSamePairing(item, editingPairing) ? nextPairing : item,
@@ -167,26 +135,6 @@ export function usePairingController({
 
   async function handlePairingUrl(url: string): Promise<void> {
     const nextPairing = parsePairingConfig(url);
-    if (!nextPairing && isEncryptedPairingConfig(url)) {
-      const encrypted = parseEncryptedPairingLink(url);
-      if (encrypted && !encrypted.passwordRequired) {
-        const decryptedPairing = decryptPairingConfig(url, "");
-        if (decryptedPairing) {
-          setPairingError(undefined);
-          setConnectionMessage("Pairing imported from link. Connecting...");
-          await saveAndActivatePairing(decryptedPairing, pairingsRef.current, {
-            autoOpenSessions: true,
-          });
-          return;
-        }
-      }
-
-      setPendingEncryptedPairingLink(url);
-      setEncryptedPairingPassword("");
-      setEncryptedPairingError(undefined);
-      setConnectionMessage("Encrypted pairing link detected.");
-      return;
-    }
     if (!nextPairing) {
       Alert.alert(
         "Invalid pairing link",
@@ -202,43 +150,12 @@ export function usePairingController({
     });
   }
 
-  async function handleEncryptedPairingSubmit(): Promise<void> {
-    if (!pendingEncryptedPairingLink) {
-      return;
-    }
-    if (encryptedPairingPassword.length !== 4) {
-      setEncryptedPairingError(t("pairing.encrypted.passwordRequired"));
-      return;
-    }
-    const nextPairing = decryptPairingConfig(
-      pendingEncryptedPairingLink,
-      encryptedPairingPassword,
-    );
-    if (!nextPairing) {
-      setEncryptedPairingError(t("pairing.encrypted.invalidPassword"));
-      return;
-    }
-    setPairingError(undefined);
-    setEncryptedPairingError(undefined);
-    setPendingEncryptedPairingLink(undefined);
-    setEncryptedPairingPassword("");
-    setConnectionMessage("Pairing imported from link. Connecting...");
-    await saveAndActivatePairing(nextPairing, pairingsRef.current, {
-      autoOpenSessions: true,
-    });
-  }
-
-  function handleEncryptedPairingCancel(): void {
-    setPendingEncryptedPairingLink(undefined);
-    setEncryptedPairingPassword("");
-    setEncryptedPairingError(undefined);
-  }
-
   async function saveAndActivatePairing(
     nextPairing: PairingConfig,
     basePairings: PairingConfig[],
     options: { autoOpenSessions?: boolean } = {},
   ): Promise<void> {
+    nextPairing = retainSavedRelaySession(nextPairing, basePairings);
     const nextPairings = upsertPairing(basePairings, nextPairing);
     await savePairings(nextPairings);
     setPendingAutoOpenSessions(Boolean(options.autoOpenSessions));
@@ -304,9 +221,13 @@ export function usePairingController({
   ): Promise<void> {
     onClearActiveDeviceData();
 
+    const recovery =
+      reason === "malformed_proof"
+        ? t("pairing.relaySignInFailure")
+        : "Re-scan a pairing code or remove the device.";
     const errorText = `Authentication failed for "${getPairingDisplayName(
       targetPairing,
-    )}": ${reason}. Edit the device to enter a new key, or delete it.`;
+    )}": ${reason}. ${recovery}`;
     setConnectionStatus("failed");
     setConnectionMessage(errorText);
     setPairingError(errorText);
@@ -365,9 +286,6 @@ export function usePairingController({
     setPairing(null);
     setEditingPairing(undefined);
     setPairingError(undefined);
-    setPendingEncryptedPairingLink(undefined);
-    setEncryptedPairingPassword("");
-    setEncryptedPairingError(undefined);
   }
 
   return {
@@ -377,16 +295,9 @@ export function usePairingController({
     pairingsRef,
     editingPairing,
     pairingError,
-    pendingEncryptedPairingLink,
-    encryptedPairingPassword,
-    encryptedPairingError,
     setPairing,
     setPairingError,
-    setEncryptedPairingPassword,
-    setEncryptedPairingError,
     handlePair,
-    handleEncryptedPairingSubmit,
-    handleEncryptedPairingCancel,
     handleAddDevice,
     handleEditDevice,
     handleCancelPairing,

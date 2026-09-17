@@ -8,6 +8,7 @@ import type {
   AgentSurfaceSyncResponsePayload,
   AgentNotificationSettingsPayload,
   AuthFailedPayload,
+  AuthPendingPayload,
   FilesListPayload,
   FilesReadPayload,
   FilesWritePayload,
@@ -28,6 +29,7 @@ import type {
 
 export type AppMessageHandlers = {
   onAuthChallenge(message: MessageEnvelope): void;
+  onAuthPending(payload: AuthPendingPayload, message: MessageEnvelope): void;
   onAuthOk(message: MessageEnvelope): void;
   onAuthFailed(payload: AuthFailedPayload, message: MessageEnvelope): void;
   onSessionList(payload: SessionListPayload, message: MessageEnvelope): void;
@@ -111,6 +113,9 @@ export function dispatchAppMessage(
   switch (message.type) {
     case "auth.challenge":
       handlers.onAuthChallenge(message);
+      break;
+    case "auth.pending":
+      handlers.onAuthPending(message.payload as AuthPendingPayload, message);
       break;
     case "auth.ok":
       handlers.onAuthOk(message);

@@ -1,13 +1,14 @@
-// Mobile simulator that drives the P2P upgrade end-to-end against a real
-// relay + agent. Pass the pairing key printed by the agent.
+// Mobile simulator that drives pairing and P2P upgrade end-to-end against a
+// real Relay and Agent. Approve its generated App identity in Agent Admin.
 //
 // Usage:
 //   node scripts/verify/mobile-upgrade-simulator.mjs \
+//     --pairing 'omniwork://pair?...'
+//   node scripts/verify/mobile-upgrade-simulator.mjs \
 //     --relay ws://127.0.0.1:8787/relay/ws/mobile \
-//     --device test-device \
-//     --key <KEY>
+//     --device DEV1-...
 
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
 // 借用 desktop/agent 的 node_modules（其中已安装 @roamhq/wrtc）
@@ -16,20 +17,36 @@ const require = createRequire(
 );
 const wrtc = require("@roamhq/wrtc");
 const {
-  E2E_SUPPORT_V1,
-  PROTOCOL_SUPPORT_V1,
+  E2E_SUPPORT_V2,
+  PROTOCOL_VERSION,
+  PROTOCOL_SUPPORT_V2,
+  SIGNATURE_DOMAINS,
+  agentAuthOkSignatureFields,
+  appAuthSignatureFields,
+  generateIdentityKeyPair,
+  identityMatchesPublicKey,
   innerToMessage,
   messageToInner,
+  normalizeIdentityId,
+  parsePairingLink,
+  signIdentityFields,
+  verifyIdentityFields,
 } = await import(require.resolve("@omni-work/protocol-ts"));
 const { createInitiatorHandshake } = await import(
   require.resolve("@omni-work/e2e-noise")
 );
 
 const args = parseArgs(process.argv.slice(2));
-const relayUrl = args.relay ?? "ws://127.0.0.1:8787/relay/ws/mobile";
-const deviceId = args.device ?? "test-device";
-const key = required(args, "key");
-const appInstanceId = args.appInstanceId ?? `app_${randomUUID()}`;
+const target = resolveTarget(args);
+const relayUrl = target.relayUrl;
+const deviceId = target.deviceId;
+const sessionToken =
+  typeof (args.sessionToken ?? args["session-token"]) === "string"
+    ? (args.sessionToken ?? args["session-token"])
+    : undefined;
+let agentPublicKey = null;
+const appIdentity = generateIdentityKeyPair("app");
+const appInstanceId = args.appInstanceId ?? appIdentity.id;
 const appRuntimeId = args.appRuntimeId ?? `runtime_${randomUUID()}`;
 
 const ws = new WebSocket(relayUrl);
@@ -65,7 +82,7 @@ function sendBusiness(message) {
 
 function envelope(type, payload, extra = {}) {
   return {
-    v: 1,
+    v: PROTOCOL_VERSION,
     id: randomUUID(),
     ts: new Date().toISOString(),
     device_id: deviceId,
@@ -78,14 +95,17 @@ function envelope(type, payload, extra = {}) {
 ws.addEventListener("open", () => {
   log("ws_open");
   send(envelope("mobile.connect", {
-    v: PROTOCOL_SUPPORT_V1.current,
+    v: PROTOCOL_SUPPORT_V2.current,
     device_id: deviceId,
+    app_id: appIdentity.id,
+    app_public_key: appIdentity.publicKey,
     app_info: {
       instance_id: appInstanceId,
       runtime_id: appRuntimeId,
     },
-    protocol: PROTOCOL_SUPPORT_V1,
-    e2e: E2E_SUPPORT_V1,
+    protocol: PROTOCOL_SUPPORT_V2,
+    e2e: E2E_SUPPORT_V2,
+    ...(sessionToken ? { session_token: sessionToken } : {}),
   }));
 });
 
@@ -101,29 +121,82 @@ async function handleMessage(msg) {
 
   switch (msg.type) {
     case "auth.challenge": {
-      const proof = createHmac("sha256", key)
-        .update([msg.payload.nonce, appInstanceId, appRuntimeId].join("\n"))
-        .digest("base64url");
+      if (
+        !identityMatchesPublicKey(
+          "agent",
+          deviceId,
+          msg.payload.agent_public_key,
+        ) ||
+        (agentPublicKey &&
+          agentPublicKey !== msg.payload.agent_public_key)
+      ) {
+        throw new Error("Relay challenge Agent identity is invalid.");
+      }
+      agentPublicKey = msg.payload.agent_public_key;
+      const unsigned = {
+        nonce: msg.payload.nonce,
+        connection_id: msg.payload.connection_id,
+        agent_connection_id: msg.payload.agent_connection_id,
+        device_id: deviceId,
+        agent_public_key: agentPublicKey,
+        app_id: appIdentity.id,
+        app_public_key: appIdentity.publicKey,
+        app_info: {
+          instance_id: appInstanceId,
+          runtime_id: appRuntimeId,
+        },
+        requested_scopes: ["device.control"],
+        timestamp: Date.now(),
+      };
       send(
         envelope("auth.proof", {
-          nonce: msg.payload.nonce,
-          app_info: {
-            instance_id: appInstanceId,
-            runtime_id: appRuntimeId,
-          },
-          proof,
+          ...unsigned,
+          signature: signIdentityFields(
+            appIdentity.privateKey,
+            SIGNATURE_DOMAINS.appAuth,
+            appAuthSignatureFields(unsigned),
+          ),
         }),
       );
       break;
     }
+    case "auth.pending":
+      log("approval_pending", {
+        request_id: msg.payload.request_id,
+        app_id: appIdentity.id,
+      });
+      break;
     case "auth.ok": {
+      const { signature, e2e: _e2e, ...unsigned } = msg.payload;
+      if (
+        !agentPublicKey ||
+        msg.payload.device_id !== deviceId ||
+        msg.payload.agent_public_key !== agentPublicKey ||
+        msg.payload.app_id !== appIdentity.id ||
+        !verifyIdentityFields(
+          agentPublicKey,
+          SIGNATURE_DOMAINS.agentAuthOk,
+          agentAuthOkSignatureFields(unsigned),
+          signature,
+        )
+      ) {
+        throw new Error("Agent authentication response is invalid.");
+      }
       log("authenticated", { connection_id: msg.payload.connection_id });
       appConnectionId = msg.payload.connection_id;
-      e2eHandshake = createInitiatorHandshake({
-        pairingKey: key,
+      e2eHandshake = await createInitiatorHandshake({
         deviceId,
+        agentPublicKey,
+        appId: appIdentity.id,
+        appPublicKey: appIdentity.publicKey,
         agentConnectionId: msg.payload.agent_connection_id,
         appConnectionId,
+        signApp: (fields) =>
+          signIdentityFields(
+            appIdentity.privateKey,
+            SIGNATURE_DOMAINS.e2eInit,
+            fields,
+          ),
       });
       send(envelope("e2e.handshake.init", e2eHandshake.init));
       break;
@@ -233,7 +306,7 @@ async function onPropose(payload) {
       try {
         dc.send(
           JSON.stringify({
-            v: 1,
+            v: PROTOCOL_VERSION,
             id: randomUUID(),
             ts: new Date().toISOString(),
             device_id: deviceId,
@@ -310,7 +383,7 @@ function maybeFinish() {
 setTimeout(() => {
   log("timeout", { committedSent, peerCommitted, p2pVerified });
   process.exit(committedSent && peerCommitted ? 0 : 3);
-}, 30000);
+}, 150000);
 
 function parseArgs(argv) {
   const out = {};
@@ -330,11 +403,52 @@ function parseArgs(argv) {
   return out;
 }
 
-function required(args, name) {
-  const v = args[name];
-  if (!v) {
-    console.error(`missing --${name}`);
-    process.exit(1);
+function resolveTarget(args) {
+  if (typeof args.pairing === "string") {
+    if (args.relay || args.device) {
+      failUsage("Use either --pairing or --relay with --device.");
+    }
+    const pairing = parsePairingLink(args.pairing);
+    if (!pairing || !isWebSocketUrl(pairing.relay_url)) {
+      failUsage("The pairing link is invalid.");
+    }
+    return {
+      relayUrl: pairing.relay_url,
+      deviceId: pairing.device_id,
+    };
   }
-  return v;
+
+  if (typeof args.relay !== "string" || typeof args.device !== "string") {
+    failUsage("Provide --pairing or both --relay and --device.");
+  }
+  const deviceId = normalizeIdentityId(args.device);
+  if (!deviceId?.startsWith("DEV1-") || !isWebSocketUrl(args.relay)) {
+    failUsage("The Relay URL or Agent device ID is invalid.");
+  }
+  return {
+    relayUrl: args.relay.trim(),
+    deviceId,
+  };
+}
+
+function isWebSocketUrl(value) {
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === "ws:" || protocol === "wss:";
+  } catch {
+    return false;
+  }
+}
+
+function failUsage(message) {
+  console.error(message);
+  console.error(
+    [
+      "Usage:",
+      "  pnpm verify:upgrade:simulator -- --pairing 'omniwork://pair?...'",
+      "  pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device DEV1-...",
+      "Optional: --session-token <relay-user-session-token>",
+    ].join("\n"),
+  );
+  process.exit(1);
 }

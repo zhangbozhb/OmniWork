@@ -8,8 +8,8 @@ import { join } from "node:path";
 
 import {
   createMessage,
-  E2E_SUPPORT_V1,
-  PROTOCOL_SUPPORT_V1,
+  E2E_SUPPORT_V2,
+  PROTOCOL_SUPPORT_V2,
   RELAY_AGENT_DISABLED_CLOSE_REASON,
   RELAY_AGENT_IP_BANNED_CLOSE_REASON,
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
@@ -76,6 +76,10 @@ function loadIsolatedRelayServerConfig(env: NodeJS.ProcessEnv) {
     join(process.cwd(), ".omniwork-relay", "relay-device-status.sqlite"),
   );
   assert.equal(config.auth.mode, "none");
+  assert.deepEqual(config.agentAuthorization, {
+    mode: "manual",
+    pendingTtlMs: 86_400_000,
+  });
   assert.equal(
     config.auth.dbPath,
     join(process.cwd(), ".omniwork-relay", "relay-auth.sqlite"),
@@ -244,6 +248,19 @@ admin:
 {
   const config = loadIsolatedRelayServerConfig({
     OMNIWORK_RELAY_HOST: "127.0.0.1",
+    OMNIWORK_RELAY_AGENT_AUTHORIZATION_MODE: "automatic",
+    OMNIWORK_RELAY_AGENT_AUTHORIZATION_PENDING_TTL_MS: "600000",
+  });
+
+  assert.deepEqual(config.agentAuthorization, {
+    mode: "automatic",
+    pendingTtlMs: 600_000,
+  });
+}
+
+{
+  const config = loadIsolatedRelayServerConfig({
+    OMNIWORK_RELAY_HOST: "127.0.0.1",
     OMNIWORK_RELAY_ADMIN_WEB_ENABLED: "true",
   });
 
@@ -395,6 +412,9 @@ interface FakeHttpResponse {
   );
   assert.match(sourceHtml, /encodedAttribute\(agent\.device_id\)/);
   assert.match(sourceHtml, /escapeHtml\(location\.label\)/);
+  const adminScript = sourceHtml.match(/<script>([\s\S]+)<\/script>/u)?.[1];
+  assert.ok(adminScript);
+  assert.doesNotThrow(() => new Function(adminScript));
 
   const html = renderRelayAdminPage();
   assert.match(html, /<!doctype html>/i);
@@ -403,18 +423,37 @@ interface FakeHttpResponse {
   assert.match(html, /data-admin-login="\/admin\/web"/);
   assert.match(html, /\/admin\/api\/status/);
   assert.match(html, /\/admin\/api\/agents/);
+  assert.match(html, /\/admin\/api\/agent-authorizations/);
+  assert.match(html, /id="pending-agent-detail-dialog"/);
+  assert.match(html, /request\.public_ip/);
+  assert.match(html, /request\.system_type/);
+  assert.match(html, /request\.uname/);
   assert.match(html, /\/admin\/api\/devices/);
   assert.match(html, /\/admin\/api\/traffic-map/);
   assert.match(html, /world-land-110m\.geojson/);
   assert.match(html, /\/admin\/api\/agent-connections/);
   assert.match(html, /\/admin\/api\/controls\/agent-devices\/device-op/);
   assert.match(html, /\/admin\/api\/controls\/ip-bans/);
+  assert.match(html, /id="language"/);
+  assert.match(html, /data-i18n="traffic\.title"/);
+  assert.match(html, /"common\.refresh": "刷新"/);
+  assert.match(html, /omniwork_admin_locale/);
+  assert.match(html, /navigator\.languages/);
+  assert.match(html, /resolvedOptions\(\)\.timeZone/);
+  assert.match(html, /Asia\/Shanghai/);
   assert.doesNotMatch(html, /localStorage/);
   assert.doesNotMatch(html, /Authorization: Bearer/);
   const loginHtml = renderRelayAdminLoginPage();
   assert.match(loginHtml, /Relay Admin Login/);
   assert.match(loginHtml, /data-admin-base="\/admin\/web"/);
   assert.match(loginHtml, /\/admin\/api\/login/);
+  assert.match(loginHtml, /id="language"/);
+  assert.match(loginHtml, /"login\.title": "Relay 管理登录"/);
+  assert.match(loginHtml, /navigator\.languages/);
+  assert.match(loginHtml, /resolvedOptions\(\)\.timeZone/);
+  const loginScript = loginHtml.match(/<script>([\s\S]+)<\/script>/u)?.[1];
+  assert.ok(loginScript);
+  assert.doesNotThrow(() => new Function(loginScript));
   const worldLand = readRelayAdminAsset("world-land-110m.geojson");
   assert.ok(worldLand);
   assert.equal(worldLand.contentType, "application/geo+json; charset=utf-8");
@@ -482,8 +521,7 @@ type TestRelayConnection = {
   authState: "none" | "pending" | "verified" | "failed";
   transportPath: "relay" | "p2p" | "mixed" | "unknown";
   deviceId?: string;
-  businessSecurityMode?: "e2e_required" | "plaintext_allowed";
-  e2e?: typeof E2E_SUPPORT_V1;
+  e2e?: typeof E2E_SUPPORT_V2;
   appInfo?: {
     instanceId: AppInfoPayload["instance_id"];
     runtimeId: AppInfoPayload["runtime_id"];
@@ -521,10 +559,10 @@ type TestAgentConnection = TestRelayConnection & {
     handleRawMessage(connection: unknown, raw: string): void;
   };
   const malformed = createMessage("mobile.connect", {
-    v: PROTOCOL_SUPPORT_V1.current,
+    v: PROTOCOL_SUPPORT_V2.current,
     device_id: "device_1",
-    protocol: PROTOCOL_SUPPORT_V1,
-    e2e: E2E_SUPPORT_V1,
+    protocol: PROTOCOL_SUPPORT_V2,
+    e2e: E2E_SUPPORT_V2,
   });
 
   internals.handleRawMessage(mobile, JSON.stringify(malformed));
@@ -927,8 +965,7 @@ function createAgentConnection(
     state: "registered_agent",
     socket: createFakeSocket(),
     deviceId,
-    businessSecurityMode: "e2e_required",
-    e2e: E2E_SUPPORT_V1,
+    e2e: E2E_SUPPORT_V2,
     authenticated: true,
     remoteIp: "127.0.0.1",
     connectedAt: 1000,
@@ -1039,8 +1076,7 @@ function createServer(): RelayServer {
     state: "registered_agent",
     socket: agentSocket,
     deviceId,
-    businessSecurityMode: "e2e_required",
-    e2e: E2E_SUPPORT_V1,
+    e2e: E2E_SUPPORT_V2,
     authenticated: true,
     remoteIp: "127.0.0.1",
     agentE2EPeers: new Map([
@@ -1118,7 +1154,7 @@ function createServer(): RelayServer {
   const request = createMessage(
     "terminal.input",
     { kind: "text", data: "pwd\n" },
-    { id: "msg_plaintext_request", device_id: agent.deviceId },
+    { id: "msg_unencrypted_request", device_id: agent.deviceId },
   );
   internals.handleRawMessage(mobile, JSON.stringify(request));
 
@@ -1134,9 +1170,9 @@ function createServer(): RelayServer {
       message: {
         type: "protocol.error",
         payload: {
-          v: PROTOCOL_SUPPORT_V1.current,
-          code: "plaintext_business_rejected",
-          detail: "plaintext rejected",
+          v: PROTOCOL_SUPPORT_V2.current,
+          code: "unencrypted_business_rejected",
+          detail: "unencrypted business message rejected",
           retryable: false,
         },
       },
@@ -1150,7 +1186,7 @@ function createServer(): RelayServer {
   assert.equal(mobile.socket.sent[0]?.app_connection_id, mobile.id);
   assert.equal(
     (mobile.socket.sent[0]?.payload as { code?: string }).code,
-    "plaintext_business_rejected",
+    "unencrypted_business_rejected",
   );
 }
 
@@ -1175,7 +1211,7 @@ function createServer(): RelayServer {
   const request = createMessage(
     "terminal.input",
     { kind: "text", data: "pwd\n" },
-    { id: "msg_plaintext_owner", device_id: agent.deviceId },
+    { id: "msg_unencrypted_owner", device_id: agent.deviceId },
   );
   internals.handleRawMessage(mobile, JSON.stringify(request));
   const relayContextId = agent.socket.sent[0]?.relay_context_id;
@@ -1188,8 +1224,8 @@ function createServer(): RelayServer {
       message: {
         type: "protocol.error",
         payload: {
-          v: PROTOCOL_SUPPORT_V1.current,
-          code: "plaintext_business_rejected",
+          v: PROTOCOL_SUPPORT_V2.current,
+          code: "unencrypted_business_rejected",
           retryable: false,
         },
       },

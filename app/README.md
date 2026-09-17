@@ -6,9 +6,13 @@ browser access without introducing a second UI stack.
 
 ## MVP
 
-- Pairing screen for Relay URL, device ID, and the 32-character temporary key.
-- Secure pairing persistence through platform secure storage.
-- Relay-driven device connection and HMAC key proof.
+- Target pairing-link import with Desktop Agent Admin approval by default.
+- Long-term App identity in platform secure storage. Pairing links and saved
+  targets contain the Relay URL and Agent device ID; the App verifies the
+  Relay-provided Agent public key during authentication. Settings displays the
+  current `APP1-...` ID for comparison with Agent Admin without exposing the
+  private key.
+- Relay-driven, mutually signed App-Agent authentication.
 - Workspace-first session management through the connected computer, with a Workspace Detail bottom-tab layout for `Sessions`, `Git`, and `Files`.
 - Sessions are grouped by Terminal Provider inside each Workspace, with secondary management actions moved behind a `More` dialog.
 - Workspace picker for new sessions, using computer-discovered remote project directories instead of requiring users to type common working directories.
@@ -55,6 +59,10 @@ Web SPA development server:
 pnpm --filter @omni-work/app web:dev
 ```
 
+The development server proxies same-origin `/relay/ws/*` WebSocket requests to
+the local Relay at `127.0.0.1:8787`. Set `OMNIWORK_WEB_RELAY_URL` to override
+the default Relay URL shown by the Web pairing form.
+
 Web production build:
 
 ```sh
@@ -79,6 +87,21 @@ lint, and test scripts.
 Run `pnpm --filter @omni-work/app generate:xterm-assets` manually after changing
 xterm or CodeMirror dependencies if you need to inspect the generated files
 before packaging.
+
+## Toolchain Baseline
+
+- React Native `0.87.1` with React `19.2.3` and the public Strict TypeScript API.
+- Node.js `^22.13.0`, `^24.3.0`, or `>=26.0.0`.
+- iOS `15.1` or newer, CocoaPods `1.16+`, and Hermes V1 `250829098.0.17`.
+- The iOS host uses the UIKit scene lifecycle; `SceneDelegate` owns the app
+  window and `Info.plist` must retain its `UIApplicationSceneManifest`.
+- Android Build Tools / compile SDK `37`, target SDK `36`, Gradle `9.4.1`,
+  Android Gradle Plugin `9`, Kotlin `2.2.0`, and JDK `17+`.
+
+Native Agent inbox storage uses `@op-engineering/op-sqlite`. Its database
+location is pinned to the former `react-native-quick-sqlite` locations
+(`Documents` on iOS and `filesDir` on Android) so an app upgrade keeps existing
+local messages.
 
 ## Installable Builds
 
@@ -153,8 +176,48 @@ pnpm --filter @omni-work/app android
 pnpm --filter @omni-work/app ios
 ```
 
+The Native entry installs `crypto.getRandomValues`, `Buffer`, and UTF-8
+`TextEncoder` / `TextDecoder` before loading protocol code. These globals are
+provided by browsers but are required explicitly by Hermes for App identity
+signatures and the encrypted session handshake.
+
+For a physical iOS or Android device to use a local Relay, the Relay listener
+must bind to a non-loopback interface, for example:
+
+```yml
+server:
+  host: 0.0.0.0
+  port: 8787
+  allowPlaintextWs: true
+```
+
+Keep the Admin listener on `127.0.0.1`. The Web development server hides this
+difference because it proxies `/relay/ws/*` to the loopback Relay itself.
+
 The terminal surface uses xterm through Web/native WebView assets. The React
 Native snapshot path is only a fallback for compatibility.
+
+## Relay Sign-In
+
+If Relay uses `auth.mode=email_link`, Native and cross-site Web Apps need an
+independent Relay session token. Open that Relay's `https://<relay-host>/auth/`,
+sign in as the enrolled Agent's owner, and click **Create App sign-in token**.
+Paste the private token into **Relay sign-in token (optional)** on the device
+details, link, or edit screen. For local `ws://` development, use `http://`;
+use HTTPS and `wss://` in production because Relay sign-in precedes App-Agent E2E.
+
+Enter or scan the target first, then enter the token and save. Scanning fills
+the form so you can check the Relay before connecting. Same-site Web can use its Relay login cookie;
+`auth.mode=none` needs no token. Shared links and QR codes never carry the token.
+Importing the exact same Relay URL and device ID preserves a saved token unless
+a new one is entered. Editing lets you replace or clear it; changing the Relay
+origin clears it in manual entry, links, scans, and mode switches so it is not
+sent to another Relay.
+
+Tokens expire according to Relay's `auth.sessionTtlMs`; create a new one when
+needed. Logging out of `/auth/` clears the displayed token and browser session,
+but does not revoke independently issued App tokens. Relay login does not
+replace local approval of this App in Desktop Agent Admin.
 
 ## Web Support
 
@@ -162,11 +225,18 @@ The Web target is intentionally kept in the React Native stack:
 
 - UI uses the same React Native screens via `react-native-web`.
 - Platform differences live under `src/platform/` or small `.native/.web` components.
-- Web pairing does not use camera scanning; users paste the Relay URL, device ID, and temporary key, or open a plaintext or encrypted URL containing `pairing=`. Encrypted links prompt for the 4-digit password before importing the device.
-- Native storage continues to use Keychain, while Web stores pairing data in browser `sessionStorage` and clears the legacy `localStorage` key.
+- Web pairing does not use camera scanning; users enter the Relay URL and Agent
+  device ID, paste a pairing link, or open a URL containing `pairing=`.
+- Native stores the App identity in Keychain and target link configuration in
+  secure storage. Web stores its non-extractable App private key in IndexedDB
+  and target link configuration in browser storage. Web Relay session tokens
+  are kept only in `sessionStorage`; `localStorage` contains the non-secret
+  Relay URL, Agent device ID, and optional display name.
 - Web P2P uses the browser WebRTC API when available; browsers without WebRTC stay on the relay path or fail in direct-only mode.
 - `OMNIWORK_TERMINAL_STREAM_ENABLED=true` opts the App/Web into the experimental terminal byte stream path. The default remains the snapshot renderer for compatibility.
 
 ## Native Projects
 
-This package no longer uses Expo or EAS. Add or generate the `android/` and `ios/` native projects with React Native CLI before running local native builds.
+This package does not use Expo or EAS. The React Native CLI `android/` and
+`ios/` projects are checked in; use the documented setup/build commands rather
+than regenerating them during a normal dependency install.

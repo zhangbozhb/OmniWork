@@ -7,6 +7,7 @@ export const CONNECTION_MESSAGE_TYPES = [
   "auth.challenge",
   "auth.proof",
   "auth.verify",
+  "auth.pending",
   "auth.ok",
   "auth.failed",
   "app.network.changed",

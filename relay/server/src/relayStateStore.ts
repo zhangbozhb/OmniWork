@@ -41,7 +41,6 @@ export interface RelayAgentConnectionState {
   connected_at: number;
   last_seen_at: number;
   state: string;
-  business_security_mode: string;
   transport_path: string;
   counters: RelayTrafficCounters;
 }
@@ -282,7 +281,6 @@ export class RelayStateStore {
       connected_at: connection.connectedAt,
       last_seen_at: connection.lastSeenAt,
       state: connection.state,
-      business_security_mode: connection.businessSecurityMode ?? "e2e_required",
       transport_path: connection.transportPath,
       counters: emptyCounters(),
     });

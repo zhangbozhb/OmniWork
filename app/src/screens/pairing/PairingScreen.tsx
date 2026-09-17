@@ -1,17 +1,13 @@
 import { type JSX, useEffect, useState } from "react";
-import {
-  Alert,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
-import { type PairingConfig } from "../../features/auth/types";
-import { isValidSessionKey } from "../../features/auth/keyProof";
-import { createAppInstanceId } from "../../features/auth/pairingConfig";
+import type { PairingConfig } from "../../features/auth/types";
+import {
+  createPairingConfig,
+  isSameRelayOrigin,
+  parsePairingConfig,
+} from "../../features/auth/pairingConfig";
 import { appConfig } from "../../app/appConfig";
 import { Button, Card } from "../../ui/components";
 import { KeyboardAwareScrollView } from "../../ui/KeyboardAwareScrollView";
@@ -20,6 +16,8 @@ import {
   PAIRING_SCANNER_SUPPORTED,
   PairingQrScannerModal,
 } from "./PairingQrScannerModal";
+
+type AddDeviceMode = "details" | "link";
 
 export interface PairingScreenProps {
   errorMessage?: string;
@@ -37,6 +35,8 @@ export function PairingScreen({
   onPair,
 }: PairingScreenProps): JSX.Element {
   const { t } = useTranslation();
+  const [addMode, setAddMode] = useState<AddDeviceMode>("details");
+  const [pairingLink, setPairingLink] = useState("");
   const [relayUrl, setRelayUrl] = useState(
     initialPairing?.relayUrl ?? appConfig.defaultRelayUrl,
   );
@@ -44,20 +44,20 @@ export function PairingScreen({
   const [displayName, setDisplayName] = useState(
     initialPairing?.displayName ?? "",
   );
-  const [key, setKey] = useState(initialPairing?.key ?? "");
-  const [keyVisible, setKeyVisible] = useState(false);
+  const [relaySessionToken, setRelaySessionToken] = useState(
+    initialPairing?.relaySessionToken ?? "",
+  );
   const [scannerVisible, setScannerVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  // RN `Alert.alert` 在 web 上是 no-op，用本地 inline 错误兜底，避免用户在
-  // 浏览器里点 Save 没有任何反馈。
-  const [localError, setLocalError] = useState<string | undefined>(undefined);
+  const [localError, setLocalError] = useState<string | undefined>();
 
   useEffect(() => {
+    setAddMode("details");
+    setPairingLink("");
     setRelayUrl(initialPairing?.relayUrl ?? appConfig.defaultRelayUrl);
     setDeviceId(initialPairing?.deviceId ?? "");
     setDisplayName(initialPairing?.displayName ?? "");
-    setKey(initialPairing?.key ?? "");
-    setKeyVisible(false);
+    setRelaySessionToken(initialPairing?.relaySessionToken ?? "");
     setLocalError(undefined);
   }, [initialPairing]);
 
@@ -68,68 +68,90 @@ export function PairingScreen({
     }
   }
 
-  async function submit(): Promise<void> {
-    const trimmedKey = key.trim();
-    if (!isValidSessionKey(trimmedKey)) {
-      notifyValidationError(
-        t("pairing.validation.invalidKeyTitle"),
-        t("pairing.validation.invalidKeyMessage"),
-      );
-      return;
-    }
-    if (!relayUrl.trim() || !deviceId.trim()) {
-      notifyValidationError(
-        t("pairing.validation.missingDetailsTitle"),
-        t("pairing.validation.missingDetailsMessage"),
-      );
-      return;
-    }
+  const targetRelayUrl = !initialPairing && addMode === "link"
+    ? parsePairingConfig(pairingLink)?.relayUrl ?? ""
+    : relayUrl;
 
+  function tokenForTarget(nextRelayUrl: string): string | undefined {
+    return isSameRelayOrigin(targetRelayUrl, nextRelayUrl)
+      ? relaySessionToken.trim() || undefined
+      : undefined;
+  }
+
+  function changeRelayUrl(value: string): void {
+    setRelaySessionToken(tokenForTarget(value) ?? "");
+    setRelayUrl(value);
+  }
+
+  function changePairingLink(value: string): void {
+    setRelaySessionToken(
+      tokenForTarget(parsePairingConfig(value)?.relayUrl ?? "") ?? "",
+    );
+    setPairingLink(value);
+  }
+
+  function changeMode(mode: AddDeviceMode): void {
+    const nextRelayUrl = mode === "link"
+      ? parsePairingConfig(pairingLink)?.relayUrl ?? ""
+      : relayUrl;
+    setRelaySessionToken(tokenForTarget(nextRelayUrl) ?? "");
+    setAddMode(mode);
+    setLocalError(undefined);
+  }
+
+  async function submit(): Promise<void> {
+    const target =
+      !initialPairing && addMode === "link"
+        ? parsePairingConfig(pairingLink)
+        : createPairingConfig({
+            ...initialPairing,
+            relayUrl,
+            deviceId,
+            displayName,
+          });
+    if (!target) {
+      const linkMode = !initialPairing && addMode === "link";
+      notifyValidationError(
+        t(
+          linkMode
+            ? "pairing.validation.invalidQrTitle"
+            : "pairing.validation.invalidTargetTitle",
+        ),
+        t(
+          linkMode
+            ? "pairing.validation.invalidQrMessage"
+            : "pairing.validation.invalidTargetMessage",
+        ),
+      );
+      return;
+    }
     setLocalError(undefined);
     setSubmitting(true);
     try {
       await onPair({
-        relayUrl: relayUrl.trim(),
-        deviceId: deviceId.trim(),
-        displayName: displayName.trim() || undefined,
-        key: trimmedKey,
-        appInstanceId: initialPairing?.appInstanceId ?? createAppInstanceId(),
+        ...target,
+        relaySessionToken: tokenForTarget(target.relayUrl),
       });
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleScannedPairing(pairing: PairingConfig): Promise<void> {
-    if (!isValidSessionKey(pairing.key)) {
-      notifyValidationError(
-        t("pairing.validation.invalidQrTitle"),
-        t("pairing.validation.invalidQrMessage"),
-      );
-      return;
-    }
-
+  function handleScannedPairing(pairing: PairingConfig): void {
+    setScannerVisible(false);
+    setLocalError(undefined);
+    setRelaySessionToken(tokenForTarget(pairing.relayUrl) ?? "");
     setRelayUrl(pairing.relayUrl);
     setDeviceId(pairing.deviceId);
     setDisplayName(pairing.displayName ?? "");
-    setKey(pairing.key);
-    setScannerVisible(false);
-    setLocalError(undefined);
-    setSubmitting(true);
-    try {
-      await onPair(pairing);
-    } finally {
-      setSubmitting(false);
-    }
+    setAddMode("details");
   }
 
   return (
     <KeyboardAwareScrollView contentContainerStyle={styles.screen}>
-      {PAIRING_SCANNER_SUPPORTED ? (
+      {PAIRING_SCANNER_SUPPORTED && !initialPairing ? (
         <Card success style={styles.scanCard}>
-          <Text style={styles.scanEyebrow}>
-            {t("pairing.scan.recommended")}
-          </Text>
+          <Text style={styles.scanEyebrow}>{t("pairing.scan.recommended")}</Text>
           <Text style={styles.scanTitle}>{t("pairing.scan.title")}</Text>
           <Text style={styles.scanText}>{t("pairing.scan.text")}</Text>
           <Button
@@ -143,112 +165,126 @@ export function PairingScreen({
             {t("pairing.scan.button")}
           </Button>
         </Card>
+      ) : null}
+
+      {!initialPairing ? (
+        <View style={styles.modeSwitch}>
+          <Button
+            style={styles.modeButton}
+            tone={addMode === "details" ? "primary" : "secondary"}
+            variant={addMode === "details" ? "solid" : "outline"}
+            onPress={() => changeMode("details")}
+          >
+            {t("pairing.modes.details")}
+          </Button>
+          <Button
+            style={styles.modeButton}
+            tone={addMode === "link" ? "primary" : "secondary"}
+            variant={addMode === "link" ? "solid" : "outline"}
+            onPress={() => changeMode("link")}
+          >
+            {t("pairing.modes.link")}
+          </Button>
+        </View>
+      ) : null}
+
+      {initialPairing || addMode === "details" ? (
+        <>
+          <Text style={styles.label}>{t("pairing.fields.relayUrl")}</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={relayUrl}
+            onChangeText={changeRelayUrl}
+            placeholder="wss://your-domain.example/relay/ws/mobile"
+            placeholderTextColor={colors.textDim}
+            style={styles.input}
+          />
+          <Text style={styles.label}>{t("pairing.fields.deviceId")}</Text>
+          {initialPairing ? (
+            <Text selectable style={styles.identity}>
+              {deviceId}
+            </Text>
+          ) : (
+            <TextInput
+              autoCapitalize="characters"
+              autoCorrect={false}
+              value={deviceId}
+              onChangeText={setDeviceId}
+              placeholder="DEV1-..."
+              placeholderTextColor={colors.textDim}
+              style={styles.input}
+            />
+          )}
+          <Text style={styles.label}>{t("pairing.fields.displayName")}</Text>
+          <TextInput
+            autoCapitalize="words"
+            autoCorrect={false}
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder={t("pairing.fields.displayNamePlaceholder")}
+            placeholderTextColor={colors.textDim}
+            style={styles.input}
+          />
+        </>
       ) : (
-        <Card success style={styles.scanCard}>
-          <Text style={styles.scanEyebrow}>{t("pairing.web.eyebrow")}</Text>
-          <Text style={styles.scanTitle}>{t("pairing.web.title")}</Text>
-          <Text style={styles.scanText}>{t("pairing.web.text")}</Text>
-        </Card>
+        <>
+          <Text style={styles.label}>{t("pairing.fields.pairingLink")}</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            multiline
+            value={pairingLink}
+            onChangeText={changePairingLink}
+            placeholder="omniwork://pair?..."
+            placeholderTextColor={colors.textDim}
+            style={[styles.input, styles.linkInput]}
+          />
+        </>
       )}
 
-      <View style={styles.dividerRow}>
-        <View style={styles.divider} />
-        <Text style={styles.dividerText}>
-          {PAIRING_SCANNER_SUPPORTED
-            ? t("pairing.manualFallback")
-            : t("pairing.manualPairing")}
-        </Text>
-        <View style={styles.divider} />
-      </View>
-
-      <Text style={styles.label}>{t("pairing.fields.relayUrl")}</Text>
+      <Text style={styles.label}>{t("pairing.fields.relaySessionToken")}</Text>
       <TextInput
+        accessibilityLabel={t("pairing.fields.relaySessionToken")}
         autoCapitalize="none"
+        autoComplete="off"
         autoCorrect={false}
-        value={relayUrl}
-        onChangeText={setRelayUrl}
-        placeholder="wss://your-domain.example/relay/ws/mobile"
-        placeholderTextColor="#66727c"
+        secureTextEntry
+        value={relaySessionToken}
+        onChangeText={setRelaySessionToken}
+        placeholder={t("pairing.fields.relaySessionTokenPlaceholder")}
+        placeholderTextColor={colors.textDim}
         style={styles.input}
       />
-
-      <Text style={styles.label}>{t("pairing.fields.deviceId")}</Text>
-      <TextInput
-        autoCapitalize="none"
-        autoCorrect={false}
-        value={deviceId}
-        onChangeText={setDeviceId}
-        placeholder="your-mac.local"
-        placeholderTextColor="#66727c"
-        style={styles.input}
-      />
-
-      <Text style={styles.label}>{t("pairing.fields.displayName")}</Text>
-      <TextInput
-        autoCapitalize="words"
-        autoCorrect={false}
-        value={displayName}
-        onChangeText={setDisplayName}
-        placeholder={t("pairing.fields.displayNamePlaceholder")}
-        placeholderTextColor="#66727c"
-        style={styles.input}
-      />
-
-      <View style={styles.keyLabelRow}>
-        <Text style={styles.label}>{t("pairing.fields.temporaryKey")}</Text>
-        <Button
-          accessibilityLabel={`${t(
-            keyVisible ? "common.hide" : "common.show",
-          )} ${t("pairing.fields.temporaryKey")}`}
-          icon={keyVisible ? "eyeOff" : "eye"}
-          iconOnly
-          style={styles.keyVisibilityButton}
-          variant="ghost"
-          onPress={() => setKeyVisible((current) => !current)}
-        >
-          {t(keyVisible ? "common.hide" : "common.show")}
-        </Button>
-      </View>
-      <TextInput
-        autoCapitalize="none"
-        autoCorrect={false}
-        value={key}
-        onChangeText={setKey}
-        placeholder={t("pairing.fields.keyPlaceholder")}
-        placeholderTextColor="#66727c"
-        secureTextEntry={!keyVisible}
-        style={styles.input}
-      />
+      <Text style={styles.hint}>{t("pairing.relaySignInHint")}</Text>
 
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
       {localError && localError !== errorMessage ? (
         <Text style={styles.error}>{localError}</Text>
       ) : null}
 
-      <Button
-        disabled={submitting}
-        icon={submitting ? "refresh" : "save"}
-        style={styles.primaryButton}
-        tone="primary"
-        onPress={submit}
-      >
-        {submitting
-          ? t("pairing.submit.saving")
-          : (submitLabel ?? t("pairing.submit.pairDesktop"))}
-      </Button>
-      {onCancel ? (
-        <Button icon="close" onPress={onCancel}>
-          {t("common.cancel")}
+      <View style={styles.actions}>
+        {onCancel ? (
+          <Button disabled={submitting} style={styles.action} onPress={onCancel}>
+            {t("common.cancel")}
+          </Button>
+        ) : null}
+        <Button
+          disabled={submitting}
+          icon={submitting ? "refresh" : "save"}
+          style={styles.action}
+          tone="primary"
+          onPress={submit}
+        >
+          {submitLabel ?? t("pairing.actions.save")}
         </Button>
-      ) : null}
+      </View>
 
-      {scannerVisible ? (
-        <PairingQrScannerModal
-          visible={scannerVisible}
-          onClose={() => setScannerVisible(false)}
-          onScanned={handleScannedPairing}
-        />
-      ) : null}
+      <PairingQrScannerModal
+        visible={scannerVisible}
+        onClose={() => setScannerVisible(false)}
+        onScanned={handleScannedPairing}
+      />
     </KeyboardAwareScrollView>
   );
 }
@@ -257,7 +293,6 @@ const styles = StyleSheet.create({
   screen: {
     flexGrow: 1,
     padding: spacing.xxl,
-    paddingBottom: spacing.xxl * 3,
     gap: spacing.md,
   },
   scanCard: {
@@ -266,88 +301,68 @@ const styles = StyleSheet.create({
   scanEyebrow: {
     color: colors.success,
     ...typography.eyebrow,
-    letterSpacing: 0.7,
   },
   scanTitle: {
     color: colors.textPrimary,
-    fontSize: 21,
+    fontSize: 18,
     fontWeight: "800",
-    marginTop: 6,
+    marginTop: spacing.sm,
   },
   scanText: {
-    color: colors.textSecondary,
-    fontSize: 14,
+    color: colors.textMuted,
     lineHeight: 20,
     marginTop: spacing.sm,
   },
   scanButton: {
-    minHeight: 46,
     marginTop: spacing.lg,
   },
-  dividerRow: {
+  modeSwitch: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    marginVertical: 6,
+    gap: spacing.sm,
   },
-  divider: {
+  modeButton: {
     flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-  },
-  dividerText: {
-    color: colors.textDim,
-    ...typography.eyebrow,
-    letterSpacing: 0.5,
   },
   label: {
     color: colors.textSecondary,
-    ...typography.label,
+    fontSize: 13,
+    fontWeight: "700",
   },
   input: {
     minHeight: 48,
     borderColor: colors.border,
-    borderWidth: 1,
     borderRadius: radii.sm,
+    borderWidth: 1,
     color: colors.textPrimary,
-    paddingHorizontal: spacing.lg,
     backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
   },
-  keyLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
+  linkInput: {
+    minHeight: 120,
+    paddingVertical: spacing.md,
+    textAlignVertical: "top",
   },
-  keyVisibilityButton: {
-    minHeight: 32,
-    width: 32,
-  },
-  primaryButton: {
-    minHeight: 48,
-    marginTop: spacing.lg,
-  },
-  primaryButtonText: {
-    color: colors.successText,
-    ...typography.action,
-    fontSize: 16,
-  },
-  disabled: {
-    opacity: 0.55,
-  },
-  secondaryButton: {
-    minHeight: 44,
-    borderRadius: radii.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    borderColor: colors.border,
-    borderWidth: 1,
-  },
-  secondaryButtonText: {
-    color: colors.textSecondary,
-    fontWeight: "700",
+  identity: {
+    color: colors.textPrimary,
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
+    fontSize: 13,
   },
   error: {
     color: colors.danger,
-    marginTop: spacing.xs,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  hint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  actions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  action: {
+    flex: 1,
   },
 });

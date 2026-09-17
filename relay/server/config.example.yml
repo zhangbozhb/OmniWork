@@ -22,11 +22,6 @@ server:
   # by App-Agent E2E.
   allowPlaintextWs: true
 
-  # Legacy compatibility flag. Per-Agent business security mode is declared in
-  # agent.hello; the relay can carry both encrypted-only and plaintext-allowed
-  # agents in the same process.
-  requireE2E: true
-
 paths:
   # Defaults to .omniwork-relay under the process cwd.
   runtimeDir: .omniwork-relay
@@ -35,6 +30,13 @@ authRateLimit:
   capacity: 5
   refillPerSecond: 2
   blockMs: 120000
+
+agentAuthorization:
+  # manual requires an explicit approval in Relay Admin for each new Agent.
+  # automatic approves a valid Agent identity unless its device ID or IP is
+  # blocked. Existing approvals remain valid in either mode.
+  mode: manual
+  pendingTtlMs: 86400000
 
 websocket:
   # 55 minutes, intended to sit below a 1 hour reverse proxy idle timeout.

@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
   View,
+  type ViewInstance,
 } from "react-native";
 import { useTranslation } from "react-i18next";
 
@@ -121,7 +122,7 @@ export function GitStatusScreen({
   gitActionError,
 }: GitStatusScreenProps): JSX.Element {
   const { t } = useTranslation();
-  const screenRef = useRef<View>(null);
+  const screenRef = useRef<ViewInstance>(null);
   const [mode, setMode] = useState<GitViewMode>(initialMode);
   const [scope, setScope] = useState<GitDiffScope>(initialScope);
   const [selectedPath, setSelectedPath] = useState<string | undefined>(

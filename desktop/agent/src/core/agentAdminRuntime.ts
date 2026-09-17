@@ -2,6 +2,7 @@ import type { AgentConfig } from "../config/config.ts";
 import type { Logger } from "../telemetry/logger.ts";
 import { AgentAdminServer } from "./adminServer.ts";
 import type { AppConnectionRegistry } from "./appConnectionRegistry.ts";
+import type { AgentAppSecurityGateway } from "./agentAppSecurityGateway.ts";
 import type {
   AgentInfo,
   AgentRelayRuntimeStatus,
@@ -11,6 +12,7 @@ interface AgentAdminRuntimeOptions {
   config: AgentConfig;
   logger: Logger;
   appConnections: AppConnectionRegistry;
+  security: AgentAppSecurityGateway;
   getAgentInfo(): AgentInfo;
   getRelayStatus(): AgentRelayRuntimeStatus;
 }
@@ -19,6 +21,7 @@ export class AgentAdminRuntime {
   private readonly config: AgentConfig;
   private readonly logger: Logger;
   private readonly appConnections: AppConnectionRegistry;
+  private readonly security: AgentAppSecurityGateway;
   private readonly getAgentInfo: () => AgentInfo;
   private readonly getRelayStatus: () => AgentRelayRuntimeStatus;
   private server: AgentAdminServer | null = null;
@@ -27,6 +30,7 @@ export class AgentAdminRuntime {
     this.config = options.config;
     this.logger = options.logger;
     this.appConnections = options.appConnections;
+    this.security = options.security;
     this.getAgentInfo = options.getAgentInfo;
     this.getRelayStatus = options.getRelayStatus;
   }
@@ -52,7 +56,7 @@ export class AgentAdminRuntime {
             relay_next_retry_at: relay.nextRetryAt,
             relay_last_error: relay.lastError,
             relay_last_close: relay.lastClose,
-            e2e_required: this.config.businessSecurityMode === "e2e_required",
+            e2e_required: true,
           },
           connections_summary: this.appConnections.summary(),
         };
@@ -63,6 +67,12 @@ export class AgentAdminRuntime {
         devices: this.appConnections.devices(),
         connections: this.appConnections.list(),
       }),
+      getPairingRequests: () => this.security.listPendingPairings(),
+      getTrustedApps: () => this.security.listTrustedApps(),
+      approvePairing: (requestId) => this.security.approvePairing(requestId),
+      rejectPairing: (requestId) => this.security.rejectPairing(requestId),
+      revokeApp: (appId) => this.security.revokeApp(appId),
+      removeApp: (appId) => this.security.removeApp(appId),
     });
     await server.start();
     this.server = server;

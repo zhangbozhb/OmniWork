@@ -1,19 +1,26 @@
 import { RelayClient, type RelayCloseEvent } from "@omni-work/relay-client";
 import {
-  E2E_SUPPORT_V1,
-  PROTOCOL_SUPPORT_V1,
+  E2E_SUPPORT_V2,
+  PROTOCOL_SUPPORT_V2,
+  SIGNATURE_DOMAINS,
+  agentAuthOkSignatureFields,
+  appAuthSignatureFields,
   createMessage,
+  identityMatchesPublicKey,
   innerToMessage,
   isE2EBusinessMessage,
   messageToInner,
   parseMessageEnvelope,
+  verifyIdentityFields,
+  type AppAuthorizationScope,
   type AppConnectionGoodbyePayload,
   type AppConnectionHeartbeatPayload,
   type AuthChallengePayload,
   type AuthOkPayload,
-  type BusinessSecurityMode,
+  type AuthPendingPayload,
   type E2EHandshakeReplyPayload,
   type E2EMessagePayload,
+  type E2EFailedPayload,
   type E2EReadyPayload,
   type AppInfoPayload,
   type AppClientPlatform,
@@ -22,13 +29,13 @@ import {
   type TransportPreference,
 } from "@omni-work/protocol-ts";
 import {
-  E2ENoiseError,
+  E2EError,
   createInitiatorHandshake,
-  type E2ENoiseSession,
+  type E2ESession,
   type InitiatorHandshakeState,
 } from "@omni-work/e2e-noise";
 import type { PairingConfig } from "../../features/auth/types";
-import { createKeyProof } from "../../features/auth/keyProof.ts";
+import type { AppIdentity } from "../../features/auth/appIdentity.ts";
 import { createSha256Hex } from "../../features/auth/hmacSha256.ts";
 import { createAppInfo } from "../../app/appMetadata.ts";
 
@@ -52,15 +59,19 @@ export interface MobileRelaySessionOptions {
 
 export class MobileRelaySession {
   private readonly client: RelayClient;
+  private closed = false;
   private readonly pairing: PairingConfig;
   private readonly options: MobileRelaySessionOptions;
   private readonly handlers = new Set<(message: MessageEnvelope) => void>();
   private readonly businessReadyHandlers = new Set<() => void>();
   private e2eHandshake: InitiatorHandshakeState | null = null;
-  private e2eSession: E2ENoiseSession | null = null;
+  private e2eSession: E2ESession | null = null;
   private e2ePeerReady = false;
-  private businessSecurityMode: BusinessSecurityMode = "e2e_required";
-  private plaintextReady = false;
+  private appIdentity: AppIdentity | null = null;
+  private agentPublicKey: string | null = null;
+  private authNonce: string | null = null;
+  private authConnectionId: string | null = null;
+  private authAgentConnectionId: string | null = null;
   private appConnectionId: string | null = null;
   private readonly appInstanceId: string;
   private readonly appRuntimeId = createRuntimeId("runtime");
@@ -77,26 +88,35 @@ export class MobileRelaySession {
     this.pairing = pairing;
     this.appInstanceId = pairing.appInstanceId ?? createRuntimeId("app");
     this.client = new RelayClient({ url: pairing.relayUrl });
+    this.client.onClose(() => this.clearSession());
     this.options = options;
   }
 
   async connect(): Promise<void> {
+    this.requireOpenSession();
     this.client.onMessage((message) => {
-      this.handleMessage(message).catch(() => {
-        // The screen layer owns user-visible error reporting.
-      });
+      this.handleIncomingMessage(message);
     });
     await this.client.connect();
+    this.requireOpenSession();
+    const { getOrCreateAppIdentity } = await import(
+      "../../platform/identity/appIdentityStore"
+    );
+    this.appIdentity = await getOrCreateAppIdentity();
+    this.requireOpenSession();
     const appInfo = await this.appInfo();
+    this.requireOpenSession();
     this.client.send(
       createMessage(
         "mobile.connect",
         {
-          v: PROTOCOL_SUPPORT_V1.current,
+          v: PROTOCOL_SUPPORT_V2.current,
           device_id: this.pairing.deviceId,
+          app_id: this.appIdentity.record.id,
+          app_public_key: this.appIdentity.record.publicKey,
           app_info: appInfo,
-          protocol: PROTOCOL_SUPPORT_V1,
-          e2e: E2E_SUPPORT_V1,
+          protocol: PROTOCOL_SUPPORT_V2,
+          e2e: E2E_SUPPORT_V2,
           ...(this.pairing.relaySessionToken
             ? { session_token: this.pairing.relaySessionToken }
             : {}),
@@ -124,6 +144,7 @@ export class MobileRelaySession {
   }
 
   send(message: MessageEnvelope): void {
+    this.requireOpenSession();
     const encoded = this.encodeOutgoingMessage(message, {
       queueIfNotReady: true,
     });
@@ -134,13 +155,14 @@ export class MobileRelaySession {
   }
 
   encodeForP2p(message: MessageEnvelope): MessageEnvelope | null {
+    if (this.closed) {
+      return null;
+    }
     return this.encodeOutgoingMessage(message, { queueIfNotReady: false });
   }
 
   receiveFromP2p(message: MessageEnvelope): void {
-    this.handleMessage(message).catch(() => {
-      // The screen layer owns user-visible error reporting.
-    });
+    this.handleIncomingMessage(message);
   }
 
   private encodeOutgoingMessage(
@@ -148,15 +170,6 @@ export class MobileRelaySession {
     options: { queueIfNotReady: boolean },
   ): MessageEnvelope | null {
     if (isE2EBusinessMessage(message.type)) {
-      if (this.businessSecurityMode === "plaintext_allowed") {
-        if (!this.plaintextReady) {
-          if (options.queueIfNotReady) {
-            this.pendingBusinessMessages.push(message);
-          }
-          return null;
-        }
-        return message;
-      }
       if (!this.e2eSession || !this.e2ePeerReady) {
         if (options.queueIfNotReady) {
           this.pendingBusinessMessages.push(message);
@@ -175,8 +188,13 @@ export class MobileRelaySession {
   }
 
   close(): void {
-    this.sendConnectionGoodbye("client_closing");
-    this.stopConnectionHeartbeat();
+    if (this.closed) {
+      return;
+    }
+    if (this.e2ePeerReady) {
+      this.sendConnectionGoodbye("client_closing");
+    }
+    this.clearSession();
     this.client.close();
   }
 
@@ -193,8 +211,11 @@ export class MobileRelaySession {
       case "auth.challenge":
         await this.handleAuthChallenge(message.payload as AuthChallengePayload);
         return;
+      case "auth.pending":
+        this.dispatch(message as MessageEnvelope<AuthPendingPayload>);
+        return;
       case "auth.ok":
-        this.handleAuthOk(message.payload as AuthOkPayload);
+        await this.handleAuthOk(message.payload as AuthOkPayload);
         this.dispatch(message);
         return;
       case "e2e.handshake.reply":
@@ -208,6 +229,13 @@ export class MobileRelaySession {
       case "e2e.message":
         this.handleE2EMessage(message.payload as E2EMessagePayload);
         return;
+      case "e2e.failed": {
+        const payload = message.payload as E2EFailedPayload;
+        if (payload.app_connection_id === this.appConnectionId) {
+          throw new E2EError("handshake_failed", "Agent rejected the E2E session.");
+        }
+        return;
+      }
       case "tunnel.upgrade.propose":
         this.dispatchRelayUpgradeControl(message);
         return;
@@ -215,10 +243,7 @@ export class MobileRelaySession {
         this.dispatchRelayUpgradeControl(message);
         return;
       default:
-        if (
-          isE2EBusinessMessage(message.type) &&
-          this.businessSecurityMode === "e2e_required"
-        ) {
+        if (isE2EBusinessMessage(message.type)) {
           return;
         }
         this.dispatch(message);
@@ -228,45 +253,104 @@ export class MobileRelaySession {
   private async handleAuthChallenge(
     challenge: AuthChallengePayload,
   ): Promise<void> {
+    if (
+      !identityMatchesPublicKey(
+        "agent",
+        this.pairing.deviceId,
+        challenge.agent_public_key,
+      ) ||
+      (this.agentPublicKey !== null &&
+        this.agentPublicKey !== challenge.agent_public_key)
+    ) {
+      throw new Error(
+        "Relay challenge Agent identity does not match the pairing target.",
+      );
+    }
+    this.agentPublicKey = challenge.agent_public_key;
+    const identity = this.requireAppIdentity();
     const appInfo = await this.appInfo();
-    const proof = await createKeyProof(
-      this.pairing.key,
-      challenge.nonce,
-      appInfo,
+    if (this.closed) {
+      return;
+    }
+    const requestedScopes: AppAuthorizationScope[] = ["device.control"];
+    const unsigned = {
+      nonce: challenge.nonce,
+      connection_id: challenge.connection_id,
+      agent_connection_id: challenge.agent_connection_id,
+      device_id: this.pairing.deviceId,
+      agent_public_key: challenge.agent_public_key,
+      app_id: identity.record.id,
+      app_public_key: identity.record.publicKey,
+      app_info: appInfo,
+      requested_scopes: requestedScopes,
+      timestamp: Date.now(),
+    };
+    const signature = await identity.sign(
+      SIGNATURE_DOMAINS.appAuth,
+      appAuthSignatureFields(unsigned),
     );
+    if (this.closed) {
+      return;
+    }
+    this.authNonce = challenge.nonce;
+    this.authConnectionId = challenge.connection_id;
+    this.authAgentConnectionId = challenge.agent_connection_id;
     this.client.send(
       createMessage(
         "auth.proof",
         {
-          nonce: challenge.nonce,
-          app_info: appInfo,
-          proof,
+          ...unsigned,
+          requested_scopes: [...unsigned.requested_scopes],
+          signature,
         },
         { device_id: this.pairing.deviceId },
       ),
     );
   }
 
-  private handleAuthOk(payload: AuthOkPayload): void {
-    if (!payload.connection_id || !payload.agent_connection_id) {
-      return;
+  private async handleAuthOk(payload: AuthOkPayload): Promise<void> {
+    const identity = this.requireAppIdentity();
+    const agentPublicKey = this.agentPublicKey;
+    if (
+      !this.authNonce ||
+      !agentPublicKey ||
+      payload.nonce !== this.authNonce ||
+      payload.device_id !== this.pairing.deviceId ||
+      payload.agent_public_key !== agentPublicKey ||
+      payload.app_id !== identity.record.id ||
+      payload.connection_id !== this.authConnectionId ||
+      payload.agent_connection_id !== this.authAgentConnectionId
+    ) {
+      throw new Error("Agent authentication response does not match this App.");
     }
+    const { signature, e2e: _e2e, ...unsigned } = payload;
+    if (
+      !verifyIdentityFields(
+        payload.agent_public_key,
+        SIGNATURE_DOMAINS.agentAuthOk,
+        agentAuthOkSignatureFields(unsigned),
+        signature,
+      )
+    ) {
+      throw new Error("Agent authentication signature is invalid.");
+    }
+    this.authNonce = null;
+    this.authConnectionId = null;
+    this.authAgentConnectionId = null;
     this.appConnectionId = payload.connection_id;
-    this.businessSecurityMode =
-      payload.business_security_mode ?? "e2e_required";
-    if (this.businessSecurityMode === "plaintext_allowed") {
-      this.plaintextReady = true;
-      this.startConnectionHeartbeat();
-      this.dispatchBusinessReady();
-      this.flushPendingBusinessMessages();
-      return;
-    }
-    this.e2eHandshake = createInitiatorHandshake({
-      pairingKey: this.pairing.key,
+    const handshake = await createInitiatorHandshake({
       deviceId: this.pairing.deviceId,
+      agentPublicKey,
+      appId: identity.record.id,
+      appPublicKey: identity.record.publicKey,
       agentConnectionId: payload.agent_connection_id,
       appConnectionId: payload.connection_id,
+      signApp: (fields) => identity.sign(SIGNATURE_DOMAINS.e2eInit, fields),
     });
+    if (this.closed) {
+      return;
+    }
+    this.e2eHandshake = handshake;
     this.client.send(
       createMessage("e2e.handshake.init", this.e2eHandshake.init, {
         device_id: this.pairing.deviceId,
@@ -294,8 +378,9 @@ export class MobileRelaySession {
       payload.handshake_id !== this.e2eSession.handshakeId ||
       payload.transcript_hash !== this.e2eSession.transcriptHash
     ) {
-      this.e2eSession = null;
-      this.e2ePeerReady = false;
+      throw new E2EError("handshake_failed", "E2E ready does not match this session.");
+    }
+    if (this.e2ePeerReady) {
       return;
     }
     this.e2ePeerReady = true;
@@ -312,21 +397,11 @@ export class MobileRelaySession {
     ) {
       return;
     }
-    try {
-      const message = parseMessageEnvelope(
-        innerToMessage(this.e2eSession.decrypt(payload), this.pairing.deviceId),
-      );
-      if (message) {
-        this.dispatch(message);
-      }
-    } catch (error) {
-      if (
-        error instanceof E2ENoiseError &&
-        (error.code === "decrypt_failed" || error.code === "replay_detected")
-      ) {
-        this.e2eSession = null;
-        this.e2ePeerReady = false;
-      }
+    const message = parseMessageEnvelope(
+      innerToMessage(this.e2eSession.decrypt(payload), this.pairing.deviceId),
+    );
+    if (message) {
+      this.dispatch(message);
     }
   }
 
@@ -355,8 +430,53 @@ export class MobileRelaySession {
   }
 
   private dispatch(message: MessageEnvelope): void {
+    if (this.closed) {
+      return;
+    }
     for (const handler of this.handlers) {
       handler(message);
+    }
+  }
+
+  private handleIncomingMessage(message: MessageEnvelope): void {
+    if (this.closed) {
+      return;
+    }
+    void this.handleMessage(message).catch(() => {
+      if (this.closed) {
+        return;
+      }
+      if (
+        message.type === "auth.challenge" ||
+        message.type === "auth.ok" ||
+        message.type === "e2e.handshake.reply" ||
+        message.type === "e2e.ready" ||
+        message.type === "e2e.failed" ||
+        message.type === "e2e.message"
+      ) {
+        this.clearSession();
+        this.client.close(1008, "secure_protocol_validation_failed");
+      }
+    });
+  }
+
+  private clearSession(): void {
+    this.closed = true;
+    this.stopConnectionHeartbeat();
+    this.authNonce = null;
+    this.authConnectionId = null;
+    this.authAgentConnectionId = null;
+    this.agentPublicKey = null;
+    this.appConnectionId = null;
+    this.e2eHandshake = null;
+    this.e2eSession = null;
+    this.e2ePeerReady = false;
+    this.pendingBusinessMessages = [];
+  }
+
+  private requireOpenSession(): void {
+    if (this.closed) {
+      throw new Error("MobileRelaySession is closed.");
     }
   }
 
@@ -434,6 +554,13 @@ export class MobileRelaySession {
     }
     this.appInfoCache = await this.appInfoPromise;
     return this.appInfoCache;
+  }
+
+  private requireAppIdentity(): AppIdentity {
+    if (!this.appIdentity) {
+      throw new Error("App identity is not initialized.");
+    }
+    return this.appIdentity;
   }
 
   private async resolvePrivateNetworkHash(): Promise<string | undefined> {

@@ -5,11 +5,14 @@
   "type": "object",
   "required": ["v", "id", "type", "ts", "payload"],
   "properties": {
-    "v": { "const": 1 },
+    "v": { "const": 2 },
     "id": { "type": "string", "minLength": 1 },
     "type": { "type": "string", "minLength": 1 },
-    "device_id": { "type": "string" },
-    "session_id": { "type": "string" },
+    "device_id": { "type": "string", "minLength": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "surface_id": { "type": "string", "minLength": 1 },
+    "app_connection_id": { "type": "string", "minLength": 1 },
+    "relay_context_id": { "type": "string", "minLength": 1 },
     "seq": { "type": "integer", "minimum": 0 },
     "ts": { "type": "string", "format": "date-time" },
     "payload": {}

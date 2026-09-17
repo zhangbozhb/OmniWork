@@ -1,9 +1,13 @@
 import { strict as assert } from "node:assert";
 
 import {
-  E2E_SUPPORT_V1,
-  PROTOCOL_SUPPORT_V1,
+  E2E_SUPPORT_V2,
+  PROTOCOL_VERSION,
+  PROTOCOL_SUPPORT_V2,
+  RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_CODE,
+  RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON,
   createMessage,
+  generateIdentityKeyPair,
   type AgentAuthInitPayload,
   type AgentHelloPayload,
   type MessageEnvelope,
@@ -16,6 +20,8 @@ const sent: MessageEnvelope[] = [];
 let registered = 0;
 let addedToTopology = 0;
 let closed: { code?: number; reason?: string } | null = null;
+let authorizationInput: Record<string, unknown> | null = null;
+const identity = generateIdentityKeyPair("agent");
 
 const connection = {
   id: "conn-agent-1",
@@ -28,7 +34,7 @@ const connection = {
     },
   },
   authenticated: false,
-  remoteIp: "203.0.113.10",
+  remoteIp: "8.8.8.8",
   observations: [],
   connectedAt: 1,
   lastSeenAt: 1,
@@ -50,7 +56,7 @@ const admission = new AgentAdmission({
   authGuard: {
     authorize: () => ({
       ok: true,
-      subject: { userId: "user-1", deviceId: "device-1" },
+      subject: { userId: "user-1", deviceId: identity.id },
     }),
   } as never,
   authExecutor: { execute: () => undefined } as never,
@@ -69,6 +75,10 @@ const admission = new AgentAdmission({
       registered += 1;
     },
   } as never,
+  authorizeAgent: (input) => {
+    authorizationInput = input;
+    return { ok: true };
+  },
   send: (_connection, message) => {
     sent.push(message);
   },
@@ -77,22 +87,25 @@ const admission = new AgentAdmission({
 const hello = createMessage<AgentHelloPayload>(
   "agent.hello",
   {
-    v: 1,
-    device_id: "device-1",
+    v: PROTOCOL_VERSION,
+    device_id: identity.id,
+    device_public_key: identity.publicKey,
     relay_auth: {
       method: "device_signature",
       timestamp: Date.now(),
       challenge: "challenge-placeholder",
       signature: "signature-placeholder",
     },
-    protocol: PROTOCOL_SUPPORT_V1,
-    e2e: E2E_SUPPORT_V1,
+    protocol: PROTOCOL_SUPPORT_V2,
+    e2e: E2E_SUPPORT_V2,
     hostname: "host",
     platform: "darwin",
+    system_type: "Darwin",
+    uname: "Darwin host 25.6.0 Darwin Kernel Version 25.6.0 arm64",
     agent_version: "0.1.0",
     capabilities: [],
   },
-  { device_id: "device-1" },
+  { device_id: identity.id },
 );
 
 admission.handleAgentHello(connection, hello);
@@ -102,6 +115,82 @@ assert.equal(closed, null);
 assert.equal(addedToTopology, 1);
 assert.equal(registered, 1);
 assert.equal(sent.length, 1);
+assert.deepEqual(authorizationInput, {
+  deviceId: identity.id,
+  devicePublicKey: identity.publicKey,
+  remoteIp: "8.8.8.8",
+  publicRemoteIp: "8.8.8.8",
+  hostname: "host",
+  systemType: "Darwin",
+  uname: "Darwin host 25.6.0 Darwin Kernel Version 25.6.0 arm64",
+  agentVersion: "0.1.0",
+});
+
+let pendingAuthorizationClose:
+  | { code?: number; reason?: string }
+  | undefined;
+let pendingAuthorizationRegistered = false;
+const pendingAuthorizationAdmission = new AgentAdmission({
+  config: {
+    auth: {
+      mode: "none",
+      agentAuthChallengeTtlMs: 60_000,
+      agentAuthClockSkewMs: 60_000,
+      nonceTtlMs: 60_000,
+    },
+    authRateLimit: { blockMs: 60_000 },
+  } as never,
+  challengeSecret: Buffer.from("test-secret"),
+  authGuard: {
+    authorize: () => ({ ok: true }),
+  } as never,
+  authExecutor: { execute: () => undefined } as never,
+  authLimiter: new TokenBucketLimiter({
+    capacity: 5,
+    refillPerSecond: 1,
+    blockMs: 60_000,
+  }),
+  topology: { addAgentToDevice: () => undefined } as never,
+  state: {
+    registerAgent: () => {
+      pendingAuthorizationRegistered = true;
+    },
+  } as never,
+  authorizeAgent: () => ({
+    ok: false,
+    reason: "agent_approval_required",
+  }),
+  send: () => undefined,
+});
+const pendingAuthorizationConnection = {
+  id: "conn-agent-pending",
+  endpoint: "agent",
+  role: "unknown",
+  state: "socket_connected",
+  authState: "pending",
+  socket: {
+    close(code?: number, reason?: string) {
+      pendingAuthorizationClose = { code, reason };
+    },
+  },
+  authenticated: false,
+  remoteIp: "203.0.113.11",
+  observations: [],
+  connectedAt: 1,
+  lastSeenAt: 1,
+  transportPath: "relay",
+} as never;
+
+pendingAuthorizationAdmission.handleAgentHello(
+  pendingAuthorizationConnection,
+  hello,
+);
+
+assert.deepEqual(pendingAuthorizationClose, {
+  code: RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_CODE,
+  reason: RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON,
+});
+assert.equal(pendingAuthorizationRegistered, false);
 
 const initMessages: MessageEnvelope[] = [];
 const initClosures: Array<{ code?: number; reason?: string }> = [];
@@ -119,7 +208,7 @@ const initAdmission = new AgentAdmission({
   authGuard: {
     authorize: () => ({
       ok: true,
-      subject: { userId: "user-1", deviceId: "device-1" },
+      subject: { userId: "user-1", deviceId: identity.id },
     }),
   } as never,
   authExecutor: { execute: () => undefined } as never,
@@ -130,6 +219,7 @@ const initAdmission = new AgentAdmission({
   }),
   topology: { addAgentToDevice: () => undefined } as never,
   state: { registerAgent: () => undefined } as never,
+  authorizeAgent: () => ({ ok: true }),
   send: (_connection, message) => {
     initMessages.push(message);
   },
@@ -159,13 +249,13 @@ function createInitConnection(id: string) {
 const init = createMessage<AgentAuthInitPayload>(
   "agent.auth.init",
   {
-    v: 1,
-    device_id: "device-1",
-    device_public_key: "public-key-placeholder",
+    v: PROTOCOL_VERSION,
+    device_id: identity.id,
+    device_public_key: identity.publicKey,
     timestamp: Date.now(),
     signature: "signature-placeholder",
   },
-  { device_id: "device-1" },
+  { device_id: identity.id },
 );
 
 initAdmission.handleAgentAuthInit(createInitConnection("conn-init-1"), init);
@@ -190,7 +280,7 @@ const privateInitAdmission = new AgentAdmission({
   authGuard: {
     authorize: () => ({
       ok: true,
-      subject: { userId: "user-1", deviceId: "device-1" },
+      subject: { userId: "user-1", deviceId: identity.id },
     }),
   } as never,
   authExecutor: { execute: () => undefined } as never,
@@ -201,6 +291,7 @@ const privateInitAdmission = new AgentAdmission({
   }),
   topology: { addAgentToDevice: () => undefined } as never,
   state: { registerAgent: () => undefined } as never,
+  authorizeAgent: () => ({ ok: true }),
   send: (_connection, message) => {
     privateInitMessages.push(message);
   },

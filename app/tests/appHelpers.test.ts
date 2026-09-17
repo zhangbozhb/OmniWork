@@ -1,7 +1,10 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { TerminalSession } from "@omni-work/protocol-ts";
+import {
+  generateIdentityKeyPair,
+  type TerminalSession,
+} from "@omni-work/protocol-ts";
 import {
   formatRelayCloseMessage,
   formatStrictForceCloseMessage,
@@ -68,24 +71,27 @@ test("session capabilities project pending Agent attention without changing life
 });
 
 test("upsertPairing replaces by relay URL and device ID", () => {
+  const identity = generateIdentityKeyPair("agent");
   const first = {
     relayUrl: "wss://relay.example/relay/ws/mobile",
-    deviceId: "mac-1",
-    key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    deviceId: identity.id,
     appInstanceId: "app-1",
   };
-  const refreshed = { ...first, key: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" };
+  const refreshed = {
+    ...first,
+    displayName: "Refreshed MacBook",
+  };
 
   assert.equal(isSamePairing(first, refreshed), true);
   assert.deepEqual(upsertPairing([first], refreshed), [refreshed]);
 });
 
 test("getHeaderSubtitle prefers pairing display name", () => {
+  const identity = generateIdentityKeyPair("agent");
   const pairing = {
     relayUrl: "wss://relay.example/relay/ws/mobile",
-    deviceId: "mac-1",
+    deviceId: identity.id,
     displayName: "Alice MacBook",
-    key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     appInstanceId: "app-1",
   };
 
@@ -93,6 +99,7 @@ test("getHeaderSubtitle prefers pairing display name", () => {
     getHeaderSubtitle("workbench", 1, pairing, (key) => key),
     "Alice MacBook",
   );
+  assert.equal(getHeaderSubtitle("pairing", 1, pairing, (key) => key), "");
 });
 
 test("connection close helpers keep user-facing detail", () => {

@@ -421,11 +421,10 @@ export class AgentMessageDispatcher {
           message as MessageEnvelope<TunnelUpgradeProposePayload>;
         const payload = upgradeMessage.payload;
         if (
-          this.options.config.businessSecurityMode === "e2e_required" &&
           !trustedE2E &&
           !this.options.security.hasReadyE2EPeer(payload.app_connection_id)
         ) {
-          this.options.security.rejectPlaintextBusiness(message, trustedE2E);
+          this.options.security.rejectUnencryptedBusiness(message, trustedE2E);
           return;
         }
         if (
@@ -433,7 +432,7 @@ export class AgentMessageDispatcher {
             message,
             payload.app_connection_id,
             trustedE2E,
-            { skipPlaintextReject: true },
+            { allowUnencryptedControl: true },
           )
         ) {
           return;

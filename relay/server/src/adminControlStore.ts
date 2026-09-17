@@ -2,7 +2,10 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-export type AdminControlRuleKind = "agent_device_disable" | "ip_ban";
+export type AdminControlRuleKind =
+  | "agent_device_authorization"
+  | "agent_device_disable"
+  | "ip_ban";
 
 export interface AdminControlRuleRecord {
   kind: AdminControlRuleKind;

@@ -1,11 +1,9 @@
 import { type JSX, type ReactNode, useRef } from "react";
 import {
-  Modal,
   Pressable,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -16,15 +14,6 @@ import type { LocalAgentMessageRecord } from "../features/agent/agentMessageStor
 import { Button } from "../ui/components";
 import { Icon, type IconName } from "../ui/icons";
 
-type EncryptedPairingModalProps = {
-  visible: boolean;
-  password: string;
-  error?: string;
-  onPasswordChange(password: string): void;
-  onSubmit(): void;
-  onCancel(): void;
-};
-
 type AppShellProps = {
   children: ReactNode;
   title: string;
@@ -34,7 +23,6 @@ type AppShellProps = {
   activeTab: AppView;
   unreadMessages: number;
   agentMessageBanner?: LocalAgentMessageRecord;
-  encryptedPairingModal: EncryptedPairingModalProps;
   onContentTouchStart(): void;
   onChangeTab(view: PrimaryTabView, event: PrimaryTabPressEvent): void;
   onDismissAgentMessageBanner(): void;
@@ -54,7 +42,6 @@ export function AppShell({
   activeTab,
   unreadMessages,
   agentMessageBanner,
-  encryptedPairingModal,
   onContentTouchStart,
   onChangeTab,
   onDismissAgentMessageBanner,
@@ -91,7 +78,6 @@ export function AppShell({
             onOpen={() => onOpenAgentMessageBanner(agentMessageBanner)}
           />
         ) : null}
-        <EncryptedPairingModal {...encryptedPairingModal} />
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -233,71 +219,6 @@ function AgentMessageBanner({
   );
 }
 
-function EncryptedPairingModal({
-  visible,
-  password,
-  error,
-  onPasswordChange,
-  onSubmit,
-  onCancel,
-}: EncryptedPairingModalProps): JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <Modal
-      animationType="fade"
-      transparent
-      visible={visible}
-      onRequestClose={onCancel}
-    >
-      <View style={styles.encryptedPairingBackdrop}>
-        <View style={styles.encryptedPairingDialog}>
-          <Text style={styles.encryptedPairingTitle}>
-            {t("pairing.encrypted.title")}
-          </Text>
-          <Text style={styles.encryptedPairingText}>
-            {t("pairing.encrypted.description")}
-          </Text>
-          <TextInput
-            autoFocus
-            keyboardType="number-pad"
-            maxLength={4}
-            placeholder={t("pairing.encrypted.placeholder")}
-            placeholderTextColor="#64727c"
-            secureTextEntry
-            style={styles.encryptedPairingInput}
-            value={password}
-            onChangeText={(value) =>
-              onPasswordChange(value.replace(/\D/g, "").slice(0, 4))
-            }
-            onSubmitEditing={onSubmit}
-          />
-          {error ? (
-            <Text style={styles.encryptedPairingError}>{error}</Text>
-          ) : null}
-          <View style={styles.encryptedPairingActions}>
-            <Button
-              style={styles.encryptedPairingAction}
-              variant="ghost"
-              onPress={onCancel}
-            >
-              {t("common.cancel")}
-            </Button>
-            <Button
-              disabled={password.length !== 4}
-              style={styles.encryptedPairingAction}
-              tone="primary"
-              variant="solid"
-              onPress={onSubmit}
-            >
-              {t("pairing.encrypted.import")}
-            </Button>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -434,57 +355,5 @@ const styles = StyleSheet.create({
   },
   messageBannerGhostText: {
     color: "#d7dde2",
-  },
-  encryptedPairingBackdrop: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.52)",
-  },
-  encryptedPairingDialog: {
-    width: "100%",
-    maxWidth: 420,
-    gap: 14,
-    borderRadius: 22,
-    borderColor: "#263037",
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 20,
-    backgroundColor: "#11181d",
-  },
-  encryptedPairingTitle: {
-    color: "#f5f7f8",
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  encryptedPairingText: {
-    color: "#94a3ad",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  encryptedPairingInput: {
-    borderRadius: 14,
-    borderColor: "#263037",
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: "#f5f7f8",
-    fontSize: 20,
-    fontWeight: "800",
-    letterSpacing: 8,
-    textAlign: "center",
-    backgroundColor: "#0d1317",
-  },
-  encryptedPairingError: {
-    color: "#ff8b8b",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  encryptedPairingActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  encryptedPairingAction: {
-    flex: 1,
   },
 });

@@ -19,7 +19,7 @@ test("omniwork-hook-record writes Trae records locally", async () => {
       OMNIWORK_AGENT_HOOK_SOURCE: "trae",
       OMNIWORK_AGENT_HOOK_EVENT: "UserPromptSubmit",
       OMNIWORK_TRAE_RECORDS_DIR: dir,
-      OMNIWORK_SESSION_KEY_PATH: join(dir, "missing-session-key.json"),
+      OMNIWORK_AGENT_PROBE_TOKEN_PATH: join(dir, "missing-probe-token.json"),
     },
     input: JSON.stringify({
       session_id: "sess-1",
@@ -417,7 +417,7 @@ test("omniwork-hook-post does not write Trae records", async () => {
       OMNIWORK_AGENT_HOOK_SOURCE: "trae",
       OMNIWORK_AGENT_HOOK_EVENT: "UserPromptSubmit",
       OMNIWORK_TRAE_RECORDS_DIR: dir,
-      OMNIWORK_SESSION_KEY_PATH: join(dir, "missing-session-key.json"),
+      OMNIWORK_AGENT_PROBE_TOKEN_PATH: join(dir, "missing-probe-token.json"),
     },
     input: JSON.stringify({
       session_id: "sess-1",

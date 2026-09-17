@@ -5,6 +5,7 @@ import {
   type NativeSyntheticEvent,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Text,
   View,
@@ -42,7 +43,7 @@ export function NativeTerminalView({
   layout,
   terminalSize,
 }: NativeTerminalViewProps): JSX.Element {
-  const verticalScrollRef = useRef<ScrollView>(null);
+  const verticalScrollRef = useRef<ScrollViewInstance>(null);
   const followOutputRef = useRef(true);
   const [followOutput, setFollowOutput] = useState(true);
   const terminalContentWidth =

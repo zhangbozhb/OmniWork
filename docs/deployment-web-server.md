@@ -73,7 +73,6 @@ Recommended production `config.yml`:
 server:
   host: 127.0.0.1
   port: 8787
-  requireE2E: true
 admin:
   host: 127.0.0.1
   port: 8788

@@ -500,6 +500,9 @@ export class MobileSessionTransport implements SessionTransport {
     const previous = this.currentPath;
     try {
       await delay(DRAIN_DELAY_MS);
+      if (this.closed || this.forceClosed) {
+        return;
+      }
       this.currentPath = target;
       for (const handler of this.pathChangeHandlers) {
         handler(target);

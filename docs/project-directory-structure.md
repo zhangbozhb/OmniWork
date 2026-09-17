@@ -7,7 +7,7 @@
 - [engineering-requirements.md](./engineering-requirements.md)
 - [relay-architecture.md](./relay-architecture.md)
 - [relay-architecture-implementation.md](./relay-architecture-implementation.md)
-- [e2e-noise-roadmap.md](./e2e-noise-roadmap.md)
+- [identity-auth-design.md](./identity-auth-design.md)
 - [p2p-per-app-connection.md](./p2p-per-app-connection.md)
 
 ## 目标
@@ -67,9 +67,11 @@ OmniWork/
 - `app/` 推荐采用 React Native CLI；Web 通过 `react-native-web` 接入，不独立重写 UI。
 - `desktop/` 使用 TypeScript / Node.js 技术栈实现 Agent 主体。
 - `desktop/` 不采用 Rust/Swift 作为业务主实现；如需 电脑系统 原生能力，只作为最薄的平台桥接层。
-- `protocol/` 优先生成 TypeScript 类型，供 `app/` 和 `desktop/` 共同复用（TS 主体在 `packages/protocol-ts/`）。
-- Relay 是否使用 TypeScript 不强制，但不得绕过 `protocol/` 自行定义消息格式。
-- App-Agent 业务消息采用 E2E encrypted-only 模型；Noise 加解密能力在 `packages/e2e-noise/`，Relay 不作为业务明文安全边界。
+- `packages/protocol-ts/` 直接提供 TypeScript 类型与运行时 schema；
+  `protocol/` 同步维护跨语言 JSON Schema 子集。
+- Relay 是否使用 TypeScript 不强制，但不得绕过共享协议契约自行定义消息格式。
+- App-Agent 业务消息固定使用签名 X25519 E2E；加解密能力在
+  `packages/e2e-noise/`，Relay 不作为业务安全边界。
 
 技术栈：
 
@@ -79,9 +81,9 @@ OmniWork/
 | `site/` | Astro 静态站点 | 交付 Public Web：首页、公开文档、下载页、发布记录；通过静态 `downloads.json` 指向 App Store 与 GitHub Releases |
 | `desktop/agent` | Node.js LTS + TypeScript | 管理 Relay 连接、tmux、PTY、Codex/Claude/Gemini 终端 provider、本地状态 |
 | `relay/server` | Node.js LTS + TypeScript | MVP 实现；可替换为 Go/Rust |
-| `protocol/` | JSON Schema（auth/envelopes/sessions/terminal） | 跨端协议契约的可机读真相 |
-| `packages/protocol-ts` | TypeScript + zod | 协议类型与运行时校验、E2E / 升级链路类型 |
-| `packages/e2e-noise` | TypeScript | App-Agent Noise E2E 握手、加解密、seq 防重放与篡改检测 |
+| `protocol/` | JSON Schema（auth/envelopes/sessions/terminal） | 面向跨语言使用者的核心契约子集 |
+| `packages/protocol-ts` | TypeScript + zod | 完整消息类型、运行时校验、身份签名与 E2E / 升级链路类型 |
+| `packages/e2e-noise` | TypeScript | App-Agent 签名 X25519 E2E 握手、加解密、seq 防重放与篡改检测 |
 
 ## app 目录
 
@@ -122,7 +124,7 @@ app/
 |   |-- editor/                  # CodeMirror Web / Native WebView 编辑器
 |   |-- features/
 |   |   |-- app-lock/            # App 锁定、手势密码与自动锁定规则
-|   |   |-- auth/                # hmacSha256 + keyProof + 类型
+|   |   |-- auth/                # App identity、pairing config 与类型
 |   |   |-- sessions/            # sessionCapabilities / sessionMessages
 |   |   |-- terminal/            # terminalLayout / terminalMessages
 |   |   |-- workspaces/          # workspaceMessages + editableFiles
@@ -132,9 +134,11 @@ app/
 |   |   |-- transport/           # SessionTransport / UpgradeCoordinator / WebRTC peer adapter（native/web 双实现）
 |   |-- platform/
 |   |   |-- app-lock-storage/    # App lock 持久化平台分包
+|   |   |-- identity/            # Native Keychain / WebCrypto App 身份存储
 |   |   |-- linking/             # appLinking 平台分包
 |   |   |-- owner-auth/          # 设备所有者认证平台分包
 |   |   |-- secure-storage/      # securePairingStore 平台分包
+|   |   |-- nativeTextEncodingPolyfill.ts
 |   |-- screens/
 |   |   |-- devices/             # DeviceListScreen
 |   |   |-- pairing/             # PairingScreen + PairingQrScannerModal（native/web）
@@ -214,13 +218,15 @@ app/
 - 不再新增 `src/native/` 作为业务依赖目录。
 - 终端渲染默认使用 xterm Web/native WebView 视图；React Native 快照视图只作为兼容 fallback。
 - 推送通知（规划）使用 APNs / FCM 或公司统一推送网关，不使用 Web Push 作为交付链路。
-- 移动端安全存储使用平台安全存储能力，不能使用普通明文 AsyncStorage 存临时 key。
-- Web 端不使用扫码能力，配对通过手动输入或 URL 导入完成。
+- Native App 身份使用平台安全存储；Web App 私钥使用 WebCrypto 不可导出
+  `CryptoKey` 并保存在 IndexedDB。
+- Web 端不使用扫码能力，配对通过粘贴目标链接或 URL 导入完成；目标链接本身
+  不签名，也不携带授权凭证。
 - 文件编辑仅面向 `SUPPORTED_TEXT_FILE_EXTENSIONS` 中声明的 UTF-8 文本文件，保存必须携带打开时的 `contentHash` 作为 `baseHash`，由 桌面端 Agent 做冲突检测。
 
 ## desktop 目录
 
-`desktop/` 是 TypeScript 技术栈的 电脑 本地 Agent，负责连接 Relay、管理 runtime（Codex/Claude/Gemini）、管理 tmux/PTY 会话、保存本地状态、提供文件与 git 视图、处理直连升级与生成临时 key。
+`desktop/` 是 TypeScript 技术栈的 电脑 本地 Agent，负责连接 Relay、管理 runtime（Codex/Claude/Gemini）、管理 tmux/PTY 会话、保存本地状态、提供文件与 git 视图、处理直连升级，以及维护长期身份和可信 App。
 
 真实结构：
 
@@ -245,14 +251,13 @@ desktop/
 |   |   |-- git/                 # gitService
 |   |   |-- learning/            # Agent observation 账本与后续交付学习能力
 |   |   |-- pairing/             # pairingQr
-|   |   |-- auth-key/            # authKey（生成/持久化 32 字符 key）
-|   |   |-- keychain/            # keychain（电脑系统 Keychain 桥）
 |   |   |-- telemetry/           # logger
-|   |   |-- config/              # 配置加载
+|   |   |-- config/              # 配置、Agent identity、Probe token、可信 App 存储
 |   |   |-- protocol/            # 与 packages/protocol-ts 的桥接出口
 |   |-- tests/
 |   |   |-- transport/           # sessionTransport / upgradeCoordinator
-|   |   |-- auth-key.test.ts
+|   |   |-- deviceIdentity.test.ts
+|   |   |-- agentAppSecurityGateway.test.ts
 ```
 
 > `desktop/macos/`（LaunchAgent / 签名 / 公证 / Menu Bar）、`desktop/native/`（Keychain / Launch Services native binding）、`desktop/resources/`、`desktop/generated/` 等企业化能力未实装，按需补齐。
@@ -272,8 +277,7 @@ desktop/
 - 管理 PTY 输入输出。
 - 处理 backpressure、snapshot、重连。
 - 保存本地状态（默认文件存储于 `~/Library/Application Support/OmniWork/agent/`）。
-- 启动时优先使用合法的用户配置 key；未配置或配置为空时生成 32 字符临时
-  key，并保存到本地文件。非空配置不合法时拒绝启动。
+- 首次启动生成长期 Ed25519 身份，后续复用；身份文件损坏时拒绝启动。
 - 处理 `tunnel.upgrade.*` 协议族，按需把会话从 Relay 升级到 P2P。
 - 提供文件与 git 浏览能力（`files/` `git/`）。
 
@@ -283,7 +287,7 @@ desktop/
 
 `core/`：Agent 领域模型与运行期编排。`agentService` 是组合根，负责构造依赖、启动和停止；`agentRelayController` 负责 Relay 连接、重连与 `agent.hello`；`agentAppSecurityGateway` 负责 App 认证、E2E 加解密、业务消息准入和按连接投递；`agentMessageDispatcher` 负责协议类型分发；`agentTunnelUpgradeHandler` 负责 `tunnel.upgrade.*` 和按 `app_connection_id` 隔离的 Strict P2P；`sessionManager` 负责 session 持久化与 tmux 生命周期；`sessionRequestHandler` 负责 session list/create/rename/attach/close/kill 请求处理；`resourceRequestHandler` 负责 workspace/files/git 查询处理；`terminalRequestHandler` 负责 terminal input/resize/snapshot/stream 请求热路径；`terminalFramePusher` 负责终端帧推流、去重、订阅者与背压队列；`agentProbeRuntime`、`agentInboxHandler`、`agentAdminRuntime` 分别负责 Probe、Agent 消息和 Admin 运行域。
 
-`relay-client/`：与 Relay 的出站连接，WebSocket、临时 key proof、重连、心跳。不直接管理终端 provider 进程。
+`relay-client/`：与 Relay 的出站连接，WebSocket、签名身份挑战、重连、心跳。不直接管理终端 provider 进程。
 
 `transport/`：升级核心。包含
 
@@ -306,9 +310,12 @@ desktop/
 
 `pairing/`：生成 `omniwork://pair?...` 链接与 ASCII QR 码。
 
-`auth-key/`：32 字符 key 生成、`session-key.json` 持久化、目录 `0700` 文件 `0600` 权限、HMAC proof 校验。日志不输出完整 key。
+`config/deviceIdentity.ts`：生成和复用 Ed25519 Agent 身份，派生
+`DEV1-...` ID，并以目录 `0700`、文件 `0600` 权限持久化。
 
-`keychain/`：电脑 Keychain 封装，保留给演进持久 secret 或企业凭证。
+`config/trustedAppStore.ts`：保存本机批准的 App 公钥、scope 和撤销状态。
+
+`config/probeToken.ts`：保存独立本地 Probe bearer token。
 
 `config/`：读取默认配置、用户配置、环境变量；对外提供类型安全配置对象。
 
@@ -323,16 +330,16 @@ desktop/
 - 允许使用必要的 Node native addon（PTY、WebRTC native、Keychain bridge），但 native addon 必须封装在清晰模块后面。
 - PTY 输入/快照能力通过 `pty-bridge/` 调用 `tmux-manager/` 完成；如演进引入 `node-pty`，也必须封装在 `pty-bridge/`，业务模块不直接调用 native addon。
 - `tmux` 操作必须通过 `tmux-manager/`，不能在业务代码中散落 shell 命令。
-- 运行 key 写入 `session-key.json`，文件权限必须为 `0600`；如配置固定 key，
-  配置文件也必须按 secret 管理并限制读取权限。
-- 演进持久凭证必须存入 电脑系统 Keychain，不能写入明文配置文件。
+- Agent 身份文件权限必须为 `0600`，父目录必须为 `0700`。
+- macOS Keychain 可用时优先保存长期 Agent 身份；私钥不能写入普通配置文件。
 - WebRTC 使用 `@roamhq/wrtc`；动态 import 时需做 `default` 解包以兼容 Node ESM 包装。
 - 打包时需要内嵌或固定 Node runtime，避免依赖用户机器上的全局 Node 版本。
 - 电脑系统 签名、公证、LaunchAgent 配置属于规划中的 `macos/` 与 `native/`，不进入 Agent 业务层。
 
 ## relay 目录
 
-`relay/` 是公司内网中继服务，负责手机和 桌面端 Agent 之间的安全连接、路由、临时 key 鉴权、P2P 升级编排和审计。
+`relay/` 是公司内网中继服务，负责手机和 Desktop Agent 之间的连接、签名
+身份准入、人工/自动 Agent 授权、路由、P2P 升级编排和审计。
 
 TypeScript MVP：
 
@@ -363,6 +370,7 @@ relay/
 |   |   |-- upgrade/
 |   |   |   |-- orchestrator.ts  # rollout / blocklist / 退避 / metrics
 |   |-- tests/
+|   |   |-- agentAuthorization.test.ts
 |   |   |-- upgrade/
 |   |   |   |-- orchestrator.test.ts
 ```
@@ -397,7 +405,7 @@ relay/
 
 ### relay 内部边界（MVP 与可选形态共用）
 
-`auth/`：临时 key challenge/proof，nonce 生成，proof 校验转发，失败次数限流。
+`auth/`：身份 challenge/proof、签名校验转发、用户设备归属与失败次数限流。
 
 `devices/`：电脑 设备注册、在线状态、Agent 版本、设备合规状态。
 
@@ -435,7 +443,10 @@ protocol/
 |   |-- terminal-input.schema.json
 ```
 
-> 实际承载消息类型的"主协议体"位于 `packages/protocol-ts/src/`（`index.ts`、`schemas.ts`、`constants.ts`、`transport.ts`、`webrtc.ts`），同时通过 `tests/contract.test.ts` 维护 schema 与 TS 类型的一致性。`protocol/` 中的 JSON Schema 是给跨语言使用者（含可选 Go/Rust Relay）的机器可读真相。
+> 完整运行时协议位于 `packages/protocol-ts/src/`（`index.ts`、
+> `schemas.ts`、`constants.ts`、`transport.ts`、`webrtc.ts`）。
+> `protocol/` 只发布当前明确维护的跨语言 JSON Schema 子集；两处重叠的字段
+> 和版本必须保持一致。
 
 可选扩展（按需补齐）：
 
@@ -447,8 +458,12 @@ protocol/
 
 原则：
 
-- `protocol/` 是唯一 schema 源（机器可读契约）。
-- App / 电脑 优先使用 `packages/protocol-ts` 中的类型；该包的 `tests/contract.test.ts` 验证与 `protocol/*.schema.json` 一致。
+- TypeScript 运行时以 `packages/protocol-ts` 的类型和 zod schema 为准。
+- `protocol/` 是对外跨语言契约子集；修改其已覆盖的 envelope、auth、session
+  或 terminal 字段时必须同步更新。
+- App / Desktop Agent 直接使用 `packages/protocol-ts`；contract test 对
+  TypeScript schema 做正反例验证，并对已纳入测试的 JSON Schema 字段做一致性
+  检查。
 - Go/Rust 生成物只服务 Relay 或演进平台扩展，不是 App/电脑 主依赖。
 - 生成物不要手工修改。
 - 协议变更必须带 contract test。
@@ -467,8 +482,10 @@ packages/
 |   |-- tsconfig.json
 |   |-- src/
 |   |   |-- index.ts             # MessageType 枚举、Envelope、TerminalProvider 等
+|   |   |-- identity.ts          # Ed25519 身份生成、派生、规范化和签名
+|   |   |-- authSignatures.ts    # 各认证阶段的域分离签名字段
 |   |   |-- constants.ts
-|   |   |-- schemas.ts           # zod 校验 + 与 JSON Schema 对齐
+|   |   |-- schemas.ts           # 完整协议 zod 运行时校验
 |   |   |-- transport.ts         # transport.ping/pong 等传输层消息
 |   |   |-- webrtc.ts            # tunnel.upgrade.* 与 IceServerConfig
 |   |-- tests/
@@ -477,7 +494,7 @@ packages/
 |   |-- package.json
 |   |-- tsconfig.json
 |   |-- src/
-|   |   |-- index.ts             # Noise 握手、加解密、seq 防重放
+|   |   |-- index.ts             # 签名 X25519 握手、加解密、seq 防重放
 |   |-- tests/
 |   |   |-- noise.test.ts
 |-- relay-client/
@@ -495,7 +512,7 @@ packages/
 说明：
 
 - `protocol-ts/`：跨端协议的 TypeScript 类型与 zod 运行时校验，包括 E2E、升级链路的 `tunnel.upgrade.*` / `transport.*`。运行 `pnpm --filter @omni-work/protocol-ts test` 校验契约。
-- `e2e-noise/`：App-Agent Noise E2E 握手、加解密、seq 防重放和篡改检测。运行 `pnpm --filter @omni-work/e2e-noise test` 校验安全基础能力。
+- `e2e-noise/`：App-Agent 签名 X25519 E2E 握手、加解密、seq 防重放和篡改检测。运行 `pnpm --filter @omni-work/e2e-noise test` 校验安全基础能力。
 - `relay-client/`：可被 `app/` 和 `desktop/` 复用的 Relay 客户端核心。
 - `terminal-core/`：终端输入、快捷键、frame 合并等纯 TS 逻辑。
 
@@ -515,9 +532,8 @@ packages/
 ```text
 scripts/
 |-- verify/
-|   |-- app-key-proof.test.mjs       # App 端 HMAC proof 单元验证
-|   |-- desktop-agent-key.sh             # Agent key 文件权限/格式自检
-|   |-- mobile-upgrade-simulator.mjs # 模拟手机端跑通 P2P 升级全流程
+|   |-- identity-auth.test.mjs       # 身份 ID、目标链接和 App proof 定向验证
+|   |-- mobile-upgrade-simulator.mjs # 以目标配对链接模拟 App 与 P2P 升级
 |   |-- package-boundaries.mjs       # package 边界自检
 |-- deploy/
 |   |-- buildWebDeploy.mjs           # Web SPA 部署目录准备
@@ -525,15 +541,23 @@ scripts/
 
 根 `package.json` 中暴露的相关 npm scripts：
 
-- `verify:app-auth`、`verify:app:targets`、`verify:app:web`、`verify:app:bundle:ios`、`verify:app:bundle:android`
+- `verify:app:targets`、`verify:app:web`、`verify:app:bundle:ios`、`verify:app:bundle:android`
 - `verify:relay`
-- `verify:desktop-key`
+- `verify:identity-auth`
+- `verify:agent-authorization`
 - `verify:upgrade:simulator`
 - `verify:package-boundaries`
 - `verify:security`
 - `deploy:web:build`、`deploy:web:prepare`
 
-> P2P 升级 e2e 验证脚本是 mobile simulator：需要先启动真实 Relay 与 桌面端 Agent，再运行 `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY>`。模拟器会按当前协议完成 key proof、Noise E2E 握手与 P2P 信令。安全基础验证运行 `pnpm verify:security`，等价于 `@omni-work/e2e-noise` 测试。
+> P2P 升级 e2e 验证脚本是 mobile simulator：需要先启动真实 Relay 与
+> Desktop Agent，再运行
+> `pnpm verify:upgrade:simulator -- --pairing 'omniwork://pair?...'`。模拟器会
+> 生成 App 身份并按当前协议完成本机批准、双向签名认证、签名 X25519 E2E
+> 握手与 P2P 信令；也可用 `--relay <ws-url> --device <DEV1-id>` 手动指定
+> 目标。身份认证定向验证运行 `pnpm verify:identity-auth`，安全基础验证运行
+> `pnpm verify:security`；Relay Agent 人工/自动授权定向验证运行
+> `pnpm verify:agent-authorization`。
 
 可补：
 
@@ -559,10 +583,9 @@ scripts/
 docs/
 |-- README.md                              # 文档入口与推荐阅读顺序
 |-- engineering-requirements.md
-|-- auth-key-design.md
+|-- identity-auth-design.md
 |-- app-installation.md
 |-- deployment-web-server.md
-|-- e2e-noise-roadmap.md
 |-- mobile-file-editing.md
 |-- mobile-codex-tui-workbench-design.md
 |-- mobile-codex-tui-technical-solution.md
@@ -576,7 +599,8 @@ docs/
 
 - 设计结论放在 docs 根目录。
 - 历史探索或废弃方案应直接移除，避免继续影响架构判断。
-- 协议变化需要同步更新 `packages/protocol-ts` 与（如有）`relay-architecture.md`、`auth-key-design.md`。
+- 协议变化需要同步更新 `packages/protocol-ts` 与（如有）
+  `relay-architecture.md`、`identity-auth-design.md`。
 - 任何代码改动都必须同步检查并更新相关文档。
 
 ## 规划中目录
@@ -592,13 +616,14 @@ docs/
 
 - 手机连接 Relay。
 - 桌面端 Agent 注册 Relay。
-- App 使用正确临时 key 可以连接。
-- App 使用错误临时 key 不能连接。
+- `manual` 模式下未知 App 在本机批准后可以连接；`automatic` 模式仍须通过
+  身份签名和 scope 校验。
+- 未批准、签名错误或已撤销 App 不能连接。
 - 创建 Codex/Claude/Gemini TUI 会话。
 - 切换多个会话。
 - 手机断线后 电脑 会话继续。
 - 手机重连后恢复终端快照。
-- Agent 重启后恢复 tmux 会话，并且持久化的 key 仍然可用。
+- Agent 重启后恢复 tmux 会话、长期身份和可信 App 状态。
 - 慢连接不会导致内存无限增长。
 - P2P 升级在 rollout 灰度、blocklist 命中、ICE 失败、健康降级、重协商等路径下行为符合预期。
 
@@ -657,7 +682,8 @@ relay     -X-> app/desktop internal code
 - `app` 不依赖 `desktop/agent` 内部模块。
 - `mac` 不依赖 `app/src` 内部模块。
 - `relay` 不依赖 app/desktop 内部实现。
-- 三端通过 `protocol/` 与 Relay API 通信。
+- 当前三端通过 `packages/protocol-ts` 的协议类型与 Relay API 通信；
+  `protocol/` 为跨语言实现保留已维护的 JSON Schema 子集。
 - 任何跨端字段变化先改 `packages/protocol-ts` 与（如有）`protocol/*.schema.json`。
 
 ## MVP 最小目录
@@ -678,10 +704,10 @@ OmniWork/
 其中：
 
 - `app/` 已实现 React Native 跨端 App + Native WebView/xterm 终端页 + 文件/git 视图 + 配对扫码。
-- `desktop/agent` 已实现 TypeScript / Node.js Agent，含 runtime 抽象、tmux/PTY、文件/git、auth-key、P2P 升级。
+- `desktop/agent` 已实现 TypeScript / Node.js Agent，含 runtime 抽象、tmux/PTY、文件/git、长期身份、App 信任审批和 P2P 升级。
 - `relay/server` 已实现 WSS 转发 + auth + P2P 升级编排 + `/metrics` `/debug/upgrade`。
 - `protocol/` + `packages/protocol-ts` 维护 envelope、auth、E2E、session、terminal、Codex 与升级链路消息。
-- `packages/e2e-noise` 维护 App-Agent Noise E2E 握手、加解密、seq 防重放与篡改检测。
+- `packages/e2e-noise` 维护 App-Agent 签名 X25519 E2E 握手、加解密、seq 防重放与篡改检测。
 
 ## 从 MVP 到企业版的演进
 
@@ -691,9 +717,9 @@ OmniWork/
 
 ```text
 app/src/{app,features,lib,platform,screens,terminal,ui}/
-desktop/agent/src/{agentd,core,relay-client,transport,runtime,pty-bridge,tmux-manager,session-store,workspace,files,git,pairing,auth-key,keychain,telemetry,config,protocol}/
+desktop/agent/src/{agentd,core,relay-client,transport,runtime,pty-bridge,tmux-manager,session-store,workspace,files,git,pairing,telemetry,config,protocol}/
 relay/server/src/{relayServer.ts,upgrade/orchestrator.ts}
-packages/{protocol-ts,relay-client,terminal-core}
+packages/{protocol-ts,e2e-noise,relay-client,terminal-core}
 ```
 
 目标已达成：
@@ -717,12 +743,12 @@ tests/security/
 
 目标：
 
-- 临时 key 文件权限的端到端审计。
-- key proof 失败限流的红线测试。
-- Relay 不记录完整 key。
+- 身份文件权限的端到端审计。
+- 身份 proof 失败限流的红线测试。
+- Relay 不记录私钥或业务明文。
 - LaunchAgent / 公证 / 签名。
 - 审计与告警。
-- Keychain 持久凭证能力。
+- Keychain 长期身份能力。
 
 ### 结构化 Codex 能力
 
@@ -806,7 +832,7 @@ remote-control/
 - 新增 Relay 能力，放 `relay/server/src/` 对应文件，可选 Go/Rust 重写时按 `relay/internal/` 切分领域。
 - 生成代码（如codegen 产物）只放 `generated/`，不手改。
 - 临时验证代码放 `scripts/verify/` 或规划中的 `tools/`，不能被生产路径依赖。
-- 真实 secret、临时 key、token、证书不进入仓库。
+- 真实私钥、token、证书不进入仓库。
 - 任何代码改动都必须同步检查并更新相关文档（见 `AGENTS.md`）。
 
 ## 推荐落地顺序

@@ -8,7 +8,7 @@ const features = [
   },
   {
     title: "终端与结构化会话",
-    text: "既可接管 tmux 中的通用 Agent TUI，也可使用 Codex SDK 基础结构化对话与活动时间线。",
+    text: "既可接管 tmux 中的通用 Agent TUI，也可通过本机 Agent runner 使用结构化对话、活动时间线、审批与提问。",
   },
   {
     title: "桌面端 Agent",
@@ -60,10 +60,11 @@ const platforms = [
           <span></span><span></span><span></span>
         </div>
         <pre><code>$ omniwork-agent --config ./config.yml
-key: 32-character temporary key
+device_id: DEV1-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX
 relay: wss://omniwork.example.com/relay/ws/agent
 
-App/Web -> Relay/P2P -> Desktop Agent
+App identity -> signed auth -> Agent approval
+App/Web -> E2E over Relay/P2P -> Desktop Agent
 Workspace -> Terminal / Agent Session / Inbox</code></pre>
       </div>
     </div>

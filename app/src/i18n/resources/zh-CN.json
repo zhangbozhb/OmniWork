@@ -2,7 +2,7 @@
   "app": {
     "titles": {
       "editDevice": "编辑设备",
-      "pairDesktop": "配置主机",
+      "pairDesktop": "添加设备",
       "terminal": "终端",
       "workspaces": "工作区",
       "connectionMode": "连接模式",
@@ -230,13 +230,12 @@
     "linkedDevices_plural": "已连接 {{count}} 台设备",
     "emptyTitle": "暂无连接设备",
     "emptyText": "添加一个主机连接即可开始使用 OmniWork。",
-    "addLink": "添加连接",
+    "addLink": "添加设备",
     "moreActions": "更多操作",
     "share": {
       "action": "分享二维码",
       "title": "分享 {{deviceName}}",
-      "description": "在另一台 OmniWork App 上扫描此二维码，即可导入同一个主机连接。",
-      "warning": "任何获得此二维码的人都可以导入配对密钥。请只分享给可信设备。",
+      "approvalRequired": "新 App 仍需在 Agent 端批准。",
       "systemShare": "分享链接"
     },
     "status": {
@@ -249,52 +248,47 @@
     }
   },
   "pairing": {
-    "submit": {
-      "pairDesktop": "配置主机",
-      "saving": "保存中..."
+    "modes": {
+      "details": "目标信息",
+      "link": "链接"
+    },
+    "actions": {
+      "save": "保存"
     },
     "validation": {
-      "invalidKeyTitle": "密钥无效",
-      "invalidKeyMessage": "请输入电脑端生成的 32 位字符密钥。",
-      "missingDetailsTitle": "连接信息缺失",
-      "missingDetailsMessage": "Relay URL 和设备 ID 必填。",
       "invalidQrTitle": "二维码无效",
-      "invalidQrMessage": "扫描到的配对密钥无效。"
+      "invalidQrMessage": "配对链接无效。",
+      "invalidTargetTitle": "设备信息无效",
+      "invalidTargetMessage": "请输入 ws:// 或 wss:// Relay URL，以及有效的 Agent 设备 ID。"
     },
     "scan": {
       "recommended": "推荐",
       "title": "扫描主机二维码",
-      "text": "扫描电脑端显示的二维码。OmniWork 会自动导入 Relay URL、设备 ID 和临时密钥。",
+      "text": "扫描 Desktop Agent 显示的二维码，核对目标并保存，再在本机 Agent Admin 页面批准此 App。",
       "accessibility": "扫描主机二维码",
       "button": "在 App 中扫描"
     },
-    "web": {
-      "eyebrow": "Web 配对",
-      "title": "粘贴主机连接信息",
-      "text": "Web 以单页应用运行，不使用摄像头扫码。请粘贴主机连接信息，或打开加密分享链接并输入 4 位密码。"
-    },
-    "encrypted": {
-      "title": "加密配对链接",
-      "description": "请输入分享二维码或链接旁显示的 4 位密码。",
-      "placeholder": "0000",
-      "passwordRequired": "请输入 4 位密码。",
-      "invalidPassword": "无法解密此配对链接，请检查密码或重新获取链接。",
-      "import": "导入"
-    },
-    "manualFallback": "手动备用方式",
-    "manualPairing": "手动配对",
     "fields": {
       "relayUrl": "Relay URL",
-      "deviceId": "Mac 设备 ID",
+      "deviceId": "Agent 设备 ID",
+      "pairingLink": "配对链接",
       "displayName": "显示名称",
       "displayNamePlaceholder": "可选，例如 张三的 MacBook",
-      "temporaryKey": "临时密钥",
-      "keyPlaceholder": "32 位字符密钥"
-    }
+      "relaySessionToken": "Relay 登录令牌（可选）",
+      "relaySessionTokenPlaceholder": "Relay 账号页创建的私密令牌"
+    },
+    "relaySignInHint": "先填写或扫描目标，再填令牌并保存。Relay 启用邮箱登录时，Native 和跨站 Web 需要令牌：到该 Relay 的 /auth/ 页面，以 Agent 所属账号登录并创建 App 登录令牌。同站 Web 可使用登录 cookie。分享链接不含令牌；切换到其他 Relay 会清除已填令牌。",
+    "relaySignInFailure": "请检查 Relay 登录状态和设备归属。若启用了邮箱登录，请到 Relay 的 /auth/ 页面以 Agent 所属账号登录，创建 App 登录令牌，再编辑设备并填入 Relay 登录令牌。缺少或过期的登录信息无法通过重新扫码修复。"
   },
   "settings": {
     "eyebrow": "设置",
     "title": "偏好设置",
+    "appIdentity": {
+      "title": "App 身份",
+      "hint": "此公开 ID 用于标识当前 App 安装实例。",
+      "loading": "加载中...",
+      "unavailable": "不可用"
+    },
     "language": {
       "title": "语言",
       "hint": "选择此应用的显示语言。",

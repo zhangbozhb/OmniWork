@@ -10,8 +10,8 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
       <p class="eyebrow">Getting started</p>
       <h1>快速开始</h1>
       <p>
-        OmniWork 的最短路径是：安装客户端，启动桌面端 Agent，输入 Relay URL、device ID 和临时 key，
-        连接成功后开始使用。
+        OmniWork 的最短路径是：安装客户端，启动桌面端 Agent，输入 Relay URL 与 Agent device ID，
+        在本机批准新 App 后开始使用。
       </p>
 
       <h2>1. 获取客户端</h2>
@@ -25,11 +25,15 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
       <p>要求 Node.js 22.6 或更高版本和 tmux。安装并准备配置后启动：</p>
       <pre><code>npm install --global @omni-work/desktop-agent
 omniwork-agent --config /path/to/config.yml</code></pre>
-      <p>记录终端或本地 Admin 页面显示的 Relay URL、device ID 和 32 字符临时 key。</p>
+      <p>记录终端或本地 Admin 页面显示的 Relay URL 与 Agent device ID，也可以直接使用 Agent 输出的配对二维码或链接。</p>
+      <p>
+        Relay 默认使用人工 Agent 授权。新 Agent 完成身份签名后，需要先在 Relay Admin 的待审批列表中批准；
+        Relay 也可配置自动模式，在 device ID 与来源 IP 均未封禁时自动同意。
+      </p>
 
       <h2>3. 连接设备</h2>
       <p>
-        在 iOS、Android 或 Web App 中输入配对信息。Web 不使用二维码扫描，需要手动输入或通过配对链接导入。
+        Agent 接入 Relay 后，在 iOS、Android 或 Web App 中输入 Relay URL、Agent device ID 和可选名称，或通过配对链接导入。App 会自动提供自己的身份、公钥和设备信息；新 App 还需在 Agent Admin 中批准。
       </p>
 
       <h2>4. 发现并使用工作区</h2>
@@ -38,7 +42,7 @@ omniwork-agent --config /path/to/config.yml</code></pre>
       </p>
 
       <div class="note">
-        Public Web 不处理配对过程，也不会保存临时 key。配对和工作区操作都发生在 App/Web 客户端中。
+        Public Web 不处理配对过程，也不保存设备目标或身份材料。配对和工作区操作都发生在 App/Web 客户端中。
       </div>
     </article>
   </div>

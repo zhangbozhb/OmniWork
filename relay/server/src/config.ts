@@ -34,13 +34,8 @@ export interface RelayServerConfig {
    * 非 loopback host 必须显式开启该项，避免误把明文传输当成 TLS 保护。
    */
   allowPlaintextWs: boolean;
-  /**
-   * 兼容旧配置项。业务安全模式现在由每个 Agent 在 agent.hello 中声明，
-   * Relay 可在同一进程内同时承载 e2e_required 与 plaintext_allowed Agent。
-   */
-  requireE2E: boolean;
-  protocolVersion: 1;
-  minProtocolVersion: 1;
+  protocolVersion: 2;
+  minProtocolVersion: 2;
   /**
    * auth.proof 限流：按 (device_id, remote_ip) 维度做 token bucket。
    * - capacity: 桶容量
@@ -51,6 +46,10 @@ export interface RelayServerConfig {
     capacity: number;
     refillPerSecond: number;
     blockMs: number;
+  };
+  agentAuthorization: {
+    mode: "manual" | "automatic";
+    pendingTtlMs: number;
   };
   websocket: {
     keepaliveIntervalMs: number;
@@ -138,28 +137,19 @@ export function loadRelayServerConfig(
     ),
     isLoopbackHost(host),
   );
-  const requireE2E = parseBoolean(
-    readConfigBoolean(rawConfig, true, "server", "requireE2E"),
-    true,
-  );
   const envAllowPlaintextWs = parseBoolean(
     env.OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS,
     isLoopbackHost(host),
   );
-  const envRequireE2E = parseBoolean(env.OMNIWORK_RELAY_REQUIRE_E2E, true);
   const finalAllowPlaintextWs =
     readConfigValue(rawConfig, "server", "allowPlaintextWs") === undefined
       ? envAllowPlaintextWs
       : allowPlaintextWs;
-  const finalRequireE2E =
-    readConfigValue(rawConfig, "server", "requireE2E") === undefined
-      ? envRequireE2E
-      : requireE2E;
 
   if (!isLoopbackHost(host) && !finalAllowPlaintextWs) {
     throw new RelayConfigError(
       `[omniwork-relay] refusing to start on non-loopback host "${host}" without explicit plaintext ws allowance. ` +
-        `Set OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true after confirming OMNIWORK_RELAY_REQUIRE_E2E=true.`,
+        "Set OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true only when App-Agent E2E remains mandatory.",
     );
   }
 
@@ -253,9 +243,8 @@ export function loadRelayServerConfig(
       env.OMNIWORK_DEVICE_ID ??
       "omniwork-relay",
     allowPlaintextWs: finalAllowPlaintextWs,
-    requireE2E: finalRequireE2E,
-    protocolVersion: 1,
-    minProtocolVersion: 1,
+    protocolVersion: 2,
+    minProtocolVersion: 2,
     authRateLimit: {
       capacity:
         readConfigNumber(rawConfig, 5, "authRateLimit", "capacity") ??
@@ -266,6 +255,23 @@ export function loadRelayServerConfig(
       blockMs:
         readConfigNumber(rawConfig, 120_000, "authRateLimit", "blockMs") ??
         parseNumber(env.OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS, 120_000),
+    },
+    agentAuthorization: {
+      mode: parseAgentAuthorizationMode(
+        readConfigString(rawConfig, "agentAuthorization", "mode") ??
+          env.OMNIWORK_RELAY_AGENT_AUTHORIZATION_MODE,
+      ),
+      pendingTtlMs:
+        readConfigNumber(
+          rawConfig,
+          86_400_000,
+          "agentAuthorization",
+          "pendingTtlMs",
+        ) ??
+        parseNumber(
+          env.OMNIWORK_RELAY_AGENT_AUTHORIZATION_PENDING_TTL_MS,
+          86_400_000,
+        ),
     },
     websocket: {
       keepaliveIntervalMs:
@@ -656,6 +662,21 @@ function parseAuthMode(value: string | undefined): "none" | "email_link" {
   }
   throw new RelayConfigError(
     `[omniwork-relay] unsupported OMNIWORK_RELAY_AUTH_MODE "${value}". Use none or email_link.`,
+  );
+}
+
+function parseAgentAuthorizationMode(
+  value: string | undefined,
+): "manual" | "automatic" {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "manual") {
+    return "manual";
+  }
+  if (normalized === "automatic") {
+    return "automatic";
+  }
+  throw new RelayConfigError(
+    `[omniwork-relay] unsupported OMNIWORK_RELAY_AGENT_AUTHORIZATION_MODE "${value}". Use manual or automatic.`,
   );
 }
 

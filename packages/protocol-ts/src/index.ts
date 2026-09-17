@@ -1,13 +1,13 @@
 export {
-  E2E_NOISE_NNPSK0_CAPABILITY_V1,
+  E2E_SIGNED_X25519_CAPABILITY_V2,
   E2E_PROTOCOL_VERSION,
-  ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
   INNER_PROTOCOL_VERSION,
-  NOISE_SUITE_NNPSK0_V1,
+  SIGNED_X25519_SUITE_V2,
   PAIRING_LINK_HOST,
   PAIRING_LINK_SCHEME,
-  PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_VERSION,
+  RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_CODE,
+  RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON,
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
   RELAY_AGENT_DISABLED_CLOSE_REASON,
   RELAY_AGENT_IP_BANNED_CLOSE_REASON,
@@ -20,19 +20,45 @@ export {
   getFileExtension,
   isSupportedTextFilePath,
 } from "./textFiles.ts";
+export {
+  IDENTITY_ALGORITHM,
+  IDENTITY_VERSION,
+  createIdentitySignaturePayload,
+  deriveIdentityId,
+  deriveIdentityPublicKey,
+  fromBase64Url,
+  generateIdentityKeyPair,
+  identityMatchesPublicKey,
+  isValidIdentityId,
+  normalizeIdentityId,
+  signIdentityFields,
+  toBase64Url,
+  validateIdentityKeyPair,
+  verifyIdentityFields,
+  type IdentityKeyPair,
+  type IdentityRole,
+} from "./identity.ts";
+export {
+  SIGNATURE_DOMAINS,
+  agentRelayInitSignatureFields,
+  agentRelayProofSignatureFields,
+  agentAuthOkSignatureFields,
+  appAuthSignatureFields,
+  e2eInitSignatureFields,
+  e2eReplySignatureFields,
+} from "./authSignatures.ts";
 import {
-  E2E_NOISE_NNPSK0_CAPABILITY_V1,
+  E2E_SIGNED_X25519_CAPABILITY_V2,
   E2E_PROTOCOL_VERSION,
-  ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
   INNER_PROTOCOL_VERSION,
-  NOISE_SUITE_NNPSK0_V1,
+  SIGNED_X25519_SUITE_V2,
   PAIRING_LINK_HOST,
   PAIRING_LINK_SCHEME,
-  PLAINTEXT_BUSINESS_CAPABILITY_V1,
   PROTOCOL_VERSION,
   SUPPORTED_SESSION_STATUSES,
   TERMINAL_STREAM_CAPABILITY_V1,
 } from "./constants.ts";
+import { isValidIdentityId } from "./identity.ts";
 import type { MessageType } from "./messageTypes.ts";
 export {
   AGENT_MESSAGE_TYPES,
@@ -63,12 +89,14 @@ export interface MessageEnvelope<TPayload = unknown> {
 export interface AgentHelloPayload {
   v: typeof PROTOCOL_VERSION;
   device_id: string;
-  relay_auth?: RelayAgentAuthPayload;
+  device_public_key: string;
+  relay_auth: RelayAgentAuthPayload;
   protocol: ProtocolSupport;
   e2e: E2ESupport;
-  business_security_mode?: BusinessSecurityMode;
   hostname: string;
   platform: "darwin";
+  system_type?: string;
+  uname?: string;
   agent_version: string;
   providers?: TerminalProviderDefinition[];
   workspaces?: WorkspaceDefinition[];
@@ -87,6 +115,10 @@ export interface AgentAuthChallengePayload {
   challenge: string;
 }
 
+export interface AgentAuthOkPayload {
+  agent_connection_id: string;
+}
+
 export interface RelayAgentAuthPayload {
   method: "device_signature";
   timestamp: number;
@@ -95,9 +127,7 @@ export interface RelayAgentAuthPayload {
 }
 
 export type KnownAgentCapability =
-  | typeof E2E_NOISE_NNPSK0_CAPABILITY_V1
-  | typeof ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1
-  | typeof PLAINTEXT_BUSINESS_CAPABILITY_V1
+  | typeof E2E_SIGNED_X25519_CAPABILITY_V2
   | typeof TERMINAL_STREAM_CAPABILITY_V1
   | "terminal.tui"
   | "terminal.snapshot"
@@ -157,6 +187,8 @@ export interface AppInfoPayload {
 export interface MobileConnectPayload {
   v: typeof PROTOCOL_VERSION;
   device_id: string;
+  app_id: string;
+  app_public_key: string;
   app_info: AppInfoPayload;
   protocol: ProtocolSupport;
   e2e: E2ESupport;
@@ -217,24 +249,23 @@ export interface ProtocolSupport {
   min_supported: typeof PROTOCOL_VERSION;
 }
 
-export type NoiseSuite = typeof NOISE_SUITE_NNPSK0_V1;
-export type BusinessSecurityMode = "e2e_required" | "plaintext_allowed";
+export type E2ESuite = typeof SIGNED_X25519_SUITE_V2;
 
 export interface E2ESupport {
-  required: boolean;
+  required: true;
   versions: readonly [typeof E2E_PROTOCOL_VERSION, ...number[]];
-  suites: readonly [NoiseSuite, ...string[]];
+  suites: readonly [E2ESuite, ...string[]];
 }
 
-export const PROTOCOL_SUPPORT_V1: ProtocolSupport = {
+export const PROTOCOL_SUPPORT_V2: ProtocolSupport = {
   current: PROTOCOL_VERSION,
   min_supported: PROTOCOL_VERSION,
 } as const;
 
-export const E2E_SUPPORT_V1: E2ESupport = {
+export const E2E_SUPPORT_V2: E2ESupport = {
   required: true,
   versions: [E2E_PROTOCOL_VERSION],
-  suites: [NOISE_SUITE_NNPSK0_V1],
+  suites: [SIGNED_X25519_SUITE_V2],
 } as const;
 
 export interface E2EHandshakeInitPayload {
@@ -243,13 +274,17 @@ export interface E2EHandshakeInitPayload {
   agent_connection_id: string;
   app_connection_id: string;
   handshake_id: string;
-  suite: NoiseSuite;
+  suite: E2ESuite;
+  device_id: string;
+  app_id: string;
+  app_public_key: string;
+  app_ephemeral_key: string;
+  signature: string;
   app_protocol: {
     outer_v: typeof PROTOCOL_VERSION;
     inner_v: typeof INNER_PROTOCOL_VERSION;
     e2e_v: typeof E2E_PROTOCOL_VERSION;
   };
-  message: string;
 }
 
 export interface E2EHandshakeReplyPayload {
@@ -258,13 +293,17 @@ export interface E2EHandshakeReplyPayload {
   agent_connection_id: string;
   app_connection_id: string;
   handshake_id: string;
-  suite: NoiseSuite;
+  suite: E2ESuite;
+  device_id: string;
+  agent_public_key: string;
+  app_id: string;
+  agent_ephemeral_key: string;
+  signature: string;
   agent_protocol: {
     outer_v: typeof PROTOCOL_VERSION;
     inner_v: typeof INNER_PROTOCOL_VERSION;
     e2e_v: typeof E2E_PROTOCOL_VERSION;
   };
-  message: string;
 }
 
 export interface E2EReadyPayload {
@@ -288,7 +327,6 @@ export type E2EFailureReason =
   | "unsupported_outer_version"
   | "unsupported_e2e_version"
   | "unsupported_suite"
-  | "key_mismatch"
   | "handshake_failed"
   | "timeout"
   | "replay_detected"
@@ -308,7 +346,7 @@ export type ProtocolErrorCode =
   | "invalid_state"
   | "schema_invalid"
   | "e2e_required"
-  | "plaintext_business_rejected"
+  | "unencrypted_business_rejected"
   | "route_not_found";
 
 export interface ProtocolErrorPayload {
@@ -349,12 +387,23 @@ export interface InnerEnvelope<TPayload = unknown> {
 export interface AuthChallengePayload {
   nonce: string;
   expires_at: string;
+  connection_id: string;
+  agent_connection_id: string;
+  agent_public_key: string;
 }
 
 export interface AuthProofPayload {
   nonce: string;
+  connection_id: string;
+  agent_connection_id: string;
+  device_id: string;
+  agent_public_key: string;
+  app_id: string;
+  app_public_key: string;
   app_info: AppInfoPayload;
-  proof: string;
+  requested_scopes: AppAuthorizationScope[];
+  timestamp: number;
+  signature: string;
 }
 
 export type AppConnectionObservationSource = "relay" | "app" | "agent" | "p2p";
@@ -393,23 +442,37 @@ export interface AppConnectionObservation {
 }
 
 export interface AuthVerifyPayload extends AuthProofPayload {
-  connection_id?: string;
   observations?: AppConnectionObservation[];
 }
 
 export interface AuthOkPayload {
-  agent_connection_id?: string;
-  connection_id?: string;
-  business_security_mode?: BusinessSecurityMode;
-  e2e?: E2ESupport;
-  expires_at?: string;
+  nonce: string;
+  device_id: string;
+  agent_public_key: string;
+  app_id: string;
+  agent_connection_id: string;
+  connection_id: string;
+  granted_scopes: AppAuthorizationScope[];
+  timestamp: number;
+  signature: string;
+  e2e: E2ESupport;
+}
+
+export interface AuthPendingPayload {
+  connection_id: string;
+  request_id: string;
+  expires_at: string;
 }
 
 export type AuthFailureReason =
-  | "key_mismatch"
+  | "approval_rejected"
+  | "approval_required"
+  | "approval_timeout"
   | "agent_restarted"
-  | "key_expired"
   | "device_not_online"
+  | "identity_mismatch"
+  | "invalid_signature"
+  | "revoked"
   | "too_many_attempts"
   | "malformed_proof";
 
@@ -424,8 +487,9 @@ export interface PairingLinkPayload {
   relay_url: string;
   device_id: string;
   display_name?: string;
-  key: string;
 }
+
+export type AppAuthorizationScope = "device.control";
 
 export type SessionStatus =
   | "created"
@@ -1082,10 +1146,7 @@ export type DeliveryEpisodeStatus =
   | "failed"
   | "abandoned";
 
-export type DeliveryOutcome =
-  | "accepted"
-  | "revision_requested"
-  | "abandoned";
+export type DeliveryOutcome = "accepted" | "revision_requested" | "abandoned";
 
 export type DeliveryOutcomeSource = "user" | "git_review";
 
@@ -1418,11 +1479,7 @@ export interface AgentExperienceErrorPayload {
   request_id?: string;
   client_action_id?: string;
   candidate_id?: string;
-  code:
-    | "not_found"
-    | "invalid_state"
-    | "conflict"
-    | "gate_not_ready";
+  code: "not_found" | "invalid_state" | "conflict" | "gate_not_ready";
   message: string;
 }
 
@@ -1680,7 +1737,6 @@ export function createPairingLink(payload: PairingLinkPayload): string {
   params.set("relay_url", payload.relay_url);
   params.set("device_id", payload.device_id);
   setOptionalParam(params, "display_name", payload.display_name);
-  params.set("key", payload.key);
 
   return `${PAIRING_LINK_SCHEME}://${PAIRING_LINK_HOST}?${params.toString()}`;
 }
@@ -1700,8 +1756,12 @@ export function parsePairingLink(input: string): PairingLinkPayload | null {
 
   const relayUrl = searchParam(params, "relay_url");
   const deviceId = searchParam(params, "device_id");
-  const key = searchParam(params, "key");
-  if (!relayUrl || !deviceId || !key) {
+  if (
+    !relayUrl ||
+    !deviceId ||
+    !isValidIdentityId(deviceId, "agent") ||
+    hasDeprecatedPairingParams(params)
+  ) {
     return null;
   }
 
@@ -1710,8 +1770,18 @@ export function parsePairingLink(input: string): PairingLinkPayload | null {
     relay_url: relayUrl,
     device_id: deviceId,
     display_name: searchParam(params, "display_name"),
-    key,
   };
+}
+
+function hasDeprecatedPairingParams(params: Record<string, string>): boolean {
+  return [
+    "agent_public_key",
+    "ticket_id",
+    "ticket_nonce",
+    "issued_at",
+    "expires_at",
+    "ticket_signature",
+  ].some((key) => searchParam(params, key) !== undefined);
 }
 
 function setOptionalParam(
@@ -1851,4 +1921,3 @@ export * from "./schemas.ts";
 export * from "./e2eMessages.ts";
 export * from "./transport.ts";
 export * from "./webrtc.ts";
-export * from "./pairingCrypto.ts";

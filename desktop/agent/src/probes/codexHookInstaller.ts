@@ -49,7 +49,7 @@ const DEPRECATED_CODEX_HOOK_EVENTS = ["PostToolUse"];
 export interface CodexHookInstallOptions {
   hooksPath?: string;
   receiverUrl?: string;
-  sessionKeyPath?: string;
+  probeTokenPath?: string;
 }
 
 export interface CodexHookInstallResult {
@@ -159,7 +159,7 @@ function buildHookCommand(
 ): string {
   const env = [
     ["OMNIWORK_AGENT_PROBE_URL", options.receiverUrl],
-    ["OMNIWORK_SESSION_KEY_PATH", options.sessionKeyPath],
+    ["OMNIWORK_AGENT_PROBE_TOKEN_PATH", options.probeTokenPath],
     ["OMNIWORK_AGENT_HOOK_SOURCE", "codex"],
     ["OMNIWORK_AGENT_HOOK_EVENT", hookEventName],
   ]

@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Switch,
   Text,
@@ -118,7 +119,7 @@ export function AgentSessionScreen({
   const [attachedContextPaths, setAttachedContextPaths] = useState<string[]>(
     [],
   );
-  const timelineRef = useRef<ScrollView | null>(null);
+  const timelineRef = useRef<ScrollViewInstance | null>(null);
   const runtimeLabel = session.runtime?.label ?? "app server";
   const conversationEvents = events.filter(isConversationEvent);
   const activityEvents = events.filter((event) => !isConversationEvent(event));

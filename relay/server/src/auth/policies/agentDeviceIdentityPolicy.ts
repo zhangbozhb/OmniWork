@@ -64,9 +64,6 @@ export class AgentDeviceIdentityPolicy implements RelayAuthPolicy<
   authorize(
     context: AgentAuthInitContext | AgentHelloAuthContext,
   ): RelayAuthDecision | null {
-    if (this.options.config.auth.mode !== "email_link") {
-      return null;
-    }
     if (context.surface === "agent_auth_init") {
       return this.authorizeInit(context);
     }
@@ -81,21 +78,26 @@ export class AgentDeviceIdentityPolicy implements RelayAuthPolicy<
       remoteIp: context.remoteIp,
     } as const;
 
-    const device = this.options.getDevice(init.device_id);
-    if (!device) {
-      return this.closeAgentHello(audit, "device_not_registered");
-    }
-    if (device.revoked_at) {
-      return this.closeAgentHello(audit, "device_revoked");
-    }
-    if (!sameRelayDevicePublicKey(device.public_key, init.device_public_key)) {
-      return this.closeAgentHello(audit, "public_key_mismatch");
+    const device =
+      this.options.config.auth.mode === "email_link"
+        ? this.options.getDevice(init.device_id)
+        : null;
+    if (this.options.config.auth.mode === "email_link") {
+      if (!device) {
+        return this.closeAgentHello(audit, "device_not_registered");
+      }
+      if (device.revoked_at) {
+        return this.closeAgentHello(audit, "device_revoked");
+      }
+      if (!sameRelayDevicePublicKey(device.public_key, init.device_public_key)) {
+        return this.closeAgentHello(audit, "public_key_mismatch");
+      }
     }
 
     const verified = (
       this.options.verifyInitSignature ?? verifyRelayDeviceInitSignature
     )({
-      publicKey: device.public_key,
+      publicKey: device?.public_key ?? init.device_public_key,
       init,
       skewMs: this.options.config.auth.agentAuthClockSkewMs,
     });
@@ -105,10 +107,12 @@ export class AgentDeviceIdentityPolicy implements RelayAuthPolicy<
 
     return {
       ok: true,
-      subject: {
-        userId: device.user_id,
-        deviceId: device.id,
-      },
+      subject: device
+        ? {
+            userId: device.user_id,
+            deviceId: device.id,
+          }
+        : { deviceId: init.device_id },
     };
   }
 
@@ -120,18 +124,26 @@ export class AgentDeviceIdentityPolicy implements RelayAuthPolicy<
       remoteIp: context.remoteIp,
     } as const;
 
-    const device = this.options.getDevice(hello.device_id);
-    if (!device) {
-      return this.closeAgentHello(audit, "device_not_registered");
-    }
-    if (device.revoked_at) {
-      return this.closeAgentHello(audit, "device_revoked");
+    const device =
+      this.options.config.auth.mode === "email_link"
+        ? this.options.getDevice(hello.device_id)
+        : null;
+    if (this.options.config.auth.mode === "email_link") {
+      if (!device) {
+        return this.closeAgentHello(audit, "device_not_registered");
+      }
+      if (device.revoked_at) {
+        return this.closeAgentHello(audit, "device_revoked");
+      }
+      if (!sameRelayDevicePublicKey(device.public_key, hello.device_public_key)) {
+        return this.closeAgentHello(audit, "public_key_mismatch");
+      }
     }
 
     const verified = (
       this.options.verifySignature ?? verifyRelayDeviceSignature
     )({
-      publicKey: device.public_key,
+      publicKey: device?.public_key ?? hello.device_public_key,
       hello,
       skewMs: this.options.config.auth.agentAuthClockSkewMs,
       challengeSecret: this.options.challengeSecret,
@@ -144,13 +156,17 @@ export class AgentDeviceIdentityPolicy implements RelayAuthPolicy<
       return this.closeAgentHello(audit, reason, verified.reason);
     }
 
-    this.options.markDeviceSeen(device.id);
+    if (device) {
+      this.options.markDeviceSeen(device.id);
+    }
     return {
       ok: true,
-      subject: {
-        userId: device.user_id,
-        deviceId: device.id,
-      },
+      subject: device
+        ? {
+            userId: device.user_id,
+            deviceId: device.id,
+          }
+        : { deviceId: hello.device_id },
     };
   }
 

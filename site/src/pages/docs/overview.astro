@@ -30,12 +30,12 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 
       <h2>工作运行机制</h2>
       <p>
-        用户首先在电脑上启动 Agent，系统会生成 Relay URL、Device ID 与临时密钥。随后，用户在 iOS、Android 或 Web 客户端输入这些信息完成配对。
-        客户端将通过 Relay 中继（或在条件允许时自动升级为 P2P 直连）与桌面端 Agent 建立安全连接。连接成功后，用户即可选定工作区，在统一的上下文中管理会话、审阅 Git 变更、浏览项目文件并接管终端交互。
+        用户首先在电脑上启动 Agent，获得 Relay URL 与由 Agent 公钥派生的 Device ID。随后，用户在 iOS、Android 或 Web 客户端输入这些目标信息，或扫描、粘贴同内容的配对链接。
+        新 Agent 默认先由 Relay 管理员批准，也可在未命中 device/IP 封禁时自动授权。客户端会自动生成并复用自己的 App 身份，通过 Relay 获取在线 Agent 的公钥并校验 Device ID 绑定；Desktop Agent 默认还要求在本机 Agent Admin 批准新 App，显式自动模式则在签名和 scope 校验后授权。随后双方建立端到端加密连接，并可在条件允许时升级为 P2P 直连。用户即可选定工作区，在统一上下文中管理会话、审阅 Git 变更、浏览项目文件并接管终端交互。
       </p>
       <p>
-        Codex 还可创建基础结构化会话，在 App 中提交 prompt 并查看对话与活动事件。Codex、Claude Code、Trae
-        与 Trae CN hooks 可产生 App 内消息；原生系统 Push、结构化审批回答和完整 Diff 详情尚未接入。
+        Codex、Claude Code 与 TraeX 可创建结构化会话，在 App 中提交 prompt、查看对话与活动事件，并处理受支持的审批与 Agent 提问。Codex、Claude Code、Trae
+        与 Trae CN hooks 也可产生 App 内消息；平台原生系统 Push 尚未接入，部分 Provider 的完整 Diff 详情仍取决于对应结构化协议能力。
       </p>
 
       <h2>适用人群</h2>

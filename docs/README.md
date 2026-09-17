@@ -21,13 +21,14 @@
 - [engineering-requirements.md](./engineering-requirements.md)：工程约束、协议要求、验证要求。
 - [relay-architecture-implementation.md](./relay-architecture-implementation.md)：Relay / P2P / E2E 实现状态与不变量。
 - [p2p-per-app-connection.md](./p2p-per-app-connection.md)：多 App 连接下的 per-App P2P 升级粒度。
-- [e2e-noise-roadmap.md](./e2e-noise-roadmap.md)：E2E Noise 基线、落地状态和安全边界。
+- [identity-auth-design.md](./identity-auth-design.md)：统一身份、目标链接、本机批准、双向认证与 E2E 会话设计。
+- [auth-key-design.md](./auth-key-design.md)：历史共享 Key 方案的退役原因与当前身份鉴权映射。
+- [e2e-noise-roadmap.md](./e2e-noise-roadmap.md)：E2E 从 NNpsk0/PSK 演进到签名 X25519 的实施记录。
 - [mobile-file-editing.md](./mobile-file-editing.md)：移动端文件编辑实现、冲突检测与安全边界。
 - [delivery-learning.md](./delivery-learning.md)：交付学习闭环的目标卡、能力边界、实施节点和验证状态。
 
 ## 安全与交付
 
-- [auth-key-design.md](./auth-key-design.md)：临时 key 生成、文件权限、Relay proof 流程与失败处理。
 - [app-installation.md](./app-installation.md)：APK / IPA / Web SPA 构建、签名、安装前检查。
 - [release-downloads.md](./release-downloads.md)：下载资产命名、SHA256 校验与 `downloads.json` 自动更新。
 - [npm-packages.md](./npm-packages.md)：公共 npm 包的构建入口、发布门禁与版本规则。

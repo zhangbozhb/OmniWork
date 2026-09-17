@@ -5,7 +5,7 @@
 - [mobile-codex-tui-workbench-design.md](./mobile-codex-tui-workbench-design.md)
 - [mobile-codex-tui-technical-solution.md](./mobile-codex-tui-technical-solution.md)
 - [project-directory-structure.md](./project-directory-structure.md)
-- [auth-key-design.md](./auth-key-design.md)
+- [identity-auth-design.md](./identity-auth-design.md)
 - [app-installation.md](./app-installation.md)
 - [relay-architecture.md](./relay-architecture.md)
 - [relay-architecture-implementation.md](./relay-architecture-implementation.md)
@@ -53,8 +53,11 @@
 安全要求：
 
 - MVP 范围不接入 SSO。
-- App 使用 桌面端 Agent 启动生成的 32 字符临时 key 完成连接鉴权。
-- key 不得存入普通明文存储。
+- App 和 Agent 首次使用时生成长期 Ed25519 身份，后续复用。
+- App 私钥使用系统 Keychain/Keystore 或 WebCrypto 不可导出密钥存储。
+- App ID 和 Device ID 必须由对应公钥派生并包含校验位。
+- Desktop Agent 默认使用 `manual` 授权，未知 App 必须由本机管理员明确批准；
+  显式 `automatic` 模式仍须先验证身份签名、连接绑定和 scope。
 - App 不得加载远程网页作为主界面；移动端主交付必须是 React Native APK/IPA，native 体验优先于 Web 实验入口。
 - 终端 WebView 只能加载本地打包的 xterm HTML/CSS/JS 资源，不得在运行时依赖 CDN 或远程网页。
 - 终端剪贴板能力默认受限，OSC 52 等能力需要显式策略控制。
@@ -69,8 +72,9 @@
 - TypeScript。
 - tmux。
 - 会话状态使用 SQLite，默认文件为 `sessions.sqlite`；旧 `sessions.json` 仅作为首次导入来源，显式传入 `.json` 存储路径时会自动映射到同名 `.sqlite`。
-- 临时 key 文件存储。
-- 电脑系统 Keychain adapter 只作为演进持久凭证能力预留。
+- 长期 Ed25519 身份存储；macOS Keychain 可用时优先使用，文件镜像权限为
+  `0600`。
+- 独立本地 Probe token 存储，不得复用身份私钥或 App-Agent 会话材料。
 - WebSocket Relay client。
 
 本工程已补齐 `relay/server` 的 TypeScript MVP，用于 App 与 桌面端 Agent 的公司内网消息中继；正式生产可继续替换为公司统一 Relay 平台，但协议和鉴权流程保持一致。
@@ -78,8 +82,10 @@
 Relay 安全约束（`relay/server`）：
 
 - 监听非 loopback 地址并使用明文 `ws://` 时必须显式声明 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`。
-- Relay 可同时承载 `e2e_required` 与 `plaintext_allowed` Agent；是否封装 `e2e.message` 由 App/Agent 根据目标 Agent 在 `agent.hello` / `auth.ok` 中声明的 `business_security_mode` 决定。
-- `wss://` 仍推荐用于降低网络侧元数据暴露；默认业务明文不得依赖 TLS 保护，业务加密封装由 App/Agent 维护。只有 Agent 显式配置 `OMNIWORK_AGENT_REQUIRE_E2E=false` 时，才可走明文业务通道。
+- `wss://` 仍推荐用于降低网络侧元数据暴露；业务安全边界固定由
+  App-Agent E2E 维护，协议不提供业务明文模式。
+- Relay 只校验身份、挑战、连接状态和路由，不持有 App/Agent 私钥，不解密
+  `e2e.message`。
 - `auth.proof` 失败按 `(device_id, remote_ip)` 维度做 token bucket 限流，参数由 `OMNIWORK_RELAY_AUTH_RATE_CAPACITY`（默认 5）、`OMNIWORK_RELAY_AUTH_RATE_REFILL_PER_SEC`（默认 2）、`OMNIWORK_RELAY_AUTH_RATE_BLOCK_MS`（默认 120000）控制，超额触发 `auth.failed` 且 `reason=too_many_attempts`，详见 [relay/server/README.md](../relay/server/README.md)。
 
 实现要求：
@@ -90,59 +96,65 @@ Relay 安全约束（`relay/server`）：
 - 终端启动入口是配置化 Terminal Provider；演进 Codex app-server 能力落地时统一封装在 AgentSurface 后端模块，不能混入 Terminal Provider。
 - Relay 连接统一封装在 `relay-client` 模块。
 - 本地会话状态统一封装在 `session-store` 模块。
-- 临时 key 文件读写统一封装在 `auth-key` 模块。
-- Keychain 操作保留为演进能力，MVP 不作为登录依赖。
+- Agent 身份文件读写统一封装在 `config/deviceIdentity.ts`。
+- App 信任记录统一封装在 `config/trustedAppStore.ts`。
+- Probe token 读写统一封装在 `config/probeToken.ts`。
 
 电脑系统 集成要求：
 
 - Agent 默认不监听局域网地址。
 - Agent 只主动连接公司内网 Relay。
-- Agent 应优先使用用户配置的 32 字符 Base64URL key；未配置或配置为空时，
-  每次启动生成新的 32 字符随机 key。非空配置不满足格式要求时启动失败。
-- 临时 key 必须写入 `~/Library/Application Support/OmniWork/agent/session-key.json`。
-- key 文件权限必须为 `0600`，目录权限必须为 `0700`。
+- Agent 首次启动生成 Ed25519 身份，后续启动必须复用。
+- 默认身份文件为
+  `~/Library/Application Support/OmniWork/agent/identity-v2.json`。
+- 身份文件权限必须为 `0600`，目录权限必须为 `0700`；损坏时拒绝启动，
+  不得静默轮换身份。
 - 自启动使用 LaunchAgent / SMAppService 方向。
 - 分发包需要固定 Node runtime，不能依赖用户机器上的全局 Node。
 - 签名、公证、LaunchAgent、可选 Menu Bar 只作为平台集成，不承载 Agent 业务逻辑。
 
 ## 登录与鉴权要求
 
-MVP 范围不使用 SSO、OIDC、持久设备绑定或 refresh token。
+MVP 范围不使用 SSO、OIDC 或 refresh token。鉴权模型：
 
-MVP 鉴权模型：
-
-- 桌面端 Agent 是 key 来源。
-- 桌面端 Agent 使用配置的 32 字符 Base64URL key，或在未配置时临时生成
-  一个固定 32 字符长度的随机字符串作为 key。
-- 自动生成 key 时使用加密安全随机数生成器。
-- key 保存到 电脑 本地文件。
-- App 通过手动输入、扫码或演进本机展示方式获得 key。
-- App 使用该 key 完成本次连接授权。
-- 桌面端 Agent 重启后旧 key 失效，App 需要重新输入新 key。
-
-推荐连接校验：
-
-- Relay 下发 nonce。
-- App 用 key 对 nonce 做 HMAC-SHA256。
-- 桌面端 Agent 用本地 key 校验 proof。
-- Relay 不保存 key 明文。
+- Agent 与 App 分别持有长期 Ed25519 身份。
+- Relay 设备登记接收 Agent 派生 ID 与公钥，不生成设备 ID。
+- Relay 对 Agent 提供 `manual` / `automatic` 两种授权模式，默认
+  `manual`；人工模式必须由 Relay Admin 批准新 device ID，自动模式仅在
+  device ID 和来源 IP 均未封禁时自动批准。
+- Agent 授权记录必须持久化；设备禁用与 IP ban 始终优先。
+- Agent 配对二维码与 App 分享二维码只携带 Relay URL、目标 Agent device ID
+  和可选显示名称，不携带公钥或授权凭证。
+- App 在 `mobile.connect` 中自动携带自己的 App ID、公钥和设备/App 元数据；
+  Relay 在 `auth.challenge` 中返回在线 Agent 的登记公钥。
+- App 对 `auth.proof` 签名；Agent 对 `auth.ok` 签名，双方校验 ID 与公钥
+  绑定。
+- Desktop Agent 对未知 App 提供 `manual` / `automatic` 两种授权模式，默认
+  `manual`；人工模式进入 `auth.pending` 并等待本机管理员批准，自动模式只能在
+  App 身份签名、连接绑定和 scope 校验通过后持久化信任并建立连接。
+- 批准记录按 App ID、公钥和 scope 持久化；撤销后立即终止在线连接。
+- 双向认证完成后，以签名临时 X25519 + HKDF-SHA256 建立
+  ChaCha20-Poly1305 会话。
+- 所有业务消息封装在 `e2e.message` 中，不得降级。
 
 安全要求：
 
-- 日志和审计只记录 `device_id` / `agent_connection_id` / `app_connection_id` 等非密钥上下文，不得记录完整 key。
+- 日志和审计只记录身份 ID、连接 ID 和失败原因，不得记录私钥、
+  Probe token 或业务明文。
 - Relay 对认证失败做限流。
-- App 认证失败后清理旧 key。
-- key 文件不进入仓库、备份样例或测试夹具。
+- 身份丢失等同于新设备，必须重新登记或批准。
 
 ## 协议要求
 
-跨端通信必须通过 `protocol/` 定义。
+跨端通信必须由 `packages/protocol-ts` 定义；`protocol/` 同步维护需要提供给
+跨语言实现的 JSON Schema 子集。
 
 要求：
 
-- 先定义 schema，再生成 TypeScript 类型。
-- `app/` 和 `desktop/` 优先复用同一套 TypeScript 协议类型。
-- Relay 如使用 Go/Rust，也从 `protocol/` 生成对应语言类型。
+- 先在 `packages/protocol-ts` 定义 TypeScript 类型和 zod 运行时 schema。
+- `app/`、`desktop/agent` 与当前 TypeScript Relay 复用同一套协议类型。
+- `protocol/` 已覆盖的 envelope、auth、session 与 terminal 契约必须同步；Relay
+  如改用 Go/Rust，可从该 JSON Schema 子集生成对应语言类型。
 - 生成代码只放 `generated/`，不得手工修改。
 - 协议破坏性变更必须升级版本并补 contract test。
 - `packages/protocol-ts/src/schemas.ts` 提供 envelope、`auth.*`、`terminal.*`、`session.*` 等关键报文的 zod schema 作为运行时校验来源；消息类型按 connection、E2E、session、workspace、terminal、agent、transport 领域集中在 `messageTypes.ts`，TypeScript 联合类型和 zod enum 必须从该注册表派生。常量（如 `PROTOCOL_VERSION`、`SUPPORTED_SESSION_STATUSES`、pairing link scheme/host）集中维护在 `packages/protocol-ts/src/constants.ts`。会话字段清单 `SESSION_FIELDS` / `SESSION_REQUIRED_FIELDS` 定义在 `index.ts`，与 `protocol/sessions/session.schema.json` 由 contract test 强制对账。
@@ -152,7 +164,8 @@ MVP 鉴权模型：
 
 业务消息默认走 Relay WS；P2P（WebRTC DataChannel）作为可选优选路径，由 Relay 协调升级、双端按需降级。详细架构以 [relay-architecture.md](./relay-architecture.md) 为单一来源。
 
-能力关系上，P2P 传输能力已落地；MVP 范围是在既有 Relay / P2P 两条路径上补齐 App-Agent E2E 加密。E2E 完成后，P2P 仍只是路径优化，不单独承担业务安全边界。
+能力关系上，P2P 传输与 App-Agent E2E 均已落地；Relay / P2P 两条路径复用
+同一签名 X25519 会话。P2P 只负责路径优化，不单独承担业务安全边界。
 
 App 与 Desktop 的平台 adapter 必须复用 `@omni-work/protocol-ts` 导出的升级状态转移、严格控制消息判定和传输健康策略；平台层只维护 Relay/WebRTC 接线、后台生命周期等运行时差异，不得复制阈值或另行定义升级状态迁移。
 
@@ -178,9 +191,10 @@ Relay 升级控制面环境变量（默认值与含义见 [relay/server/README.m
 验证脚本：
 
 - `pnpm verify:relay`：Relay 配置自检。
-- `pnpm verify:desktop-key`：Agent 临时 key 写入与权限校验。
-- `pnpm verify:upgrade:simulator -- --relay ws://127.0.0.1:8787/relay/ws/mobile --device <id> --key <KEY>`：连接已启动的 Relay 与 桌面端 Agent，用 mobile simulator 跑通 key proof、Noise E2E 握手、propose → committed → DataChannel 验证链路。脚本入口 [scripts/verify/mobile-upgrade-simulator.mjs](../scripts/verify/mobile-upgrade-simulator.mjs)。
-- `pnpm verify:security`：运行 `@omni-work/e2e-noise` 测试，覆盖 Noise 握手、加解密、seq 防重放和篡改检测。
+- `pnpm verify:identity-auth`：验证目标链接不携带身份凭证、角色 ID 从公钥派生，以及 App proof 绑定双方身份和 App 元数据。
+- `pnpm verify:agent-authorization`：验证默认人工授权、自动授权、批准持久化，以及 device/IP 封禁优先级。
+- `pnpm verify:upgrade:simulator -- --pairing 'omniwork://pair?...'`：连接已启动的 Relay 与 Desktop Agent，用模拟 App 身份跑通本机批准、双向签名认证、签名 X25519 E2E 握手和 P2P 验证链路。也可使用 `--relay <ws-url> --device <DEV1-id>` 手动指定同一目标；`email_link` Relay 可追加 `--session-token <token>`。脚本入口 [scripts/verify/mobile-upgrade-simulator.mjs](../scripts/verify/mobile-upgrade-simulator.mjs)。
+- `pnpm verify:security`：依次运行身份认证定向验证、`@omni-work/e2e-noise` 会话安全测试和发布签名 fail-closed 测试。
 
 ## 共享包要求
 
@@ -221,12 +235,12 @@ MVP 范围至少验证：
 
 企业化能力至少验证：
 
-- 桌面端 Agent 使用合法配置 key，未配置时生成 32 字符临时 key。
-- key 文件路径、权限和内容格式正确。
-- App 使用正确 key 可连接。
-- App 使用错误 key 不能连接。
-- 使用自动生成 key 时，桌面端 Agent 重启后旧 key 失效。
-- Relay 不记录完整 key。
+- Agent/App 首次使用时生成长期身份，后续启动复用。
+- 身份文件路径、权限和内容格式正确。
+- 未批准 App 不能建立业务连接，批准后可以重连。
+- App 或 Agent 身份签名错误时连接失败。
+- 撤销 App 后在线连接立即失效。
+- Relay 不记录或持有私钥。
 - LaunchAgent 自启动。
 - 审计日志。
 - Android/iOS 推送通知。

@@ -6,7 +6,8 @@ P2P 升级粒度已从 `device_id` 下沉到 `(device_id, app_connection_id)`。
 ## 背景
 
 - 同一个 Agent 可以同时服务多个 App 连接。
-- 每个 App 连接都有独立的 `app_connection_id`、Noise E2E session 和 seq。
+- 每个 App 连接都有独立的 `app_connection_id`、签名 X25519 E2E session
+  和 seq。
 - P2P 是传输优化，不是业务安全边界。
 - DataChannel 只按 `app_connection_id` 承载对应 App 连接的 E2E 密文。
 
@@ -38,7 +39,7 @@ P2P 升级粒度已从 `device_id` 下沉到 `(device_id, app_connection_id)`。
 - `UpgradeCoordinator` 从单实例改为按 `app_connection_id` 管理。
 - `AgentSessionTransport` 按 `e2e.message.payload.app_connection_id` 选择对应 DataChannel。
 - `AgentSessionTransport` 按 `app_connection_id` 维护 strict route、pending queue、path、心跳和健康降级状态，禁止使用全局 strict 切换影响其他 App。
-- Agent 发送业务消息时继续使用对应 App 的 `E2ENoiseSession` 加密。
+- Agent 发送业务消息时继续使用对应 App 的 `E2ESession` 加密。
 - DataChannel 建立成功后，只替换对应 App 的传输路径；strict 模式下升级控制信令使用 bypass 继续完成协商，业务消息在该 App route 切入 P2P 前暂存。
 
 ## App 改造

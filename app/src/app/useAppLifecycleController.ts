@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { AppState, type AppStateStatus } from "react-native";
+import { AppState } from "react-native";
 import type { TransportPreference } from "@omni-work/protocol-ts";
 
 import type {
@@ -56,7 +56,9 @@ export function useAppLifecycleController({
   clearSelectedSession,
   setView,
 }: UseAppLifecycleControllerOptions): { clearFailureDialogState(): void } {
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const appStateRef = useRef<typeof AppState.currentState>(
+    AppState.currentState,
+  );
   const failureDialogActiveRef = useRef(false);
 
   useEffect(() => {

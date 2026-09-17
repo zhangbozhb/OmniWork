@@ -40,7 +40,7 @@ function getCurrentAppUrl(): string | null {
   // 加 hashchange 监听是为了兼容 HashRouter / SPA hash 路由场景。
   const directLink = getSearchParam(window.location.search, "pairing");
   if (directLink) {
-    clearSensitivePairingParamsFromAddressBar();
+    clearPairingParamsFromAddressBar();
     return directLink;
   }
 
@@ -50,13 +50,13 @@ function getCurrentAppUrl(): string | null {
   const hashQuery = hash.includes("?") ? hash.slice(hash.indexOf("?")) : hash;
   const hashLink = getSearchParam(hashQuery, "pairing");
   if (hashLink) {
-    clearSensitivePairingParamsFromAddressBar();
+    clearPairingParamsFromAddressBar();
     return hashLink;
   }
 
   const query = window.location.search || hashQuery;
-  if (hasPairingParams(query) || hasEncryptedPairingParams(query)) {
-    clearSensitivePairingParamsFromAddressBar();
+  if (hasPairingParams(query)) {
+    clearPairingParamsFromAddressBar();
     return `${PAIRING_LINK_SCHEME}://${PAIRING_LINK_HOST}${query.startsWith("?") ? query : `?${query}`}`;
   }
 
@@ -75,28 +75,13 @@ function getSearchParam(query: string, key: string): string | null {
 }
 
 function hasPairingParams(query: string): boolean {
-  // 仅检查 pairing link 必填的三个字段；`v` 由协议层 parsePairingLink 兜底校验。
   const params = new URLSearchParams(
     query.startsWith("?") ? query : `?${query}`,
   );
-  return Boolean(
-    params.get("relay_url") && params.get("device_id") && params.get("key"),
-  );
+  return Boolean(params.get("relay_url") && params.get("device_id"));
 }
 
-function hasEncryptedPairingParams(query: string): boolean {
-  const params = new URLSearchParams(
-    query.startsWith("?") ? query : `?${query}`,
-  );
-  return Boolean(
-    params.get("kind") === "pairing_qr_encrypted" &&
-      params.get("salt") &&
-      params.get("nonce") &&
-      params.get("ct"),
-  );
-}
-
-function clearSensitivePairingParamsFromAddressBar(): void {
+function clearPairingParamsFromAddressBar(): void {
   try {
     const url = new URL(window.location.href);
     removePairingParams(url.searchParams);
@@ -127,17 +112,8 @@ function removePairingParams(params: URLSearchParams): void {
     "pairing",
     "relay_url",
     "device_id",
-    "key",
+    "display_name",
     "v",
-    "kind",
-    "alg",
-    "kdf",
-    "salt",
-    "nonce",
-    "source",
-    "iat",
-    "exp",
-    "ct",
   ]) {
     params.delete(key);
   }

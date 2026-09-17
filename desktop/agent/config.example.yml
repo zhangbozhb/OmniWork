@@ -13,41 +13,27 @@
 # Copy this file to one of the lookup locations and name it config.yml.
 
 relay:
-  # Required unless relay-device.json already contains a relayUrl.
+  # Required.
   url: "wss://relay.company.example/relay/ws/agent"
 
-  # Optional. Defaults to <paths.appSupportDir>/relay-device.json.
-  # deviceCredentialsPath: /Users/me/Library/Application Support/OmniWork/agent/relay-device.json
-
-  # Optional. Prefer relay-device.json for persistent device credentials.
-  # Use \n escapes if the key is kept on one line.
-  # devicePrivateKey: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-
 agent:
-  # Optional. Must be exactly 32 base64url characters (A-Z, a-z, 0-9, _ or -).
-  # If omitted or empty, a new random key is generated on every startup.
-  # key: replace-with-a-unique-32-character-base64url-key
-
-  # Optional. If omitted, the agent uses relay device credentials, then the
-  # local persisted identity file.
-  # deviceId: my-desktop
-
   # Optional. Defaults to hostname without a trailing .local.
   displayName: Alice DesktopBook
 
-  # Optional. Used only when deviceId is omitted.
-  # identityPath: /Users/me/.omniwork/agent.json
-  # identityIp: 10.0.0.2
+  # Optional. A long-term Ed25519 identity is generated here on first use and
+  # reused. The device ID is derived from its public key.
+  # identityPath: /Users/me/Library/Application Support/OmniWork/agent/identity-v2.json
 
-  # Default true. Set false only for trusted local debugging.
-  requireE2e: true
-  # Or use the explicit mode:
-  # businessSecurityMode: e2e_required
+appAuthorization:
+  # manual (default): approve new App identities in Agent Admin.
+  # automatic: trust cryptographically verified App identities immediately.
+  mode: manual
 
 admin:
   enabled: true
   host: 127.0.0.1
   port: 17668
+  # Required when host is not loopback.
   # token: local-admin-token
 
 probe:
@@ -55,13 +41,6 @@ probe:
   host: 127.0.0.1
   port: 17669
   # token: local-probe-token
-
-pairing:
-  # Desktop startup QR validity in seconds. Defaults to 5 minutes.
-  qrTtlSeconds: 300
-
-  # Default true. Set false to allow scanning without entering the 4-digit QR password.
-  qrPasswordEnabled: true
 
 connection:
   heartbeatMs: 10000
@@ -110,5 +89,6 @@ paths:
   # defaultCwd: /Users/me/Code
 
   # Defaults to files under appSupportDir.
-  # sessionKeyPath: /Users/me/Library/Application Support/OmniWork/agent/session-key.json
+  # probeTokenPath: /Users/me/Library/Application Support/OmniWork/agent/probe-token.json
+  # trustedAppsPath: /Users/me/Library/Application Support/OmniWork/agent/trusted-apps-v2.json
   # sessionStorePath: /Users/me/Library/Application Support/OmniWork/agent/sessions.sqlite

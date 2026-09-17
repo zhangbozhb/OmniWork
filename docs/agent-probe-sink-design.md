@@ -42,15 +42,19 @@ Android / iOS / Web App
 - 已落地：桌面端 Agent 内部 `AgentMessageService`，支持 Probe Event 幂等去重、基础过滤和在线 App 广播。目标模型下 Desktop Agent 不维护多 App 一致的消息状态；消息列表、已读和处理状态由各 App 本地 SQLite 自维护，Desktop Agent 只关心消息是否送达任一 App。
 - 已落地：Codex / Claude Code / Trae / Trae-CN Hooks Channel 的本机 HTTP receiver，默认监听 `127.0.0.1:17669/api/probes/hooks`，通过 `Authorization: Bearer <token>` 校验，并按 `omniwork_hook_source` 分发到对应 Probe。
 - 已落地：`packages/surface-hook-post/bin/omniwork-hook-post.mjs`，用于 Codex / Claude Code / Trae / Trae-CN command hook 将 stdin JSON 转交给本机 receiver。
-- 已落地：Codex hooks 自动安装。Desktop Agent 启动确定 session key 后会立即检测并合并写入 `~/.codex/hooks.json`，该步骤发生在 admin server / hook receiver 监听端口之前；启动 Codex runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Codex 会话启动。
-- 已落地：Claude Code hooks 自动安装。Desktop Agent 启动确定 session key 后会检测并合并写入 `~/.claude/settings.json`；启动 Claude runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Claude 会话启动。当前支持 `claude-code` 与 `claudecode` 输入别名，内部统一归一化为 `claude-code` provider。
+- 已落地：Codex hooks 自动安装。Desktop Agent 启动确定独立 Probe token 后会立即检测并合并写入 `~/.codex/hooks.json`，该步骤发生在 admin server / hook receiver 监听端口之前；启动 Codex runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Codex 会话启动。
+- 已落地：Claude Code hooks 自动安装。Desktop Agent 启动确定独立 Probe token 后会检测并合并写入 `~/.claude/settings.json`；启动 Claude runtime 前也会二次校验。不会覆盖用户已有 hooks；安装失败只记录 warning，不阻断 Desktop Agent 或 Claude 会话启动。当前支持 `claude-code` 与 `claudecode` 输入别名，内部统一归一化为 `claude-code` provider。
 - 已落地：Trae / Trae-CN hook payload normalizer 和本机 HTTP ingest provider 解析，并保留 records 幂等导入链路。TraeX 主交互同时通过 `app-server --listen stdio://` 接入结构化 AgentSurface；Trae-CN 继续使用 hook / terminal 路径。
 - 已落地：Codex app-server event normalizer、本机 HTTP ingest endpoint，以及 AgentSurface runner 的 app-server 进程管理和主动订阅。runner 与 Trae 复用 JSONL RPC 传输，将 thread / turn / item / diff / completion 增量事件转成 `agent.surface.event`。
 - 已落地：Claude Code stream-json AgentSurface runner，以 `-p --input-format stream-json --output-format stream-json` 启动并双向收发 NDJSON；Claude hooks 继续作为 Probe 补充通道。
 - 已落地：tmux Probe 的最小事件路径，tmux target 消失时会产生 `agent.exited` 并进入消息流。
 - 已落地：通知偏好持久化协议、App 设置页开关、服务端通知资格判断和脱敏系统通知 payload 生成。当前仅形成可接入 Push gateway 的候选通知，尚未接入平台原生 Push。
-- 已落地：App 端 `agent.message` 的基础在线呈现、本地消息 Inbox、已读、已处理、未读 badge、消息跳转和 `agent.message.delivered` 送达回执。Native 端使用 `react-native-quick-sqlite` 保存消息；Web 端使用同接口本地 fallback。
-- 尚未落地：AgentSurface 交互式审批回答、进程重启后恢复、完整 PTY 输出解析、平台原生系统 Push。
+- 已落地：App 端 `agent.message` 的基础在线呈现、本地消息 Inbox、已读、已处理、未读 badge、消息跳转和 `agent.message.delivered` 送达回执。Native 端使用 `@op-engineering/op-sqlite` 保存消息；迁移时显式沿用旧版本在 iOS `Documents`、Android `filesDir` 下的数据库路径，避免升级后丢失本地 Inbox。Web 端使用同接口本地 fallback。
+- 已落地：AgentSurface 的命令、文件变更、权限审批和用户提问可在 App
+  回答；Pending Interaction 持久化并可在 App 重连后恢复。Desktop Agent
+  重启后会将失去 Provider 原生请求句柄的遗留请求标记为过期。
+- 尚未落地：Provider 进程重启后的原请求恢复、完整 PTY 输出解析、平台原生
+  系统 Push。
 
 ## 术语定义
 
@@ -503,7 +507,7 @@ Agent Probe Sink
 
 推荐 hook 配置形态：
 
-当前实现默认自动安装到用户级 `~/.codex/hooks.json`。以下 JSON 是自动安装后的目标形态示意；实际 `command` 会携带 `OMNIWORK_AGENT_PROBE_URL`、`OMNIWORK_SESSION_KEY_PATH`、`OMNIWORK_AGENT_HOOK_SOURCE=codex` 和阶段化的 `OMNIWORK_AGENT_HOOK_EVENT`，但不会把 token 明文写进 hooks 文件。
+当前实现默认自动安装到用户级 `~/.codex/hooks.json`。以下 JSON 是自动安装后的目标形态示意；实际 `command` 会携带 `OMNIWORK_AGENT_PROBE_URL`、`OMNIWORK_AGENT_PROBE_TOKEN_PATH`、`OMNIWORK_AGENT_HOOK_SOURCE=codex` 和阶段化的 `OMNIWORK_AGENT_HOOK_EVENT`，但不会把 token 明文写进 hooks 文件。
 
 ```json
 {
@@ -563,12 +567,12 @@ Agent Probe Sink
 Hook receiver 约束：
 
 - receiver 只监听本机 loopback 或 Unix socket。
-- hook receiver 必须校验 token；当前 MVP 默认复用桌面端 Agent session key，也可通过 `OMNIWORK_AGENT_PROBE_TOKEN` 覆盖。
+- hook receiver 必须校验独立 Probe token，可通过 `OMNIWORK_AGENT_PROBE_TOKEN` 覆盖。
 - hook 自动安装在 Desktop Agent 启动后立即触发一次；启动具体 runtime 前也会二次触发，二次触发的识别规则是 `runtime.kind === "codex"` 或启动命令首词为 `codex`。
 - hook 自动安装采用合并策略：只追加 OmniWork 缺失的 command hook，不修改或删除用户已有的非 OmniWork hooks。
 - hook 自动安装按阶段生成 command，每个阶段都会写入对应的 `OMNIWORK_AGENT_HOOK_EVENT`，例如 `SessionStart`、`PermissionRequest`、`PostToolUse`、`Stop`；hook 脚本会用该值补齐缺失的 `hook_event_name`。
 - hook 自动安装会检查 `omniwork-hook-post` 命令有效性：当前阶段的完整 command 与 installer 生成值一致才视为有效；旧路径、缺失环境变量、来源参数不匹配、阶段参数不匹配或历史无效安装会被移除并替换。
-- hook 自动安装不会把 token 写入 `~/.codex/hooks.json`；脚本通过 `OMNIWORK_SESSION_KEY_PATH` 定位 Desktop Agent 生成的 `session-key.json`，再读取其中的临时 key。
+- hook 自动安装不会把 token 写入 `~/.codex/hooks.json`；脚本通过 `OMNIWORK_AGENT_PROBE_TOKEN_PATH` 定位 Desktop Agent 生成的 `probe-token.json`。
 - hook command 不做 App 推送、不做消息过滤、不连接 Relay。
 - hook command 失败不能阻塞 Codex 主流程，除非明确进入企业 managed hook 治理模式。
 - `transcript_path` 只能作为辅助定位字段，不能当作稳定协议依赖。
@@ -580,7 +584,7 @@ Hook receiver 约束：
 | `OMNIWORK_AGENT_PROBE_ENABLED` | `true` | 是否启用 Probe receiver。 |
 | `OMNIWORK_AGENT_PROBE_HOST` | `127.0.0.1` | receiver 监听地址。 |
 | `OMNIWORK_AGENT_PROBE_PORT` | `17669` | receiver 监听端口。 |
-| `OMNIWORK_AGENT_PROBE_TOKEN` | 当前 session key | hook command 的 bearer token。 |
+| `OMNIWORK_AGENT_PROBE_TOKEN` | 独立随机 Probe token | hook command 的 bearer token。 |
 
 #### Claude Code Hooks Channel
 
@@ -658,7 +662,7 @@ Claude Code 官方配置位置包括用户级 `~/.claude/settings.json`、项目
 实际 command 会携带：
 
 - `OMNIWORK_AGENT_PROBE_URL=http://127.0.0.1:17669/api/probes/hooks`
-- `OMNIWORK_SESSION_KEY_PATH=<Desktop Agent 生成的 session-key.json>`
+- `OMNIWORK_AGENT_PROBE_TOKEN_PATH=<Desktop Agent 生成的 probe-token.json>`
 - `OMNIWORK_AGENT_HOOK_SOURCE=claude-code`
 - `OMNIWORK_AGENT_HOOK_EVENT=<当前 hook 阶段>`
 

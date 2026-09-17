@@ -30,7 +30,7 @@ interface ManagedTraeHookEvent {
 export interface TraeHookInstallOptions {
   hooksPath?: string;
   receiverUrl?: string;
-  sessionKeyPath?: string;
+  probeTokenPath?: string;
   provider?: TraeHookInstallProvider;
 }
 
@@ -41,7 +41,7 @@ export interface TraeHookInstallTarget {
 
 export interface TraeFamilyHookInstallOptions {
   receiverUrl?: string;
-  sessionKeyPath?: string;
+  probeTokenPath?: string;
   provider?: TraeHookInstallProvider;
   homeDir?: string;
   targets?: TraeHookInstallTarget[];
@@ -96,7 +96,7 @@ export async function ensureTraeFamilyHooksInstalled(
         hooksPath: target.hooksPath,
         provider: target.provider,
         receiverUrl: options.receiverUrl,
-        sessionKeyPath: options.sessionKeyPath,
+        probeTokenPath: options.probeTokenPath,
       }),
     ),
   );
@@ -271,7 +271,7 @@ function buildPostHookCommand(
 ): string {
   const env = [
     ["OMNIWORK_AGENT_PROBE_URL", options.receiverUrl],
-    ["OMNIWORK_SESSION_KEY_PATH", options.sessionKeyPath],
+    ["OMNIWORK_AGENT_PROBE_TOKEN_PATH", options.probeTokenPath],
     ["OMNIWORK_AGENT_HOOK_SOURCE", provider],
     ["OMNIWORK_AGENT_HOOK_EVENT", hookEventName],
   ]

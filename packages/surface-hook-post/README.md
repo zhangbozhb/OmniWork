@@ -11,12 +11,12 @@ npm install --global @omni-work/surface-hook-post
 printf '{"event":"complete"}' | omniwork-hook-post
 ```
 
-The command reads the local OmniWork session key by default. Its behavior can
-be configured with:
+The command reads the dedicated local OmniWork probe token by default. Its
+behavior can be configured with:
 
 - `OMNIWORK_AGENT_PROBE_URL`
 - `OMNIWORK_AGENT_PROBE_TOKEN`
-- `OMNIWORK_SESSION_KEY_PATH`
+- `OMNIWORK_AGENT_PROBE_TOKEN_PATH`
 - `OMNIWORK_AGENT_PROBE_TIMEOUT_MS` (default `250`; the hook always fails open)
 
 Missing credentials or an unavailable local agent are treated as a no-op so

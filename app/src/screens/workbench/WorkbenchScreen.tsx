@@ -4,7 +4,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
-  type ScrollView,
+  type ScrollViewInstance,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -223,7 +223,7 @@ export function WorkbenchScreen({
     180,
     Math.min(420, windowHeight - 220),
   );
-  const workspacePagerRef = useRef<ScrollView | null>(null);
+  const workspacePagerRef = useRef<ScrollViewInstance | null>(null);
   const sessionRefreshTimerRef = useRef<
     ReturnType<typeof setTimeout> | undefined
   >(undefined);

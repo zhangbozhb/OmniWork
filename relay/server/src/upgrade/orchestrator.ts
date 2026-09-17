@@ -182,7 +182,7 @@ export class RelayUpgradeOrchestrator {
       return;
     }
 
-    const appKey = sessionKey(deviceId, mobile.id);
+    const appKey = appRouteKey(deviceId, mobile.id);
     const backoff = this.backoffByApp.get(appKey);
     if (backoff && backoff.nextAvailableAt > this.nowFn()) {
       this.notifyStrictUnavailable(
@@ -236,7 +236,7 @@ export class RelayUpgradeOrchestrator {
     deviceId: string,
     mobile: UpgradeOrchestratorConnection,
   ): void {
-    const key = sessionKey(deviceId, mobile.id);
+    const key = appRouteKey(deviceId, mobile.id);
     const timer = this.sessionTimers.get(key);
     if (timer) {
       clearTimeout(timer);
@@ -288,7 +288,7 @@ export class RelayUpgradeOrchestrator {
     mobile: UpgradeOrchestratorConnection,
   ): string | null {
     const preference = this.resolvePreference(mobile);
-    const appKey = sessionKey(deviceId, mobile.id);
+    const appKey = appRouteKey(deviceId, mobile.id);
     this.backoffByApp.delete(appKey);
     this.activeP2pApps.delete(appKey);
 
@@ -344,10 +344,10 @@ export class RelayUpgradeOrchestrator {
       if (entry.committedCount >= 2) {
         const durationMs = this.nowFn() - entry.startedAt;
         this.recordDuration(durationMs);
-        this.activeP2pApps.add(sessionKey(entry.deviceId, entry.appConnectionId));
+        this.activeP2pApps.add(appRouteKey(entry.deviceId, entry.appConnectionId));
         this.inFlightUpgrades.delete(upgradeId);
         // 双端确认升级成功 → 重置该 App 连接的退避。
-        this.backoffByApp.delete(sessionKey(entry.deviceId, entry.appConnectionId));
+        this.backoffByApp.delete(appRouteKey(entry.deviceId, entry.appConnectionId));
       }
       return;
     }
@@ -374,7 +374,7 @@ export class RelayUpgradeOrchestrator {
         const appConnectionId = payload?.app_connection_id;
         // 既可能是协商期失败、也可能是运行期主动降级；两种情况都要清理 active_p2p。
         if (appConnectionId) {
-          this.activeP2pApps.delete(sessionKey(deviceId, appConnectionId));
+          this.activeP2pApps.delete(appRouteKey(deviceId, appConnectionId));
         }
         // client_closing 是用户主动行为（切换 transport_preference、退出账号
         // 等触发 App 端 transport.close 时主动通知对端的礼貌降级），不是协议
@@ -399,7 +399,7 @@ export class RelayUpgradeOrchestrator {
     appConnectionId = "*",
   ): void {
     this.metrics.failed[reason] = (this.metrics.failed[reason] ?? 0) + 1;
-    const key = sessionKey(deviceId, appConnectionId);
+    const key = appRouteKey(deviceId, appConnectionId);
     const entry = this.backoffByApp.get(key) ?? {
       failures: 0,
       nextAvailableAt: 0,
@@ -590,7 +590,7 @@ function percentile(sorted: number[], q: number): number {
   return sorted[index] ?? 0;
 }
 
-function sessionKey(deviceId: string, mobileConnectionId: string): string {
+function appRouteKey(deviceId: string, mobileConnectionId: string): string {
   return `${deviceId}|${mobileConnectionId}`;
 }
 

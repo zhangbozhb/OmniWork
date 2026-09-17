@@ -4,7 +4,7 @@
 
 关联工程要求：[engineering-requirements.md](./engineering-requirements.md)
 
-关联鉴权设计：[auth-key-design.md](./auth-key-design.md)
+关联鉴权设计：[identity-auth-design.md](./identity-auth-design.md)
 
 关联中继与传输方案：[relay-architecture.md](./relay-architecture.md)（终版架构）
 
@@ -15,7 +15,7 @@
 - 终端主通道（Terminal Provider adapter）：已落地基础适配层，见 [desktop/agent/src/terminal-provider/](../desktop/agent/src/terminal-provider/)；provider 配置驱动 + `session.list` 下发已对齐。
 - Surface 协议层：`TerminalSession` 已下发 `primary_surface_id` 与 `surfaces`；终端输入、resize、snapshot、stream 和 frame 消息保留 `session_id` 作为归属信息，并以 `surface_id` 作为具体交互入口和缓存路由键。
 - 兼容通道（tmux + Native WebView/xterm 终端）：已落地，见 [desktop/agent/src/pty-bridge](../desktop/agent/src/pty-bridge)、[desktop/agent/src/tmux-manager](../desktop/agent/src/tmux-manager) 与 [app/src/terminal](../app/src/terminal)。
-- 结构化 AgentSurface runner 已完成本机进程管理和主动订阅：Codex / TraeX 启动 `app-server --listen stdio://` 并消费 JSONL RPC，Claude Code 启动 `-p --input-format stream-json --output-format stream-json` 并消费双向 NDJSON。runner 将增量文本与 thread / turn / item 活动统一转成 `agent.surface.event` 下发到 App。既有 `codexAppServerNormalizer` 与 HTTP ingest endpoint 继续服务外部 Probe 事件；`@openai/codex-sdk` adapter 保留为未来显式兜底，但当前不自动降级。交互式审批回答和进程重启后恢复尚未接入。
+- 结构化 AgentSurface runner 已完成本机进程管理和主动订阅：Codex / TraeX 启动 `app-server --listen stdio://` 并消费 JSONL RPC，Claude Code 启动 `-p --input-format stream-json --output-format stream-json` 并消费双向 NDJSON。runner 将增量文本与 thread / turn / item 活动统一转成 `agent.surface.event` 下发到 App。既有 `codexAppServerNormalizer` 与 HTTP ingest endpoint 继续服务外部 Probe 事件；`@openai/codex-sdk` adapter 保留为未来显式兜底，但当前不自动降级。受支持的审批与 Agent 提问已可在 App 回答；Pending Interaction 持久化并可在重连后恢复，Agent 重启后因 Provider 原生请求句柄丢失会明确标记为过期。
 - Terminal Provider 元数据层：`packages/protocol-ts` 定义 + 桌面端 Agent 配置化 provider 已实现。
 - Agent Probe Sink 消息感知层：已落地 MVP 骨架，见 [desktop/agent/src/probes](../desktop/agent/src/probes)。当前实现包含 `agent.message*` 协议类型、Codex / Claude / Trae / Trae-CN hook receiver、Desktop Agent 启动时 Codex / Claude hook 自动安装、hook 归一化、Codex app-server event HTTP ingest、Claude Code 官方生命周期 hook 主干映射、`claudecode` 输入别名归一化、Trae / Trae-CN hook provider 归一化、tmux target missing Probe、接收端按现有 session/workspace/provider 自动关联 `surface_id`、SQLite pending inbox、已读回执、通知偏好持久化、脱敏系统通知候选 payload 和在线 App `agent.message` 广播；平台原生系统 Push gateway 尚未落地。
 - Workspace 上下文层：已实现 `workspace.list/status` + `files.list/read/write` + `git.status/diff`，其中文件写入仅支持受控 UTF-8 文本编辑，详见 [desktop/agent/src/workspace](../desktop/agent/src/workspace) / [files](../desktop/agent/src/files) / [git](../desktop/agent/src/git)。
@@ -82,9 +82,9 @@ MVP 可以采用兼容通道。正式企业版建议兼容通道与主通道并�
 - 原始 TUI 快照通过 React Native 原生组件渲染；完整 ANSI renderer 作为可替换能力。
 - 结构化 Codex UI 使用 React Native 原生组件实现。
 - App 和 桌面端 Agent 共享 TypeScript 协议类型和纯逻辑 SDK。
-- 登录鉴权不接入 SSO；桌面端 Agent 使用用户配置的合法 32 字符
-  Base64URL key，未配置时自动生成，并保存到本地文件。App 使用该 key
-  完成本次连接授权。
+- 登录鉴权不接入 SSO；Agent 与 App 首次运行时分别生成并复用 Ed25519
+  身份，公开 ID 由公钥派生。未知 App 通过身份签名后仍需在本机 Agent Admin
+  批准。
 - App 移动端交付 Android APK 和 iOS IPA 安装包；Web 端以 `react-native-web` 输出静态 SPA，不作为 PWA 或扫码入口。
 
 「手机 PWA 优先」和「电脑 企业版迁移 Rust/Swift」不作为主方案。App 继续以 React Native 为唯一 UI 技术栈，移动端按 APK/IPA 交付，Web 端只作为同代码库 SPA 目标；Rust/Swift 只作为 Relay 可选实现或极薄 电脑系统 原生桥接。
@@ -202,9 +202,8 @@ WebTransport 是更现代的 HTTP/3 传输能力，支持多 stream、单向 str
 桌面端 Agent 是公司设备上的本地常驻组件，应优先使用 Apple 官方系统能力：
 
 - 电脑系统 13+ 使用 `SMAppService` 注册和管理 LoginItems、LaunchAgents、LaunchDaemons。
-- Agent 可使用用户配置的固定 key；未配置时每次启动生成临时 key。运行 key
-  始终以权限受限的本地文件保存。
-- 如演进引入持久凭证，再使用 Keychain 保存设备凭证或 relay secret。
+- Agent 首次启动生成长期 Ed25519 身份并复用；macOS Keychain 可用时优先
+  使用，同时保留权限受限的本地身份文件。
 - 企业分发需要签名和 notarization。
 - 如果公司 MDM 支持，可使用 Managed Device Attestation 参与设备信任判断。
 
@@ -218,14 +217,14 @@ WebTransport 是更现代的 HTTP/3 传输能力，支持多 stream、单向 str
 
 ```mermaid
 flowchart LR
-  Phone["Android/iOS 跨端 App"] -->|WS/WSS + key proof + E2E| Relay["Relay"]
-  Relay -->|WS/WSS + agent hello + E2E| Agent["桌面端 Agent"]
+  Phone["Android/iOS 跨端 App"] -->|WS/WSS + identity proof + E2E| Relay["Relay"]
+  Relay -->|WS/WSS + signed agent hello + E2E| Agent["桌面端 Agent"]
 
   Agent --> Control["控制面"]
   Agent --> TerminalProvider["Terminal Provider 适配层"]
   Agent --> ProbeSink["Agent Probe Sink<br/>消息感知与过滤"]
   Agent --> Tmux["tmux 会话池"]
-  Agent --> Store["sessions.sqlite + session-key.json"]
+  Agent --> Store["sessions.sqlite + identity-v2.json + trusted-apps-v2.json"]
 
   TerminalProvider --> PTY["PTY bridge"]
   Agent --> AppServer["Codex app-server<br/>stdio/unix/127.0.0.1"]
@@ -244,7 +243,7 @@ flowchart LR
 
 职责：
 
-- 临时 key 输入 / 扫码配对。
+- 目标配对/分享链接导入与本机审批状态展示。
 - 设备选择。
 - 会话列表。
 - 原始 TUI 渲染。
@@ -265,7 +264,7 @@ flowchart LR
 
 手机端页面：
 
-- `PairingScreen`：输入或扫码 32 字符临时 key。
+- `PairingScreen`：粘贴或扫描包含 Relay URL 和 Agent device ID 的目标链接。
 - `DeviceListScreen`：选择电脑；设备页刷新只更新连接状态或触发重连，不枚举 session/workspace。
 - `SessionListScreen`：会话列表。
 - `TerminalScreen`：原始 TUI 快照，Native WebView/xterm 终端视图；RN 文本快照仅作为 fallback。
@@ -276,7 +275,7 @@ flowchart LR
 
 职责：
 
-- 手机临时 key proof 校验中继。
+- App/Agent 身份签名挑战中继。
 - 桌面端 Agent 在线注册。
 - App 连接与 桌面端 Agent 实例匹配。
 - 中继手机和 桌面端 Agent 之间的数据。
@@ -291,8 +290,11 @@ flowchart LR
 - Go 或 Rust。
 - WebSocket 传输，业务消息强制 App-Agent E2E 加密。
 - MVP 不接入 SSO / OIDC。
-- App 使用 32 字符临时 key 的 HMAC proof 完成连接授权。
-- 桌面端 Agent 使用 `agent.hello` 注册 `device_id`；Relay 鉴权通过后生成 `agent_connection_id` 并返回给连接双方。
+- App 使用长期 Ed25519 身份签署 proof；默认 `manual` 模式下未知 App 由
+  Agent 本机批准，显式 `automatic` 模式仍先校验签名与 scope。
+- 桌面端 Agent 使用签名 `agent.auth.init` / `agent.hello` 证明
+  `device_id`；Relay 默认要求管理员批准新 Agent，也可在 device/IP 均未封禁
+  时自动授权。身份与授权均通过后生成 `agent_connection_id`。
 - PostgreSQL 存设备、Agent 实例、审计元数据。
 - Redis 用于在线状态、临时路由、分布式锁。
 - OpenTelemetry 做 trace / metrics。
@@ -317,8 +319,8 @@ flowchart LR
 - 对 Probe 事件执行归一化、去重、频控、敏感信息过滤和通知升级。
 - 将本地 PTY / app-server 事件转换为企业中继协议。
 - 存储本地会话 registry。
-- 使用合法配置 key，未配置时生成 32 字符临时 key。
-- 将临时 key 保存到权限受限的本地文件。
+- 首次使用时生成长期 Ed25519 身份，后续复用。
+- 将身份和可信 App 记录保存到权限受限的本地存储。
 - 上报审计事件。
 
 推荐技术方案：
@@ -329,8 +331,9 @@ flowchart LR
 - 打包：固定 Node runtime 的 电脑系统 分发包。
 - 自启动：`SMAppService` 注册 LaunchAgent。
 - 本地存储：SQLite，默认路径 `~/Library/Application Support/OmniWork/agent/sessions.sqlite`；首次打开会从同目录旧 `sessions.json` 自动导入，显式传入 `.json` 存储路径时会自动映射到同名 `.sqlite`。
-- 临时 key 文件：`~/Library/Application Support/OmniWork/agent/session-key.json`。
-- 演进持久 secret：Keychain。
+- 身份文件：`~/Library/Application Support/OmniWork/agent/identity-v2.json`。
+- 可信 App：`~/Library/Application Support/OmniWork/agent/trusted-apps-v2.json`。
+- 本地 Probe 使用独立 `probe-token.json`。
 - 与 app-server 通信：优先 stdio 或 unix socket；必要时 loopback WebSocket。
 
 工程约束：
@@ -403,8 +406,8 @@ flowchart LR
 
 ```text
 ws://relay.example/relay/ws/mobile 或 wss://relay.example/relay/ws/mobile
-auth.proof: HMAC_SHA256(session_key, relay_nonce)
-e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
+auth.proof: Sign(app_private_key, challenge + identities + connection context)
+e2e: signed ephemeral X25519 + HKDF-SHA256 + ChaCha20-Poly1305
 ```
 
 桌面端 Agent 与 Relay：
@@ -412,20 +415,19 @@ e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
 ```text
 ws://relay.example/relay/ws/agent 或 wss://relay.example/relay/ws/agent
 agent.hello: device_id
-e2e: Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s
+e2e: signed ephemeral X25519 + HKDF-SHA256 + ChaCha20-Poly1305
 ```
 
-其中 `session_key` 是桌面端 Agent 本次启动选择的 32 字符 Base64URL key，
-来源可以是用户配置或自动生成。Relay 不应持久化或打印完整 key；推荐由
-Relay 发起 nonce，App 计算 proof，桌面端 Agent 使用本地 key 校验。鉴权
-成功后还必须完成 App-Agent Noise E2E 握手，业务消息只能封装在
+其中 `device_id` 和 `app_id` 均由对应 Ed25519 公钥派生。Relay 发起绑定
+双方连接 ID 的 challenge；App 和 Agent 分别验证对方的长期身份签名。鉴权
+成功后还必须完成带身份签名的临时 X25519 E2E 握手，业务消息只能封装在
 `e2e.message` 中。
 
 ### 消息 Envelope
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "id": "msg_01",
   "type": "terminal.input",
   "device_id": "desktop_01",
@@ -654,48 +656,43 @@ MVP 推荐：
 
 ### 鉴权
 
-MVP 不接入 SSO / OIDC / 持久设备绑定。
+MVP 不接入 SSO / OIDC / refresh token。
 
-临时 key：
-
-- 桌面端 Agent 使用配置的 32 字符 Base64URL key；未配置或配置为空时，
-  每次启动生成一个新的随机 key。
-- 自动生成 key 时使用加密安全随机数生成器。
-- key 保存到 `~/Library/Application Support/OmniWork/agent/session-key.json`。
-- key 文件权限必须为 `0600`，目录权限必须为 `0700`。
-- App 通过手动输入、扫码或演进本机展示方式获得 key。
-- 使用自动生成 key 时，桌面端 Agent 重启后旧 key 失效。
-
-推荐握手：
-
-- Relay 下发 nonce。
-- App 使用 key 对 nonce 计算 `HMAC-SHA256` proof。
-- Relay 将 proof 转发给 桌面端 Agent。
-- 桌面端 Agent 使用本地 key 校验 proof。
-- Relay 不保存完整 key。
-- 审计只记录 `device_id`、`agent_connection_id`、`app_connection_id` 等非密钥上下文，不记录 key。
-- App 收到 `auth.failed` 时立即关闭 relay 连接，并按 [auth-key-design.md](./auth-key-design.md) 的「App 收到 `auth.failed` 后的具体清理动作」清除本地失效 pairing 与会话状态，引导用户重新扫码或输入新的临时 key。
+- Agent 与 App 首次使用时各自生成长期 Ed25519 身份并复用。
+- `device_id` 与 `app_id` 由公钥 SHA-256 派生并带校验位。
+- Agent 配对二维码和 App 分享二维码只包含 Relay URL、目标 Agent device ID
+  与可选显示名称，不包含公钥、共享秘密或授权凭证。
+- App 签名 `auth.proof`，Agent 签名 `auth.ok`。
+- 默认 `manual` 模式下，未知 App 进入 `auth.pending`，由本机 Agent Admin
+  明确批准。
+- 可信 App 记录持久化；拒绝、超时或撤销都会让 App 收到明确
+  `auth.failed`。
+- 双向认证后使用签名临时 X25519 建立 ChaCha20-Poly1305 会话。
+- 审计只记录身份 ID、连接 ID 和结果，不记录私钥、Probe token
+  或业务明文。
 
 ### 授权
 
 授权判断：
 
 ```text
-device_id + agent_connection_id + app_connection_id + key_proof
+device_id + app_id + public keys + connection ids + approved scopes
 ```
 
 默认策略：
 
-- 拥有本次临时 key 的 App 才能连接对应 桌面端 Agent。
-- 同一 桌面端 Agent 重启后必须重新配对。
-- 默认不支持跨用户共享或持久授权。
-- key 连续校验失败需要限流。
+- `manual` 模式下，未知或已撤销 App 在身份签名校验通过后进入本机批准流程；
+  `automatic` 模式在同等校验后重新持久化信任。
+- 已批准 App 可用同一长期身份重新连接。
+- App 公钥变化会产生新 App ID，必须重新批准。
+- 撤销立即终止该 App 的在线连接。
+- 连续签名或挑战校验失败需要限流。
 
 ### 审计
 
 默认记录元数据：
 
-- key 配对成功 / 失败。
+- App 配对申请、批准、拒绝与撤销。
 - 连接 / 断开。
 - 会话创建 / 关闭。
 - 会话 attach / detach。
@@ -738,9 +735,9 @@ device_id + agent_connection_id + app_connection_id + key_proof
 | Codex 结构化集成 | Codex app-server adapter                           | Codex SDK 用于非交互任务     | 直接暴露 app-server 给手机     |
 | 桌面端 Agent     | TypeScript + Node.js LTS + tmux-manager/pty-bridge | node-pty 或极薄 native addon | Rust/Swift 承载 Agent 业务     |
 | 中继             | Go / Rust WebSocket Relay                          | Node.js Relay                | 通用远控网关                   |
-| 认证             | 32 字符临时 key + HMAC challenge                   | 演进 SSO / OIDC              | 静态持久共享密码               |
-| Agent 设备认证   | agent.hello + HMAC proof 校验                      | 演进 mTLS / signed bearer    | 无认证 WebSocket               |
-| key 存储         | `session-key.json`，0600 权限                      | 演进 Keychain 存持久凭证     | 仓库内明文配置                 |
+| 认证             | Ed25519 双向签名 + 本机批准                        | 演进 SSO / OIDC              | 静态持久共享密码               |
+| Agent 设备认证   | 签名 init + 无状态 challenge + 签名 hello          | 演进 mTLS                    | 无认证 WebSocket               |
+| 身份存储         | Keychain/Keystore + `identity-v2.json`             | 硬件密钥                     | 仓库内明文私钥                 |
 | 通知             | APNs / FCM / 公司统一推送                          | 公司内部调试通道             | WebSocket 长久在线             |
 
 ## 现有项目参考
@@ -788,7 +785,7 @@ Remodex 是一个开源的 Codex 远程控制参考项目，包含 电脑 本地
 - MDM 允许用户态常驻 Agent。
 - 允许安装或内置 `tmux`。
 - 允许运行 Codex CLI。
-- 不接入 SSO，确认临时 key 文件和手动配对流程可以接受。
+- 不接入 SSO，确认长期身份和本机批准流程可以接受。
 
 产出：
 
@@ -823,7 +820,7 @@ Remodex 是一个开源的 Codex 远程控制参考项目，包含 电脑 本地
 
 - 桌面端 Agent 主动连 Relay。
 - Android/iOS App 通过 Relay 连 桌面端 Agent。
-- 完成 32 字符临时 key 配对的最小实现。
+- 完成目标链接导入、App 身份自证和本机批准的最小实现。
 
 验收：
 
@@ -837,15 +834,16 @@ Remodex 是一个开源的 Codex 远程控制参考项目，包含 电脑 本地
 
 目标：
 
-- 加固临时 key 生成、文件权限、失败限流和审计。
-- Relay 不保存完整 key。
+- 加固身份生成、文件权限、失败限流和审计。
+- Relay 不保存私钥。
 - Agent 由 `SMAppService` / LaunchAgent 管理。
 
 验收：
 
 - 未授权用户不能访问设备。
-- 错误 key 不能访问设备。
-- 桌面端 Agent 重启后旧 key 失效。
+- 无效身份签名或未批准 App 不能访问设备。
+- Agent 重启后长期身份和可信 App 状态保持不变。
+- 撤销 App 后在线连接立即失效。
 - 审计事件完整。
 - Agent 可随用户登录自动启动。
 
@@ -1038,7 +1036,7 @@ Relay:
   CodexProbe / ClaudeCodeProbe MVP 粗粒度探针
   tmux
   sessions.sqlite
-  session-key.json
+  identity-v2.json + trusted-apps-v2.json
   Packaged Node runtime
 
 Runtime:
@@ -1059,7 +1057,7 @@ Phone:
 Relay:
   Go or Rust
   WSS over 443
-  key proof relay for MVP auth
+  signed identity challenge relay
   PostgreSQL + Redis
   OpenTelemetry
 
@@ -1068,8 +1066,8 @@ Relay:
   Packaged and signed 电脑系统 distribution
   Thin native adapters only where needed
   SMAppService / LaunchAgent
-  session-key.json for temporary key
-  Keychain only for future long-lived secrets
+  identity-v2.json for the long-term Agent identity
+  Keychain for the same long-term identity when safely available
   SQLite session store
   WorkSession / Surface / RuntimeBinding managers
   Agent Probe Sink + Agent Message Filter
@@ -1094,7 +1092,7 @@ MVP 闭环：
 企业化体验：
 
 - 桌面端 Agent 企业化：TypeScript/Node.js 固定运行时、签名公证、Keychain、SMAppService、MDM 集成。
-- Relay 企业化：临时 key 校验、失败限流、审计、可观测性；SSO/设备绑定只作为可选演进。
+- Relay 企业化：签名身份校验、失败限流、审计、可观测性；SSO 只作为可选演进。
 - 移动体验企业化：通知、摘要、审批卡片、任务状态。
 
 一句话技术方案：

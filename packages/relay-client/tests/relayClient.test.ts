@@ -3,8 +3,8 @@ import { test } from "node:test";
 
 import {
   createMessage,
-  E2E_SUPPORT_V1,
-  PROTOCOL_SUPPORT_V1,
+  E2E_SUPPORT_V2,
+  PROTOCOL_SUPPORT_V2,
 } from "@omni-work/protocol-ts";
 import { RelayClient, type RelayCloseEvent } from "../src/index.ts";
 
@@ -70,10 +70,10 @@ test("RelayClient closes on malformed protocol payload", async () => {
   await connected;
 
   const malformed = createMessage("mobile.connect", {
-    v: PROTOCOL_SUPPORT_V1.current,
+    v: PROTOCOL_SUPPORT_V2.current,
     device_id: "device-1",
-    protocol: PROTOCOL_SUPPORT_V1,
-    e2e: E2E_SUPPORT_V1,
+    protocol: PROTOCOL_SUPPORT_V2,
+    e2e: E2E_SUPPORT_V2,
   });
   socket.emitMessage(JSON.stringify(malformed));
 

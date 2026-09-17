@@ -38,7 +38,10 @@ omniwork-relay --config /path/to/config.yml</code></pre>
       <h2>Web App</h2>
       <p>
         Web App 入口是 <a href="/app/">/app/</a>。它复用产品 Web SPA，不属于 Public Web 本身。
-        Web 配对不使用摄像头扫描，需要手动输入配对信息或打开配对链接。
+        Web 配对不使用摄像头扫描，可手动输入 Relay URL、Agent device ID 和可选名称，也可打开配对链接。
+      </p>
+      <p>
+        Relay 默认要求管理员批准新 Agent。若运维选择自动 Agent 授权，Relay 也只会接受未被 device ID 或来源 IP 规则封禁的有效签名身份。
       </p>
 
       <h2>历史版本</h2>

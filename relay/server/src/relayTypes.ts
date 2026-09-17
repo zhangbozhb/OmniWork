@@ -1,7 +1,6 @@
 import type {
   AppConnectionObservation,
   AppInfoPayload,
-  BusinessSecurityMode,
   E2ESupport,
   MessageEnvelope,
   TransportPreference,
@@ -33,8 +32,10 @@ export interface RelayConnectionBase {
   socket: RelaySocket;
   userId?: string;
   deviceId?: string;
+  devicePublicKey?: string;
+  appId?: string;
+  appPublicKey?: string;
   appInfo?: RelayAppInfo;
-  businessSecurityMode?: BusinessSecurityMode;
   e2e?: E2ESupport;
   authenticated: boolean;
   /** Remote address used as the secondary key for auth.proof rate limiting. */
@@ -79,7 +80,6 @@ export interface RegisteredAgentRelayConnection extends RelayConnectionBase {
   role: "agent";
   state: "registered_agent" | "closed";
   deviceId: string;
-  businessSecurityMode: BusinessSecurityMode;
   e2e: E2ESupport;
   authenticated: true;
   authState: "verified";
@@ -136,10 +136,37 @@ export interface RelayAppInfo {
 
 export interface PendingAuth {
   deviceId: string;
+  agentPublicKey: string;
+  appId: string;
+  appPublicKey: string;
+  agentConnectionId: string;
   nonce: string;
   appInfo: RelayAppInfo;
   expiresAt: number;
+  approvalPending?: boolean;
 }
+
+export interface PendingAgentAuthorization {
+  deviceId: string;
+  publicKeyFingerprint: string;
+  remoteIp: string;
+  publicIp: string | null;
+  hostname: string;
+  systemType: string;
+  uname: string;
+  agentVersion: string;
+  requestedAt: number;
+  lastAttemptAt: number;
+  expiresAt: number;
+  attemptCount: number;
+}
+
+export type AgentAuthorizationDecision =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "agent_approval_required" | "agent_disabled" | "ip_banned";
+    };
 
 export interface ControlRule {
   id: string;

@@ -1,78 +1,82 @@
 import { strict as assert } from "node:assert";
-import { generateKeyPairSync, sign } from "node:crypto";
 
-import { E2E_SUPPORT_V1, PROTOCOL_SUPPORT_V1 } from "@omni-work/protocol-ts";
-import type {
-  AgentAuthInitPayload,
-  AgentHelloPayload,
+import {
+  E2E_SUPPORT_V2,
+  PROTOCOL_SUPPORT_V2,
+  PROTOCOL_VERSION,
+  SIGNATURE_DOMAINS,
+  agentRelayInitSignatureFields,
+  agentRelayProofSignatureFields,
+  generateIdentityKeyPair,
+  signIdentityFields,
+  type AgentAuthInitPayload,
+  type AgentHelloPayload,
 } from "@omni-work/protocol-ts";
 
 import {
   createStatelessAgentAuthChallenge,
-  relayDeviceInitSignaturePayload,
-  relayDeviceProofSignaturePayload,
   sameRelayDevicePublicKey,
   verifyRelayDeviceInitSignature,
   verifyRelayDeviceSignature,
 } from "../src/relayDeviceSignature.ts";
 
-const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+const identity = generateIdentityKeyPair("agent");
 const timestamp = Date.now();
-const devicePublicKey = publicKey
-  .export({ type: "spki", format: "pem" })
-  .toString();
 const challengeSecret = Buffer.from("test-secret");
 const connectionId = "conn-agent-1";
 const challenge = createStatelessAgentAuthChallenge({
-  deviceId: "device-1",
+  deviceId: identity.id,
   connectionId,
   secret: challengeSecret,
   ttlMs: 60_000,
   now: timestamp,
 });
 const init: AgentAuthInitPayload = {
-  v: 1,
-  device_id: "device-1",
-  device_public_key: devicePublicKey,
+  v: PROTOCOL_VERSION,
+  device_id: identity.id,
+  device_public_key: identity.publicKey,
   timestamp,
-  signature: sign(
-    null,
-    relayDeviceInitSignaturePayload({
-      deviceId: "device-1",
-      devicePublicKey,
+  signature: signIdentityFields(
+    identity.privateKey,
+    SIGNATURE_DOMAINS.agentRelayInit,
+    agentRelayInitSignatureFields({
+      deviceId: identity.id,
+      devicePublicKey: identity.publicKey,
       timestamp,
     }),
-    privateKey,
-  ).toString("base64url"),
+  ),
 };
 const hello: AgentHelloPayload = {
-  v: 1,
-  device_id: "device-1",
+  v: PROTOCOL_VERSION,
+  device_id: identity.id,
+  device_public_key: identity.publicKey,
   relay_auth: {
     method: "device_signature",
     timestamp,
     challenge,
-    signature: sign(
-      null,
-      relayDeviceProofSignaturePayload({
-        deviceId: "device-1",
+    signature: signIdentityFields(
+      identity.privateKey,
+      SIGNATURE_DOMAINS.agentRelayProof,
+      agentRelayProofSignatureFields({
+        deviceId: identity.id,
         timestamp,
         challenge,
       }),
-      privateKey,
-    ).toString("base64url"),
+    ),
   },
-  protocol: PROTOCOL_SUPPORT_V1,
-  e2e: E2E_SUPPORT_V1,
+  protocol: PROTOCOL_SUPPORT_V2,
+  e2e: E2E_SUPPORT_V2,
   hostname: "host",
   platform: "darwin",
+  system_type: "Darwin",
+  uname: "Darwin host 25.6.0 Darwin Kernel Version 25.6.0 arm64",
   agent_version: "0.1.0",
   capabilities: [],
 };
 
 assert.deepEqual(
   verifyRelayDeviceInitSignature({
-    publicKey: devicePublicKey,
+    publicKey: identity.publicKey,
     init,
     skewMs: 60_000,
     now: timestamp,
@@ -81,16 +85,20 @@ assert.deepEqual(
 );
 
 assert.equal(
-  sameRelayDevicePublicKey(
-    devicePublicKey,
-    devicePublicKey.replace(/\n/g, "\r\n"),
-  ),
+  sameRelayDevicePublicKey(identity.publicKey, identity.publicKey),
   true,
+);
+assert.equal(
+  sameRelayDevicePublicKey(
+    identity.publicKey,
+    generateIdentityKeyPair("agent").publicKey,
+  ),
+  false,
 );
 
 assert.deepEqual(
   verifyRelayDeviceSignature({
-    publicKey: devicePublicKey,
+    publicKey: identity.publicKey,
     hello,
     skewMs: 60_000,
     challengeSecret,
@@ -102,8 +110,8 @@ assert.deepEqual(
 
 assert.equal(
   verifyRelayDeviceSignature({
-    publicKey: devicePublicKey,
-    hello: { ...hello, device_id: "other-device" },
+    publicKey: identity.publicKey,
+    hello: { ...hello, device_id: generateIdentityKeyPair("agent").id },
     skewMs: 60_000,
     challengeSecret,
     connectionId,
@@ -114,7 +122,7 @@ assert.equal(
 
 assert.equal(
   verifyRelayDeviceSignature({
-    publicKey: devicePublicKey,
+    publicKey: identity.publicKey,
     hello,
     skewMs: 60_000,
     challengeSecret,

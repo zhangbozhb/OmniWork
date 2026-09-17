@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { type JSX, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
@@ -13,6 +13,7 @@ import {
 } from "../../i18n/language";
 import { Icon } from "../../ui/icons";
 import { colors, radii, spacing, typography } from "../../ui/theme";
+import { getOrCreateAppIdentity } from "../../platform/identity/appIdentityStore";
 
 export interface SettingsScreenProps {
   terminalTextSize: TerminalTextSize;
@@ -36,6 +37,24 @@ export function SettingsScreen({
   onOpenSecuritySettings,
 }: SettingsScreenProps): JSX.Element {
   const { t } = useTranslation();
+  const [appIdentityId, setAppIdentityId] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    void getOrCreateAppIdentity()
+      .then((identity) => {
+        if (active) {
+          setAppIdentityId(identity.record.id);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAppIdentityId("");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const selectedTextSize = TERMINAL_TEXT_SIZE_OPTIONS.find(
     (option) => option.key === terminalTextSize,
   );
@@ -48,6 +67,20 @@ export function SettingsScreen({
       <View style={styles.headerText}>
         <Text style={styles.headerEyebrow}>{t("settings.eyebrow")}</Text>
         <Text style={styles.headerTitle}>{t("settings.title")}</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          {t("settings.appIdentity.title")}
+        </Text>
+        <Text style={styles.sectionHint}>
+          {t("settings.appIdentity.hint")}
+        </Text>
+        <Text selectable style={styles.identityId}>
+          {appIdentityId === null
+            ? t("settings.appIdentity.loading")
+            : appIdentityId || t("settings.appIdentity.unavailable")}
+        </Text>
       </View>
 
       <View style={styles.section}>
@@ -287,6 +320,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
+  },
+  identityId: {
+    color: colors.textPrimary,
+    fontFamily: "monospace",
+    fontSize: 13,
+    lineHeight: 20,
   },
   optionRow: {
     flexDirection: "row",

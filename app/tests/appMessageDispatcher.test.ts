@@ -10,6 +10,29 @@ import {
   type AppMessageHandlers,
 } from "../src/app/appMessageDispatcher.ts";
 
+test("dispatchAppMessage routes pending local pairing approval", () => {
+  const calls: Array<{ name: string; payload: unknown }> = [];
+  const handlers = new Proxy(
+    {},
+    {
+      get(_target, property) {
+        return (payload: unknown) => {
+          calls.push({ name: String(property), payload });
+        };
+      },
+    },
+  ) as AppMessageHandlers;
+  const payload = {
+    connection_id: "conn_app_1",
+    request_id: "pair_request_1",
+    expires_at: "2026-09-16T00:01:00.000Z",
+  };
+
+  dispatchAppMessage(createMessage("auth.pending", payload), handlers);
+
+  assert.deepEqual(calls, [{ name: "onAuthPending", payload }]);
+});
+
 test("dispatchAppMessage routes recovered Agent inbox pages", () => {
   const message: AgentAppMessage = {
     id: "message-1",

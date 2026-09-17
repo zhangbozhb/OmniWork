@@ -39,10 +39,8 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
     if (this.initialized) {
       return;
     }
-    const sqlite = quickSQLite();
-    sqlite.open(DB_NAME);
-    sqlite.execute(
-      DB_NAME,
+    const database = agentMessageDatabase();
+    database.executeSync(
       `
         CREATE TABLE IF NOT EXISTS agent_messages (
           message_id TEXT PRIMARY KEY,
@@ -62,21 +60,17 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
         )
       `,
     );
-    ensureColumn(sqlite, "workspace_path TEXT");
-    sqlite.execute(
-      DB_NAME,
+    ensureColumn(database, "workspace_path TEXT");
+    database.executeSync(
       "CREATE INDEX IF NOT EXISTS idx_agent_messages_created_at ON agent_messages(created_at)",
     );
-    sqlite.execute(
-      DB_NAME,
+    database.executeSync(
       "CREATE INDEX IF NOT EXISTS idx_agent_messages_read_at ON agent_messages(read_at)",
     );
-    sqlite.execute(
-      DB_NAME,
+    database.executeSync(
       "CREATE INDEX IF NOT EXISTS idx_agent_messages_handled_at ON agent_messages(handled_at)",
     );
-    sqlite.execute(
-      DB_NAME,
+    database.executeSync(
       "CREATE INDEX IF NOT EXISTS idx_agent_messages_session_id ON agent_messages(session_id)",
     );
     this.initialized = true;
@@ -85,9 +79,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
   async saveMessage(message: AgentAppMessage): Promise<LocalAgentMessageRecord> {
     await this.initialize();
     const receivedAt = new Date().toISOString();
-    const sqlite = quickSQLite();
-    sqlite.execute(
-      DB_NAME,
+    agentMessageDatabase().executeSync(
       `
         INSERT INTO agent_messages (
           message_id,
@@ -134,9 +126,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
 
   async listMessages(limit = DEFAULT_LIMIT): Promise<LocalAgentMessageRecord[]> {
     await this.initialize();
-    const sqlite = quickSQLite();
-    const result = sqlite.execute(
-      DB_NAME,
+    const result = agentMessageDatabase().executeSync(
       `
         SELECT payload_json, received_at, read_at, handled_at, dismissed_at
         FROM agent_messages
@@ -146,7 +136,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
       `,
       [normalizeLimit(limit)],
     );
-    return result.rows?._array.flatMap(parseRow) ?? [];
+    return result.rows.flatMap(parseRow);
   }
 
   async markRead(
@@ -154,8 +144,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
   ): Promise<LocalAgentMessageRecord | undefined> {
     await this.initialize();
     const readAt = new Date().toISOString();
-    quickSQLite().execute(
-      DB_NAME,
+    agentMessageDatabase().executeSync(
       "UPDATE agent_messages SET read_at = COALESCE(read_at, ?) WHERE message_id = ?",
       [readAt, messageId],
     );
@@ -167,8 +156,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
   ): Promise<LocalAgentMessageRecord | undefined> {
     await this.initialize();
     const now = new Date().toISOString();
-    quickSQLite().execute(
-      DB_NAME,
+    agentMessageDatabase().executeSync(
       `
         UPDATE agent_messages
         SET read_at = COALESCE(read_at, ?),
@@ -185,8 +173,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
   ): Promise<LocalAgentMessageRecord | undefined> {
     await this.initialize();
     const dismissedAt = new Date().toISOString();
-    quickSQLite().execute(
-      DB_NAME,
+    agentMessageDatabase().executeSync(
       "UPDATE agent_messages SET dismissed_at = COALESCE(dismissed_at, ?) WHERE message_id = ?",
       [dismissedAt, messageId],
     );
@@ -201,8 +188,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
     }
     const dismissedAt = new Date().toISOString();
     const placeholders = ids.map(() => "?").join(", ");
-    quickSQLite().execute(
-      DB_NAME,
+    agentMessageDatabase().executeSync(
       `UPDATE agent_messages SET dismissed_at = COALESCE(dismissed_at, ?) WHERE message_id IN (${placeholders})`,
       [dismissedAt, ...ids],
     );
@@ -210,19 +196,17 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
 
   async unreadCount(): Promise<number> {
     await this.initialize();
-    const result = quickSQLite().execute(
-      DB_NAME,
+    const result = agentMessageDatabase().executeSync(
       "SELECT COUNT(*) AS count FROM agent_messages WHERE read_at IS NULL AND dismissed_at IS NULL",
     );
-    const row = result.rows?.item(0) as { count?: number } | undefined;
+    const row = result.rows[0] as { count?: number } | undefined;
     return Number(row?.count ?? 0);
   }
 
   private async getMessage(
     messageId: string,
   ): Promise<LocalAgentMessageRecord | undefined> {
-    const result = quickSQLite().execute(
-      DB_NAME,
+    const result = agentMessageDatabase().executeSync(
       `
         SELECT payload_json, received_at, read_at, handled_at, dismissed_at
         FROM agent_messages
@@ -230,7 +214,7 @@ class SQLiteAgentMessageStore implements AgentMessageStore {
       `,
       [messageId],
     );
-    return result.rows?._array.flatMap(parseRow)[0];
+    return result.rows.flatMap(parseRow)[0];
   }
 }
 
@@ -346,31 +330,51 @@ class AsyncStorageAgentMessageStore implements AgentMessageStore {
   }
 }
 
-interface QuickSQLiteApi {
-  open(dbName: string, location?: string): void;
-  execute(
-    dbName: string,
+type SQLiteParameter =
+  | string
+  | number
+  | boolean
+  | null
+  | ArrayBuffer
+  | ArrayBufferView;
+
+interface SQLiteDatabase {
+  executeSync(
     query: string,
-    params?: unknown[],
+    params?: SQLiteParameter[],
   ): {
-    rows?: {
-      _array: unknown[];
-      item(index: number): unknown;
-    };
+    rows: unknown[];
   };
 }
 
-function quickSQLite(): QuickSQLiteApi {
-  const module = require("react-native-quick-sqlite") as {
-    QuickSQLite: QuickSQLiteApi;
+let nativeAgentMessageDatabase: SQLiteDatabase | undefined;
+
+function agentMessageDatabase(): SQLiteDatabase {
+  if (nativeAgentMessageDatabase) {
+    return nativeAgentMessageDatabase;
+  }
+  const sqlite = require("@op-engineering/op-sqlite") as {
+    open(options: { name: string; location?: string }): SQLiteDatabase;
+    IOS_DOCUMENT_PATH?: string;
+    ANDROID_FILES_PATH?: string;
   };
-  return module.QuickSQLite;
+  const location =
+    Platform.OS === "ios"
+      ? sqlite.IOS_DOCUMENT_PATH
+      : sqlite.ANDROID_FILES_PATH;
+  nativeAgentMessageDatabase = sqlite.open({
+    name: DB_NAME,
+    location,
+  });
+  return nativeAgentMessageDatabase;
 }
 
-function ensureColumn(sqlite: QuickSQLiteApi, columnDefinition: string): void {
+function ensureColumn(
+  database: SQLiteDatabase,
+  columnDefinition: string,
+): void {
   try {
-    sqlite.execute(
-      DB_NAME,
+    database.executeSync(
       `ALTER TABLE agent_messages ADD COLUMN ${columnDefinition}`,
     );
   } catch {

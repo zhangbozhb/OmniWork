@@ -108,15 +108,8 @@ function AppContent(): JSX.Element {
     pairingsRef,
     editingPairing,
     pairingError,
-    pendingEncryptedPairingLink,
-    encryptedPairingPassword,
-    encryptedPairingError,
     setPairing,
-    setEncryptedPairingPassword,
-    setEncryptedPairingError,
     handlePair,
-    handleEncryptedPairingSubmit,
-    handleEncryptedPairingCancel,
     handleAddDevice,
     handleEditDevice,
     handleCancelPairing,
@@ -1113,19 +1106,6 @@ function AppContent(): JSX.Element {
       agentMessageBanner={
         !appLockScreen ? (agentMessageBanner ?? undefined) : undefined
       }
-      encryptedPairingModal={{
-        visible: Boolean(pendingEncryptedPairingLink),
-        password: encryptedPairingPassword,
-        error: encryptedPairingError,
-        onPasswordChange: (password) => {
-          setEncryptedPairingPassword(password);
-          setEncryptedPairingError(undefined);
-        },
-        onSubmit: () => {
-          void handleEncryptedPairingSubmit();
-        },
-        onCancel: handleEncryptedPairingCancel,
-      }}
       onContentTouchStart={updateLastInteraction}
       onChangeTab={handleChangePrimaryTab}
       onDismissAgentMessageBanner={dismissAgentMessageBanner}

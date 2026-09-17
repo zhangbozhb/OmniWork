@@ -6,17 +6,17 @@ const securityHighlights = [
   {
     label: "E2E",
     title: "默认端到端加密",
-    text: "默认 e2e_required 模式下，业务数据在 App 与桌面端 Agent 之间加密。Relay 仅处理外层路由，无法解密会话、终端、文件或 Git 内容。",
+    text: "协议 v2 固定要求业务数据在 App 与桌面端 Agent 之间端到端加密。Relay 仅处理外层路由，无法解密会话、终端、文件或 Git 内容。",
   },
   {
     label: "Integrity",
     title: "严防中间人篡改",
-    text: "结合 Noise 握手协议、AAD、序列号（seq）及重放检测机制，精准识别篡改与密钥不匹配。一旦发现异常，立即阻断连接，拒绝降级为明文通信。",
+    text: "长期 Ed25519 身份签名临时 X25519 握手，并结合 AEAD、序列号（seq）及重放检测识别身份替换、篡改和重放。一旦发现异常，立即阻断连接。",
   },
   {
     label: "Zero-Trust",
     title: "Relay 零信任机制",
-    text: "在默认 E2E 模式下，Relay 仅负责连接建立、路由转发、限流及 P2P 升级协调，不存储业务密钥、不执行业务指令。",
+    text: "协议 v2 中 Relay 仅负责连接建立、路由转发、限流及 P2P 升级协调，不存储业务密钥、不执行业务指令。",
   },
   {
     label: "Boundary",
@@ -29,7 +29,7 @@ const guaranteeRows = [
   ["Relay 抓包窃听", "仅能获取 E2E 外层消息与路由元数据", "无法窥探业务明文，保障数据隐私"],
   ["Relay 篡改密文", "App 或 Agent 端校验失败", "直接切断连接，拒绝执行被篡改的指令"],
   ["Relay 重放旧消息", "接收端触发 seq/重放检测并拒绝", "确保旧有的业务指令不会被重复执行"],
-  ["伪造明文业务指令", "Relay 与 Agent 默认拒绝", "系统不提供静默的明文降级（Fallback）机制"],
+  ["伪造明文业务指令", "Relay 与 Agent 固定拒绝", "系统不提供静默的明文降级（Fallback）机制"],
 ];
 ---
 
@@ -46,9 +46,9 @@ const guaranteeRows = [
 
       <section class="security-hero" aria-label="核心安全承诺">
         <div class="security-seal">
-          <span>e2e-required by default</span>
+          <span>protocol v2 · e2e required</span>
           <strong>默认业务内容只在两端解密</strong>
-          <p>默认配置下 Relay 只负责连接与转发，无法还原会话、终端、文件与 Git 等业务内容。</p>
+          <p>协议 v2 中 Relay 只负责连接与转发，无法还原会话、终端、文件与 Git 等业务内容。</p>
         </div>
         <div class="security-grid">
           {securityHighlights.map((item) => (
@@ -99,20 +99,18 @@ const guaranteeRows = [
 
       <h2>设备配对与身份认证</h2>
       <p>
-        在当前的 MVP 版本中，桌面端 Agent 启动时会生成一个 32 字符的临时密钥（Key）。用户需在 App 或 Web 端输入 Relay URL、Device ID 及该临时密钥以完成配对。
-        <code>auth.proof</code> 仅用于 Relay 的准入校验与失败限流，真正的业务通道必须等待 E2E 握手成功后方可使用。
+        Agent 与 App 首次运行时分别生成长期 Ed25519 身份，公开 ID 由对应公钥派生。用户只需输入 Relay URL 与 Agent Device ID，或导入包含相同目标信息的链接；App 会自动附带自己的 ID、公钥和设备信息。
+        Agent 完成对 Relay 的签名证明后，默认还需由 Relay 管理员批准；自动授权模式也只接受 device ID 与来源 IP 两者均未命中封禁规则的 Agent。Relay 在 <code>auth.challenge</code> 中返回在线 Agent 的登记公钥，App 校验它与目标 Device ID 的绑定后签名 <code>auth.proof</code>。Desktop Agent 默认要求未知或已撤销 App 在本机 Agent Admin 中批准；显式自动模式仍会先校验身份签名与 scope。
       </p>
 
       <h2>本地存储与文件边界</h2>
       <p>
-        移动端的配对信息将安全地保存在操作系统的受信任存储区（Keychain/Keystore），Web 端则使用浏览器的 sessionStorage。
+        Native App 使用系统 Keychain/Keystore 保护身份材料和目标配置；Web App 使用 WebCrypto 生成不可导出的私钥并保存到 IndexedDB，目标配置保存在浏览器本地存储中。
         文件操作权限被严格限定在 Workspace 内部，且仅支持常见 UTF-8 文本文件的编辑。在保存文件时，系统会附带打开时的内容哈希值，交由桌面端 Agent 进行严格的冲突检测与写入保护。
       </p>
 
       <div class="note">
-        兼容模式允许管理员在 Desktop Agent 上显式设置 <code>requireE2e: false</code>。
-        该模式不具备上述 Relay 零信任保证，不应作为默认生产配置。Public Web 不处理配对或工作区数据；
-        Admin、Metrics、Debug 属于独立的受控运维面。
+        配对或分享链接只负责定位目标，不包含共享密钥、公钥或授权票据。协议不提供业务明文兼容模式。Public Web 不处理配对或工作区数据；Admin、Metrics、Debug 属于独立的受控运维面。
       </div>
     </article>
   </div>

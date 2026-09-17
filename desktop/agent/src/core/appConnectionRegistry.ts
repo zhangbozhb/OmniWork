@@ -8,7 +8,7 @@ import type {
 } from "@omni-work/protocol-ts";
 
 export type ConnectionState = "active" | "idle" | "stale" | "disconnected";
-export type SecurityMode = "e2e" | "plaintext" | "unauthenticated";
+export type SecurityMode = "e2e" | "unauthenticated";
 export type ConnectionMethod = "relay" | "p2p" | "mixed" | "unknown";
 export type TransportPathWithUnknown = "relay" | "p2p" | "unknown";
 export type IpSource =
@@ -27,6 +27,7 @@ export interface AppConnectionRegistryOptions {
 
 export interface AuthenticatedConnectionOptions {
   relayConnectionId: string;
+  appId?: string;
   appInfo: AppInfoPayload;
   observations?: AppConnectionObservation[];
   now?: number;
@@ -40,6 +41,7 @@ export interface AuthenticatedConnectionResult {
 export interface AgentObservedAppConnection {
   connection_id: string;
   relay_connection_id?: string;
+  app_id?: string;
   app_instance_id: string;
   app_runtime_id: string;
   app_name?: string;
@@ -110,7 +112,7 @@ export interface ConnectionSummary {
   stale: number;
   disconnected: number;
   encrypted: number;
-  plaintext: number;
+  unencrypted: number;
   p2p: number;
   relay: number;
   unknown_path: number;
@@ -184,6 +186,7 @@ export class AppConnectionRegistry {
       existing ??
       this.createBaseConnection({
         appInfo: options.appInfo,
+        appId: options.appId,
         relayConnectionId: options.relayConnectionId,
         now,
       });
@@ -191,6 +194,7 @@ export class AppConnectionRegistry {
     connection.state = "active";
     connection.trusted = true;
     connection.relay_connection_id = options.relayConnectionId;
+    connection.app_id = options.appId ?? connection.app_id;
     connection.app_instance_id = options.appInfo.instance_id;
     connection.app_runtime_id = options.appInfo.runtime_id;
     connection.app_name = options.appInfo.app?.name ?? connection.app_name;
@@ -206,7 +210,7 @@ export class AppConnectionRegistry {
       ...(options.observations ?? []),
     ]);
     connection.security.encrypted = false;
-    connection.security.mode = "plaintext";
+    connection.security.mode = "unauthenticated";
     connection.security.e2e_ready = false;
     connection.security.handshake_at = undefined;
     connection.security.last_verified_at = now;
@@ -269,6 +273,7 @@ export class AppConnectionRegistry {
       return;
     }
     connection.state = "disconnected";
+    connection.trusted = false;
     connection.timing.last_seen_at = Date.now();
     connection.last_seq = payload.seq;
   }
@@ -276,6 +281,7 @@ export class AppConnectionRegistry {
   markRelayUnavailable(now = Date.now()): void {
     for (const connection of this.byConnectionId.values()) {
       connection.state = "disconnected";
+      connection.trusted = false;
       connection.timing.last_seen_at = now;
       connection.timing.stale_after = now;
       connection.timing.disconnect_after = now;
@@ -320,9 +326,12 @@ export class AppConnectionRegistry {
 
   markE2EReady(relayConnectionId: string | undefined, now = Date.now()): void {
     const connection = this.findByRelayConnectionId(relayConnectionId);
-    if (!connection) {
+    if (!connection?.trusted) {
       return;
     }
+    // A valid E2E frame can revive an observed timeout, but never a goodbye,
+    // revocation, or Relay disconnect (those explicitly clear trust).
+    connection.state = "active";
     connection.security.encrypted = true;
     connection.security.mode = "e2e";
     connection.security.e2e_ready = true;
@@ -335,7 +344,7 @@ export class AppConnectionRegistry {
 
   hasAuthenticatedConnection(relayConnectionId: string | undefined): boolean {
     const connection = this.findByRelayConnectionId(relayConnectionId);
-    return connection?.trusted === true;
+    return connection?.trusted === true && connection.state !== "disconnected";
   }
 
   recordReplayRejected(connectionId: string | undefined): void {
@@ -413,7 +422,7 @@ export class AppConnectionRegistry {
       stale: 0,
       disconnected: 0,
       encrypted: 0,
-      plaintext: 0,
+      unencrypted: 0,
       p2p: 0,
       relay: 0,
       unknown_path: 0,
@@ -428,7 +437,7 @@ export class AppConnectionRegistry {
       summary.bytes_out += connection.counters.bytes_out;
       summary[connection.trusted ? "trusted" : "untrusted"] += 1;
       summary[connection.state] += 1;
-      summary[connection.security.encrypted ? "encrypted" : "plaintext"] += 1;
+      summary[connection.security.encrypted ? "encrypted" : "unencrypted"] += 1;
       if (connection.transport.current_path === "p2p") {
         summary.p2p += 1;
       } else if (connection.transport.current_path === "relay") {
@@ -528,6 +537,28 @@ export class AppConnectionRegistry {
     );
   }
 
+  removeApp(appId: string): number {
+    let removed = 0;
+    for (const [connectionId, connection] of this.byConnectionId) {
+      if (connection.app_id !== appId) {
+        continue;
+      }
+      this.byConnectionId.delete(connectionId);
+      for (const [runtimeKey, indexedConnectionId] of this.byRuntimeKey) {
+        if (indexedConnectionId === connectionId) {
+          this.byRuntimeKey.delete(runtimeKey);
+        }
+      }
+      if (
+        this.byAppInstanceId.get(connection.app_instance_id) === connectionId
+      ) {
+        this.byAppInstanceId.delete(connection.app_instance_id);
+      }
+      removed += 1;
+    }
+    return removed;
+  }
+
   getHeartbeatIntervalMs(): number {
     return this.options.heartbeatIntervalMs;
   }
@@ -608,12 +639,14 @@ export class AppConnectionRegistry {
 
   private createBaseConnection(options: {
     appInfo: AppInfoPayload;
+    appId?: string;
     relayConnectionId: string;
     now: number;
   }): AgentObservedAppConnection {
     return {
       connection_id: randomUUID(),
       relay_connection_id: options.relayConnectionId,
+      app_id: options.appId,
       app_instance_id: options.appInfo.instance_id,
       app_runtime_id: options.appInfo.runtime_id,
       app_name: options.appInfo.app?.name ?? "OmniWork App",
@@ -626,7 +659,7 @@ export class AppConnectionRegistry {
       trusted: true,
       security: {
         encrypted: false,
-        mode: "plaintext",
+        mode: "unauthenticated",
         e2e_ready: false,
         last_verified_at: options.now,
       },

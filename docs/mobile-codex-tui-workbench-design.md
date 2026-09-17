@@ -2,31 +2,31 @@
 
 关联工程要求：[engineering-requirements.md](./engineering-requirements.md)
 
-关联鉴权设计：[auth-key-design.md](./auth-key-design.md)
+关联鉴权设计：[identity-auth-design.md](./identity-auth-design.md)
 
 ## MVP 实装状态
 
 本文档记录的是设计意图。已落地的 App 屏幕（[app/src/screens/](../app/src/screens/)）：
 
 - [DeviceListScreen](../app/src/screens/devices/DeviceListScreen.tsx)：已保存设备列表与切换；设备页刷新保持轻量，只更新连接状态或触发重连。
-- [PairingScreen](../app/src/screens/pairing/PairingScreen.tsx) + `PairingQrScannerModal.{native,web}.tsx`：扫码 / URL / 32 字符 key 三种配对方式。
+- [PairingScreen](../app/src/screens/pairing/PairingScreen.tsx) + `PairingQrScannerModal.{native,web}.tsx`：手动目标信息、目标链接与 Native 扫码三种添加设备方式。
 - [WorkbenchScreen](../app/src/screens/workbench/WorkbenchScreen.tsx)：按 workspace + provider 分组；进入设备、首次进入具体 workspace 或在工作台刷新时拉取 `session.list`，该响应携带 workspace 摘要；进入具体 workspace 后默认停留在 Sessions tab，不主动刷新 files/git；Files/Git 仅在对应 tab 打开时按缓存加载，用户显式刷新时才强制刷新。
 - [TerminalScreen](../app/src/screens/terminal/TerminalScreen.tsx)：原始 TUI 快照 + 输入。
 - [FileBrowserScreen](../app/src/screens/workspaces/FileBrowserScreen.tsx) / [FileEditorScreen](../app/src/screens/workspaces/FileEditorScreen.tsx) / [GitStatusScreen](../app/src/screens/workspaces/GitStatusScreen.tsx)：workspace 文件浏览、受控文本编辑与只读 Git 上下文。
 - [AppRouter](../app/src/app/AppRouter.tsx) + [appScreenProps](../app/src/app/appScreenProps.ts)：集中维护顶层 `view` 到 screen 的路由渲染，以及 terminal/files/git overlay 展示；各 screen props 的组装由 `appScreenProps` 维护，App 层只传入组合后的 router props。
 - `AppView` 的工作台主路由命名为 `workbench`；内部 workspace tab 仍保留 `sessions` / `files` / `git`，分别表示工作台中的具体标签页。
 - [appPresentation](../app/src/app/appPresentation.ts) / [pairingState](../app/src/app/pairingState.ts) / [sessionState](../app/src/app/sessionState.ts) / [connectionMessages](../app/src/app/connectionMessages.ts)：按职责承载 App 级无状态 helper，避免用单个泛化文件混合 UI 展示、连接文案和状态更新逻辑。
-- [AppShell](../app/src/app/AppShell.tsx)：集中维护 SafeArea / header / content 容器、primary tabs、agent message banner 与加密 pairing modal；App 层只传入已计算好的 shell props 与路由 children。
+- [AppShell](../app/src/app/AppShell.tsx)：集中维护 SafeArea / header / content 容器、primary tabs 与 agent message banner；App 层只传入已计算好的 shell props 与路由 children。
 - [useTransportController](../app/src/app/useTransportController.ts)：集中维护 App transport 建链/断链、连接状态、send/reconnect 和 P2P ready 连接事件；AppState 前后台、网络变化与 terminal snapshot 的交叉逻辑由 App 层触发并委托 terminal controller 执行。
 - [usePreferenceController](../app/src/app/usePreferenceController.ts)：集中维护 language、terminal text size 与 transport preference 的启动加载、持久化和切换确认；App 层只消费偏好值与变更 handler。
 - [useAppLifecycleController](../app/src/app/useAppLifecycleController.ts)：集中维护 AppState 前后台、网络变化、P2P 恢复、terminal snapshot 补偿和连接失败提示；App 层只提供 transport、terminal 与 app lock 的回调入口。
 - [appMessageDispatcher](../app/src/app/appMessageDispatcher.ts) + [appRelayMessageHandler](../app/src/app/appRelayMessageHandler.ts)：前者维护协议 `message.type` 分发与 payload 类型收窄，后者维护 relay 消息到各 domain controller 的 handler 组合；App 层只保留薄适配器传入当前 controller context。
-- [usePairingController](../app/src/features/auth/usePairingController.ts)：集中维护已保存设备、当前 pairing、设备增删改、pairing URL 导入、加密 pairing modal 与鉴权失败清理；App 层通过回调执行 session/workspace/terminal/transport 的跨域清理。
+- [usePairingController](../app/src/features/auth/usePairingController.ts)：集中维护已保存设备、当前 pairing、设备增删改、pairing URL 导入与鉴权失败清理；App 层通过回调执行 session/workspace/terminal/transport 的跨域清理。
 - [useAppLockController](../app/src/features/app-lock/useAppLockController.tsx)：集中维护 app lock 配置加载、手势设置/解锁/重置、安全设置状态与 app lock screen 渲染；App 层只提供 reset 后清业务数据的回调。
 - [useAgentMessageController](../app/src/features/agent/useAgentMessageController.ts)：集中维护 agent message store、未读数、banner、通知设置与 delivered 回执；App 层只保留点击消息后定位 session/workspace 的跨域导航。
 - [useSessionController](../app/src/features/sessions/useSessionController.ts)：集中维护 session/provider/workspace 摘要状态、session 创建/关闭/重命名/kill 操作，以及 `session.list` / `session.status` 的状态应用；终端 surface frame 清理由 terminal controller 基于 `session.list` 返回的 surface 集合执行。
 - 创建会话已显式展示 `runtime_preference`：`tmux` / `terminal` / `app_server`。当前默认支持 `tmux`；Codex、Claude Code 和 TraeX 支持创建 `app_server` 结构化会话并进入 `AgentSessionScreen`；`terminal` 先由 App 展示为不可用选项，后续是否可选由 Agent 下发能力决定。
-- 结构化会话由 Desktop Agent 的统一 runner 驱动：Codex / TraeX 使用 `app-server --listen stdio://` JSONL 协议，Claude Code 使用 `-p --input-format stream-json --output-format stream-json` 双向协议。`agent.prompt.submit` 会先回显用户消息，runner 再把增量文本、thread / item / turn 和活动事件转成 `agent.surface.event`。App 端对话层与活动层均不再特判 Codex。approval answer、进程重启后恢复和完整 diff 详情仍按后续 AgentSurface adapter 能力接入。
+- 结构化会话由 Desktop Agent 的统一 runner 驱动：Codex / TraeX 使用 `app-server --listen stdio://` JSONL 协议，Claude Code 使用 `-p --input-format stream-json --output-format stream-json` 双向协议。`agent.prompt.submit` 会先回显用户消息，runner 再把增量文本、thread / item / turn 和活动事件转成 `agent.surface.event`。App 端对话层与活动层均不再特判 Codex。受支持的审批和 Agent 提问可直接在 App 回答；Pending Interaction 可在重连后恢复，Agent 重启后会标记过期，完整 diff 详情仍按各 AgentSurface adapter 的协议能力接入。
 - [useTerminalController](../app/src/features/terminal/useTerminalController.ts)：集中维护 terminal frame/stream/snapshot 状态、输入与 resize 请求、P2P snapshot 节流、进入终端页的 stream start/stop，以及 terminal 协议 payload 应用；App 层只保留打开 Files overlay、terminal error 后路由回退等跨域编排。
 - [useWorkspaceController](../app/src/features/workspaces/useWorkspaceController.ts) + [workspaceCache](../app/src/features/workspaces/workspaceCache.ts) / [workspaceKeys](../app/src/features/workspaces/workspaceKeys.ts)：集中维护 workspace files/git 本地缓存、请求 handler、协议 payload 应用方法与 cache key 编解码，避免 `App.tsx` 和 workspace 子屏重复定义。
 
@@ -62,7 +62,8 @@ MVP 需要做到：
 产品目标：
 
 - 支持 24 小时办公：长任务持续运行、手机随时查看和接手。
-- MVP 范围支持临时 key 鉴权、审计和失败限流；企业身份和设备绑定作为演进。
+- MVP 范围支持长期公钥身份、本机 App 批准、审计和失败限流；企业 SSO
+  作为演进。
 - 支持更好的移动端输入、通知和会话状态摘要。
 
 ## 非目标
@@ -173,7 +174,10 @@ RuntimeBinding
 
 - `tmux`：持久终端运行时，真实 TUI 在 tmux 中运行。适合长任务和 Codex TUI，App 断开后可重连恢复控制。
 - `terminal`：直连终端 / direct PTY。App 短暂断开且 Agent 仍持有 PTY 时通常可继续控制；如果 Agent 重启、退出或 PTY 断开，则会话可能无法恢复。当前实现尚未开放。
-- `app_server`：结构化 Agent runtime。当前 Codex / TraeX 通过 app-server JSONL 驱动，Claude Code 通过 stream-json 驱动，支持增量消息、进度和结果回吐；审批执行、进程重启后恢复和 Diff 详情按后续 AgentSurface 能力逐步接入。
+- `app_server`：结构化 Agent runtime。当前 Codex / TraeX 通过 app-server
+  JSONL 驱动，Claude Code 通过 stream-json 驱动，支持增量消息、进度、结果、
+  受支持的审批和用户提问。Pending Interaction 可在 App 重连后恢复；
+  Provider 进程重启后的原请求恢复和完整 Diff 详情仍按各 adapter 能力演进。
 
 App 可以展示所有运行方式，但 enabled / disabled 与原因必须来自 Agent 能力，不能根据 provider 名称自行推断。会话列表和终端页必须展示实际 runtime，避免用户进入后才发现交付形态不同。
 
@@ -242,7 +246,7 @@ tmux 里运行 Codex TUI
 flowchart LR
   Phone["Android/iOS 跨端 App"] --> Relay["公司内网中继"]
   Relay --> 电脑Agent["电脑本地 Agent"]
-  电脑Agent --> Auth["临时 key 鉴权"]
+  电脑Agent --> Auth["Ed25519 双向认证 + 本机批准"]
   电脑Agent --> SessionMgr["会话管理器"]
   SessionMgr --> Tmux["tmux / PTY 持久层"]
   Tmux --> CodexA["Codex TUI A"]
@@ -267,7 +271,7 @@ flowchart LR
 - 电脑 不需要开放入站端口。
 - 不需要 SSH。
 - 不需要屏幕共享。
-- 可以统一做临时 key 鉴权、失败限流、连接审计和演进策略扩展。
+- 可以统一做身份挑战、失败限流、连接审计和演进策略扩展。
 
 局域网直连可以作为开发或小范围验证模式，但不应作为企业正式方案的唯一依赖。
 
@@ -284,14 +288,14 @@ flowchart LR
 - 结构化 Codex UI 使用 React Native 原生组件。
 - 通知走 APNs / FCM 或公司统一推送网关。
 - 最终交付 APK / IPA 安装包，不以网页或 PWA 作为交付形态。
-- 所有包含输入框的移动端页面必须处理软键盘避让，并支持滚动或点击输入框外区域收起键盘，避免临时 key、工作目录、终端输入栏等底部输入区被遮挡。
+- 所有包含输入框的移动端页面必须处理软键盘避让，并支持滚动或点击输入框外区域收起键盘，避免配对链接、工作目录、终端输入栏等底部输入区被遮挡。
 
 主要页面：
 
 - 登录 / 配对页
-  - 输入或扫码 桌面端 Agent 启动生成的 32 字符临时 key。
+  - 手动输入 Relay URL、Agent device ID 和可选名称，或粘贴/扫描相同字段的目标链接。
+  - 展示等待本机 Agent Admin 批准的状态。
   - 选择目标 电脑。
-  - 桌面端 Agent 重启后需要重新输入新 key。
 
 - 设备页
   - 展示可连接的 电脑。
@@ -342,9 +346,9 @@ flowchart LR
 
 职责：
 
-- 转发临时 key challenge/proof。
+- 转发签名身份 challenge/proof。
 - 接收 桌面端 Agent 的 `agent.hello`，记录 `device_id`，并在鉴权通过后分配 `agent_connection_id`。
-- 让 桌面端 Agent 校验 App 的 key proof。
+- 让 Desktop Agent 校验 App 身份并执行本机信任决策。
 - 接收 桌面端 Agent 的出站注册连接。
 - 在手机和 桌面端 Agent 之间转发 TUI 数据。
 - 记录连接、断开、会话创建、会话关闭等审计事件。
@@ -467,11 +471,12 @@ MVP 建议采用：
 最低要求：
 
 - MVP 范围不接入 SSO。
-- 桌面端 Agent 使用合法配置 key，未配置时生成 32 字符临时 key。
-- App 使用该 key 完成本次连接授权。
-- WebSocket 允许 `ws://` 与 `wss://`；默认业务安全模式由 App-Agent 负责 E2E 加密，Relay 不解析业务 payload。
-- Relay 不保存完整 key。
-- 桌面端 Agent 重启后旧 key 自动失效。
+- Agent 与 App 首次使用时生成长期 Ed25519 身份并复用。
+- 默认 `manual` 模式下未知 App 必须由 Agent 本机管理员批准；撤销立即终止
+  在线连接。显式 `automatic` 模式仍须先校验身份签名和 scope。
+- WebSocket 允许 `ws://` 与 `wss://`；业务固定由 App-Agent E2E 加密，
+  Relay 不解析业务 payload。
+- Relay 不保存私钥。
 - 长时间未操作自动锁定。
 - 认证失败需要限流。
 - 审计连接、断开、新建会话、关闭会话、切换会话。
@@ -515,7 +520,7 @@ MVP 建议采用：
 
 - 桌面端 Agent 在本机监听局域网地址。
 - 手机直接访问 电脑 的 IP 和端口。
-- 使用 32 字符临时 key 鉴权。
+- 使用同一套公钥身份与本机批准流程。
 
 风险：
 
@@ -529,7 +534,7 @@ MVP 建议采用：
 
 - 桌面端 Agent 主动连接中继。
 - 手机连接中继。
-- 中继完成临时 key proof 转发和连接路由。
+- 中继完成签名 proof 转发和连接路由。
 - 所有访问可审计、可撤销、可纳管。
 
 这是推荐的正式架构。
@@ -566,7 +571,7 @@ MVP 完成的判断标准：
 
 - 公司手机是否在同一企业网络或 VPN 下。
 - 是否已有公司内网中继、网关或统一接入平台可以复用。
-- 临时 key 展示方式：手动复制、终端输出、Menu Bar 或二维码。
+- Agent Admin 的批准入口是否需要演进到 Menu Bar 原生界面。
 - 是否要求终端内容审计，还是只需要操作元数据审计。
 - 桌面端 Agent 是否可以通过 LaunchAgent 自启动。
 - 是否允许安装 `tmux`，或公司 电脑 是否已内置。
@@ -591,7 +596,7 @@ MVP 完成的判断标准：
 
 - 桌面端 Agent 主动连接公司内网中继。
 - 手机通过中继连接 电脑。
-- 完成临时 key 鉴权。
+- 完成双向签名认证和本机批准。
 
 ### 多会话
 
@@ -603,7 +608,7 @@ MVP 完成的判断标准：
 - 断线重连。
 - Agent 重启恢复。
 - 审计日志。
-- 临时 key 失败限流和重启失效。
+- 身份签名失败限流和 App 撤销。
 - 空闲锁定。
 
 ### 移动体验优化

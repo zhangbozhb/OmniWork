@@ -121,7 +121,13 @@ export function handleAppRelayMessage(
   dispatchAppMessage(message, {
     onAuthChallenge() {
       context.setConnectionStatus("authenticating");
-      context.setConnectionMessage("Verifying temporary key...");
+      context.setConnectionMessage("Verifying App identity...");
+    },
+    onAuthPending() {
+      context.setConnectionStatus("authenticating");
+      context.setConnectionMessage(
+        "Waiting for approval on the Desktop Agent...",
+      );
     },
     onAuthOk() {
       context.clearFailureDialogState();
@@ -130,8 +136,8 @@ export function handleAppRelayMessage(
         context.setConnectionStatus("authenticating");
         context.setConnectionMessage("Establishing direct P2P connection...");
       } else {
-        context.setConnectionStatus("authenticated");
-        context.setConnectionMessage("Connected to Desktop.");
+        context.setConnectionStatus("authenticating");
+        context.setConnectionMessage("Establishing encrypted session...");
         const shouldOpenSessions = context.pendingAutoOpenSessionsRef.current;
         if (context.shouldRefreshWorkbenchOnConnection()) {
           relay.send(listSessionsRequest(activePairing.deviceId));
@@ -227,7 +233,7 @@ export function handleAppRelayMessage(
     onProtocolError(payload) {
       const detail = payload.detail || context.t("app.errors.protocolError");
       context.setConnectionMessage(detail);
-      if (payload.code === "plaintext_business_rejected") {
+      if (payload.code === "unencrypted_business_rejected") {
         context
           .confirm({
             title: context.t("app.errors.hostError"),

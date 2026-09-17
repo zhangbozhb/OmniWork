@@ -1,6 +1,6 @@
 import {
   createMessage,
-  PROTOCOL_SUPPORT_V1,
+  PROTOCOL_SUPPORT_V2,
   type E2EFailedPayload,
   type E2EHandshakeInitPayload,
   type E2EHandshakeReplyPayload,
@@ -13,7 +13,7 @@ import {
 import type { AgentE2EPeerState, RelayConnection } from "./relayTypes.ts";
 
 export interface RelayE2EControllerOptions {
-  protocolVersion: typeof PROTOCOL_SUPPORT_V1.current;
+  protocolVersion: typeof PROTOCOL_SUPPORT_V2.current;
   connections: Map<string, RelayConnection>;
   agentsByDevice: Map<string, RelayConnection>;
   send(connection: RelayConnection, message: MessageEnvelope): void;
@@ -225,17 +225,6 @@ export class RelayE2EController {
     appConnectionId: string,
     deviceId: string | undefined,
   ): boolean {
-    const agent = deviceId
-      ? this.options.agentsByDevice.get(deviceId)
-      : undefined;
-    if (agent?.businessSecurityMode === "plaintext_allowed") {
-      const mobile = this.options.connections.get(appConnectionId);
-      return (
-        mobile?.role === "mobile" &&
-        mobile.deviceId === deviceId &&
-        mobile.authenticated
-      );
-    }
     return this.isPairReadyForApp(appConnectionId, deviceId);
   }
 

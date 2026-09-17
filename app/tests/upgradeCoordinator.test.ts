@@ -10,6 +10,7 @@ import { UpgradeCoordinator } from "../src/lib/transport/upgradeCoordinator.ts";
 
 class MockPeer implements WebRtcPeerAdapter {
   private readonly stateHandlers = new Set<(state: PeerState) => void>();
+  closed = false;
 
   async createOffer(): Promise<string> {
     return "offer";
@@ -51,7 +52,10 @@ class MockPeer implements WebRtcPeerAdapter {
   }
 
   close(): void {
-    // no-op
+    this.closed = true;
+    for (const handler of this.stateHandlers) {
+      handler("closed");
+    }
   }
 }
 
@@ -79,4 +83,33 @@ test("downgrade is best-effort when relay control socket is already closed", asy
   assert.doesNotThrow(() => coordinator.downgrade("client_closing"));
   assert.equal(coordinator.getState(), "idle");
   assert.deepEqual(pathChanges, ["relay"]);
+});
+
+test("cancelled peer creation cannot resurrect a P2P negotiation", async () => {
+  const peer = new MockPeer();
+  let resolvePeer!: (peer: WebRtcPeerAdapter) => void;
+  const pendingPeer = new Promise<WebRtcPeerAdapter>((resolve) => {
+    resolvePeer = resolve;
+  });
+  const sent: string[] = [];
+  const coordinator = new UpgradeCoordinator({
+    role: "offerer",
+    deviceId: "mac_test",
+    peerFactory: () => pendingPeer,
+    sendControl: (message) => sent.push(message.type),
+    onSwitchPath: () => assert.fail("cancelled upgrade changed path"),
+  });
+  const proposing = coordinator.propose({
+    upgrade_id: "cancelled_upgrade",
+    app_connection_id: "conn_app_1",
+    ice_servers: [],
+    role: "offerer",
+  });
+  coordinator.prepareForReconnect("closed", false);
+  resolvePeer(peer);
+  await proposing;
+  assert.equal(coordinator.getState(), "idle");
+  assert.equal(coordinator.getPeer(), null);
+  assert.equal(peer.closed, true);
+  assert.deepEqual(sent, []);
 });

@@ -68,6 +68,7 @@ class MockPeer implements WebRtcPeerAdapter {
 
   close(): void {
     this.closed = true;
+    this.emitState("closed");
   }
 
   emitState(state: PeerState): void {
@@ -404,6 +405,74 @@ const sleep = (ms: number) =>
   assert.doesNotThrow(() => coordinator.downgrade("client_closing"));
   assert.equal(coordinator.getState(), "idle");
   assert.deepEqual(pathChanges, ["relay"]);
+}
+
+// Revocation/Relay disconnect closes a coordinator while its peer factory awaits.
+{
+  const peer = new MockPeer();
+  let resolvePeer!: (peer: WebRtcPeerAdapter) => void;
+  const pending = new Promise<WebRtcPeerAdapter>((resolve) => { resolvePeer = resolve; });
+  const sent: MessageEnvelope[] = [];
+  const coordinator = new UpgradeCoordinator({
+    role: "answerer",
+    deviceId: "device-test",
+    peerFactory: () => pending,
+    sendControl: (message) => sent.push(message),
+    onSwitchPath: () => assert.fail("closed negotiation changed path"),
+  });
+  const proposing = coordinator.propose({
+    upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
+    ice_servers: [],
+    role: "answerer",
+  });
+  coordinator.close();
+  resolvePeer(peer);
+  await assert.doesNotReject(proposing);
+  assert.equal(peer.closed, true);
+  assert.equal(coordinator.getPeer(), null);
+  assert.equal(coordinator.getState(), "idle");
+  assert.deepEqual(sent, []);
+}
+
+// A late answer and closed peer callbacks cannot affect a replacement upgrade.
+{
+  const oldPeer = new MockPeer();
+  const nextPeer = new MockPeer();
+  let resolveAnswer!: (sdp: string) => void;
+  const answer = new Promise<string>((resolve) => { resolveAnswer = resolve; });
+  oldPeer.createAnswer = () => answer;
+  let factoryCalls = 0;
+  const sent: MessageEnvelope[] = [];
+  const coordinator = new UpgradeCoordinator({
+    role: "answerer",
+    deviceId: "device-test",
+    peerFactory: () => factoryCalls++ === 0 ? oldPeer : nextPeer,
+    sendControl: (message) => sent.push(message),
+    onSwitchPath: () => assert.fail("late answer changed path"),
+  });
+  const propose = {
+    upgrade_id: UPGRADE_ID,
+    app_connection_id: APP_CONNECTION_ID,
+    ice_servers: [],
+    role: "answerer" as const,
+  };
+  await coordinator.propose(propose);
+  const answering = coordinator.handleOffer({
+    upgrade_id: UPGRADE_ID, app_connection_id: APP_CONNECTION_ID, sdp: "offer",
+  });
+  await Promise.resolve();
+  coordinator.close();
+  await coordinator.propose({ ...propose, upgrade_id: "replacement" });
+  resolveAnswer("late-answer");
+  await answering;
+  oldPeer.emitState("connected");
+  oldPeer.emitLocalCandidate({ candidate: "late", sdpMid: null, sdpMLineIndex: null });
+  assert.equal(oldPeer.closed, true);
+  assert.equal(coordinator.getPeer(), nextPeer);
+  assert.equal(coordinator.getState(), "negotiating");
+  assert.deepEqual(sent, []);
+  coordinator.close();
 }
 
 console.log("upgrade-coordinator tests passed");

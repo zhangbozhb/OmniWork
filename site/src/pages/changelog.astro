@@ -26,6 +26,18 @@ const downloads = JSON.parse(
   <section class="section changelog-section">
     <div class="container">
       <article class="card release-card">
+        <span class="pill">Unreleased</span>
+        <h2>Next</h2>
+        <ul>
+          <li>协议 v2 改用长期 Ed25519 身份、双层授权与签名 X25519 E2E 会话。</li>
+          <li>设备目标链接只包含 Relay URL、Agent Device ID 与可选名称。</li>
+          <li>Relay 新增 App 登录令牌；Relay 与 Agent Admin 新增审批和中英文界面。</li>
+          <li>App 升级到 React Native 0.87.1，并在保留旧数据库路径的前提下迁移 Native Inbox SQLite 驱动。</li>
+          <li>Relay/P2P 传输在关闭或替换连接后忽略迟到的异步协商结果。</li>
+        </ul>
+      </article>
+
+      <article class="card release-card">
         <span class="pill">Current</span>
         <h2>{downloads.version}</h2>
         <p>发布时间：{downloads.releasedAt}</p>
@@ -51,6 +63,10 @@ const downloads = JSON.parse(
 
   .release-card {
     max-width: 760px;
+  }
+
+  .release-card + .release-card {
+    margin-top: 20px;
   }
 
   .release-card h2 {

@@ -1,57 +1,27 @@
 import {
   createHash,
   createHmac,
-  createPublicKey,
   randomBytes,
   timingSafeEqual,
-  verify,
 } from "node:crypto";
 
-import type {
-  AgentAuthInitPayload,
-  AgentHelloPayload,
+import {
+  SIGNATURE_DOMAINS,
+  agentRelayInitSignatureFields,
+  agentRelayProofSignatureFields,
+  fromBase64Url,
+  identityMatchesPublicKey,
+  toBase64Url,
+  verifyIdentityFields,
+  type AgentAuthInitPayload,
+  type AgentHelloPayload,
 } from "@omni-work/protocol-ts";
-
-const AGENT_AUTH_INIT_DOMAIN = "agent_init_v1";
-const AGENT_AUTH_PROOF_DOMAIN = "agent_proof_v1";
 
 interface AgentAuthChallengeClaims {
   d: string;
   c: string;
   e: number;
   n: string;
-}
-
-export function relayDeviceInitSignaturePayload(input: {
-  deviceId: string;
-  devicePublicKey: string;
-  timestamp: number;
-}): Buffer {
-  return Buffer.from(
-    [
-      AGENT_AUTH_INIT_DOMAIN,
-      input.deviceId,
-      input.devicePublicKey,
-      String(input.timestamp),
-    ].join("|"),
-    "utf8",
-  );
-}
-
-export function relayDeviceProofSignaturePayload(input: {
-  deviceId: string;
-  challenge: string;
-  timestamp: number;
-}): Buffer {
-  return Buffer.from(
-    [
-      AGENT_AUTH_PROOF_DOMAIN,
-      input.deviceId,
-      input.challenge,
-      String(input.timestamp),
-    ].join("|"),
-    "utf8",
-  );
 }
 
 export function createStatelessAgentAuthChallenge(input: {
@@ -92,7 +62,6 @@ export function verifyStatelessAgentAuthChallenge(input: {
     return { ok: false, reason: "malformed_challenge" };
   }
   if (
-    !claims ||
     claims.d !== input.deviceId ||
     claims.c !== input.connectionId ||
     typeof claims.e !== "number"
@@ -115,41 +84,51 @@ export function verifyRelayDeviceInitSignature(input: {
   if (Math.abs(now - input.init.timestamp) > input.skewMs) {
     return { ok: false, reason: "timestamp_out_of_range" };
   }
-  try {
-    const publicKey = createPublicKey(input.publicKey);
-    const ok = verify(
-      null,
-      relayDeviceInitSignaturePayload({
-        deviceId: input.init.device_id,
-        devicePublicKey: input.init.device_public_key,
-        timestamp: input.init.timestamp,
-      }),
-      publicKey,
-      Buffer.from(input.init.signature, "base64url"),
-    );
-    return ok ? { ok: true } : { ok: false, reason: "bad_signature" };
-  } catch {
-    return { ok: false, reason: "bad_signature" };
+  if (
+    input.publicKey !== input.init.device_public_key ||
+    !identityMatchesPublicKey(
+      "agent",
+      input.init.device_id,
+      input.init.device_public_key,
+    )
+  ) {
+    return { ok: false, reason: "identity_mismatch" };
   }
+  return verifyIdentityFields(
+    input.publicKey,
+    SIGNATURE_DOMAINS.agentRelayInit,
+    agentRelayInitSignatureFields({
+      deviceId: input.init.device_id,
+      devicePublicKey: input.init.device_public_key,
+      timestamp: input.init.timestamp,
+    }),
+    input.init.signature,
+  )
+    ? { ok: true }
+    : { ok: false, reason: "bad_signature" };
 }
 
 export function sameRelayDevicePublicKey(left: string, right: string): boolean {
-  const leftFingerprint = relayDevicePublicKeyFingerprint(left);
-  const rightFingerprint = relayDevicePublicKeyFingerprint(right);
-  return (
-    leftFingerprint !== null &&
-    rightFingerprint !== null &&
-    leftFingerprint === rightFingerprint
-  );
+  try {
+    const leftBytes = fromBase64Url(left);
+    const rightBytes = fromBase64Url(right);
+    return (
+      leftBytes.byteLength === rightBytes.byteLength &&
+      timingSafeEqual(Buffer.from(leftBytes), Buffer.from(rightBytes))
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function relayDevicePublicKeyFingerprint(publicKey: string): string | null {
   try {
-    const der = createPublicKey(publicKey).export({
-      type: "spki",
-      format: "der",
-    });
-    return createHash("sha256").update(der).digest("base64url");
+    return toBase64Url(
+      createHash("sha256")
+        .update("omniwork-public-key-fingerprint-v2")
+        .update(fromBase64Url(publicKey))
+        .digest(),
+    );
   } catch {
     return null;
   }
@@ -164,9 +143,6 @@ export function verifyRelayDeviceSignature(input: {
   now?: number;
 }): { ok: true } | { ok: false; reason: string } {
   const auth = input.hello.relay_auth;
-  if (!auth) {
-    return { ok: false, reason: "missing_relay_auth" };
-  }
   const now = input.now ?? Date.now();
   if (Math.abs(now - auth.timestamp) > input.skewMs) {
     return { ok: false, reason: "timestamp_out_of_range" };
@@ -181,22 +157,18 @@ export function verifyRelayDeviceSignature(input: {
   if (!challenge.ok) {
     return challenge;
   }
-  try {
-    const publicKey = createPublicKey(input.publicKey);
-    const ok = verify(
-      null,
-      relayDeviceProofSignaturePayload({
-        deviceId: input.hello.device_id,
-        timestamp: auth.timestamp,
-        challenge: auth.challenge,
-      }),
-      publicKey,
-      Buffer.from(auth.signature, "base64url"),
-    );
-    return ok ? { ok: true } : { ok: false, reason: "bad_signature" };
-  } catch {
-    return { ok: false, reason: "bad_signature" };
-  }
+  return verifyIdentityFields(
+    input.publicKey,
+    SIGNATURE_DOMAINS.agentRelayProof,
+    agentRelayProofSignatureFields({
+      deviceId: input.hello.device_id,
+      challenge: auth.challenge,
+      timestamp: auth.timestamp,
+    }),
+    auth.signature,
+  )
+    ? { ok: true }
+    : { ok: false, reason: "bad_signature" };
 }
 
 function agentChallengeMac(secret: Buffer, body: string): string {

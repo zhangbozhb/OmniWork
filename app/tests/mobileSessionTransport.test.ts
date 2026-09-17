@@ -131,4 +131,17 @@ test("strict P2P preserves initial workspace refresh until E2E business layer is
 
   assert.equal(peer.sent.length, 1);
   assert.equal(peer.sent[0]?.channel, "control");
+  transport.close("test complete");
+});
+
+test("closing during a path switch cannot emit a late P2P path", async () => {
+  const transport = new MobileSessionTransport(new MockRelayPath() as never);
+  const paths: string[] = [];
+  transport.onPathChange((path) => paths.push(path));
+  transport.attachP2pPeer(new MockPeer());
+  const switching = transport.switchPath("p2p");
+  transport.close("cancelled");
+  await switching;
+  assert.equal(transport.getCurrentPath(), "relay");
+  assert.deepEqual(paths, []);
 });

@@ -4,78 +4,57 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  createCheckFactorHash,
-  createIdentityChecksum,
-  resolveAgentDeviceId,
+  isValidIdentityId,
+  validateIdentityKeyPair,
+} from "@omni-work/protocol-ts";
+
+import {
+  resolveAgentIdentity,
   safeKeychainAvailable,
   type AgentIdentityRecord,
 } from "../src/config/deviceIdentity.ts";
 
-assert.equal(
-  createCheckFactorHash({ ipAddress: "10.0.0.2", hostname: "test-host" }),
-  "664b98f90a299830d6ea10e4d4442209f8088241c75a1434586d3407a3d4cf25",
-);
-assert.equal(
-  createIdentityChecksum("dev_test", {
-    ipAddress: "10.0.0.2",
-    hostname: "test-host",
-  }),
-  "17239d90c3f705495eafd31a33fb4dbe71ce13cd713778cdd07150c5ccc39cc7",
-);
-
-const dir = await mkdtemp(join(tmpdir(), "omniwork-device-"));
-const identityPath = join(dir, ".omniwork", "agent.json");
+const dir = await mkdtemp(join(tmpdir(), "omniwork-device-identity-"));
+const identityPath = join(dir, ".omniwork", "identity-v2.json");
+const createdAt = new Date("2026-09-16T00:00:00.000Z");
 const options = {
   identityPath,
-  ipAddress: "10.0.0.2",
-  hostname: "test-host",
   keychainEnabled: false,
-  now: new Date("2026-06-12T00:00:00.000Z"),
+  now: createdAt,
 };
 
-const firstDeviceId = resolveAgentDeviceId(options);
-assert.match(firstDeviceId, /^dev_[0-9a-f]{16}$/);
-assert.equal(resolveAgentDeviceId(options), firstDeviceId);
+const first = resolveAgentIdentity(options);
+const second = resolveAgentIdentity({
+  ...options,
+  now: new Date("2026-09-16T00:01:00.000Z"),
+});
+
+assert.deepEqual(second, first);
+assert.equal(isValidIdentityId(first.id, "agent"), true);
+assert.equal(validateIdentityKeyPair(first, "agent"), true);
+assert.equal(first.createdAt, createdAt.toISOString());
 assert.equal((await stat(join(dir, ".omniwork"))).mode & 0o777, 0o700);
 assert.equal((await stat(identityPath)).mode & 0o777, 0o600);
 
-const raw = await readFile(identityPath, "utf8");
-const record = JSON.parse(raw) as AgentIdentityRecord;
-assert.equal(record.version, 1);
-assert.equal(record.deviceId, firstDeviceId);
-assert.equal(record.createdAt, "2026-06-12T00:00:00.000Z");
-assert.equal(record.updatedAt, "2026-06-12T00:00:00.000Z");
-assert.equal(
-  record.checksum,
-  createIdentityChecksum(firstDeviceId, options),
-);
+const stored = JSON.parse(
+  await readFile(identityPath, "utf8"),
+) as AgentIdentityRecord;
+assert.deepEqual(stored, first);
 
 await writeFile(
   identityPath,
-  `${JSON.stringify({ ...record, checksum: "bad" }, null, 2)}\n`,
+  `${JSON.stringify({ ...stored, id: stored.id.slice(0, -1) }, null, 2)}\n`,
 );
-const secondDeviceId = resolveAgentDeviceId({
-  ...options,
-  now: new Date("2026-06-12T00:01:00.000Z"),
-});
-assert.match(secondDeviceId, /^dev_[0-9a-f]{16}$/);
-assert.notEqual(secondDeviceId, firstDeviceId);
+assert.throws(
+  () => resolveAgentIdentity(options),
+  /identity .* is invalid/u,
+);
 
 assert.equal(
   safeKeychainAvailable({
     platform: "linux",
     execFile() {
       throw new Error("should not be called");
-    },
-  }),
-  false,
-);
-
-assert.equal(
-  safeKeychainAvailable({
-    platform: "darwin",
-    execFile() {
-      throw new Error("default keychain unavailable");
     },
   }),
   false,
@@ -91,13 +70,9 @@ assert.equal(
     },
     execFile(command, args) {
       securityCalls.push({ command, args });
-      if (args[0] === "default-keychain") {
-        return "\"~/Library/Keychains/login.keychain-db\"\n";
-      }
-      if (args[0] === "show-keychain-info") {
-        return "";
-      }
-      throw new Error("unexpected security command");
+      return args[0] === "default-keychain"
+        ? "\"~/Library/Keychains/login.keychain-db\"\n"
+        : "";
     },
   }),
   true,

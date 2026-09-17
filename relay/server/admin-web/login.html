@@ -15,25 +15,126 @@
     input { width: 100%; border: 1px solid #263548; border-radius: 12px; background: #101a25; color: #dbe7f3; padding: 12px; font: inherit; }
     button { width: 100%; margin-top: 14px; border: 0; border-radius: 12px; background: linear-gradient(180deg, #2459e8, #1a43b7); color: #fff; cursor: pointer; font: inherit; font-weight: 800; padding: 12px; }
     .error { min-height: 20px; margin-top: 12px; color: #fca5a5; }
+    .language-row { display: flex; justify-content: flex-end; margin-bottom: 18px; }
+    select { border: 1px solid #263548; border-radius: 10px; background: #172332; color: #dbe7f3; padding: 8px 10px; font: inherit; }
     code { color: #bfdbfe; }
   </style>
 </head>
 <body>
   <main>
-    <h1>Relay Admin Login</h1>
-    <p>Enter the current one-time token from <code>admin-token.json</code>. The token is consumed after a successful login.</p>
+    <div class="language-row">
+      <select id="language" aria-label="Language" data-i18n-aria-label="common.language">
+        <option value="en">English</option>
+        <option value="zh-CN">中文</option>
+      </select>
+    </div>
+    <h1 data-i18n="login.title">Relay Admin Login</h1>
+    <p data-i18n-html="login.description">Enter the current one-time token from <code>admin-token.json</code>. The token is consumed after a successful login.</p>
     <form id="login-form">
-      <label>One-time token
+      <label><span data-i18n="login.token">One-time token</span>
         <input id="token" autocomplete="one-time-code" minlength="64" maxlength="64" required />
       </label>
-      <button type="submit">Continue</button>
+      <button type="submit" data-i18n="login.continue">Continue</button>
       <div class="error" id="error"></div>
     </form>
   </main>
   <script>
+    const messages = {
+      en: {
+        "page.title": "OmniWork Relay Admin Login",
+        "common.language": "Language",
+        "login.title": "Relay Admin Login",
+        "login.description":
+          "Enter the current one-time token from <code>admin-token.json</code>. The token is consumed after a successful login.",
+        "login.token": "One-time token",
+        "login.continue": "Continue",
+        "login.failed": "Login failed",
+      },
+      "zh-CN": {
+        "page.title": "OmniWork Relay 管理登录",
+        "common.language": "语言",
+        "login.title": "Relay 管理登录",
+        "login.description":
+          "请输入 <code>admin-token.json</code> 中当前的一次性令牌。登录成功后该令牌即失效。",
+        "login.token": "一次性令牌",
+        "login.continue": "继续",
+        "login.failed": "登录失败",
+      },
+    };
+    const localeCookieName = "omniwork_admin_locale";
+    const simplifiedChineseTimeZones = new Set([
+      "Asia/Shanghai",
+      "Asia/Chongqing",
+      "Asia/Harbin",
+      "Asia/Urumqi",
+    ]);
+    let currentLocale = detectLocale();
     const form = document.getElementById("login-form");
     const token = document.getElementById("token");
     const error = document.getElementById("error");
+    const language = document.getElementById("language");
+    function detectLocale() {
+      const saved = document.cookie
+        .split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(localeCookieName + "="))
+        ?.slice(localeCookieName.length + 1);
+      if (saved && messages[saved]) return saved;
+      const languages =
+        Array.isArray(navigator.languages) && navigator.languages.length > 0
+          ? navigator.languages
+          : [navigator.language];
+      for (const language of languages) {
+        const locale = localeFromLanguage(language);
+        if (locale) return locale;
+      }
+      return simplifiedChineseTimeZones.has(
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      )
+        ? "zh-CN"
+        : "en";
+    }
+    function localeFromLanguage(language) {
+      const normalized = String(language || "").toLowerCase();
+      if (normalized === "zh" || normalized.startsWith("zh-")) {
+        return "zh-CN";
+      }
+      if (normalized === "en" || normalized.startsWith("en-")) {
+        return "en";
+      }
+      return null;
+    }
+    function t(key) {
+      return messages[currentLocale][key] || messages.en[key] || key;
+    }
+    function applyTranslations() {
+      document.documentElement.lang = currentLocale;
+      document.title = t("page.title");
+      document.querySelectorAll("[data-i18n]").forEach((element) => {
+        element.textContent = t(element.dataset.i18n);
+      });
+      document.querySelectorAll("[data-i18n-html]").forEach((element) => {
+        element.innerHTML = t(element.dataset.i18nHtml);
+      });
+      document
+        .querySelectorAll("[data-i18n-aria-label]")
+        .forEach((element) => {
+          element.setAttribute(
+            "aria-label",
+            t(element.dataset.i18nAriaLabel),
+          );
+        });
+      language.value = currentLocale;
+    }
+    language.addEventListener("change", () => {
+      currentLocale = language.value;
+      document.cookie =
+        localeCookieName +
+        "=" +
+        encodeURIComponent(currentLocale) +
+        "; Path=/; Max-Age=31536000; SameSite=Lax";
+      applyTranslations();
+    });
     function adminBase() { return document.documentElement.dataset.adminBase || "/admin/"; }
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -45,11 +146,12 @@
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        error.textContent = body.error || "Login failed";
+        error.textContent = body.error || t("login.failed");
         return;
       }
       location.href = adminBase();
     });
+    applyTranslations();
   </script>
 </body>
 </html>

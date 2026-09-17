@@ -7,29 +7,26 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_TERMINAL_SIZE } from "@omni-work/terminal-core";
 import {
   DEFAULT_TERMINAL_PROVIDER_DEFINITIONS,
-  type BusinessSecurityMode,
   type TerminalProviderDefinition,
 } from "@omni-work/protocol-ts";
 import type { TerminalSize } from "@omni-work/protocol-ts";
-import { isValidSessionKey } from "../auth-key/authKey.ts";
-import { resolveAgentDeviceId } from "./deviceIdentity.ts";
 import {
-  defaultRelayDeviceCredentialsPath,
-  readRelayDeviceCredentials,
-  type RelayDeviceCredentials,
-} from "./relayDeviceCredentials.ts";
+  defaultIdentityPath,
+  resolveAgentIdentity,
+  type AgentIdentityRecord,
+} from "./deviceIdentity.ts";
 import { load as loadYaml } from "js-yaml";
 
 export interface AgentConfig {
   configPath?: string;
   agentVersion: string;
+  identity: AgentIdentityRecord;
+  identityPath: string;
   deviceId: string;
   hostname: string;
   displayName: string;
-  sessionKey?: string;
   relayUrl: string;
-  relayDeviceCredentialsPath: string;
-  relayDevicePrivateKey?: string;
+  appAuthorizationMode: AppAuthorizationMode;
   adminEnabled: boolean;
   adminHost: string;
   adminPort: number;
@@ -48,13 +45,11 @@ export interface AgentConfig {
   terminalProviders: TerminalProviderDefinition[];
   defaultCwd: string;
   appSupportDir: string;
-  sessionKeyPath: string;
+  probeTokenPath: string;
+  trustedAppsPath: string;
   sessionStorePath: string;
   terminalSize: TerminalSize;
   terminalStreamEnabled: boolean;
-  businessSecurityMode: BusinessSecurityMode;
-  pairingQrTtlSeconds: number;
-  pairingQrPasswordEnabled: boolean;
 }
 
 export interface AgentConfigLoadOptions {
@@ -62,9 +57,12 @@ export interface AgentConfigLoadOptions {
   configPath?: string;
   cwd?: string;
   globalConfigPath?: string;
+  keychainEnabled?: boolean;
   packageRoot?: string;
   programDir?: string;
 }
+
+export type AppAuthorizationMode = "manual" | "automatic";
 
 export function loadAgentConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -76,17 +74,17 @@ export function loadAgentConfig(
     readConfigString(rawConfig, "paths", "appSupportDir") ??
     env.OMNIWORK_APP_SUPPORT_DIR ??
     defaultAgentAppSupportDir();
-  const relayDeviceCredentialsPath =
-    readConfigString(rawConfig, "relay", "deviceCredentialsPath") ??
-    env.OMNIWORK_AGENT_RELAY_DEVICE_CREDENTIALS_PATH ??
-    defaultRelayDeviceCredentialsPath(appSupportDir);
-  const relayDeviceCredentials = readRelayDeviceCredentials(
-    relayDeviceCredentialsPath,
-  );
+  const identityPath =
+    readConfigString(rawConfig, "agent", "identityPath") ??
+    env.OMNIWORK_AGENT_IDENTITY_PATH ??
+    defaultIdentityPath(appSupportDir);
+  const identity = resolveAgentIdentity({
+    identityPath,
+    keychainEnabled: options.keychainEnabled,
+  });
   const relayUrl =
     readConfigString(rawConfig, "relay", "url") ||
     env.OMNIWORK_RELAY_URL?.trim() ||
-    relayDeviceCredentials?.relayUrl ||
     requireNonEmptyString(undefined, "relay.url");
   const host = hostname();
   const terminalProviderCommandOverrides =
@@ -95,22 +93,16 @@ export function loadAgentConfig(
   return {
     configPath: configFile.path,
     agentVersion: defaultAgentVersion(),
-    deviceId: resolveDeviceId(rawConfig, env, relayDeviceCredentials),
+    identity,
+    identityPath,
+    deviceId: identity.id,
     hostname: host,
     displayName: resolveAgentDisplayName(rawConfig, env, host),
-    sessionKey: resolveSessionKey(rawConfig, env),
     relayUrl,
-    relayDeviceCredentialsPath,
-    relayDevicePrivateKey:
-      readConfigString(rawConfig, "relay", "devicePrivateKey")
-        ?.replace(/\\n/g, "\n")
-        .trim() ||
-      env.OMNIWORK_AGENT_RELAY_DEVICE_PRIVATE_KEY?.replace(
-        /\\n/g,
-        "\n",
-      ).trim() ||
-      relayDeviceCredentials?.privateKeyPem ||
-      undefined,
+    appAuthorizationMode: parseAppAuthorizationMode(
+      readConfigString(rawConfig, "appAuthorization", "mode") ??
+        env.OMNIWORK_AGENT_APP_AUTHORIZATION_MODE,
+    ),
     adminEnabled:
       readConfigBoolean(rawConfig, true, "admin", "enabled") ??
       parseBoolean(env.OMNIWORK_AGENT_ADMIN_ENABLED, true),
@@ -205,10 +197,14 @@ export function loadAgentConfig(
       env.OMNIWORK_DEFAULT_CWD ??
       process.cwd(),
     appSupportDir,
-    sessionKeyPath:
-      readConfigString(rawConfig, "paths", "sessionKeyPath") ??
-      env.OMNIWORK_SESSION_KEY_PATH ??
-      join(appSupportDir, "session-key.json"),
+    probeTokenPath:
+      readConfigString(rawConfig, "paths", "probeTokenPath") ??
+      env.OMNIWORK_AGENT_PROBE_TOKEN_PATH ??
+      join(appSupportDir, "probe-token.json"),
+    trustedAppsPath:
+      readConfigString(rawConfig, "paths", "trustedAppsPath") ??
+      env.OMNIWORK_TRUSTED_APPS_PATH ??
+      join(appSupportDir, "trusted-apps-v2.json"),
     sessionStorePath:
       readConfigString(rawConfig, "paths", "sessionStorePath") ??
       env.OMNIWORK_SESSION_STORE_PATH ??
@@ -234,13 +230,6 @@ export function loadAgentConfig(
     terminalStreamEnabled:
       readConfigBoolean(rawConfig, false, "terminal", "streamEnabled") ??
       parseBoolean(env.OMNIWORK_TERMINAL_STREAM_ENABLED, false),
-    businessSecurityMode: resolveBusinessSecurityMode(rawConfig, env),
-    pairingQrTtlSeconds:
-      readConfigPositiveInteger(rawConfig, 5 * 60, "pairing", "qrTtlSeconds") ??
-      5 * 60,
-    pairingQrPasswordEnabled:
-      readConfigBoolean(rawConfig, true, "pairing", "qrPasswordEnabled") ??
-      true,
   };
 }
 
@@ -340,6 +329,21 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
     return false;
   }
   return fallback;
+}
+
+function parseAppAuthorizationMode(
+  value: string | undefined,
+): AppAuthorizationMode {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "manual") {
+    return "manual";
+  }
+  if (normalized === "automatic") {
+    return "automatic";
+  }
+  throw new Error(
+    `Unsupported appAuthorization.mode "${value}". Use manual or automatic.`,
+  );
 }
 
 function parsePositiveInteger(
@@ -690,31 +694,6 @@ function readNonEmptyString(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
-function resolveDeviceId(
-  config: Record<string, unknown>,
-  env: NodeJS.ProcessEnv,
-  credentials?: RelayDeviceCredentials | null,
-): string {
-  const configuredDeviceId =
-    readConfigString(config, "agent", "deviceId") ??
-    env.OMNIWORK_DEVICE_ID?.trim();
-  if (configuredDeviceId) {
-    return configuredDeviceId;
-  }
-  if (credentials?.deviceId) {
-    return credentials.deviceId;
-  }
-
-  return resolveAgentDeviceId({
-    identityPath:
-      readConfigString(config, "agent", "identityPath") ??
-      env.OMNIWORK_AGENT_IDENTITY_PATH,
-    ipAddress:
-      readConfigString(config, "agent", "identityIp") ??
-      env.OMNIWORK_AGENT_IDENTITY_IP,
-  });
-}
-
 function resolveAgentDisplayName(
   config: Record<string, unknown>,
   env: NodeJS.ProcessEnv,
@@ -724,50 +703,6 @@ function resolveAgentDisplayName(
     readConfigString(config, "agent", "displayName") ??
     env.OMNIWORK_AGENT_DISPLAY_NAME?.trim();
   return configuredDisplayName || defaultAgentDisplayName(host);
-}
-
-function resolveSessionKey(
-  config: Record<string, unknown>,
-  env: NodeJS.ProcessEnv,
-): string | undefined {
-  const configuredKey = readConfigString(config, "agent", "key");
-  if (configuredKey && !isValidSessionKey(configuredKey)) {
-    throw new Error(
-      "agent.key must be exactly 32 base64url characters.",
-    );
-  }
-  if (configuredKey) {
-    return configuredKey;
-  }
-
-  const environmentKey = readNonEmptyString(env.OMNIWORK_AGENT_KEY);
-  if (environmentKey && !isValidSessionKey(environmentKey)) {
-    throw new Error(
-      "OMNIWORK_AGENT_KEY must be exactly 32 base64url characters.",
-    );
-  }
-  return environmentKey;
-}
-
-function resolveBusinessSecurityMode(
-  config: Record<string, unknown>,
-  env: NodeJS.ProcessEnv,
-): BusinessSecurityMode {
-  const configuredMode = readConfigString(
-    config,
-    "agent",
-    "businessSecurityMode",
-  );
-  if (
-    configuredMode === "e2e_required" ||
-    configuredMode === "plaintext_allowed"
-  ) {
-    return configuredMode;
-  }
-  const requireE2e =
-    readConfigBoolean(config, true, "agent", "requireE2e") ??
-    parseBoolean(env.OMNIWORK_AGENT_REQUIRE_E2E, true);
-  return requireE2e ? "e2e_required" : "plaintext_allowed";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

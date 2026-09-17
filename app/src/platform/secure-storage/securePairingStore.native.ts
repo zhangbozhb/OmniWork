@@ -1,20 +1,25 @@
 import * as Keychain from "react-native-keychain";
 
-import { type PairingConfig } from "../../features/auth/types";
+import { isValidIdentityId } from "@omni-work/protocol-ts";
+import type { PairingConfig } from "../../features/auth/types";
 
-const PAIRING_KEY = "omniwork.pairing";
+const STORAGE_USERNAME = "omniwork.pairing";
 const SERVICE = "com.omniwork.mobile.pairing";
 
 export async function savePairings(pairings: PairingConfig[]): Promise<void> {
-  await Keychain.setGenericPassword(PAIRING_KEY, JSON.stringify(pairings), {
-    service: SERVICE,
-    accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
+  await Keychain.setGenericPassword(
+    STORAGE_USERNAME,
+    JSON.stringify(pairings),
+    {
+      service: SERVICE,
+      accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    },
+  );
 }
 
 export async function loadPairings(): Promise<PairingConfig[]> {
   const result = await Keychain.getGenericPassword({ service: SERVICE });
-  if (!result || result.username !== PAIRING_KEY) {
+  if (!result || result.username !== STORAGE_USERNAME) {
     return [];
   }
 
@@ -22,7 +27,10 @@ export async function loadPairings(): Promise<PairingConfig[]> {
     | Partial<PairingConfig>
     | Array<Partial<PairingConfig>>;
   const pairings = Array.isArray(parsed) ? parsed : [parsed];
-  return pairings.map(normalizePairingConfig);
+  return pairings.flatMap((pairing) => {
+    const normalized = normalizePairingConfig(pairing);
+    return normalized ? [normalized] : [];
+  });
 }
 
 export async function savePairing(pairing: PairingConfig): Promise<void> {
@@ -39,18 +47,20 @@ export async function clearPairing(): Promise<void> {
 
 function normalizePairingConfig(
   pairing: Partial<PairingConfig>,
-): PairingConfig {
+): PairingConfig | null {
+  if (
+    !pairing.relayUrl ||
+    !pairing.deviceId ||
+    !pairing.appInstanceId ||
+    !isValidIdentityId(pairing.deviceId, "agent")
+  ) {
+    return null;
+  }
   return {
-    relayUrl: pairing.relayUrl ?? "",
-    deviceId: pairing.deviceId ?? "",
+    relayUrl: pairing.relayUrl,
+    deviceId: pairing.deviceId,
     displayName: pairing.displayName?.trim() || undefined,
-    key: pairing.key ?? "",
     relaySessionToken: pairing.relaySessionToken,
-    appInstanceId: pairing.appInstanceId ?? createAppInstanceId(),
+    appInstanceId: pairing.appInstanceId,
   };
-}
-
-function createAppInstanceId(): string {
-  const random = Math.random().toString(36).slice(2, 12);
-  return `app_${Date.now().toString(36)}_${random}`;
 }

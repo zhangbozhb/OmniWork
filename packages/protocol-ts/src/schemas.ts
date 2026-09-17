@@ -13,10 +13,20 @@ import { MESSAGE_TYPES } from "./messageTypes.ts";
 import {
   E2E_PROTOCOL_VERSION,
   INNER_PROTOCOL_VERSION,
-  NOISE_SUITE_NNPSK0_V1,
+  SIGNED_X25519_SUITE_V2,
   PROTOCOL_VERSION,
   SUPPORTED_SESSION_STATUSES,
 } from "./constants.ts";
+import { identityMatchesPublicKey, normalizeIdentityId } from "./identity.ts";
+
+// Signed wire IDs must use the same representation as authorization/store keys.
+// User input may be normalized before signing; never transform signed payloads.
+const agentIdentityIdSchema = z.string().refine(
+  (value) => value.startsWith("DEV1-") && normalizeIdentityId(value) === value,
+);
+const appIdentityIdSchema = z.string().refine(
+  (value) => value.startsWith("APP1-") && normalizeIdentityId(value) === value,
+);
 
 const isoDateTime = z
   .string()
@@ -48,6 +58,9 @@ export type MessageEnvelopeShape = z.infer<typeof messageEnvelopeSchema>;
 export const authChallengePayloadSchema = z.object({
   nonce: z.string().min(1),
   expires_at: isoDateTime,
+  connection_id: z.string().min(1),
+  agent_connection_id: z.string().min(1),
+  agent_public_key: z.string().min(1),
 });
 
 const appClientPlatformSchema = z.enum(["ios", "android", "web", "desktop"]);
@@ -77,11 +90,44 @@ export const appInfoPayloadSchema = z
   })
   .strict();
 
-export const authProofPayloadSchema = z.object({
+const authorizationScopeSchema = z.literal("device.control");
+
+const authProofPayloadShape = {
   nonce: z.string().min(1),
+  connection_id: z.string().min(1),
+  agent_connection_id: z.string().min(1),
+  device_id: agentIdentityIdSchema,
+  agent_public_key: z.string().min(1),
+  app_id: appIdentityIdSchema,
+  app_public_key: z.string().min(1),
   app_info: appInfoPayloadSchema,
-  proof: z.string().min(1),
-});
+  requested_scopes: z.array(authorizationScopeSchema).min(1),
+  timestamp: z.number().int().positive(),
+  signature: z.string().min(1),
+};
+
+function authProofIdentitiesMatch(payload: {
+  device_id: string;
+  agent_public_key: string;
+  app_id: string;
+  app_public_key: string;
+}): boolean {
+  return (
+    identityMatchesPublicKey(
+      "agent",
+      payload.device_id,
+      payload.agent_public_key,
+    ) &&
+    identityMatchesPublicKey("app", payload.app_id, payload.app_public_key)
+  );
+}
+
+export const authProofPayloadSchema = z
+  .object(authProofPayloadShape)
+  .strict()
+  .refine(authProofIdentitiesMatch, {
+    message: "Authentication identity does not match its public key.",
+  });
 
 const appConnectionObservationSchema = z
   .object({
@@ -136,43 +182,73 @@ const appConnectionObservationSchema = z
   })
   .strict();
 
-export const authVerifyPayloadSchema = authProofPayloadSchema.extend({
-  connection_id: z.string().min(1).optional(),
-  observations: z.array(appConnectionObservationSchema).optional(),
-});
+export const authVerifyPayloadSchema = z
+  .object({
+    ...authProofPayloadShape,
+    observations: z.array(appConnectionObservationSchema).optional(),
+  })
+  .strict()
+  .refine(authProofIdentitiesMatch, {
+    message: "Authentication identity does not match its public key.",
+  });
 
-export const authOkPayloadSchema = z.object({
-  agent_connection_id: z.string().min(1).optional(),
-  connection_id: z.string().min(1).optional(),
-  business_security_mode: z
-    .enum(["e2e_required", "plaintext_allowed"])
-    .optional(),
-  e2e: z
-    .object({
-      required: z.boolean(),
-      versions: z
-        .array(z.number().int().positive())
-        .min(1)
-        .refine((versions) => versions.includes(E2E_PROTOCOL_VERSION), {
-          message: "E2E v1 support is required",
-        }),
-      suites: z
-        .array(z.string().min(1))
-        .min(1)
-        .refine((suites) => suites.includes(NOISE_SUITE_NNPSK0_V1), {
-          message: "Noise NNpsk0 v1 support is required",
-        }),
-    })
-    .strict()
-    .optional(),
-  expires_at: isoDateTime.optional(),
-});
+export const authOkPayloadSchema = z
+  .object({
+    nonce: z.string().min(1),
+    device_id: agentIdentityIdSchema,
+    agent_public_key: z.string().min(1),
+    app_id: appIdentityIdSchema,
+    agent_connection_id: z.string().min(1),
+    connection_id: z.string().min(1),
+    granted_scopes: z.array(authorizationScopeSchema).min(1),
+    timestamp: z.number().int().positive(),
+    signature: z.string().min(1),
+    e2e: z
+      .object({
+        required: z.literal(true),
+        versions: z
+          .array(z.number().int().positive())
+          .min(1)
+          .refine((versions) => versions.includes(E2E_PROTOCOL_VERSION), {
+            message: "E2E v2 support is required",
+          }),
+        suites: z
+          .array(z.string().min(1))
+          .min(1)
+          .refine((suites) => suites.includes(SIGNED_X25519_SUITE_V2), {
+            message: "Signed X25519 v2 support is required",
+          }),
+      })
+      .strict(),
+  })
+  .strict()
+  .refine(
+    (payload) =>
+      identityMatchesPublicKey(
+        "agent",
+        payload.device_id,
+        payload.agent_public_key,
+      ),
+    { message: "Agent identity does not match its public key." },
+  );
+
+export const authPendingPayloadSchema = z
+  .object({
+    connection_id: z.string().min(1),
+    request_id: z.string().min(1),
+    expires_at: isoDateTime,
+  })
+  .strict();
 
 export const authFailureReasonSchema = z.enum([
-  "key_mismatch",
+  "approval_rejected",
+  "approval_required",
+  "approval_timeout",
   "agent_restarted",
-  "key_expired",
   "device_not_online",
+  "identity_mismatch",
+  "invalid_signature",
+  "revoked",
   "too_many_attempts",
   "malformed_proof",
 ]);
@@ -192,18 +268,18 @@ const protocolSupportSchema = z
 
 const e2eSupportSchema = z
   .object({
-    required: z.boolean(),
+    required: z.literal(true),
     versions: z
       .array(z.number().int().positive())
       .min(1)
       .refine((versions) => versions.includes(E2E_PROTOCOL_VERSION), {
-        message: "E2E v1 support is required",
+        message: "E2E v2 support is required",
       }),
     suites: z
       .array(z.string().min(1))
       .min(1)
-      .refine((suites) => suites.includes(NOISE_SUITE_NNPSK0_V1), {
-        message: "Noise NNpsk0 v1 support is required",
+      .refine((suites) => suites.includes(SIGNED_X25519_SUITE_V2), {
+        message: "Signed X25519 v2 support is required",
       }),
   })
   .strict();
@@ -220,12 +296,21 @@ const relayAgentAuthPayloadSchema = z
 export const agentAuthInitPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
-    device_id: z.string().min(1),
+    device_id: agentIdentityIdSchema,
     device_public_key: z.string().min(1),
     timestamp: z.number().int().positive(),
     signature: z.string().min(1),
   })
-  .strict();
+  .strict()
+  .refine(
+    (payload) =>
+      identityMatchesPublicKey(
+        "agent",
+        payload.device_id,
+        payload.device_public_key,
+      ),
+    { message: "Agent identity does not match its public key." },
+  );
 
 export const agentAuthChallengePayloadSchema = z
   .object({
@@ -233,29 +318,46 @@ export const agentAuthChallengePayloadSchema = z
   })
   .strict();
 
+export const agentAuthOkPayloadSchema = z
+  .object({
+    agent_connection_id: z.string().min(1),
+  })
+  .strict();
+
 export const agentHelloPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
-    device_id: z.string().min(1),
-    relay_auth: relayAgentAuthPayloadSchema.optional(),
+    device_id: agentIdentityIdSchema,
+    device_public_key: z.string().min(1),
+    relay_auth: relayAgentAuthPayloadSchema,
     protocol: protocolSupportSchema,
     e2e: e2eSupportSchema,
-    business_security_mode: z
-      .enum(["e2e_required", "plaintext_allowed"])
-      .optional(),
     hostname: z.string().min(1),
     platform: z.literal("darwin"),
+    system_type: z.string().min(1).optional(),
+    uname: z.string().min(1).optional(),
     agent_version: z.string().min(1),
     providers: z.array(z.unknown()).optional(),
     workspaces: z.array(z.unknown()).optional(),
     capabilities: z.array(z.string().min(1)),
   })
-  .strict();
+  .strict()
+  .refine(
+    (payload) =>
+      identityMatchesPublicKey(
+        "agent",
+        payload.device_id,
+        payload.device_public_key,
+      ),
+    { message: "Agent identity does not match its public key." },
+  );
 
 export const mobileConnectPayloadSchema = z
   .object({
     v: z.literal(PROTOCOL_VERSION),
-    device_id: z.string().min(1),
+    device_id: agentIdentityIdSchema,
+    app_id: appIdentityIdSchema,
+    app_public_key: z.string().min(1),
     app_info: appInfoPayloadSchema,
     protocol: protocolSupportSchema,
     e2e: e2eSupportSchema,
@@ -264,7 +366,12 @@ export const mobileConnectPayloadSchema = z
       .enum(["auto", "relay_only", "prefer_p2p"])
       .optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (payload) =>
+      identityMatchesPublicKey("app", payload.app_id, payload.app_public_key),
+    { message: "App identity does not match its public key." },
+  );
 
 export const appNetworkChangedPayloadSchema = z
   .object({
@@ -304,11 +411,20 @@ export const e2eHandshakeInitPayloadSchema = z
     agent_connection_id: z.string().min(1),
     app_connection_id: z.string().min(1),
     handshake_id: z.string().min(1),
-    suite: z.literal(NOISE_SUITE_NNPSK0_V1),
+    suite: z.literal(SIGNED_X25519_SUITE_V2),
+    device_id: agentIdentityIdSchema,
+    app_id: appIdentityIdSchema,
+    app_public_key: z.string().min(1),
+    app_ephemeral_key: z.string().min(1),
+    signature: z.string().min(1),
     app_protocol: protocolVersionsSchema,
-    message: z.string().min(1),
   })
-  .strict();
+  .strict()
+  .refine(
+    (payload) =>
+      identityMatchesPublicKey("app", payload.app_id, payload.app_public_key),
+    { message: "App identity does not match its public key." },
+  );
 
 export const e2eHandshakeReplyPayloadSchema = z
   .object({
@@ -317,11 +433,24 @@ export const e2eHandshakeReplyPayloadSchema = z
     agent_connection_id: z.string().min(1),
     app_connection_id: z.string().min(1),
     handshake_id: z.string().min(1),
-    suite: z.literal(NOISE_SUITE_NNPSK0_V1),
+    suite: z.literal(SIGNED_X25519_SUITE_V2),
+    device_id: agentIdentityIdSchema,
+    agent_public_key: z.string().min(1),
+    app_id: appIdentityIdSchema,
+    agent_ephemeral_key: z.string().min(1),
+    signature: z.string().min(1),
     agent_protocol: protocolVersionsSchema,
-    message: z.string().min(1),
   })
-  .strict();
+  .strict()
+  .refine(
+    (payload) =>
+      identityMatchesPublicKey(
+        "agent",
+        payload.device_id,
+        payload.agent_public_key,
+      ),
+    { message: "Agent identity does not match its public key." },
+  );
 
 export const e2eReadyPayloadSchema = z
   .object({
@@ -371,7 +500,7 @@ export const protocolErrorCodeSchema = z.enum([
   "invalid_state",
   "schema_invalid",
   "e2e_required",
-  "plaintext_business_rejected",
+  "unencrypted_business_rejected",
   "route_not_found",
 ]);
 
@@ -1674,7 +1803,8 @@ const payloadSchemaByType = {
   "auth.challenge": authChallengePayloadSchema,
   "auth.proof": authProofPayloadSchema,
   "auth.verify": authVerifyPayloadSchema,
-  "auth.ok": authOkPayloadSchema,
+  "auth.pending": authPendingPayloadSchema,
+  "auth.ok": z.union([agentAuthOkPayloadSchema, authOkPayloadSchema]),
   "auth.failed": authFailedPayloadSchema,
   "app.network.changed": appNetworkChangedPayloadSchema,
   "app.connection.heartbeat": appConnectionHeartbeatPayloadSchema,

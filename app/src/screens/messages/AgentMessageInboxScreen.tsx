@@ -814,7 +814,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
   },
   swipeAction: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "flex-end",
     justifyContent: "center",
     backgroundColor: colors.dangerSurface,

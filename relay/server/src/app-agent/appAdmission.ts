@@ -56,6 +56,8 @@ export class AppAdmission {
     connection.role = "mobile";
     connection.state = "mobile_connected";
     connection.deviceId = deviceId;
+    connection.appId = message.payload.app_id;
+    connection.appPublicKey = message.payload.app_public_key;
     connection.authState = "pending";
     const appInfo = appInfoFromMobileConnect(message.payload);
     connection.appInfo = appInfo;
@@ -66,7 +68,7 @@ export class AppAdmission {
     }
     this.options.state.registerApp(connection);
 
-      if (!agent) {
+    if (!agent) {
       connection.authState = "failed";
       this.options.send(
         connection,
@@ -82,11 +84,30 @@ export class AppAdmission {
       );
       return;
     }
+    if (!agent.devicePublicKey) {
+      connection.authState = "failed";
+      this.options.send(
+        connection,
+        createMessage<AuthFailedPayload>(
+          "auth.failed",
+          {
+            reason: "identity_mismatch",
+            connection_id: connection.id,
+          },
+          { device_id: deviceId },
+        ),
+      );
+      return;
+    }
 
     const nonce = randomBytes(24).toString("base64url");
     const expiresAt = Date.now() + this.options.config.state.pendingAuthTtlMs;
     this.options.pendingAuth.set(connection.id, {
       deviceId,
+      agentPublicKey: agent.devicePublicKey,
+      appId: message.payload.app_id,
+      appPublicKey: message.payload.app_public_key,
+      agentConnectionId: agent.id,
       nonce,
       appInfo,
       expiresAt,
@@ -99,6 +120,9 @@ export class AppAdmission {
         {
           nonce,
           expires_at: new Date(expiresAt).toISOString(),
+          connection_id: connection.id,
+          agent_connection_id: agent.id,
+          agent_public_key: agent.devicePublicKey,
         },
         { device_id: deviceId },
       ),

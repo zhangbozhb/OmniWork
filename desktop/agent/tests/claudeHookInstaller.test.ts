@@ -13,7 +13,7 @@ test("ensureClaudeHooksInstalled creates user settings with OmniWork hooks", asy
   const result = await ensureClaudeHooksInstalled({
     settingsPath,
     receiverUrl: "http://127.0.0.1:17669/api/probes/hooks",
-    sessionKeyPath: "/tmp/session-key.json",
+    probeTokenPath: "/tmp/probe-token.json",
   });
   const parsed = JSON.parse(await readFile(settingsPath, "utf8"));
 
@@ -55,7 +55,7 @@ test("ensureClaudeHooksInstalled creates user settings with OmniWork hooks", asy
   );
   assert.match(
     parsed.hooks.Stop[0].hooks[0].command,
-    /OMNIWORK_SESSION_KEY_PATH='\/tmp\/session-key\.json'/u,
+    /OMNIWORK_AGENT_PROBE_TOKEN_PATH='\/tmp\/probe-token\.json'/u,
   );
   assert.match(
     parsed.hooks.Stop[0].hooks[0].command,
@@ -167,7 +167,7 @@ test("ensureClaudeHooksInstalled removes stale OmniWork hook commands", async ()
   const result = await ensureClaudeHooksInstalled({
     settingsPath,
     receiverUrl: "http://127.0.0.1:17669/api/probes/hooks",
-    sessionKeyPath: "/tmp/current-session-key.json",
+    probeTokenPath: "/tmp/current-probe-token.json",
   });
   const parsed = JSON.parse(await readFile(settingsPath, "utf8"));
 

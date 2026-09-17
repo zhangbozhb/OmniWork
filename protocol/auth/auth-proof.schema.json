@@ -3,12 +3,84 @@
   "$id": "https://omniwork.local/protocol/auth/auth-proof.schema.json",
   "title": "AuthProof",
   "type": "object",
-  "required": ["key_id", "nonce", "proof"],
+  "required": [
+    "nonce",
+    "connection_id",
+    "agent_connection_id",
+    "device_id",
+    "agent_public_key",
+    "app_id",
+    "app_public_key",
+    "app_info",
+    "requested_scopes",
+    "timestamp",
+    "signature"
+  ],
   "properties": {
-    "key_id": { "type": "string", "pattern": "^sha256:[0-9a-f]{12}$" },
-    "nonce": { "type": "string", "minLength": 16 },
-    "proof": { "type": "string", "minLength": 32 },
-    "connection_id": { "type": "string", "minLength": 1 }
+    "nonce": { "type": "string", "minLength": 1 },
+    "connection_id": { "type": "string", "minLength": 1 },
+    "agent_connection_id": { "type": "string", "minLength": 1 },
+    "device_id": { "$ref": "#/$defs/agentIdentityId" },
+    "agent_public_key": { "$ref": "#/$defs/publicKey" },
+    "app_id": { "$ref": "#/$defs/appIdentityId" },
+    "app_public_key": { "$ref": "#/$defs/publicKey" },
+    "app_info": { "$ref": "#/$defs/appInfo" },
+    "requested_scopes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "const": "device.control" }
+    },
+    "timestamp": { "type": "integer", "exclusiveMinimum": 0 },
+    "signature": { "type": "string", "minLength": 1 }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$comment": "Runtime validation also verifies that each identity ID is derived from its public key and that signature covers the canonical v2 auth fields.",
+  "$defs": {
+    "agentIdentityId": {
+      "type": "string",
+      "pattern": "^DEV1(?:-[0-9A-HJKMNP-TV-Z]{6}){6}$"
+    },
+    "appIdentityId": {
+      "type": "string",
+      "pattern": "^APP1(?:-[0-9A-HJKMNP-TV-Z]{6}){6}$"
+    },
+    "publicKey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "appInfo": {
+      "type": "object",
+      "required": ["instance_id", "runtime_id"],
+      "properties": {
+        "instance_id": { "type": "string", "minLength": 1 },
+        "runtime_id": { "type": "string", "minLength": 1 },
+        "device": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "platform": {
+              "enum": ["ios", "android", "web", "desktop"]
+            },
+            "os": { "type": "string", "minLength": 1 },
+            "os_version": { "type": "string", "minLength": 1 },
+            "private_network_hash": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "app": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "version": { "type": "string", "minLength": 1 },
+            "capabilities": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }

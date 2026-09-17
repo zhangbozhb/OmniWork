@@ -1,16 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { INNER_PROTOCOL_VERSION, type InnerEnvelope } from "@omni-work/protocol-ts";
+
 import {
-  E2ENoiseError,
+  INNER_PROTOCOL_VERSION,
+  SIGNATURE_DOMAINS,
+  generateIdentityKeyPair,
+  signIdentityFields,
+  type InnerEnvelope,
+} from "@omni-work/protocol-ts";
+import {
+  E2EError,
   acceptInitiatorHandshake,
   createInitiatorHandshake,
-  deriveNoisePsk,
 } from "../src/index.ts";
 
+const agentIdentity = generateIdentityKeyPair("agent");
+const appIdentity = generateIdentityKeyPair("app");
 const context = {
-  pairingKey: "test-pairing-key-32-bytes",
-  deviceId: "mac_test",
+  deviceId: agentIdentity.id,
+  agentPublicKey: agentIdentity.publicKey,
+  appId: appIdentity.id,
+  appPublicKey: appIdentity.publicKey,
   agentConnectionId: "conn_agent_1",
   appConnectionId: "conn_app_1",
   handshakeId: "hs_test",
@@ -30,34 +40,41 @@ function makeInner(id = "inner_1"): InnerEnvelope {
   };
 }
 
-function createSessionPair() {
-  const initiator = createInitiatorHandshake(context);
-  const responder = acceptInitiatorHandshake(context, initiator.init);
-  const appSession = initiator.complete(responder.reply);
+async function createSessionPair() {
+  const initiator = await createInitiatorHandshake({
+    ...context,
+    signApp: (fields) =>
+      signIdentityFields(
+        appIdentity.privateKey,
+        SIGNATURE_DOMAINS.e2eInit,
+        fields,
+      ),
+  });
+  const responder = acceptInitiatorHandshake(
+    {
+      ...context,
+      agentPrivateKey: agentIdentity.privateKey,
+    },
+    initiator.init,
+  );
   return {
-    appSession,
+    appSession: initiator.complete(responder.reply),
     agentSession: responder.session,
+    initiator,
+    responder,
   };
 }
 
-test("derives stable PSK from pairing context", () => {
-  assert.deepEqual(deriveNoisePsk(context), deriveNoisePsk(context));
-  assert.notDeepEqual(
-    deriveNoisePsk(context),
-    deriveNoisePsk({ ...context, deviceId: "mac_other" }),
-  );
-});
-
-test("completes NNpsk0 handshake with matching transcript hash", () => {
-  const { appSession, agentSession } = createSessionPair();
+test("completes a mutually authenticated signed X25519 handshake", async () => {
+  const { appSession, agentSession } = await createSessionPair();
 
   assert.equal(appSession.sessionId, agentSession.sessionId);
   assert.equal(appSession.transcriptHash, agentSession.transcriptHash);
   assert.deepEqual(appSession.readyPayload(), agentSession.readyPayload());
 });
 
-test("encrypts app to agent and agent to app inner envelopes", () => {
-  const { appSession, agentSession } = createSessionPair();
+test("encrypts app to agent and agent to app inner envelopes", async () => {
+  const { appSession, agentSession } = await createSessionPair();
 
   const request = makeInner("inner_request");
   const encryptedRequest = appSession.encrypt(request);
@@ -71,24 +88,50 @@ test("encrypts app to agent and agent to app inner envelopes", () => {
   assert.deepEqual(appSession.decrypt(encryptedResponse.payload), response);
 });
 
-test("rejects key mismatch when decrypting traffic", () => {
-  const initiator = createInitiatorHandshake(context);
-  const responder = acceptInitiatorHandshake(
-    { ...context, pairingKey: "different-key" },
-    initiator.init,
-  );
-  const appSession = initiator.complete(responder.reply);
-  const encrypted = appSession.encrypt(makeInner());
+test("rejects an App handshake signed by another identity", async () => {
+  const attacker = generateIdentityKeyPair("app");
+  const initiator = await createInitiatorHandshake({
+    ...context,
+    signApp: (fields) =>
+      signIdentityFields(
+        attacker.privateKey,
+        SIGNATURE_DOMAINS.e2eInit,
+        fields,
+      ),
+  });
 
   assert.throws(
-    () => responder.session.decrypt(encrypted.payload),
+    () =>
+      acceptInitiatorHandshake(
+        {
+          ...context,
+          agentPrivateKey: agentIdentity.privateKey,
+        },
+        initiator.init,
+      ),
     (error) =>
-      error instanceof E2ENoiseError && error.code === "decrypt_failed",
+      error instanceof E2EError && error.code === "invalid_signature",
   );
 });
 
-test("binds traffic to the app connection id", () => {
-  const { appSession, agentSession } = createSessionPair();
+test("rejects an Agent reply with a tampered identity signature", async () => {
+  const { initiator, responder } = await createSessionPair();
+  const signature = Buffer.from(responder.reply.signature, "base64url");
+  signature[0] ^= 1;
+  const tampered = {
+    ...responder.reply,
+    signature: signature.toString("base64url"),
+  };
+
+  assert.throws(
+    () => initiator.complete(tampered),
+    (error) =>
+      error instanceof E2EError && error.code === "invalid_signature",
+  );
+});
+
+test("binds traffic to the App connection id", async () => {
+  const { appSession, agentSession } = await createSessionPair();
   const encrypted = appSession.encrypt(makeInner());
 
   assert.throws(
@@ -97,13 +140,12 @@ test("binds traffic to the app connection id", () => {
         ...encrypted.payload,
         app_connection_id: "conn_other",
       }),
-    (error) =>
-      error instanceof E2ENoiseError && error.code === "decrypt_failed",
+    (error) => error instanceof E2EError && error.code === "decrypt_failed",
   );
 });
 
-test("rejects tampered ciphertext", () => {
-  const { appSession, agentSession } = createSessionPair();
+test("rejects tampered ciphertext", async () => {
+  const { appSession, agentSession } = await createSessionPair();
   const encrypted = appSession.encrypt(makeInner());
   const raw = Buffer.from(encrypted.payload.ciphertext, "base64url");
   raw[0] ^= 1;
@@ -114,32 +156,22 @@ test("rejects tampered ciphertext", () => {
         ...encrypted.payload,
         ciphertext: raw.toString("base64url"),
       }),
-    (error) =>
-      error instanceof E2ENoiseError && error.code === "decrypt_failed",
+    (error) => error instanceof E2EError && error.code === "decrypt_failed",
   );
 });
 
-test("rejects replayed message sequence", () => {
-  const { appSession, agentSession } = createSessionPair();
-  const encrypted = appSession.encrypt(makeInner());
-
-  assert.deepEqual(agentSession.decrypt(encrypted.payload), makeInner());
-  assert.throws(
-    () => agentSession.decrypt(encrypted.payload),
-    (error) =>
-      error instanceof E2ENoiseError && error.code === "replay_detected",
-  );
-});
-
-test("rejects out-of-order message sequence", () => {
-  const { appSession, agentSession } = createSessionPair();
+test("rejects replayed and out-of-order messages", async () => {
+  const { appSession, agentSession } = await createSessionPair();
   const first = appSession.encrypt(makeInner("first"));
   const second = appSession.encrypt(makeInner("second"));
 
   assert.throws(
     () => agentSession.decrypt(second.payload),
-    (error) =>
-      error instanceof E2ENoiseError && error.code === "replay_detected",
+    (error) => error instanceof E2EError && error.code === "replay_detected",
   );
   assert.deepEqual(agentSession.decrypt(first.payload), makeInner("first"));
+  assert.throws(
+    () => agentSession.decrypt(first.payload),
+    (error) => error instanceof E2EError && error.code === "replay_detected",
+  );
 });

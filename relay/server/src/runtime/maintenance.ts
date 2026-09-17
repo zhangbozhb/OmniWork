@@ -76,7 +76,9 @@ export class RuntimeMaintenance {
           createMessage<AuthFailedPayload>(
             "auth.failed",
             {
-              reason: "malformed_proof",
+              reason: pending.approvalPending
+                ? "approval_timeout"
+                : "malformed_proof",
               connection_id: connection.id,
               retry_after_ms: 2000,
             },

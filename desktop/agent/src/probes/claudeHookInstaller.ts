@@ -62,7 +62,7 @@ const DEPRECATED_CLAUDE_HOOK_EVENTS = [
 export interface ClaudeHookInstallOptions {
   settingsPath?: string;
   receiverUrl?: string;
-  sessionKeyPath?: string;
+  probeTokenPath?: string;
 }
 
 export interface ClaudeHookInstallResult {
@@ -173,7 +173,7 @@ function buildHookCommand(
 ): string {
   const env = [
     ["OMNIWORK_AGENT_PROBE_URL", options.receiverUrl],
-    ["OMNIWORK_SESSION_KEY_PATH", options.sessionKeyPath],
+    ["OMNIWORK_AGENT_PROBE_TOKEN_PATH", options.probeTokenPath],
     ["OMNIWORK_AGENT_HOOK_SOURCE", "claude-code"],
     ["OMNIWORK_AGENT_HOOK_EVENT", hookEventName],
   ]

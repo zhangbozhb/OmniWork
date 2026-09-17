@@ -1,10 +1,10 @@
 {
   "name": "@omni-work/e2e-noise",
   "version": "0.1.1",
-  "description": "Noise-based end-to-end encryption primitives for OmniWork transports.",
+  "description": "Signed X25519 end-to-end encryption primitives for OmniWork transports.",
   "keywords": [
     "omniwork",
-    "noise-protocol",
+    "x25519",
     "encryption",
     "websocket"
   ],

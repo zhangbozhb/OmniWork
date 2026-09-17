@@ -3,8 +3,8 @@ import type {
   AgentSurfaceEventPayload,
 } from "@omni-work/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
+import { resolveProbeToken } from "../config/probeToken.ts";
 import type { Logger } from "../telemetry/logger.ts";
-import type { SessionKeyRecord } from "../auth-key/authKey.ts";
 import type { SessionManager } from "./sessionManager.ts";
 import type { AgentMessageService } from "../probes/agentMessageService.ts";
 import { AgentHookReceiver } from "../probes/agentHookReceiver.ts";
@@ -29,7 +29,6 @@ interface AgentProbeRuntimeOptions {
   logger: Logger;
   agentMessages: AgentMessageService;
   sessionManager: SessionManager;
-  getKeyRecord(): SessionKeyRecord;
   onObservation?(event: AgentProbeEvent): void;
   onSurfaceEvent?(event: AgentSurfaceEventPayload): void;
 }
@@ -39,7 +38,7 @@ export class AgentProbeRuntime {
   private readonly logger: Logger;
   private readonly agentMessages: AgentMessageService;
   private readonly sessionManager: SessionManager;
-  private readonly getKeyRecord: () => SessionKeyRecord;
+  private readonly probeToken: string;
   private readonly onObservation?: (event: AgentProbeEvent) => void;
   private readonly onSurfaceEvent?: (event: AgentSurfaceEventPayload) => void;
   private receiver: AgentHookReceiver | null = null;
@@ -49,7 +48,10 @@ export class AgentProbeRuntime {
     this.logger = options.logger;
     this.agentMessages = options.agentMessages;
     this.sessionManager = options.sessionManager;
-    this.getKeyRecord = options.getKeyRecord;
+    this.probeToken = resolveProbeToken(
+      options.config.probeTokenPath,
+      options.config.agentProbeToken,
+    );
     this.onObservation = options.onObservation;
     this.onSurfaceEvent = options.onSurfaceEvent;
   }
@@ -58,11 +60,10 @@ export class AgentProbeRuntime {
     if (!this.config.agentProbeEnabled || this.receiver) {
       return;
     }
-    const token = this.config.agentProbeToken ?? this.getKeyRecord().key;
     const receiver = new AgentHookReceiver({
       host: this.config.agentProbeHost,
       port: this.config.agentProbePort,
-      token,
+      token: this.probeToken,
       onProbeEvent: async (event) => {
         await this.acceptProbeEvent(event, "agent probe event accepted");
       },
@@ -80,7 +81,7 @@ export class AgentProbeRuntime {
       this.receiver = receiver;
       this.logger.info("agent hook receiver started", {
         url: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
-        token_source: this.config.agentProbeToken ? "env" : "session_key",
+        token_source: this.config.agentProbeToken ? "config" : "probe_token",
       });
       await this.importTraeHookRecords();
     } catch (error) {
@@ -226,7 +227,7 @@ export class AgentProbeRuntime {
     try {
       const result = await ensureCodexHooksInstalled({
         receiverUrl: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
-        sessionKeyPath: this.config.sessionKeyPath,
+        probeTokenPath: this.config.probeTokenPath,
       });
       if (!result.installed) {
         this.logger.warn("codex hooks auto install skipped", {
@@ -250,7 +251,7 @@ export class AgentProbeRuntime {
     try {
       const result = await ensureClaudeHooksInstalled({
         receiverUrl: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
-        sessionKeyPath: this.config.sessionKeyPath,
+        probeTokenPath: this.config.probeTokenPath,
       });
       if (!result.installed) {
         this.logger.warn("claude hooks auto install skipped", {
@@ -277,7 +278,7 @@ export class AgentProbeRuntime {
       const results = await ensureTraeFamilyHooksInstalled({
         provider,
         receiverUrl: `http://${this.config.agentProbeHost}:${this.config.agentProbePort}/api/probes/hooks`,
-        sessionKeyPath: this.config.sessionKeyPath,
+        probeTokenPath: this.config.probeTokenPath,
       });
       for (const result of results) {
         if (!result.installed) {

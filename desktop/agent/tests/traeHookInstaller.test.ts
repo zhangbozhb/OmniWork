@@ -19,7 +19,7 @@ test("ensureTraeHooksInstalled creates hooks.json with OmniWork hooks", async ()
     hooksPath,
     provider: "trae-cn",
     receiverUrl: "http://127.0.0.1:17669/api/probes/hooks",
-    sessionKeyPath: "/tmp/session-key.json",
+    probeTokenPath: "/tmp/probe-token.json",
   });
   const parsed = JSON.parse(await readFile(hooksPath, "utf8"));
 
@@ -46,7 +46,7 @@ test("ensureTraeHooksInstalled creates hooks.json with OmniWork hooks", async ()
   );
   assert.match(
     parsed.hooks.SessionStart[0].hooks[1].command,
-    /OMNIWORK_SESSION_KEY_PATH='\/tmp\/session-key\.json'/u,
+    /OMNIWORK_AGENT_PROBE_TOKEN_PATH='\/tmp\/probe-token\.json'/u,
   );
   assert.match(
     parsed.hooks.SessionStart[0].hooks[0].command,
@@ -157,7 +157,7 @@ test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () =
   const result = await ensureTraeHooksInstalled({
     hooksPath,
     provider: "trae",
-    sessionKeyPath: "/tmp/current-session-key.json",
+    probeTokenPath: "/tmp/current-probe-token.json",
   });
   const parsed = JSON.parse(await readFile(hooksPath, "utf8"));
 
@@ -193,7 +193,7 @@ test("ensureTraeHooksInstalled removes stale OmniWork hook commands", async () =
   );
   assert.match(
     parsed.hooks.UserPromptSubmit[0].hooks[1].command,
-    /OMNIWORK_SESSION_KEY_PATH='\/tmp\/current-session-key\.json'/u,
+    /OMNIWORK_AGENT_PROBE_TOKEN_PATH='\/tmp\/current-probe-token\.json'/u,
   );
 });
 

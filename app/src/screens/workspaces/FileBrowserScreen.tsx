@@ -20,6 +20,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type ViewInstance,
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -92,7 +93,7 @@ export function FileBrowserScreen({
   const { t } = useTranslation();
   const { height: windowHeight } = useWindowDimensions();
   const safeAreaInsets = useSafeAreaInsets();
-  const screenRef = useRef<View>(null);
+  const screenRef = useRef<ViewInstance>(null);
   const [copyTarget, setCopyTarget] = useState<CopyTarget | undefined>();
   const [copyNotice, setCopyNotice] = useState<CopyNotice | undefined>();
   const [previewMode, setPreviewMode] = useState<FilePreviewMode>("preview");
@@ -1041,7 +1042,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   previewBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 0, 0, 0.28)",
   },
   previewSheet: {

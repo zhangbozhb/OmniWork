@@ -5,7 +5,7 @@ export interface AppLinkSubscription {
 }
 
 export async function getInitialAppUrl(): Promise<string | null> {
-  return Linking.getInitialURL();
+  return (await Linking.getInitialURL()) ?? null;
 }
 
 export function addAppUrlListener(

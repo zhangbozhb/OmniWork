@@ -1,8 +1,9 @@
 import { strict as assert } from "node:assert";
-import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { generateIdentityKeyPair } from "@omni-work/protocol-ts";
 
 import { RelayUserAuthStore } from "../src/relayUserAuthStore.ts";
 
@@ -34,10 +35,11 @@ try {
     ttlMs: 1000,
     now: 1400,
   });
-  const { publicKey } = generateKeyPairSync("ed25519");
+  const identity = generateIdentityKeyPair("agent");
   const device = store.consumeDeviceEnrollment({
     token: enrollment.token,
-    publicKey: publicKey.export({ type: "spki", format: "pem" }).toString(),
+    deviceId: identity.id,
+    publicKey: identity.publicKey,
     name: "MacBook",
     maxDevicesPerUser: 10,
     now: 1500,
@@ -46,8 +48,39 @@ try {
   assert.equal(device.user_id, user.id);
   assert.equal(device.name, "MacBook");
   assert.equal(store.getDevice(device.id)?.id, device.id);
+  const retryToken = store.createDeviceEnrollment({ userId: user.id, ttlMs: 1000, now: 1501 });
+  assert.equal(store.consumeDeviceEnrollment({
+    token: retryToken.token,
+    deviceId: identity.id,
+    publicKey: identity.publicKey,
+    maxDevicesPerUser: 1,
+    now: 1600,
+  })?.id, device.id);
   assert.equal(store.revokeDevice(device.id, user.id, 1700), true);
   assert.ok(store.getDevice(device.id)?.revoked_at);
+
+  const restoreToken = store.createDeviceEnrollment({ userId: user.id, ttlMs: 1000, now: 1800 });
+  assert.equal(store.consumeDeviceEnrollment({
+    token: restoreToken.token,
+    deviceId: identity.id,
+    publicKey: identity.publicKey,
+    maxDevicesPerUser: 1,
+    now: 1900,
+  })?.id, device.id);
+  assert.equal(store.getDevice(device.id)?.revoked_at, null);
+  assert.equal(store.consumeDeviceEnrollment({
+    token: restoreToken.token, deviceId: identity.id, publicKey: identity.publicKey,
+    maxDevicesPerUser: 1, now: 1901,
+  }), null);
+
+  const otherLink = store.createEmailLink({ email: "other@example.com", ttlMs: 1000, now: 2000 });
+  const otherUser = store.consumeEmailLink(otherLink.token, 2001)!;
+  const otherToken = store.createDeviceEnrollment({ userId: otherUser.id, ttlMs: 1000, now: 2002 });
+  assert.equal(store.consumeDeviceEnrollment({
+    token: otherToken.token, deviceId: identity.id, publicKey: identity.publicKey,
+    maxDevicesPerUser: 10, now: 2003,
+  }), null);
+  assert.equal(store.getDevice(device.id)?.user_id, user.id);
 
   console.log("relay user auth store tests passed");
 } finally {

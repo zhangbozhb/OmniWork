@@ -1,22 +1,23 @@
 import { strict as assert } from "node:assert";
-import { generateKeyPairSync, sign } from "node:crypto";
 
 import {
-  E2E_SUPPORT_V1,
+  E2E_SUPPORT_V2,
+  PROTOCOL_VERSION,
   RELAY_AGENT_IP_BANNED_CLOSE_REASON,
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
-  PROTOCOL_SUPPORT_V1,
+  PROTOCOL_SUPPORT_V2,
+  SIGNATURE_DOMAINS,
+  agentRelayInitSignatureFields,
+  agentRelayProofSignatureFields,
   createMessage,
+  generateIdentityKeyPair,
+  signIdentityFields,
   type AgentAuthInitPayload,
   type AgentHelloPayload,
   type MobileConnectPayload,
 } from "@omni-work/protocol-ts";
 
-import {
-  createStatelessAgentAuthChallenge,
-  relayDeviceInitSignaturePayload,
-  relayDeviceProofSignaturePayload,
-} from "../src/relayDeviceSignature.ts";
+import { createStatelessAgentAuthChallenge } from "../src/relayDeviceSignature.ts";
 import type {
   RelayAuthDevice,
   RelayAuthUser,
@@ -30,6 +31,8 @@ import { MobileEmailLinkPolicy } from "../src/auth/policies/mobileEmailLinkPolic
 const CHALLENGE_SECRET = Buffer.from("auth-guard-test-secret");
 const AGENT_CONNECTION_ID = "conn-agent-test";
 const AGENT_REMOTE_IP = "203.0.113.20";
+const AGENT_IDENTITY = generateIdentityKeyPair("agent");
+const APP_IDENTITY = generateIdentityKeyPair("app");
 
 {
   const guard = createRelayWsGuard(() => ({ reason: "test" }));
@@ -142,7 +145,7 @@ const AGENT_REMOTE_IP = "203.0.113.20";
   const guard = createAgentHelloGuard({
     authMode: "email_link",
     getDevice: () => ({
-      id: "device-1",
+      id: AGENT_IDENTITY.id,
       user_id: "user-1",
       public_key: "invalid",
       created_at: 1,
@@ -158,10 +161,10 @@ const AGENT_REMOTE_IP = "203.0.113.20";
 
   assert.equal(decision.ok, false);
   if (!decision.ok) {
-    assert.equal(decision.reason, "invalid_signature");
+    assert.equal(decision.reason, "public_key_mismatch");
     assert.equal(decision.action.kind, "close_ws");
     if (decision.action.kind === "close_ws") {
-      assert.equal(decision.action.reason, "missing_relay_auth");
+      assert.equal(decision.action.reason, "public_key_mismatch");
     }
   }
 }
@@ -171,7 +174,7 @@ const AGENT_REMOTE_IP = "203.0.113.20";
   const guard = createAgentHelloGuard({
     authMode: "email_link",
     getDevice: () => ({
-      id: "device-1",
+      id: AGENT_IDENTITY.id,
       user_id: "user-1",
       public_key: publicKey,
       created_at: 1,
@@ -197,7 +200,7 @@ const AGENT_REMOTE_IP = "203.0.113.20";
   const guard = createAgentHelloGuard({
     authMode: "email_link",
     getDevice: () => ({
-      id: "device-1",
+      id: AGENT_IDENTITY.id,
       user_id: "user-1",
       public_key: publicKey,
       created_at: 1,
@@ -218,10 +221,10 @@ const AGENT_REMOTE_IP = "203.0.113.20";
     ok: true,
     subject: {
       userId: "user-1",
-      deviceId: "device-1",
+      deviceId: AGENT_IDENTITY.id,
     },
   });
-  assert.equal(seenDeviceId, "device-1");
+  assert.equal(seenDeviceId, AGENT_IDENTITY.id);
 }
 
 {
@@ -229,7 +232,7 @@ const AGENT_REMOTE_IP = "203.0.113.20";
   const guard = createAgentHelloGuard({
     authMode: "email_link",
     getDevice: () => ({
-      id: "device-1",
+      id: AGENT_IDENTITY.id,
       user_id: "user-1",
       public_key: publicKey,
       created_at: 1,
@@ -247,7 +250,7 @@ const AGENT_REMOTE_IP = "203.0.113.20";
     ok: true,
     subject: {
       userId: "user-1",
-      deviceId: "device-1",
+      deviceId: AGENT_IDENTITY.id,
     },
   });
 }
@@ -257,9 +260,9 @@ const AGENT_REMOTE_IP = "203.0.113.20";
     authMode: "email_link",
     authenticateUserToken: () => null,
     getDevice: () => ({
-      id: "device-1",
+      id: AGENT_IDENTITY.id,
       user_id: "user-1",
-      public_key: "unused",
+      public_key: AGENT_IDENTITY.publicKey,
       created_at: 1,
     }),
   });
@@ -289,9 +292,9 @@ const AGENT_REMOTE_IP = "203.0.113.20";
       created_at: 1,
     }),
     getDevice: () => ({
-      id: "device-1",
+      id: AGENT_IDENTITY.id,
       user_id: "user-1",
-      public_key: "unused",
+      public_key: AGENT_IDENTITY.publicKey,
       created_at: 1,
     }),
   });
@@ -316,9 +319,9 @@ const AGENT_REMOTE_IP = "203.0.113.20";
       created_at: 1,
     }),
     getDevice: () => ({
-      id: "device-1",
+      id: AGENT_IDENTITY.id,
       user_id: "user-1",
-      public_key: "unused",
+      public_key: AGENT_IDENTITY.publicKey,
       created_at: 1,
     }),
   });
@@ -332,7 +335,7 @@ const AGENT_REMOTE_IP = "203.0.113.20";
     ok: true,
     subject: {
       userId: "user-1",
-      deviceId: "device-1",
+      deviceId: AGENT_IDENTITY.id,
     },
   });
 }
@@ -411,12 +414,21 @@ function createAgentHello(
   overrides: Partial<AgentHelloPayload> = {},
 ): AgentHelloPayload {
   return {
-    v: 1,
-    device_id: "device-1",
-    protocol: PROTOCOL_SUPPORT_V1,
-    e2e: E2E_SUPPORT_V1,
+    v: PROTOCOL_VERSION,
+    device_id: AGENT_IDENTITY.id,
+    device_public_key: AGENT_IDENTITY.publicKey,
+    relay_auth: {
+      method: "device_signature",
+      timestamp: Date.now(),
+      challenge: "challenge-placeholder",
+      signature: "signature-placeholder",
+    },
+    protocol: PROTOCOL_SUPPORT_V2,
+    e2e: E2E_SUPPORT_V2,
     hostname: "host",
     platform: "darwin",
+    system_type: "Darwin",
+    uname: "Darwin host 25.6.0 Darwin Kernel Version 25.6.0 arm64",
     agent_version: "0.1.0",
     capabilities: [],
     ...overrides,
@@ -427,14 +439,16 @@ function createMobileConnect(
   overrides: Partial<MobileConnectPayload> = {},
 ): MobileConnectPayload {
   return {
-    v: 1,
-    device_id: "device-1",
+    v: PROTOCOL_VERSION,
+    device_id: AGENT_IDENTITY.id,
+    app_id: APP_IDENTITY.id,
+    app_public_key: APP_IDENTITY.publicKey,
     app_info: {
       instance_id: "app-instance",
       runtime_id: "app-runtime",
     },
-    protocol: PROTOCOL_SUPPORT_V1,
-    e2e: E2E_SUPPORT_V1,
+    protocol: PROTOCOL_SUPPORT_V2,
+    e2e: E2E_SUPPORT_V2,
     session_token: "session-token",
     ...overrides,
   };
@@ -444,29 +458,25 @@ function createSignedAgentAuthInit(): {
   init: AgentAuthInitPayload;
   publicKey: string;
 } {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const timestamp = Date.now();
-  const devicePublicKey = publicKey
-    .export({ type: "spki", format: "pem" })
-    .toString();
   const init: AgentAuthInitPayload = {
-    v: 1,
-    device_id: "device-1",
-    device_public_key: devicePublicKey,
+    v: PROTOCOL_VERSION,
+    device_id: AGENT_IDENTITY.id,
+    device_public_key: AGENT_IDENTITY.publicKey,
     timestamp,
-    signature: sign(
-      null,
-      relayDeviceInitSignaturePayload({
-        deviceId: "device-1",
-        devicePublicKey,
+    signature: signIdentityFields(
+      AGENT_IDENTITY.privateKey,
+      SIGNATURE_DOMAINS.agentRelayInit,
+      agentRelayInitSignatureFields({
+        deviceId: AGENT_IDENTITY.id,
+        devicePublicKey: AGENT_IDENTITY.publicKey,
         timestamp,
       }),
-      privateKey,
-    ).toString("base64url"),
+    ),
   };
   return {
     init,
-    publicKey: devicePublicKey,
+    publicKey: AGENT_IDENTITY.publicKey,
   };
 }
 
@@ -474,10 +484,9 @@ function createSignedAgentHello(): {
   hello: AgentHelloPayload;
   publicKey: string;
 } {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const timestamp = Date.now();
   const challenge = createStatelessAgentAuthChallenge({
-    deviceId: "device-1",
+    deviceId: AGENT_IDENTITY.id,
     connectionId: AGENT_CONNECTION_ID,
     secret: CHALLENGE_SECRET,
     ttlMs: 60_000,
@@ -488,19 +497,19 @@ function createSignedAgentHello(): {
       method: "device_signature",
       timestamp,
       challenge,
-      signature: sign(
-        null,
-        relayDeviceProofSignaturePayload({
-          deviceId: "device-1",
+      signature: signIdentityFields(
+        AGENT_IDENTITY.privateKey,
+        SIGNATURE_DOMAINS.agentRelayProof,
+        agentRelayProofSignatureFields({
+          deviceId: AGENT_IDENTITY.id,
           timestamp,
           challenge,
         }),
-        privateKey,
-      ).toString("base64url"),
+      ),
     },
   });
   return {
     hello,
-    publicKey: publicKey.export({ type: "spki", format: "pem" }).toString(),
+    publicKey: AGENT_IDENTITY.publicKey,
   };
 }

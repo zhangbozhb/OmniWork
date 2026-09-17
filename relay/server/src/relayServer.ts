@@ -204,6 +204,7 @@ export class RelayServer {
       authLimiter: this.authLimiter,
       topology: this.topology,
       state: this.state,
+      authorizeAgent: (input) => this.admin.authorizeAgent(input),
       send: (connection, message) => this.send(connection, message),
     });
     this.appAdmission = new AppAdmission({
@@ -221,7 +222,6 @@ export class RelayServer {
       state: this.state,
       pendingAuth: this.pendingAuth,
       authLimiter: this.authLimiter,
-      orchestrator: this.orchestrator,
       send: (connection, message) => this.send(connection, message),
     });
     this.maintenance = new RuntimeMaintenance({
@@ -320,6 +320,7 @@ export class RelayServer {
       session_ttl_ms: this.config.admin.sessionTtlMs,
       https_required: this.config.admin.requireHttps,
       web_enabled: this.config.admin.webEnabled,
+      agent_authorization_mode: this.config.agentAuthorization.mode,
       admin_host: this.config.admin.host,
       admin_port: this.config.admin.port,
       controls_db: this.config.admin.controlsDbPath,
@@ -488,6 +489,7 @@ export class RelayServer {
         );
         break;
       case "auth.ok":
+      case "auth.pending":
       case "auth.failed":
         this.handleAuthResult(connection, message);
         break;

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { E2E_SUPPORT_V1, type MessageEnvelope } from "@omni-work/protocol-ts";
+import { E2E_SUPPORT_V2, type MessageEnvelope } from "@omni-work/protocol-ts";
 
 import { RelayDeviceStatusStore } from "../src/relayDeviceStatusStore.ts";
 import { RelayStateStore } from "../src/relayStateStore.ts";
@@ -77,8 +77,7 @@ function createAgentConnection(id: string, deviceId: string): RelayConnection {
     state: "registered_agent",
     socket: createNoopSocket(),
     deviceId,
-    businessSecurityMode: "e2e_required",
-    e2e: E2E_SUPPORT_V1,
+    e2e: E2E_SUPPORT_V2,
     authenticated: true,
     remoteIp: "203.0.113.10",
     observations: [],

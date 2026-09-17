@@ -1,5 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+  identityMatchesPublicKey,
+  normalizeIdentityId,
+} from "@omni-work/protocol-ts";
 
 import type { RelayServerConfig } from "./config.ts";
 import type { MailSender } from "./mailSender.ts";
@@ -67,6 +71,10 @@ export class RelayUserAuthController {
     }
     if (request.method === "POST" && url.pathname === "/auth/logout") {
       this.logout(request, response);
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/auth/sessions") {
+      this.createAppSession(request, response);
       return;
     }
     if (
@@ -161,17 +169,12 @@ export class RelayUserAuthController {
       userId: user.id,
       ttlMs: this.options.config.auth.sessionTtlMs,
     });
-    const body = {
-      ok: true,
-      session_token: session.token,
-      expires_at: new Date(session.expires_at).toISOString(),
-      user: publicUser(user),
-    };
     response.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
       "set-cookie": sessionCookie(session.token, session.expires_at),
     });
-    response.end(renderVerifiedPage(body.session_token));
+    response.end(renderVerifiedPage());
   }
 
   private me(request: IncomingMessage, response: ServerResponse): void {
@@ -198,9 +201,32 @@ export class RelayUserAuthController {
     this.options.store.revokeSession(readSessionToken(request));
     response.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
       "set-cookie": clearSessionCookie(),
     });
     response.end(JSON.stringify({ ok: true }));
+  }
+
+  private createAppSession(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): void {
+    const user = this.authenticateRequest(request);
+    if (!user) {
+      writeJson(response, 401, { error: "unauthorized" });
+      return;
+    }
+    if (!this.verifyCsrfForCookieSession(request, response)) {
+      return;
+    }
+    const session = this.options.store.createSession({
+      userId: user.id,
+      ttlMs: this.options.config.auth.sessionTtlMs,
+    });
+    writeJson(response, 200, {
+      session_token: session.token,
+      expires_at: new Date(session.expires_at).toISOString(),
+    });
   }
 
   private createDeviceEnrollment(
@@ -235,17 +261,27 @@ export class RelayUserAuthController {
     }
     const enrollmentToken =
       typeof body.enrollment_token === "string" ? body.enrollment_token : "";
+    const deviceId =
+      typeof body.device_id === "string"
+        ? normalizeIdentityId(body.device_id)
+        : null;
     const publicKey = typeof body.public_key === "string" ? body.public_key : "";
     const deviceName =
       typeof body.device_name === "string" && body.device_name.trim()
         ? body.device_name.trim()
         : undefined;
-    if (!enrollmentToken || !publicKey.includes("PUBLIC KEY")) {
+    if (
+      !enrollmentToken ||
+      !deviceId ||
+      !publicKey ||
+      !identityMatchesPublicKey("agent", deviceId, publicKey)
+    ) {
       writeJson(response, 400, { error: "invalid_device_enrollment" });
       return;
     }
     const device = this.options.store.consumeDeviceEnrollment({
       token: enrollmentToken,
+      deviceId,
       name: deviceName,
       publicKey,
       maxDevicesPerUser: this.options.config.auth.maxDevicesPerUser,
@@ -440,6 +476,7 @@ function writeJson(
 ): void {
   response.writeHead(statusCode, {
     "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
   });
   response.end(JSON.stringify(body));
 }
@@ -451,6 +488,7 @@ function writeHtml(
 ): void {
   response.writeHead(statusCode, {
     "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
   });
   response.end(body);
 }
@@ -480,7 +518,7 @@ function renderAuthPage(): string {
 <body>
   <main>
     <h1>OmniWork Relay</h1>
-    <p class="muted">Sign in by email, then create a short-lived device token for Desktop Agent enrollment.</p>
+    <p class="muted">Sign in by email to enroll a Desktop Agent or sign in from the App.</p>
     <section id="login">
       <h2>Email sign in</h2>
       <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
@@ -490,6 +528,19 @@ function renderAuthPage(): string {
     <section id="account" hidden>
       <h2>Account</h2>
       <p id="user"></p>
+      <h3>App sign in</h3>
+      <p class="muted">Native Apps and Web Apps without this Relay's login cookie need a separate token. Paste it into the App's Relay sign-in token field. Keep it private: it grants access to your Relay account. Use HTTPS and wss:// outside local development.</p>
+      <button id="createAppSession">Create App sign-in token</button>
+      <div id="appSession" hidden>
+        <label for="appToken">Private App sign-in token</label>
+        <input id="appToken" type="password" readonly autocomplete="off" spellcheck="false" />
+        <button id="showAppToken">Show token</button>
+        <button id="copyAppToken">Copy token</button>
+        <p id="appTokenExpiry" class="muted"></p>
+      </div>
+      <p id="appTokenStatus" class="muted" role="status"></p>
+      <p class="muted">Each token is an independent session. Logging out here clears this page but does not revoke App tokens; they expire with the Relay session lifetime.</p>
+      <h3>Desktop enrollment</h3>
       <button id="createEnrollment">Create device token</button>
       <p class="muted">Run this command on your desktop within 5 minutes:</p>
       <pre id="command"></pre>
@@ -504,12 +555,36 @@ function renderAuthPage(): string {
     const status = document.getElementById("loginStatus");
     const command = document.getElementById("command");
     const devices = document.getElementById("devices");
+    const appSession = document.getElementById("appSession");
+    const appToken = document.getElementById("appToken");
+    const appTokenExpiry = document.getElementById("appTokenExpiry");
+    const appTokenStatus = document.getElementById("appTokenStatus");
+    const createAppSession = document.getElementById("createAppSession");
+    const showAppToken = document.getElementById("showAppToken");
+    const logout = document.getElementById("logout");
     const relayUrl = location.origin.replace(/^http/, "ws") + "/relay/ws/agent";
     let csrfToken = "";
+
+    function clearAppToken() {
+      appToken.value = "";
+      appToken.type = "password";
+      appTokenExpiry.textContent = "";
+      appTokenStatus.textContent = "";
+      showAppToken.textContent = "Show token";
+      appSession.hidden = true;
+      try { localStorage.removeItem("omniwork_user_session"); } catch {}
+    }
+
+    clearAppToken();
 
     async function refresh() {
       const res = await fetch("/auth/me");
       if (!res.ok) {
+        clearAppToken();
+        csrfToken = "";
+        command.textContent = "";
+        devices.replaceChildren();
+        document.getElementById("user").textContent = "";
         login.hidden = false;
         account.hidden = true;
         return;
@@ -593,23 +668,79 @@ function renderAuthPage(): string {
       await refreshDevices();
     };
 
-    document.getElementById("logout").onclick = async () => {
-      await authPost("/auth/logout");
-      await refresh();
+    createAppSession.onclick = async () => {
+      clearAppToken();
+      createAppSession.disabled = true;
+      logout.disabled = true;
+      try {
+        const res = await authPost("/auth/sessions");
+        if (!res.ok) {
+          appTokenStatus.textContent = "Could not create token. Please sign in again and retry.";
+          return;
+        }
+        const data = await res.json();
+        appToken.value = data.session_token;
+        appTokenExpiry.textContent = "Expires: " + data.expires_at;
+        appSession.hidden = false;
+      } catch {
+        clearAppToken();
+        appTokenStatus.textContent = "Could not create token. Check your connection and retry.";
+      } finally {
+        createAppSession.disabled = false;
+        logout.disabled = false;
+      }
     };
 
-    refresh();
+    showAppToken.onclick = () => {
+      appToken.type = appToken.type === "password" ? "text" : "password";
+      showAppToken.textContent = appToken.type === "password" ? "Show token" : "Hide token";
+    };
+
+    document.getElementById("copyAppToken").onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(appToken.value);
+        appTokenStatus.textContent = "Copied. Keep this token private.";
+      } catch {
+        appToken.type = "text";
+        showAppToken.textContent = "Hide token";
+        appToken.focus();
+        appToken.select();
+        appTokenStatus.textContent = "Clipboard unavailable. Select and copy the token manually.";
+      }
+    };
+
+    logout.onclick = async () => {
+      clearAppToken();
+      command.textContent = "";
+      createAppSession.disabled = true;
+      logout.disabled = true;
+      try {
+        const res = await authPost("/auth/logout");
+        if (!res.ok) {
+          appTokenStatus.textContent = "Could not log out. Refresh the page and retry.";
+          return;
+        }
+        await refresh();
+      } catch {
+        appTokenStatus.textContent = "Could not confirm logout. Check your connection and retry.";
+      } finally {
+        createAppSession.disabled = false;
+        logout.disabled = false;
+      }
+    };
+
+    refresh().catch(() => { status.textContent = "Could not load account. Refresh the page to retry."; });
   </script>
 </body>
 </html>`;
 }
 
-function renderVerifiedPage(sessionToken: string): string {
+function renderVerifiedPage(): string {
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Signed in</title></head>
 <body>
-  <script>localStorage.setItem("omniwork_user_session", ${JSON.stringify(sessionToken)}); location.replace("/auth/");</script>
+  <script>location.replace("/auth/");</script>
   <p>Signed in. Continue to <a href="/auth/">OmniWork Relay</a>.</p>
 </body>
 </html>`;

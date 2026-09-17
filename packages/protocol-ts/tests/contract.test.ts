@@ -9,13 +9,11 @@ import { describe, it } from "node:test";
 
 import {
   E2E_PROTOCOL_VERSION,
-  E2E_SUPPORT_V1,
-  ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
+  E2E_SUPPORT_V2,
   INNER_PROTOCOL_VERSION,
-  NOISE_SUITE_NNPSK0_V1,
-  PLAINTEXT_BUSINESS_CAPABILITY_V1,
+  SIGNED_X25519_SUITE_V2,
   PROTOCOL_VERSION,
-  PROTOCOL_SUPPORT_V1,
+  PROTOCOL_SUPPORT_V2,
   SESSION_FIELDS,
   SESSION_REQUIRED_FIELDS,
   SUPPORTED_SESSION_STATUSES,
@@ -24,27 +22,26 @@ import {
   agentAuthChallengePayloadSchema,
   agentAuthInitPayloadSchema,
   agentHelloPayloadSchema,
+  authChallengePayloadSchema,
   authFailedPayloadSchema,
   authOkPayloadSchema,
   authVerifyPayloadSchema,
   terminalSessionSchema,
-  createEncryptedPairingShare,
   createMessage,
   createPairingLink,
-  decryptPairingLink,
   e2eHandshakeInitPayloadSchema,
   e2eMessagePayloadSchema,
   e2eReadyPayloadSchema,
+  generateIdentityKeyPair,
   innerEnvelopeSchema,
   innerToMessage,
   isE2EBusinessMessage,
   isTransportPreference,
   messageToInner,
   messageEnvelopeSchema,
+  mobileConnectPayloadSchema,
   parsePairingLink,
   parseMessageEnvelope,
-  parseEncryptedPairingLink,
-  PairingLinkDecryptError,
   protocolErrorPayloadSchema,
   appConnectionHeartbeatPayloadSchema,
   sessionAttachPayloadSchema,
@@ -102,8 +99,8 @@ describe("messageEnvelopeSchema", () => {
     const envelope = createMessage("mobile.connect", {
       v: PROTOCOL_VERSION,
       device_id: "device-1",
-      protocol: PROTOCOL_SUPPORT_V1,
-      e2e: E2E_SUPPORT_V1,
+      protocol: PROTOCOL_SUPPORT_V2,
+      e2e: E2E_SUPPORT_V2,
     });
     assert.equal(parseMessageEnvelope(envelope), null);
   });
@@ -115,7 +112,7 @@ describe("messageEnvelopeSchema", () => {
         type: "protocol.error",
         payload: {
           v: PROTOCOL_VERSION,
-          code: "plaintext_business_rejected",
+          code: "unencrypted_business_rejected",
           retryable: false,
         },
       },
@@ -129,21 +126,21 @@ describe("messageEnvelopeSchema", () => {
         app_connection_id: "conn_app_1",
         payload: {
           v: PROTOCOL_VERSION,
-          code: "plaintext_business_rejected",
+          code: "unencrypted_business_rejected",
           retryable: false,
         },
       },
     });
     assert.equal(parseMessageEnvelope(targeted), null);
 
-      const nonErrorDelivery = createMessage("relay.app.deliver", {
-        relay_context_id: "relay_ctx_1",
-        message: {
-          type: "terminal.frame",
-          payload: { data: "not allowed" },
-        },
-      });
-      assert.equal(parseMessageEnvelope(nonErrorDelivery), null);
+    const nonErrorDelivery = createMessage("relay.app.deliver", {
+      relay_context_id: "relay_ctx_1",
+      message: {
+        type: "terminal.frame",
+        payload: { data: "not allowed" },
+      },
+    });
+    assert.equal(parseMessageEnvelope(nonErrorDelivery), null);
   });
 });
 
@@ -171,14 +168,30 @@ describe("default terminal providers", () => {
 
 describe("auth payload schemas", () => {
   it("validates auth.verify and auth.ok happy path", () => {
+    const agentIdentity = generateIdentityKeyPair("agent");
+    const appIdentity = generateIdentityKeyPair("app");
+    authChallengePayloadSchema.parse({
+      nonce: "n1",
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      connection_id: "c1",
+      agent_connection_id: "conn_agent_1",
+      agent_public_key: agentIdentity.publicKey,
+    });
     authVerifyPayloadSchema.parse({
       nonce: "n1",
+      connection_id: "c1",
+      agent_connection_id: "conn_agent_1",
+      device_id: agentIdentity.id,
+      agent_public_key: agentIdentity.publicKey,
+      app_id: appIdentity.id,
+      app_public_key: appIdentity.publicKey,
       app_info: {
         instance_id: "app-1",
         runtime_id: "runtime-1",
       },
-      proof: "p1",
-      connection_id: "c1",
+      requested_scopes: ["device.control"],
+      timestamp: Date.now(),
+      signature: "signature",
       observations: [
         {
           source: "relay",
@@ -194,8 +207,16 @@ describe("auth payload schemas", () => {
       ],
     });
     authOkPayloadSchema.parse({
-        agent_connection_id: "conn_agent_1",
+      nonce: "n1",
+      device_id: agentIdentity.id,
+      agent_public_key: agentIdentity.publicKey,
+      app_id: appIdentity.id,
+      agent_connection_id: "conn_agent_1",
       connection_id: "c1",
+      granted_scopes: ["device.control"],
+      timestamp: Date.now(),
+      signature: "signature",
+      e2e: E2E_SUPPORT_V2,
     });
   });
 
@@ -208,10 +229,14 @@ describe("auth payload schemas", () => {
 
   it("accepts every documented auth.failed reason", () => {
     for (const reason of [
-      "key_mismatch",
+      "approval_rejected",
+      "approval_required",
+      "approval_timeout",
       "agent_restarted",
-      "key_expired",
       "device_not_online",
+      "identity_mismatch",
+      "invalid_signature",
+      "revoked",
       "too_many_attempts",
       "malformed_proof",
     ] as const) {
@@ -220,12 +245,13 @@ describe("auth payload schemas", () => {
   });
 });
 
-describe("agent hello security mode", () => {
+describe("agent hello identity", () => {
   it("accepts agent auth init and challenge payloads", () => {
+    const identity = generateIdentityKeyPair("agent");
     agentAuthInitPayloadSchema.parse({
       v: PROTOCOL_VERSION,
-      device_id: "device-1",
-      device_public_key: "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+      device_id: identity.id,
+      device_public_key: identity.publicKey,
       timestamp: Date.now(),
       signature: "signature",
     });
@@ -234,86 +260,99 @@ describe("agent hello security mode", () => {
     });
   });
 
-  it("accepts the default encrypted-only mode", () => {
+  it("accepts mandatory E2E support", () => {
+    const identity = generateIdentityKeyPair("agent");
     agentHelloPayloadSchema.parse({
       v: PROTOCOL_VERSION,
-      device_id: "device-1",
+      device_id: identity.id,
+      device_public_key: identity.publicKey,
       relay_auth: {
         method: "device_signature",
         timestamp: Date.now(),
         challenge: "challenge-12345678901234567890",
         signature: "signature",
       },
-      protocol: PROTOCOL_SUPPORT_V1,
-      e2e: E2E_SUPPORT_V1,
-      business_security_mode: "e2e_required",
+      protocol: PROTOCOL_SUPPORT_V2,
+      e2e: E2E_SUPPORT_V2,
       hostname: "mac",
       platform: "darwin",
+      system_type: "Darwin",
+      uname: "Darwin mac 25.6.0 Darwin Kernel Version 25.6.0 arm64",
       agent_version: "0.1.0",
-      capabilities: [ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1],
+      capabilities: [],
     });
   });
 
-  it("accepts explicit plaintext-allowed mode", () => {
+  it("accepts legacy hello without optional system metadata", () => {
+    const identity = generateIdentityKeyPair("agent");
     agentHelloPayloadSchema.parse({
       v: PROTOCOL_VERSION,
-      device_id: "device-1",
-      protocol: PROTOCOL_SUPPORT_V1,
-      e2e: { ...E2E_SUPPORT_V1, required: false },
-      business_security_mode: "plaintext_allowed",
+      device_id: identity.id,
+      device_public_key: identity.publicKey,
+      relay_auth: {
+        method: "device_signature",
+        timestamp: Date.now(),
+        challenge: "challenge-12345678901234567890",
+        signature: "signature",
+      },
+      protocol: PROTOCOL_SUPPORT_V2,
+      e2e: E2E_SUPPORT_V2,
       hostname: "mac",
       platform: "darwin",
       agent_version: "0.1.0",
-      capabilities: [PLAINTEXT_BUSINESS_CAPABILITY_V1],
+      capabilities: [],
     });
   });
 
-  it("accepts legacy hello without explicit business security mode", () => {
-    agentHelloPayloadSchema.parse({
+  it("rejects hello without signed Relay authentication", () => {
+    const identity = generateIdentityKeyPair("agent");
+    const result = agentHelloPayloadSchema.safeParse({
       v: PROTOCOL_VERSION,
-      device_id: "device-1",
-      protocol: PROTOCOL_SUPPORT_V1,
-      e2e: E2E_SUPPORT_V1,
+      device_id: identity.id,
+      device_public_key: identity.publicKey,
+      protocol: PROTOCOL_SUPPORT_V2,
+      e2e: E2E_SUPPORT_V2,
       hostname: "mac",
       platform: "darwin",
+      system_type: "Darwin",
+      uname: "Darwin mac 25.6.0 Darwin Kernel Version 25.6.0 arm64",
       agent_version: "0.1.0",
-      capabilities: [ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1],
+      capabilities: [],
     });
+    assert.equal(result.success, false);
   });
 });
 
-describe("e2e v1 schemas", () => {
-  it("validates the mandatory Noise handshake init payload", () => {
-    e2eHandshakeInitPayloadSchema.parse({
-      v: PROTOCOL_VERSION,
-      e2e_version: E2E_PROTOCOL_VERSION,
-        agent_connection_id: "conn_agent_1",
-      app_connection_id: "conn_app_1",
-      handshake_id: "hs_1",
-      suite: NOISE_SUITE_NNPSK0_V1,
-      app_protocol: {
-        outer_v: PROTOCOL_SUPPORT_V1.current,
-        inner_v: INNER_PROTOCOL_VERSION,
-        e2e_v: E2E_SUPPORT_V1.versions[0],
-      },
-      message: "base64url-noise-message",
-    });
+describe("signed E2E v2 schemas", () => {
+  const agentIdentity = generateIdentityKeyPair("agent");
+  const appIdentity = generateIdentityKeyPair("app");
+  const handshakeInit = {
+    v: PROTOCOL_VERSION,
+    e2e_version: E2E_PROTOCOL_VERSION,
+    agent_connection_id: "conn_agent_1",
+    app_connection_id: "conn_app_1",
+    handshake_id: "hs_1",
+    suite: SIGNED_X25519_SUITE_V2,
+    device_id: agentIdentity.id,
+    app_id: appIdentity.id,
+    app_public_key: appIdentity.publicKey,
+    app_ephemeral_key: "base64url-x25519-public-key",
+    signature: "signature",
+    app_protocol: {
+      outer_v: PROTOCOL_SUPPORT_V2.current,
+      inner_v: INNER_PROTOCOL_VERSION,
+      e2e_v: E2E_SUPPORT_V2.versions[0],
+    },
+  } as const;
+
+  it("validates the mandatory signed X25519 handshake init payload", () => {
+    e2eHandshakeInitPayloadSchema.parse(handshakeInit);
   });
 
-  it("rejects unsupported Noise suites", () => {
+  it("rejects unsupported E2E suites", () => {
     const result = e2eHandshakeInitPayloadSchema.safeParse({
-      v: PROTOCOL_VERSION,
-      e2e_version: E2E_PROTOCOL_VERSION,
-        agent_connection_id: "conn_agent_1",
-      app_connection_id: "conn_app_1",
-      handshake_id: "hs_1",
+      ...handshakeInit,
       suite: "Noise_XX_25519_ChaChaPoly_BLAKE2s",
-      app_protocol: {
-        outer_v: PROTOCOL_VERSION,
-        inner_v: INNER_PROTOCOL_VERSION,
-        e2e_v: E2E_PROTOCOL_VERSION,
-      },
-      message: "base64url-noise-message",
     });
     assert.equal(result.success, false);
   });
@@ -336,7 +375,7 @@ describe("e2e v1 schemas", () => {
     });
     protocolErrorPayloadSchema.parse({
       v: PROTOCOL_VERSION,
-      code: "plaintext_business_rejected",
+      code: "unencrypted_business_rejected",
       retryable: false,
     });
     innerEnvelopeSchema.parse({
@@ -875,28 +914,30 @@ describe("agent message payload schemas", () => {
 
 describe("app client metadata payload schemas", () => {
   it("accepts mobile connect and connection heartbeat payloads", () => {
-    parseMessageEnvelope(
-      createMessage("mobile.connect", {
-        v: PROTOCOL_VERSION,
-        device_id: "device-1",
-        app_info: {
-          instance_id: "app-1",
-          runtime_id: "runtime-1",
-          device: {
-            name: "Alice iPhone",
-            platform: "ios",
-            private_network_hash: "private-network-hash",
-          },
-          app: {
-            name: "OmniWork",
-            version: "0.1.0",
-          },
+    const agentIdentity = generateIdentityKeyPair("agent");
+    const appIdentity = generateIdentityKeyPair("app");
+    mobileConnectPayloadSchema.parse({
+      v: PROTOCOL_VERSION,
+      device_id: agentIdentity.id,
+      app_id: appIdentity.id,
+      app_public_key: appIdentity.publicKey,
+      app_info: {
+        instance_id: "app-1",
+        runtime_id: "runtime-1",
+        device: {
+          name: "Alice iPhone",
+          platform: "ios",
+          private_network_hash: "private-network-hash",
         },
-        protocol: PROTOCOL_SUPPORT_V1,
-        e2e: E2E_SUPPORT_V1,
-        session_token: "session-token",
-      }),
-    );
+        app: {
+          name: "OmniWork",
+          version: "0.1.0",
+        },
+      },
+      protocol: PROTOCOL_SUPPORT_V2,
+      e2e: E2E_SUPPORT_V2,
+      session_token: "session-token",
+    });
     appConnectionHeartbeatPayloadSchema.parse({
       sent_at: new Date().toISOString(),
       seq: 1,
@@ -966,36 +1007,36 @@ describe("terminal payload schemas", () => {
 });
 
 describe("pairing link round-trip", () => {
+  const agentIdentity = generateIdentityKeyPair("agent");
   const samplePayload = {
     v: PROTOCOL_VERSION,
     relay_url: "wss://relay.example/relay/ws/mobile",
-    device_id: "mac-host-01",
+    device_id: agentIdentity.id,
     display_name: "Mac Host 01",
-    key: "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
   } as const;
 
-  it("encodes and decodes all fields losslessly", () => {
+  it("encodes and decodes target location fields losslessly", () => {
     const link = createPairingLink(samplePayload);
     assert.match(link, /^omniwork:\/\/pair\?/);
+    assert.equal(link.includes("agent_public_key"), false);
+    assert.equal(link.includes("ticket"), false);
     const parsed = parsePairingLink(link);
     assert.deepEqual(parsed, samplePayload);
   });
 
-    it("decodes payload without optional display_name", () => {
-      const { display_name: _displayName, ...minimal } = samplePayload;
+  it("decodes payload without optional display_name", () => {
+    const { display_name: _displayName, ...minimal } = samplePayload;
     const link = createPairingLink(minimal);
     const parsed = parsePairingLink(link);
     assert.equal(parsed?.display_name, undefined);
     assert.equal(parsed?.relay_url, minimal.relay_url);
     assert.equal(parsed?.device_id, minimal.device_id);
-    assert.equal(parsed?.key, minimal.key);
   });
 
-  it("preserves URL-encoded characters in relay_url and device_id", () => {
+  it("preserves URL-encoded characters in relay_url and display_name", () => {
     const tricky = {
       ...samplePayload,
       relay_url: "wss://relay.example/path with space?x=1&y=2",
-      device_id: "host name#tag",
       display_name: "Alice's MacBook #1",
     };
     const link = createPairingLink(tricky);
@@ -1066,66 +1107,20 @@ describe("pairing link round-trip", () => {
     assert.deepEqual(parsed, samplePayload);
   });
 
-  it("encrypts pairing QR links and decrypts with the 4-digit password", () => {
-    const nowMs = Date.UTC(2026, 0, 1, 0, 0, 0);
-    const share = createEncryptedPairingShare(samplePayload, {
-      source: "agent",
-      nowMs,
-      ttlMs: 60_000,
-    });
-
-    assert.match(share.password, /^\d{4}$/u);
-    assert.equal(share.expiresAt.toISOString(), "2026-01-01T00:01:00.000Z");
-    assert.equal(parseEncryptedPairingLink(share.link)?.source, "agent");
-    assert.deepEqual(
-      decryptPairingLink(share.link, share.password, nowMs),
-      samplePayload,
+  it("rejects malformed Agent device IDs", () => {
+    const link = createPairingLink(samplePayload).replace(
+      encodeURIComponent(agentIdentity.id),
+      "DEV1-invalid",
     );
+    assert.equal(parsePairingLink(link), null);
   });
 
-  it("can create encrypted pairing QR links without a user password", () => {
-    const nowMs = Date.UTC(2026, 0, 1, 0, 0, 0);
-    const share = createEncryptedPairingShare(samplePayload, {
-      source: "agent",
-      nowMs,
-      ttlMs: 60_000,
-      passwordEnabled: false,
-    });
-
-    assert.equal(share.password, "");
-    assert.equal(share.passwordRequired, false);
-    assert.match(share.link, /[?&]pin=0(?:&|$)/u);
-    assert.equal(share.link.includes("password_required"), false);
-    assert.equal(parseEncryptedPairingLink(share.link)?.passwordRequired, false);
-    assert.deepEqual(decryptPairingLink(share.link, "", nowMs), samplePayload);
-  });
-
-  it("rejects encrypted pairing QR links after local expiry", () => {
-    const nowMs = Date.UTC(2026, 0, 1, 0, 0, 0);
-    const share = createEncryptedPairingShare(samplePayload, {
-      source: "ios",
-      nowMs,
-      ttlMs: 1_000,
-    });
-
-    assert.throws(
-      () => decryptPairingLink(share.link, share.password, nowMs + 2_000),
-      (error: unknown) =>
-        error instanceof PairingLinkDecryptError && error.code === "expired",
-    );
-  });
-
-  it("rejects encrypted pairing QR links with the wrong password", () => {
-    const share = createEncryptedPairingShare(samplePayload, {
-      source: "android",
-    });
-    const wrongPassword = share.password === "0000" ? "0001" : "0000";
-
-    assert.throws(
-      () => decryptPairingLink(share.link, wrongPassword),
-      (error: unknown) =>
-        error instanceof PairingLinkDecryptError &&
-        error.code === "invalid_password",
+  it("rejects deprecated public-key and ticket fields", () => {
+    assert.equal(
+      parsePairingLink(
+        `${createPairingLink(samplePayload)}&agent_public_key=legacy`,
+      ),
+      null,
     );
   });
 });

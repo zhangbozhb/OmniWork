@@ -12,8 +12,17 @@ try {
   const store = new AdminControlStore(path);
 
   store.upsert({
-      kind: "agent_device_disable",
-      target: "device-1",
+    kind: "agent_device_authorization",
+    target: "device-approved",
+    rule: {
+      id: "authorization-agent",
+      reason: "manual authorization",
+      createdAt: 500,
+    },
+  });
+  store.upsert({
+    kind: "agent_device_disable",
+    target: "device-1",
     rule: {
       id: "rule-agent",
       reason: "maintenance",
@@ -32,17 +41,18 @@ try {
   const reloaded = new AdminControlStore(path);
   const records = reloaded.load();
 
-  assert.equal(records.length, 2);
+  assert.equal(records.length, 3);
   assert.deepEqual(
     records.map((record) => [record.kind, record.target]),
     [
-        ["agent_device_disable", "device-1"],
+      ["agent_device_authorization", "device-approved"],
+      ["agent_device_disable", "device-1"],
       ["ip_ban", "203.0.113.10"],
     ],
   );
 
-    reloaded.delete("agent_device_disable", "device-1");
-  assert.equal(reloaded.load().length, 1);
+  reloaded.delete("agent_device_disable", "device-1");
+  assert.equal(reloaded.load().length, 2);
 
   console.log("admin control store tests passed");
 } finally {

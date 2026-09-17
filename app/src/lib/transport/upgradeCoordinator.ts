@@ -75,6 +75,7 @@ export class UpgradeCoordinator {
   private negotiationTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly eventHandlers = new Set<UpgradeCoordinatorEventHandler>();
   private successEmitted = false;
+  private generation = 0;
 
   constructor(opts: UpgradeCoordinatorOptions) {
     this.role = opts.role;
@@ -117,6 +118,7 @@ export class UpgradeCoordinator {
     }
 
     this.upgradeId = payload.upgrade_id;
+    const generation = ++this.generation;
     this.appConnectionId = payload.app_connection_id;
     this.strict = payload.strict === true;
     this.state = transitionUpgradeState(this.state, "proposed");
@@ -127,10 +129,23 @@ export class UpgradeCoordinator {
       role: this.role,
     });
 
-    const peer = await this.peerFactory({
-      iceServers: payload.ice_servers,
-      role: this.role,
-    });
+    this.armTimeout();
+    let peer: WebRtcPeerAdapter | null;
+    try {
+      peer = await this.peerFactory({
+        iceServers: payload.ice_servers,
+        role: this.role,
+      });
+    } catch {
+      if (generation === this.generation) {
+        this.fail("peer_unavailable");
+      }
+      return;
+    }
+    if (generation !== this.generation) {
+      peer?.close();
+      return;
+    }
     if (!peer) {
       this.fail("peer_unavailable");
       return;
@@ -140,6 +155,9 @@ export class UpgradeCoordinator {
     if (this.role === "offerer") {
       try {
         const sdp = await peer.createOffer();
+        if (generation !== this.generation) {
+          return;
+        }
         this.sendUpgrade<TunnelUpgradeOfferPayload>("tunnel.upgrade.offer", {
           upgrade_id: payload.upgrade_id,
           app_connection_id: payload.app_connection_id,
@@ -147,6 +165,9 @@ export class UpgradeCoordinator {
         });
         this.enterNegotiating();
       } catch (error) {
+        if (generation !== this.generation) {
+          return;
+        }
         console.warn("[omniwork-upgrade] createOffer failed", {
           error: (error as Error)?.message,
         });
@@ -172,15 +193,25 @@ export class UpgradeCoordinator {
       });
       return;
     }
+    const peer = this.peer;
     try {
-      await this.peer.setRemoteDescription(payload.sdp, "offer");
-      const sdp = await this.peer.createAnswer();
+      await peer.setRemoteDescription(payload.sdp, "offer");
+      if (peer !== this.peer) {
+        return;
+      }
+      const sdp = await peer.createAnswer();
+      if (peer !== this.peer) {
+        return;
+      }
       this.sendUpgrade<TunnelUpgradeAnswerPayload>("tunnel.upgrade.answer", {
         upgrade_id: payload.upgrade_id,
         app_connection_id: payload.app_connection_id,
         sdp,
       });
     } catch (error) {
+      if (peer !== this.peer) {
+        return;
+      }
       console.warn("[omniwork-upgrade] handleOffer failed", {
         error: (error as Error)?.message,
       });
@@ -199,9 +230,13 @@ export class UpgradeCoordinator {
     ) {
       return;
     }
+    const peer = this.peer;
     try {
-      await this.peer.setRemoteDescription(payload.sdp, "answer");
+      await peer.setRemoteDescription(payload.sdp, "answer");
     } catch (error) {
+      if (peer !== this.peer) {
+        return;
+      }
       console.warn("[omniwork-upgrade] handleAnswer failed", {
         error: (error as Error)?.message,
       });
@@ -337,7 +372,7 @@ export class UpgradeCoordinator {
   private attachPeer(peer: WebRtcPeerAdapter): void {
     this.peer = peer;
     peer.onLocalCandidate((c) => {
-      if (!this.upgradeId) {
+      if (peer !== this.peer || !this.upgradeId) {
         return;
       }
       this.sendUpgrade<TunnelUpgradeCandidatePayload>(
@@ -352,6 +387,9 @@ export class UpgradeCoordinator {
       );
     });
     peer.onStateChange((state) => {
+      if (peer !== this.peer) {
+        return;
+      }
       if (state === "connected") {
         this.localCommit();
       } else if (
@@ -410,14 +448,16 @@ export class UpgradeCoordinator {
   }
 
   private cleanupPeer(): void {
+    this.generation += 1;
     this.clearNegotiationTimer();
-    if (this.peer) {
+    const peer = this.peer;
+    this.peer = null;
+    if (peer) {
       try {
-        this.peer.close();
+        peer.close();
       } catch {
         /* ignore */
       }
-      this.peer = null;
     }
   }
 

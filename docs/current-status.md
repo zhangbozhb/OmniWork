@@ -11,8 +11,18 @@
 
 ## App / Web
 
-- React Native CLI 代码同时覆盖 iOS、Android 和 `react-native-web`。
+- React Native `0.87.1` / React `19.2.3` 代码同时覆盖 iOS、Android 和
+  `react-native-web`；iOS 使用 UIKit Scene 生命周期，Android 构建基线为
+  compile SDK 37 / target SDK 36 / Gradle 9.4.1 / AGP 9 / Kotlin 2.2.0。
+- Native 入口补齐 Hermes 缺少的 UTF-8 `TextEncoder` / `TextDecoder`，App
+  身份签名和 E2E 握手与 Web 使用相同字节编码。
 - 支持手动、二维码和配对链接导入；Web 不扫描二维码。
+- App 设置页展示当前 `APP1-...` 身份 ID。Native 身份使用平台安全存储；Web
+  身份使用 IndexedDB 中不可导出的 WebCrypto 密钥。Web 目标信息可持久保存，
+  Relay session token 只保留在当前标签页的 `sessionStorage`。
+- Native Agent Inbox 已从 `react-native-quick-sqlite` 切换到
+  `@op-engineering/op-sqlite`，并保持旧 iOS `Documents` / Android `filesDir`
+  数据库路径。
 - 以 Workspace 组织 Sessions、Git 和 Files，支持受限 UTF-8 文本编辑、写入冲突检测、Git status/diff，以及文件级 stage/unstage。Git 写操作使用严格 E2E 协议和服务端固定参数，只修改 index；discard、commit、push 与 worktree 删除尚未开放。
 - 支持配置化 Terminal Provider、tmux 会话创建/重命名/关闭及 xterm 终端交互。
 - Git Workspace 创建 Session 时可选择从当前 `HEAD` 创建 Agent 管理的隔离 worktree。Desktop Agent 将 worktree 与 Session 创建作为一个请求处理，并按 `create_action_id` 合并进程内重复请求；如果 worktree 已创建但 Runtime 启动失败，会保留 worktree 并允许同名重试复用，不自动执行删除。
@@ -27,8 +37,18 @@
 
 ## Desktop Agent
 
-- 使用用户配置的合法 32 字符 key，未配置时每次启动自动生成，用于
-  App-Agent 配对 proof 和 Noise PSK。
+- 首次启动生成长期 Ed25519 身份并复用；`DEV1-...` 设备 ID 由公钥派生。
+- Relay 默认要求管理员人工批准新 Agent device ID；也可配置 automatic，在
+  device ID 与来源 IP 均未封禁时自动授权。授权记录持久化在 Relay。
+- 配对/分享链接只包含 Relay URL、目标 Agent device ID 和可选显示名称。
+  Desktop Agent 的 App 授权默认 `manual`，该模式下未知或已撤销 App 必须在
+  本机 Agent Admin 显式批准；也可通过 `appAuthorization.mode=automatic`
+  自动批准签名和 scope 校验有效的 App。信任记录持久化，撤销会立即终止对应
+  在线连接。
+- App-Agent 双向签名认证后使用临时 X25519、HKDF-SHA256 和
+  ChaCha20-Poly1305 建立独立 E2E 会话。
+- Agent Admin 支持待批准 App 的详情、批准/拒绝、可信 App 撤销/移除，以及
+  English / 简体中文切换；无 token 的默认管理面只允许 loopback 同源写操作。
 - 支持 YAML 配置、Relay 重连、tmux 会话、Workspace 发现、文件/Git 请求和终端 snapshot/stream。
 - Terminal Provider 默认包含 Codex、Claude、Gemini 和 TraeX，也可通过配置添加其他 CLI provider；`trae`、`trae-cn` 专指 IDE Probe provider。
 - TraeX/`traecli` 与 Trae IDE 复用 `~/.trae/skills`，但 Hook 配置隔离：分别使用 `~/.trae/cli/hooks.json` 与 `~/.trae/hooks.json`；Trae-CN 使用 `~/.trae-cn/hooks.json`。
@@ -51,11 +71,14 @@
 
 ## Relay 与传输
 
-- 支持临时 key challenge/proof、失败限流、WebSocket keepalive、按 App connection 隔离的 Noise E2E 会话。
+- 支持 Ed25519 challenge/proof、失败限流、WebSocket keepalive，以及按 App
+  connection 隔离的签名 X25519 E2E 会话。
 - 支持 Relay path 与 WebRTC P2P 升级、三种传输偏好、严格 P2P、降级/退避和 metrics。
-- 可选 `email_link` 用户登录、设备登记/撤销及 Ed25519 Agent 设备身份；默认 `auth.mode=none`。
+- 可选 `email_link` 用户登录、设备登记/撤销及 Ed25519 Agent 设备身份；默认
+  `auth.mode=none`。Agent 授权默认 `manual`，可显式切换为 `automatic`。
 - Admin API、Admin Web、metrics 和 debug 接口属于受控运维面，不属于 Public Web。
-- 默认业务模式要求 E2E；只有 Agent 显式配置 `requireE2e: false` 时才允许兼容明文业务模式。
+- Relay Admin 支持待批准/已授权 Agent 管理及 English / 简体中文界面。
+- 协议 v2 固定要求业务 E2E，不提供明文业务模式或降级。
 
 ## 验证入口
 
@@ -64,6 +87,9 @@ pnpm typecheck
 pnpm test
 pnpm verify:npm-packages
 pnpm verify:package-boundaries
+pnpm verify:identity-auth
+pnpm verify:agent-authorization
+pnpm verify:security
 pnpm site:build
 pnpm verify:app:targets
 ```

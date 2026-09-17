@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
+  normalizeIdentityId,
+  RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_CODE,
+  RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON,
   RELAY_AGENT_DISABLED_CLOSE_REASON,
   RELAY_AGENT_IP_BANNED_CLOSE_REASON,
   RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
@@ -18,8 +21,14 @@ import {
 } from "./adminPage.ts";
 import { AdminControlStore } from "./adminControlStore.ts";
 import type { RelayServerConfig } from "./config.ts";
+import { relayDevicePublicKeyFingerprint } from "./relayDeviceSignature.ts";
 import type { RelayStateStore } from "./relayStateStore.ts";
-import type { ControlRule, RelayConnection } from "./relayTypes.ts";
+import type {
+  AgentAuthorizationDecision,
+  ControlRule,
+  PendingAgentAuthorization,
+  RelayConnection,
+} from "./relayTypes.ts";
 
 const ADMIN_WEB_PATHS = new Set([
   "/admin/web",
@@ -42,6 +51,11 @@ export class RelayAdminController {
   private readonly connections: Map<string, RelayConnection>;
   private readonly state: RelayStateStore;
   private readonly mobilesByDevice: Map<string, Set<RelayConnection>>;
+  private readonly authorizedAgentDevices = new Map<string, ControlRule>();
+  private readonly pendingAgentAuthorizations = new Map<
+    string,
+    PendingAgentAuthorization
+  >();
   private readonly disabledAgentDevices = new Map<string, ControlRule>();
   private readonly ipBans = new Map<string, ControlRule>();
   private readonly auth: RelayAdminAuth;
@@ -137,7 +151,63 @@ export class RelayAdminController {
     if (!deviceId) {
       return null;
     }
-    return this.activeRule(this.disabledAgentDevices, deviceId);
+    return this.activeRule(
+      this.disabledAgentDevices,
+      normalizeIdentityId(deviceId) ?? deviceId,
+    );
+  }
+
+  authorizeAgent(input: {
+    deviceId: string;
+    devicePublicKey: string;
+    remoteIp: string;
+    publicRemoteIp: string | null;
+    hostname: string;
+    systemType: string;
+    uname: string;
+    agentVersion: string;
+  }): AgentAuthorizationDecision {
+    input = {
+      ...input,
+      deviceId: normalizeIdentityId(input.deviceId) ?? input.deviceId,
+    };
+    this.pruneExpiredRules();
+    if (this.activeDisabledAgentDevice(input.deviceId)) {
+      return { ok: false, reason: "agent_disabled" };
+    }
+    if (this.activeIpBan(input.remoteIp)) {
+      return { ok: false, reason: "ip_banned" };
+    }
+    if (this.authorizedAgentDevices.has(input.deviceId)) {
+      this.pendingAgentAuthorizations.delete(input.deviceId);
+      return { ok: true };
+    }
+    if (this.config.agentAuthorization.mode === "automatic") {
+      this.approveAgentDevice(input.deviceId, "automatic authorization");
+      return { ok: true };
+    }
+
+    const now = Date.now();
+    const existing = this.pendingAgentAuthorizations.get(input.deviceId);
+    this.pendingAgentAuthorizations.set(input.deviceId, {
+      deviceId: input.deviceId,
+      publicKeyFingerprint:
+        relayDevicePublicKeyFingerprint(input.devicePublicKey) ?? "invalid",
+      remoteIp: input.remoteIp,
+      publicIp: input.publicRemoteIp,
+      hostname: input.hostname,
+      systemType: input.systemType,
+      uname: input.uname,
+      agentVersion: input.agentVersion,
+      requestedAt: existing?.requestedAt ?? now,
+      lastAttemptAt: now,
+      expiresAt: now + this.config.agentAuthorization.pendingTtlMs,
+      attemptCount: (existing?.attemptCount ?? 0) + 1,
+    });
+    return {
+      ok: false,
+      reason: RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON,
+    };
   }
 
   private handleWeb(request: IncomingMessage, response: ServerResponse): void {
@@ -287,6 +357,10 @@ export class RelayAdminController {
       this.writeJson(response, 200, this.agentsSnapshot());
       return;
     }
+    if (method === "GET" && url.pathname === "/api/agent-authorizations") {
+      this.writeJson(response, 200, this.agentAuthorizationsSnapshot());
+      return;
+    }
     if (method === "GET" && url.pathname === "/api/devices") {
       this.writeJson(
         response,
@@ -323,6 +397,37 @@ export class RelayAdminController {
     }
     if (method === "GET" && url.pathname === "/api/controls") {
       this.writeJson(response, 200, this.controlsSnapshot());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      url.pathname === "/api/agent-authorizations/device-op"
+    ) {
+      const body = await readJsonBody(request);
+      const action = readAgentAuthorizationAction(body);
+      const deviceIds = readAgentDeviceIds(body);
+      for (const deviceId of deviceIds) {
+        if (action === "approve") {
+          this.approveAgentDevice(
+            deviceId,
+            readBodyReason(body) ?? "manual authorization",
+          );
+        } else if (action === "reject") {
+          this.pendingAgentAuthorizations.delete(deviceId);
+          this.disableAgentDevice(
+            deviceId,
+            controlRuleFromBody(body, undefined),
+          );
+        } else {
+          this.removeAgentAuthorization(deviceId);
+        }
+      }
+      this.writeJson(response, 200, {
+        ok: true,
+        action,
+        agent_device_ids: deviceIds,
+      });
       return;
     }
 
@@ -412,6 +517,9 @@ export class RelayAdminController {
         active_link_count: runtime.totals.link_count,
         open_connection_count: runtime.totals.connection_count,
         app_count: runtime.totals.app_connection_count,
+        authorized_agent_device_count: this.authorizedAgentDevices.size,
+        pending_agent_authorization_count:
+          this.activePendingAgentAuthorizations().length,
         disabled_agent_device_count: this.activeDisabledAgentDevices().length,
         ip_ban_count: this.activeIpBans().length,
       },
@@ -428,6 +536,21 @@ export class RelayAdminController {
 
   private agentAppsSnapshot(connectionId: string) {
     return this.state.agentAppsSnapshot(connectionId);
+  }
+
+  private agentAuthorizationsSnapshot() {
+    this.pruneExpiredRules();
+    return {
+      mode: this.config.agentAuthorization.mode,
+      pending: this.activePendingAgentAuthorizations(),
+      authorized: [...this.authorizedAgentDevices.entries()].map(
+        ([deviceId, authorization]) => ({
+          agent_device_id: deviceId,
+          authorized_at: toIso(authorization.createdAt),
+          reason: authorization.reason,
+        }),
+      ),
+    };
   }
 
   private controlsSnapshot() {
@@ -465,30 +588,67 @@ export class RelayAdminController {
     });
   }
 
+  private approveAgentDevice(deviceId: string, reason?: string): ControlRule {
+    const authorization: ControlRule = {
+      id: `authorization_${randomUUID()}`,
+      reason,
+      createdAt: Date.now(),
+    };
+    this.authorizedAgentDevices.set(deviceId, authorization);
+    this.pendingAgentAuthorizations.delete(deviceId);
+    this.persistPermanentRule(
+      "agent_device_authorization",
+      deviceId,
+      authorization,
+    );
+    return authorization;
+  }
+
+  private removeAgentAuthorization(deviceId: string): void {
+    this.authorizedAgentDevices.delete(deviceId);
+    this.pendingAgentAuthorizations.delete(deviceId);
+    this.controlStore.delete("agent_device_authorization", deviceId);
+    if (this.config.agentAuthorization.mode === "manual") {
+      this.closeAgentDevice(deviceId, RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON);
+    }
+  }
+
   private disableAgentDevice(deviceId: string, rule: ControlRule): ControlRule {
     this.disabledAgentDevices.set(deviceId, rule);
+    this.pendingAgentAuthorizations.delete(deviceId);
     this.persistPermanentRule("agent_device_disable", deviceId, rule);
+    this.closeAgentDevice(deviceId, RELAY_AGENT_DISABLED_CLOSE_REASON);
+    return rule;
+  }
+
+  private closeAgentDevice(deviceId: string, reason: string): void {
     const agents = [...this.connections.values()].filter(
       (connection) =>
         connection.role === "agent" && connection.deviceId === deviceId,
     );
     for (const agent of agents) {
       agent.socket.close(
-        RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
-        RELAY_AGENT_DISABLED_CLOSE_REASON,
+        reason === RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_REASON
+          ? RELAY_AGENT_APPROVAL_REQUIRED_CLOSE_CODE
+          : RELAY_AGENT_SHUTDOWN_CLOSE_CODE,
+        reason,
       );
       this.unregister(agent);
       const mobiles = [...(this.mobilesByDevice.get(deviceId) ?? new Set())];
       for (const mobile of mobiles) {
-        mobile.socket.close(4403, "agent_disabled");
+        mobile.socket.close(4403, reason);
         this.unregister(mobile);
       }
     }
-    return rule;
   }
 
   private banIp(ip: string, rule: ControlRule): ControlRule {
     this.ipBans.set(ip, rule);
+    for (const [deviceId, pending] of this.pendingAgentAuthorizations) {
+      if (pending.remoteIp === ip) {
+        this.pendingAgentAuthorizations.delete(deviceId);
+      }
+    }
     this.persistPermanentRule("ip_ban", ip, rule);
     for (const connection of [...this.connections.values()]) {
       if (connection.remoteIp === ip) {
@@ -533,6 +693,23 @@ export class RelayAdminController {
     }));
   }
 
+  private activePendingAgentAuthorizations() {
+    this.pruneExpiredRules();
+    return [...this.pendingAgentAuthorizations.values()].map((pending) => ({
+      agent_device_id: pending.deviceId,
+      public_key_fingerprint: pending.publicKeyFingerprint,
+      public_ip: pending.publicIp,
+      hostname: pending.hostname,
+      system_type: pending.systemType,
+      uname: pending.uname,
+      agent_version: pending.agentVersion,
+      requested_at: toIso(pending.requestedAt),
+      last_attempt_at: toIso(pending.lastAttemptAt),
+      expires_at: toIso(pending.expiresAt),
+      attempt_count: pending.attemptCount,
+    }));
+  }
+
   private activeIpBans() {
     this.pruneExpiredRules();
     return [...this.ipBans.entries()].map(([ip, rule]) => ({
@@ -553,6 +730,11 @@ export class RelayAdminController {
         this.ipBans.delete(key);
       }
     }
+    for (const [key, pending] of this.pendingAgentAuthorizations) {
+      if (pending.expiresAt <= now) {
+        this.pendingAgentAuthorizations.delete(key);
+      }
+    }
   }
 
   private loadPermanentControlRules(): void {
@@ -560,7 +742,18 @@ export class RelayAdminController {
       if (record.rule.expiresAt) {
         continue;
       }
-      if (record.kind === "agent_device_disable") {
+      if (record.kind !== "ip_ban") {
+        const target = normalizeIdentityId(record.target);
+        if (target && target !== record.target) {
+          // Normalize older control records before using them as map keys.
+          this.controlStore.upsert({ ...record, target });
+          this.controlStore.delete(record.kind, record.target);
+          record.target = target;
+        }
+      }
+      if (record.kind === "agent_device_authorization") {
+        this.authorizedAgentDevices.set(record.target, record.rule);
+      } else if (record.kind === "agent_device_disable") {
         this.disabledAgentDevices.set(record.target, record.rule);
       } else if (record.kind === "ip_ban") {
         this.ipBans.set(record.target, record.rule);
@@ -569,7 +762,7 @@ export class RelayAdminController {
   }
 
   private persistPermanentRule(
-    kind: "agent_device_disable" | "ip_ban",
+    kind: "agent_device_authorization" | "agent_device_disable" | "ip_ban",
     target: string,
     rule: ControlRule,
   ): void {
@@ -680,6 +873,23 @@ function readAgentControlAction(body: unknown): "disable" | "delete" {
   return action;
 }
 
+function readAgentAuthorizationAction(
+  body: unknown,
+): "approve" | "reject" | "delete" {
+  if (!isRecord(body)) {
+    return "approve";
+  }
+  const action = readOptionalString(body, "action") ?? "approve";
+  if (!["approve", "reject", "delete"].includes(action)) {
+    throw new Error('Invalid action. Use "approve", "reject", or "delete".');
+  }
+  return action as "approve" | "reject" | "delete";
+}
+
+function readBodyReason(body: unknown): string | undefined {
+  return isRecord(body) ? readOptionalString(body, "reason") : undefined;
+}
+
 function readAgentDeviceIds(body: unknown): string[] {
   if (!isRecord(body)) {
     throw new Error("Missing agent_device_ids.");
@@ -697,7 +907,7 @@ function readAgentDeviceIds(body: unknown): string[] {
   if (singleId) {
     ids.push(singleId);
   }
-  const uniqueIds = [...new Set(ids)];
+  const uniqueIds = [...new Set(ids.map((id) => normalizeIdentityId(id) ?? id))];
   if (uniqueIds.length === 0) {
     throw new Error("Missing agent_device_ids.");
   }

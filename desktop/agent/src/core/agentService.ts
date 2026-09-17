@@ -6,10 +6,7 @@ import type {
   AgentSurfaceEventPayload,
 } from "@omni-work/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
-import {
-  createAndPersistSessionKey,
-  type SessionKeyRecord,
-} from "../auth-key/authKey.ts";
+import { TrustedAppStore } from "../config/trustedAppStore.ts";
 import { TerminalProviderRegistry } from "../terminal-provider/terminalProviderRegistry.ts";
 import { SQLiteSessionStore } from "../session-store/sessionStore.ts";
 import { TerminalBridge } from "../pty-bridge/terminalBridge.ts";
@@ -84,6 +81,7 @@ export class AgentService {
   private readonly terminalStreamPusher: TerminalStreamPusher;
   private readonly terminalBridge: TerminalBridge;
   private readonly appConnections: AppConnectionRegistry;
+  private readonly trustedApps: TrustedAppStore;
   private readonly agentMessages: AgentMessageService;
   private readonly surfaceEvents: AgentSurfaceEventStore;
   private readonly observations: AgentObservationStore;
@@ -108,7 +106,6 @@ export class AgentService {
   private readonly dispatcher: AgentMessageDispatcher;
   private readonly relayController: AgentRelayController;
   private readonly config: AgentConfig;
-  private keyRecord: SessionKeyRecord | null = null;
   private agentStartedAt = Date.now();
   private readonly logTransport =
     (process.env.OMNIWORK_LOG_TRANSPORT ?? "") === "1";
@@ -117,6 +114,7 @@ export class AgentService {
   constructor(config: AgentConfig, options: AgentServiceOptions = {}) {
     this.config = config;
     this.onShutdownRequested = options.onShutdownRequested;
+    this.trustedApps = new TrustedAppStore(config.trustedAppsPath);
     this.surfaceEvents = new AgentSurfaceEventStore(config.sessionStorePath);
     this.observations = new AgentObservationStore(config.sessionStorePath);
     this.episodes = new DeliveryEpisodeStore(config.sessionStorePath);
@@ -194,7 +192,6 @@ export class AgentService {
       logger: this.logger,
       agentMessages: this.agentMessages,
       sessionManager: this.sessionManager,
-      getKeyRecord: () => this.requireKeyRecord(),
       onObservation: (event) =>
         this.applyLearningObservation(this.observations.putProbeEvent(event)),
       onSurfaceEvent: (event) => this.broadcastAgentSurfaceEvent(event),
@@ -211,8 +208,8 @@ export class AgentService {
       config,
       logger: this.logger,
       appConnections: this.appConnections,
+      trustedApps: this.trustedApps,
       getTransport: () => this.relayController.getTransport(),
-      getKeyRecord: () => this.requireKeyRecord(),
       getAgentConnectionId: () => this.relayController.getAgentConnectionId(),
       dispatchMessage: (message, context) =>
         this.dispatcher.dispatch(message, context),
@@ -377,7 +374,6 @@ export class AgentService {
       terminalProviders: this.terminalProviders,
       workspaces: this.workspaces,
       terminalStreamPusher: this.terminalStreamPusher,
-      getKeyRecord: () => this.requireKeyRecord(),
       e2eSupport: () => this.security.e2eSupport(),
       onMessage: (message) => this.dispatcher.dispatch(message),
       onRelayUnavailable: () => {
@@ -396,6 +392,7 @@ export class AgentService {
       config,
       logger: this.logger,
       appConnections: this.appConnections,
+      security: this.security,
       getAgentInfo: () => this.agentInfo(),
       getRelayStatus: () => this.relayStatus(),
     });
@@ -404,25 +401,11 @@ export class AgentService {
   async start(): Promise<void> {
     try {
       this.agentStartedAt = Date.now();
-      this.keyRecord = await createAndPersistSessionKey({
-        path: this.config.sessionKeyPath,
-        key: this.config.sessionKey,
-        relayUrl: this.config.relayUrl,
-      });
-
-      this.logger.info(
-        this.config.sessionKey
-          ? "persisted configured session key"
-          : "generated temporary session key",
-        {
-          key_path: this.config.sessionKeyPath,
-        },
-      );
-      const pairingQr = createPairingQrDetails(this.config, this.keyRecord);
+      const pairingQr = createPairingQrDetails(this.config);
       if (pairingQr) {
         printPairingQr(pairingQr);
       } else {
-        printPairingDetailsWithoutRelay(this.config, this.keyRecord);
+        printPairingDetailsWithoutRelay(this.config);
       }
 
       for (const terminalProvider of this.terminalProviders.providers()) {
@@ -686,10 +669,4 @@ export class AgentService {
       });
   }
 
-  private requireKeyRecord(): SessionKeyRecord {
-    if (!this.keyRecord) {
-      throw new Error("Session key has not been generated");
-    }
-    return this.keyRecord;
-  }
 }

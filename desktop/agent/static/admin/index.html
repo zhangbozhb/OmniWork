@@ -138,6 +138,14 @@
         gap: 10px;
         flex-wrap: wrap;
       }
+      .language-select {
+        min-height: 38px;
+        padding: 8px 10px;
+        border: 1px solid var(--border-strong);
+        border-radius: 12px;
+        color: var(--text);
+        background: rgba(15, 23, 42, 0.76);
+      }
       .button {
         display: inline-flex;
         align-items: center;
@@ -155,6 +163,11 @@
       .button:hover {
         border-color: rgba(59, 130, 246, 0.72);
         background: rgba(30, 41, 59, 0.9);
+      }
+      .button.danger {
+        color: #fecaca;
+        border-color: rgba(248, 113, 113, 0.46);
+        background: rgba(127, 29, 29, 0.32);
       }
       .button svg {
         width: 16px;
@@ -393,6 +406,22 @@
         min-width: 920px;
         border-collapse: collapse;
       }
+      .auth-table th:last-child,
+      .auth-table td:last-child {
+        position: sticky;
+        right: 0;
+        width: 1%;
+        min-width: 132px;
+        white-space: nowrap;
+        background: rgba(15, 23, 42, 0.98);
+        box-shadow: -10px 0 18px rgba(2, 6, 23, 0.3);
+      }
+      .auth-table th:last-child {
+        z-index: 2;
+      }
+      .auth-table td:last-child {
+        z-index: 1;
+      }
       th,
       td {
         padding: 14px 16px;
@@ -421,6 +450,53 @@
       tbody tr.selected {
         background: rgba(59, 130, 246, 0.14);
         box-shadow: inset 3px 0 0 var(--primary);
+      }
+      .auth-dialog {
+        width: min(680px, calc(100vw - 32px));
+        max-height: min(760px, calc(100vh - 32px));
+        padding: 0;
+        overflow: hidden;
+        border: 1px solid var(--border-strong);
+        border-radius: 18px;
+        color: var(--text);
+        background: #0f172a;
+        box-shadow: var(--shadow);
+      }
+      .auth-dialog::backdrop {
+        background: rgba(2, 6, 23, 0.76);
+        backdrop-filter: blur(5px);
+      }
+      .dialog-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px;
+        border-bottom: 1px solid var(--border);
+      }
+      .dialog-body {
+        display: grid;
+        gap: 14px;
+        max-height: calc(100vh - 180px);
+        padding: 18px;
+        overflow: auto;
+      }
+      .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding-top: 2px;
+      }
+      .icon-button {
+        width: 38px;
+        min-height: 38px;
+        padding: 0;
+        justify-content: center;
+        font-size: 22px;
+        line-height: 1;
+      }
+      .pairing-mobile-meta {
+        display: none;
       }
       .app-cell {
         display: flex;
@@ -470,7 +546,7 @@
         background: rgba(59, 130, 246, 0.08);
       }
       .badge.stale,
-      .badge.plaintext,
+      .badge.unencrypted,
       .badge.mixed {
         color: #fde68a;
         border-color: rgba(245, 158, 11, 0.36);
@@ -593,6 +669,21 @@
         .headline {
           font-size: 34px;
         }
+        .pairing-table {
+          min-width: 0;
+        }
+        .pairing-table th:nth-child(2),
+        .pairing-table th:nth-child(3),
+        .pairing-table th:nth-child(4),
+        .pairing-table td:nth-child(2),
+        .pairing-table td:nth-child(3),
+        .pairing-table td:nth-child(4) {
+          display: none;
+        }
+        .pairing-mobile-meta {
+          display: block;
+          margin-top: 5px;
+        }
       }
     </style>
   </head>
@@ -612,17 +703,33 @@
             </svg>
           </div>
           <div>
-            <h1>OmniWork Agent Admin</h1>
-            <div class="subtitle" id="agent-line">Loading local agent...</div>
+            <h1 data-i18n="header.title">OmniWork Agent Admin</h1>
+            <div
+              class="subtitle"
+              id="agent-line"
+              data-i18n="header.loadingAgent"
+            >
+              Loading local agent...
+            </div>
           </div>
         </div>
         <div class="top-actions">
           <div class="status-pills" id="status-pills"></div>
+          <select
+            class="language-select"
+            id="language"
+            aria-label="Language"
+            data-i18n-aria-label="common.language"
+          >
+            <option value="en">English</option>
+            <option value="zh-CN">中文</option>
+          </select>
           <button
             class="button"
             id="refresh"
             type="button"
             aria-label="Refresh dashboard"
+            data-i18n-aria-label="common.refreshDashboard"
           >
             <svg
               viewBox="0 0 24 24"
@@ -635,16 +742,20 @@
               <path d="M3 12A9 9 0 0 1 18.5 5.7L21 8" />
               <path d="M21 3v5h-5" />
             </svg>
-            Refresh
+            <span data-i18n="common.refresh">Refresh</span>
           </button>
         </div>
       </header>
 
       <section class="hero">
         <div class="overview glass">
-          <div class="eyebrow">Local Control Plane</div>
-          <div class="headline">Trusted app connections at a glance.</div>
-          <p class="description">
+          <div class="eyebrow" data-i18n="hero.eyebrow">
+            Local Control Plane
+          </div>
+          <div class="headline" data-i18n="hero.headline">
+            Trusted app connections at a glance.
+          </div>
+          <p class="description" data-i18n="hero.description">
             This dashboard shows only connections observed and verified by the
             Agent itself. Relay-provided connection state is treated as
             transport metadata, not as trusted identity.
@@ -653,7 +764,7 @@
         </div>
         <aside class="runtime glass">
           <div>
-            <div class="runtime-title">Runtime</div>
+            <div class="runtime-title" data-i18n="runtime.title">Runtime</div>
             <div class="runtime-value" id="runtime-age">-</div>
           </div>
           <div class="runtime-list" id="runtime-list"></div>
@@ -664,13 +775,72 @@
         class="metrics"
         id="metrics"
         aria-label="Connection summary"
+        data-i18n-aria-label="metrics.aria"
       ></section>
+
+      <section class="content-grid">
+        <div class="table-card glass">
+          <div class="table-head">
+            <div>
+              <h2 class="section-title" data-i18n="pairing.title">
+                Pairing Requests
+              </h2>
+              <div class="muted" id="pairing-caption" data-i18n="pairing.empty">
+                No pending requests
+              </div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="auth-table pairing-table">
+              <thead>
+                <tr>
+                  <th data-i18n="table.name">Name</th>
+                  <th data-i18n="table.type">Type</th>
+                  <th>IP</th>
+                  <th data-i18n="table.expires">Expires</th>
+                  <th data-i18n="table.action">Action</th>
+                </tr>
+              </thead>
+              <tbody id="pairing-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="table-card glass">
+          <div class="table-head">
+            <div>
+              <h2 class="section-title" data-i18n="trustedApps.title">
+                Trusted Apps
+              </h2>
+              <div
+                class="muted"
+                id="trusted-caption"
+                data-i18n="trustedApps.empty"
+              >
+                No trusted Apps
+              </div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="auth-table">
+              <thead>
+                <tr>
+                  <th data-i18n="table.appIdentity">App Identity</th>
+                  <th data-i18n="table.device">Device</th>
+                  <th data-i18n="table.status">Status</th>
+                  <th data-i18n="table.action">Action</th>
+                </tr>
+              </thead>
+              <tbody id="trusted-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
       <section class="table-card glass devices-card">
         <div class="table-head">
           <div>
-            <h2 class="section-title">Devices</h2>
-            <div class="muted" id="devices-caption">
+            <h2 class="section-title" data-i18n="devices.title">Devices</h2>
+            <div class="muted" id="devices-caption" data-i18n="devices.loading">
               Waiting for device data...
             </div>
           </div>
@@ -679,20 +849,24 @@
           <table>
             <thead>
               <tr>
-                <th>Device</th>
-                <th>Platform</th>
-                <th>Path</th>
+                <th data-i18n="table.device">Device</th>
+                <th data-i18n="table.platform">Platform</th>
+                <th data-i18n="table.path">Path</th>
                 <th>IP</th>
-                <th>Connections</th>
-                <th>Attempts</th>
-                <th>Traffic</th>
-                <th>Messages</th>
-                <th>Last Seen</th>
+                <th data-i18n="table.connections">Connections</th>
+                <th data-i18n="table.attempts">Attempts</th>
+                <th data-i18n="table.traffic">Traffic</th>
+                <th data-i18n="table.messages">Messages</th>
+                <th data-i18n="table.lastSeen">Last Seen</th>
               </tr>
             </thead>
             <tbody id="device-rows"></tbody>
           </table>
-          <div class="empty hidden" id="devices-empty">
+          <div
+            class="empty hidden"
+            id="devices-empty"
+            data-i18n-html="devices.empty"
+          >
             <strong>No devices observed</strong>Devices appear after an
             authenticated App link is verified by the Agent.
           </div>
@@ -703,40 +877,62 @@
         <div class="table-card glass">
           <div class="table-head">
             <div>
-              <h2 class="section-title">Connections</h2>
-              <div class="muted" id="table-caption">
+              <h2 class="section-title" data-i18n="connections.title">
+                Connections
+              </h2>
+              <div
+                class="muted"
+                id="table-caption"
+                data-i18n="connections.loading"
+              >
                 Waiting for connection data...
               </div>
             </div>
             <div class="pill" id="updated-at">
-              <span class="dot"></span>Not updated
+              <span class="dot"></span
+              ><span data-i18n="common.notUpdated">Not updated</span>
             </div>
           </div>
-          <div class="filters" aria-label="Connection filters">
+          <div
+            class="filters"
+            aria-label="Connection filters"
+            data-i18n-aria-label="filters.aria"
+          >
             <input
               class="field"
               id="search"
               placeholder="Search app, device, connection id, IP"
+              data-i18n-placeholder="filters.search"
             />
             <select class="field" id="state">
-              <option value="">All states</option>
-              <option>active</option>
-              <option>idle</option>
-              <option>stale</option>
-              <option>disconnected</option>
+              <option value="" data-i18n="filters.allStates">All states</option>
+              <option value="active" data-i18n="value.active">active</option>
+              <option value="idle" data-i18n="value.idle">idle</option>
+              <option value="stale" data-i18n="value.stale">stale</option>
+              <option value="disconnected" data-i18n="value.disconnected">
+                disconnected
+              </option>
             </select>
             <select class="field" id="security">
-              <option value="">All security</option>
-              <option value="encrypted">Encrypted</option>
-              <option value="plaintext">Plaintext</option>
-              <option value="trusted">Trusted</option>
-              <option value="untrusted">Untrusted</option>
+              <option value="" data-i18n="filters.allSecurity">
+                All security
+              </option>
+              <option value="encrypted" data-i18n="value.encrypted">
+                Encrypted
+              </option>
+              <option value="unencrypted" data-i18n="value.unencrypted">
+                Awaiting E2E
+              </option>
+              <option value="trusted" data-i18n="value.trusted">Trusted</option>
+              <option value="untrusted" data-i18n="value.untrusted">
+                Untrusted
+              </option>
             </select>
             <select class="field" id="path">
-              <option value="">All paths</option>
-              <option>relay</option>
-              <option>p2p</option>
-              <option>unknown</option>
+              <option value="" data-i18n="filters.allPaths">All paths</option>
+              <option value="relay" data-i18n="value.relay">relay</option>
+              <option value="p2p" data-i18n="value.p2p">p2p</option>
+              <option value="unknown" data-i18n="value.unknown">unknown</option>
             </select>
           </div>
           <div class="table-wrap">
@@ -744,40 +940,55 @@
               <thead>
                 <tr>
                   <th>App</th>
-                  <th>State</th>
-                  <th>Security</th>
-                  <th>Path</th>
+                  <th data-i18n="table.state">State</th>
+                  <th data-i18n="table.security">Security</th>
+                  <th data-i18n="table.path">Path</th>
                   <th>IP</th>
-                  <th>Attempts</th>
-                  <th>Traffic</th>
-                  <th>Connected</th>
-                  <th>Last Message</th>
+                  <th data-i18n="table.attempts">Attempts</th>
+                  <th data-i18n="table.traffic">Traffic</th>
+                  <th data-i18n="table.connected">Connected</th>
+                  <th data-i18n="table.lastMessage">Last Message</th>
                 </tr>
               </thead>
               <tbody id="rows"></tbody>
             </table>
-            <div class="empty hidden" id="empty-state">
+            <div
+              class="empty hidden"
+              id="empty-state"
+              data-i18n-html="connections.empty"
+            >
               <strong>No app connections observed</strong>Agent is running and
-              waiting for authenticated App traffic. E2E and plaintext
-              connections will appear here.
+              waiting for authenticated App traffic. Connections appear here
+              while E2E setup is pending and after encryption is ready.
             </div>
             <div class="error hidden" id="error-state">
-              <strong>Unable to load Agent status</strong
-              ><span id="error-message"
+              <strong data-i18n="errors.loadTitle"
+                >Unable to load Agent status</strong
+              ><span id="error-message" data-i18n="errors.checkAdminServer"
                 >Check whether the admin server is running.</span
               >
             </div>
           </div>
         </div>
 
-        <aside class="detail-panel glass" aria-label="Connection detail">
+        <aside
+          class="detail-panel glass"
+          aria-label="Connection detail"
+          data-i18n-aria-label="detail.aria"
+        >
           <div class="detail-head">
-            <h2 class="section-title">Connection Detail</h2>
-            <div class="muted" id="detail-subtitle">
+            <h2 class="section-title" data-i18n="detail.title">
+              Connection Detail
+            </h2>
+            <div class="muted" id="detail-subtitle" data-i18n="detail.select">
               Select a connection to inspect
             </div>
           </div>
-          <div class="detail-body" id="detail-body">
+          <div
+            class="detail-body"
+            id="detail-body"
+            data-i18n-html="detail.empty"
+          >
             <div class="empty">
               <strong>No connection selected</strong>Click any table row to
               inspect security, transport, timing, and counters.
@@ -787,30 +998,557 @@
       </section>
     </div>
 
+    <dialog
+      class="auth-dialog"
+      id="pairing-detail-dialog"
+      aria-label="Pairing request detail"
+      data-i18n-aria-label="pairing.detailAria"
+    >
+      <div class="dialog-head">
+        <div>
+          <h2 class="section-title" data-i18n="pairing.detailTitle">
+            Pairing Request
+          </h2>
+          <div class="muted" id="pairing-detail-subtitle"></div>
+        </div>
+        <button
+          class="button icon-button"
+          id="pairing-detail-close"
+          type="button"
+          aria-label="Close"
+          data-i18n-aria-label="common.close"
+          title="Close"
+          data-i18n-title="common.close"
+        >
+          ×
+        </button>
+      </div>
+      <div class="dialog-body" id="pairing-detail-body"></div>
+    </dialog>
+
     <script>
+      const messages = {
+        en: {
+          "page.title": "OmniWork Agent Admin",
+          "common.language": "Language",
+          "common.refresh": "Refresh",
+          "common.refreshDashboard": "Refresh dashboard",
+          "common.notUpdated": "Not updated",
+          "common.updated": "Updated {time}",
+          "common.unknown": "unknown",
+          "common.unknownApp": "Unknown App",
+          "common.unknownDevice": "Unknown Device",
+          "common.close": "Close",
+          "common.yes": "Yes",
+          "common.no": "No",
+          "common.inOut": "{inbound} in · {outbound} out",
+          "header.title": "OmniWork Agent Admin",
+          "header.loadingAgent": "Loading local agent...",
+          "hero.eyebrow": "Local Control Plane",
+          "hero.headline": "Trusted app connections at a glance.",
+          "hero.description":
+            "This dashboard shows only connections observed and verified by the Agent itself. Relay-provided connection state is treated as transport metadata, not as trusted identity.",
+          "runtime.title": "Runtime",
+          "runtime.version": "Version",
+          "runtime.platform": "Platform",
+          "runtime.relay": "Relay",
+          "runtime.notConfigured": "not configured",
+          "runtime.retryAttempts": "Retry Attempts",
+          "runtime.nextRetry": "Next Retry",
+          "runtime.relayLastError": "Relay Last Error",
+          "runtime.relayLastClose": "Relay Last Close",
+          "runtime.started": "Started",
+          "status.relay": "Relay {status}",
+          "status.adminLocal": "Admin Local",
+          "status.adminOff": "Admin Off",
+          "status.e2eRequired": "E2E Required",
+          "status.configurationError": "Configuration Error",
+          "hero.trusted": "{count} trusted",
+          "hero.encrypted": "{count} encrypted",
+          "hero.relay": "{count} relay",
+          "hero.p2p": "{count} p2p",
+          "hero.traffic": "{size} traffic",
+          "metrics.aria": "Connection summary",
+          "metrics.total": "Total",
+          "metrics.attempts": "Attempts",
+          "metrics.trusted": "Trusted",
+          "metrics.p2p": "P2P",
+          "metrics.traffic": "Traffic",
+          "metrics.stale": "Stale",
+          "metrics.observedConnections": "Observed connections",
+          "metrics.logicalReconnects": "logical reconnects",
+          "metrics.untrusted": "{count} untrusted",
+          "metrics.relay": "{count} relay",
+          "metrics.inOut": "{inbound} in · {outbound} out",
+          "metrics.active": "{count} active",
+          "pairing.title": "Pairing Requests",
+          "pairing.empty": "No pending requests",
+          "pairing.caption": "{count} waiting for local approval",
+          "pairing.approve": "Approve",
+          "pairing.reject": "Reject",
+          "pairing.detailAria": "Pairing request detail",
+          "pairing.detailTitle": "Pairing Request",
+          "pairing.app": "App",
+          "pairing.device": "Device",
+          "pairing.network": "Network",
+          "pairing.request": "Request",
+          "pairing.appName": "App Name",
+          "pairing.appId": "App Identity",
+          "pairing.publicKey": "Public Key",
+          "pairing.deviceName": "Device Name",
+          "pairing.os": "Operating System",
+          "pairing.osVersion": "OS Version",
+          "pairing.ipSource": "IP Source",
+          "pairing.scopes": "Requested Scopes",
+          "pairing.connection": "Connection",
+          "pairing.created": "Requested",
+          "trustedApps.title": "Trusted Apps",
+          "trustedApps.empty": "No trusted Apps",
+          "trustedApps.caption": "{count} App identities",
+          "trustedApps.revoke": "Revoke",
+          "trustedApps.revokeConfirm":
+            "Revoke this App identity? Its active connection will be disconnected.",
+          "trustedApps.remove": "Remove",
+          "trustedApps.removeConfirm":
+            "Remove this device? Its trusted identity and connection history will be deleted, and it must be approved again before reconnecting.",
+          "devices.title": "Devices",
+          "devices.loading": "Waiting for device data...",
+          "devices.caption": "{count} logical devices observed",
+          "devices.empty":
+            "<strong>No devices observed</strong>Devices appear after an authenticated App link is verified by the Agent.",
+          "devices.connectionSummary": "{active} active · {encrypted} e2e",
+          "connections.title": "Connections",
+          "connections.loading": "Waiting for connection data...",
+          "connections.caption": "{shown} of {total} connections shown",
+          "connections.empty":
+            "<strong>No app connections observed</strong>Agent is running and waiting for authenticated App traffic. Connections appear here while E2E setup is pending and after encryption is ready.",
+          "filters.aria": "Connection filters",
+          "filters.search": "Search app, device, connection id, IP",
+          "filters.allStates": "All states",
+          "filters.allSecurity": "All security",
+          "filters.allPaths": "All paths",
+          "table.appIdentity": "App Identity",
+          "table.name": "Name",
+          "table.type": "Type",
+          "table.device": "Device",
+          "table.expires": "Expires",
+          "table.action": "Action",
+          "table.status": "Status",
+          "table.platform": "Platform",
+          "table.path": "Path",
+          "table.connections": "Connections",
+          "table.attempts": "Attempts",
+          "table.traffic": "Traffic",
+          "table.messages": "Messages",
+          "table.lastSeen": "Last Seen",
+          "table.state": "State",
+          "table.security": "Security",
+          "table.connected": "Connected",
+          "table.lastMessage": "Last Message",
+          "detail.aria": "Connection detail",
+          "detail.title": "Connection Detail",
+          "detail.select": "Select a connection to inspect",
+          "detail.empty":
+            '<div class="empty"><strong>No connection selected</strong>Click any table row to inspect security, transport, timing, and counters.</div>',
+          "detail.basic": "Basic",
+          "detail.connection": "Connection",
+          "detail.appInstance": "App Instance",
+          "detail.runtime": "Runtime",
+          "detail.platform": "Platform",
+          "detail.version": "Version",
+          "detail.security": "Security",
+          "detail.trusted": "Trusted",
+          "detail.encrypted": "Encrypted",
+          "detail.mode": "Mode",
+          "detail.keyId": "Key ID",
+          "detail.e2eReady": "E2E Ready",
+          "detail.lastVerified": "Last Verified",
+          "detail.network": "Network",
+          "detail.method": "Method",
+          "detail.ipSource": "IP Source",
+          "detail.ipHistory": "IP History",
+          "detail.privateNetworkHash": "Private Network Hash",
+          "detail.relayId": "Relay ID",
+          "detail.timing": "Timing",
+          "detail.firstSeen": "First Seen",
+          "detail.lastHeartbeat": "Last Heartbeat",
+          "detail.staleAfter": "Stale After",
+          "detail.transport": "Transport",
+          "detail.currentPath": "Current Path",
+          "detail.available": "Available",
+          "detail.p2pState": "P2P State",
+          "detail.relayState": "Relay State",
+          "detail.pathChanged": "Path Changed",
+          "detail.counters": "Counters",
+          "detail.connectionAttempts": "Connection Attempts",
+          "detail.bytesIn": "Bytes In",
+          "detail.bytesOut": "Bytes Out",
+          "detail.messagesIn": "Messages In",
+          "detail.messagesOut": "Messages Out",
+          "detail.heartbeats": "Heartbeats",
+          "detail.replayRejected": "Replay Rejected",
+          "detail.authFailures": "Auth Failures",
+          "detail.observations": "Observations",
+          "detail.observed": "Observed",
+          "detail.none": "none",
+          "detail.recorded": "recorded",
+          "network.privateHash": " · private hash {hash}",
+          "time.justNow": "just now",
+          "time.secondsAgo": "{count}s ago",
+          "time.minutesAgo": "{count}m ago",
+          "time.hoursAgo": "{count}h ago",
+          "time.daysAgo": "{count}d ago",
+          "duration.minutes": "{minutes}m",
+          "duration.hoursMinutes": "{hours}h {minutes}m",
+          "duration.daysHours": "{days}d {hours}h",
+          "errors.loadTitle": "Unable to load Agent status",
+          "errors.checkAdminServer":
+            "Check whether the admin server is running.",
+          "errors.apiStatus": "API request failed with status {status}",
+          "errors.actionStatus": "Action failed with status {status}",
+          "value.active": "active",
+          "value.idle": "idle",
+          "value.stale": "stale",
+          "value.disconnected": "disconnected",
+          "value.connected": "connected",
+          "value.connecting": "connecting",
+          "value.reconnecting": "reconnecting",
+          "value.encrypted": "Encrypted",
+          "value.unencrypted": "Awaiting E2E",
+          "value.trusted": "Trusted",
+          "value.untrusted": "Untrusted",
+          "value.relay": "relay",
+          "value.p2p": "p2p",
+          "value.unknown": "unknown",
+          "value.revoked": "revoked",
+          "value.ready": "ready",
+          "value.pending": "pending",
+          "value.failed": "failed",
+          "value.direct": "direct",
+          "value.forwarded": "forwarded",
+        },
+        "zh-CN": {
+          "page.title": "OmniWork Agent 管理",
+          "common.language": "语言",
+          "common.refresh": "刷新",
+          "common.refreshDashboard": "刷新管理面板",
+          "common.notUpdated": "尚未更新",
+          "common.updated": "更新于 {time}",
+          "common.unknown": "未知",
+          "common.unknownApp": "未知 App",
+          "common.unknownDevice": "未知设备",
+          "common.close": "关闭",
+          "common.yes": "是",
+          "common.no": "否",
+          "common.inOut": "入站 {inbound} · 出站 {outbound}",
+          "header.title": "OmniWork Agent 管理",
+          "header.loadingAgent": "正在加载本地 Agent...",
+          "hero.eyebrow": "本地控制面",
+          "hero.headline": "可信 App 连接一览",
+          "hero.description":
+            "此面板只展示由 Agent 自身观测并验证的连接。Relay 提供的连接状态仅作为传输元数据，不作为可信身份。",
+          "runtime.title": "运行状态",
+          "runtime.version": "版本",
+          "runtime.platform": "平台",
+          "runtime.relay": "Relay",
+          "runtime.notConfigured": "未配置",
+          "runtime.retryAttempts": "重试次数",
+          "runtime.nextRetry": "下次重试",
+          "runtime.relayLastError": "Relay 最近错误",
+          "runtime.relayLastClose": "Relay 最近关闭",
+          "runtime.started": "启动时间",
+          "status.relay": "Relay {status}",
+          "status.adminLocal": "本地管理已开启",
+          "status.adminOff": "管理已关闭",
+          "status.e2eRequired": "要求 E2E",
+          "status.configurationError": "配置错误",
+          "hero.trusted": "{count} 个可信连接",
+          "hero.encrypted": "{count} 个加密连接",
+          "hero.relay": "{count} 个 Relay 连接",
+          "hero.p2p": "{count} 个 P2P 连接",
+          "hero.traffic": "{size} 流量",
+          "metrics.aria": "连接概览",
+          "metrics.total": "总数",
+          "metrics.attempts": "尝试次数",
+          "metrics.trusted": "可信",
+          "metrics.p2p": "P2P",
+          "metrics.traffic": "流量",
+          "metrics.stale": "已过期",
+          "metrics.observedConnections": "观测到的连接",
+          "metrics.logicalReconnects": "逻辑重连",
+          "metrics.untrusted": "{count} 个不可信连接",
+          "metrics.relay": "{count} 个 Relay 连接",
+          "metrics.inOut": "入站 {inbound} · 出站 {outbound}",
+          "metrics.active": "{count} 个活跃连接",
+          "pairing.title": "配对请求",
+          "pairing.empty": "没有待处理请求",
+          "pairing.caption": "{count} 个请求等待本地批准",
+          "pairing.approve": "批准",
+          "pairing.reject": "拒绝",
+          "pairing.detailAria": "配对请求详情",
+          "pairing.detailTitle": "配对请求",
+          "pairing.app": "App",
+          "pairing.device": "设备",
+          "pairing.network": "网络",
+          "pairing.request": "请求",
+          "pairing.appName": "App 名称",
+          "pairing.appId": "App 身份",
+          "pairing.publicKey": "公钥",
+          "pairing.deviceName": "设备名称",
+          "pairing.os": "操作系统",
+          "pairing.osVersion": "系统版本",
+          "pairing.ipSource": "IP 来源",
+          "pairing.scopes": "申请权限",
+          "pairing.connection": "连接",
+          "pairing.created": "申请时间",
+          "trustedApps.title": "可信 App",
+          "trustedApps.empty": "没有可信 App",
+          "trustedApps.caption": "{count} 个 App 身份",
+          "trustedApps.revoke": "撤销",
+          "trustedApps.revokeConfirm":
+            "确定撤销此 App 身份吗？其活跃连接将被断开。",
+          "trustedApps.remove": "移除",
+          "trustedApps.removeConfirm":
+            "确定移除此设备吗？其可信身份和连接记录将被删除，再次连接前必须重新批准。",
+          "devices.title": "设备",
+          "devices.loading": "正在等待设备数据...",
+          "devices.caption": "观测到 {count} 台逻辑设备",
+          "devices.empty":
+            "<strong>未观测到设备</strong>Agent 验证已认证的 App 链路后，设备会显示在这里。",
+          "devices.connectionSummary": "{active} 个活跃 · {encrypted} 个 E2E",
+          "connections.title": "连接",
+          "connections.loading": "正在等待连接数据...",
+          "connections.caption": "显示 {shown} / {total} 个连接",
+          "connections.empty":
+            "<strong>未观测到 App 连接</strong>Agent 正在运行并等待已认证的 App 流量。E2E 设置期间及加密就绪后的连接均会显示在这里。",
+          "filters.aria": "连接筛选",
+          "filters.search": "搜索 App、设备、连接 ID 或 IP",
+          "filters.allStates": "全部状态",
+          "filters.allSecurity": "全部安全状态",
+          "filters.allPaths": "全部路径",
+          "table.appIdentity": "App 身份",
+          "table.name": "名称",
+          "table.type": "类型",
+          "table.device": "设备",
+          "table.expires": "过期时间",
+          "table.action": "操作",
+          "table.status": "状态",
+          "table.platform": "平台",
+          "table.path": "路径",
+          "table.connections": "连接数",
+          "table.attempts": "尝试次数",
+          "table.traffic": "流量",
+          "table.messages": "消息数",
+          "table.lastSeen": "最后出现",
+          "table.state": "状态",
+          "table.security": "安全",
+          "table.connected": "连接时间",
+          "table.lastMessage": "最后消息",
+          "detail.aria": "连接详情",
+          "detail.title": "连接详情",
+          "detail.select": "选择一个连接以查看详情",
+          "detail.empty":
+            '<div class="empty"><strong>未选择连接</strong>点击表格中的任意一行可查看安全、传输、时间和计数信息。</div>',
+          "detail.basic": "基本信息",
+          "detail.connection": "连接",
+          "detail.appInstance": "App 实例",
+          "detail.runtime": "运行时",
+          "detail.platform": "平台",
+          "detail.version": "版本",
+          "detail.security": "安全",
+          "detail.trusted": "可信",
+          "detail.encrypted": "已加密",
+          "detail.mode": "模式",
+          "detail.keyId": "密钥 ID",
+          "detail.e2eReady": "E2E 就绪",
+          "detail.lastVerified": "最后验证",
+          "detail.network": "网络",
+          "detail.method": "方式",
+          "detail.ipSource": "IP 来源",
+          "detail.ipHistory": "IP 历史",
+          "detail.privateNetworkHash": "私网哈希",
+          "detail.relayId": "Relay ID",
+          "detail.timing": "时间",
+          "detail.firstSeen": "首次出现",
+          "detail.lastHeartbeat": "最后心跳",
+          "detail.staleAfter": "过期时间",
+          "detail.transport": "传输",
+          "detail.currentPath": "当前路径",
+          "detail.available": "可用路径",
+          "detail.p2pState": "P2P 状态",
+          "detail.relayState": "Relay 状态",
+          "detail.pathChanged": "路径变更时间",
+          "detail.counters": "计数",
+          "detail.connectionAttempts": "连接尝试",
+          "detail.bytesIn": "入站字节",
+          "detail.bytesOut": "出站字节",
+          "detail.messagesIn": "入站消息",
+          "detail.messagesOut": "出站消息",
+          "detail.heartbeats": "心跳",
+          "detail.replayRejected": "拒绝重放",
+          "detail.authFailures": "认证失败",
+          "detail.observations": "观测记录",
+          "detail.observed": "观测",
+          "detail.none": "无",
+          "detail.recorded": "已记录",
+          "network.privateHash": " · 私网哈希 {hash}",
+          "time.justNow": "刚刚",
+          "time.secondsAgo": "{count} 秒前",
+          "time.minutesAgo": "{count} 分钟前",
+          "time.hoursAgo": "{count} 小时前",
+          "time.daysAgo": "{count} 天前",
+          "duration.minutes": "{minutes} 分钟",
+          "duration.hoursMinutes": "{hours} 小时 {minutes} 分钟",
+          "duration.daysHours": "{days} 天 {hours} 小时",
+          "errors.loadTitle": "无法加载 Agent 状态",
+          "errors.checkAdminServer": "请检查管理服务器是否正在运行。",
+          "errors.apiStatus": "API 请求失败，状态码 {status}",
+          "errors.actionStatus": "操作失败，状态码 {status}",
+          "value.active": "活跃",
+          "value.idle": "空闲",
+          "value.stale": "已过期",
+          "value.disconnected": "已断开",
+          "value.connected": "已连接",
+          "value.connecting": "连接中",
+          "value.reconnecting": "重连中",
+          "value.encrypted": "已加密",
+          "value.unencrypted": "等待 E2E",
+          "value.trusted": "可信",
+          "value.untrusted": "不可信",
+          "value.relay": "Relay",
+          "value.p2p": "P2P",
+          "value.unknown": "未知",
+          "value.revoked": "已撤销",
+          "value.ready": "就绪",
+          "value.pending": "等待中",
+          "value.failed": "失败",
+          "value.direct": "直连",
+          "value.forwarded": "转发",
+        },
+      };
+      const localeCookieName = "omniwork_admin_locale";
+      const simplifiedChineseTimeZones = new Set([
+        "Asia/Shanghai",
+        "Asia/Chongqing",
+        "Asia/Harbin",
+        "Asia/Urumqi",
+      ]);
+      let currentLocale = detectLocale();
       let statusSnapshot = null;
       let connectionSnapshot = null;
+      let pairingSnapshot = null;
+      let trustedAppsSnapshot = null;
       let selectedId = null;
+      let selectedPairingRequestId = null;
       let lastLoadedAt = null;
       const token = new URLSearchParams(location.search).get("token") || "";
       const headers = token ? { Authorization: "Bearer " + token } : {};
+
+      function detectLocale() {
+        const saved = document.cookie
+          .split(";")
+          .map((part) => part.trim())
+          .find((part) => part.startsWith(localeCookieName + "="))
+          ?.slice(localeCookieName.length + 1);
+        if (saved && messages[saved]) return saved;
+        const languages =
+          Array.isArray(navigator.languages) && navigator.languages.length > 0
+            ? navigator.languages
+            : [navigator.language];
+        for (const language of languages) {
+          const locale = localeFromLanguage(language);
+          if (locale) return locale;
+        }
+        return simplifiedChineseTimeZones.has(
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+        )
+          ? "zh-CN"
+          : "en";
+      }
+
+      function localeFromLanguage(language) {
+        const normalized = String(language || "").toLowerCase();
+        if (normalized === "zh" || normalized.startsWith("zh-")) {
+          return "zh-CN";
+        }
+        if (normalized === "en" || normalized.startsWith("en-")) {
+          return "en";
+        }
+        return null;
+      }
+
+      function t(key, values = {}) {
+        const template =
+          messages[currentLocale][key] || messages.en[key] || key;
+        return template.replace(/\{(\w+)\}/g, (_, name) =>
+          String(values[name] ?? ""),
+        );
+      }
+
+      function translatedValue(value) {
+        const key = "value." + String(value ?? "").toLowerCase();
+        return messages[currentLocale][key] || value;
+      }
+
+      function applyTranslations() {
+        document.documentElement.lang = currentLocale;
+        document.title = t("page.title");
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+          element.textContent = t(element.dataset.i18n);
+        });
+        document.querySelectorAll("[data-i18n-html]").forEach((element) => {
+          element.innerHTML = t(element.dataset.i18nHtml);
+        });
+        document
+          .querySelectorAll("[data-i18n-placeholder]")
+          .forEach((element) => {
+            element.placeholder = t(element.dataset.i18nPlaceholder);
+          });
+        document
+          .querySelectorAll("[data-i18n-aria-label]")
+          .forEach((element) => {
+            element.setAttribute(
+              "aria-label",
+              t(element.dataset.i18nAriaLabel),
+            );
+          });
+        document.querySelectorAll("[data-i18n-title]").forEach((element) => {
+          element.setAttribute("title", t(element.dataset.i18nTitle));
+        });
+        document.getElementById("language").value = currentLocale;
+      }
+
+      function setLocale(locale) {
+        if (!messages[locale]) return;
+        currentLocale = locale;
+        document.cookie =
+          localeCookieName +
+          "=" +
+          encodeURIComponent(locale) +
+          "; Path=/; Max-Age=31536000; SameSite=Lax";
+        applyTranslations();
+        render();
+      }
 
       async function load() {
         try {
           const responses = await Promise.all([
             fetch("/api/status", { headers }),
             fetch("/api/connections", { headers }),
+            fetch("/api/pairing/requests", { headers }),
+            fetch("/api/trusted-apps", { headers }),
           ]);
-          if (!responses[0].ok || !responses[1].ok) {
+          if (responses.some((response) => !response.ok)) {
             throw new Error(
-              "API request failed with status " +
-                responses[0].status +
-                "/" +
-                responses[1].status,
+              t("errors.apiStatus", {
+                status: responses.map((response) => response.status).join("/"),
+              }),
             );
           }
           statusSnapshot = await responses[0].json();
           connectionSnapshot = await responses[1].json();
+          pairingSnapshot = await responses[2].json();
+          trustedAppsSnapshot = await responses[3].json();
           lastLoadedAt = Date.now();
           hideError();
           render();
@@ -824,6 +1562,9 @@
         renderTopbar();
         renderHero();
         renderMetrics();
+        renderPairingRequests();
+        renderPairingDetail();
+        renderTrustedApps();
         renderDevices();
         renderRows();
         renderDetail();
@@ -833,23 +1574,30 @@
         const agent = statusSnapshot.agent;
         const runtime = statusSnapshot.runtime;
         document.getElementById("agent-line").textContent =
-            agent.device_id + " · " + agent.hostname;
+          agent.device_id + " · " + agent.hostname;
         document.getElementById("status-pills").innerHTML = [
           statusPill(
-            "Relay " + relayStatusLabel(runtime),
+            t("status.relay", {
+              status: translatedValue(relayStatusLabel(runtime)),
+            }),
             relayStatusTone(runtime),
           ),
           statusPill(
-            runtime.admin_enabled ? "Admin Local" : "Admin Off",
+            runtime.admin_enabled
+              ? t("status.adminLocal")
+              : t("status.adminOff"),
             runtime.admin_enabled ? "ok" : "bad",
           ),
           statusPill(
-            runtime.e2e_required ? "E2E Required" : "Plaintext Allowed",
+            runtime.e2e_required
+              ? t("status.e2eRequired")
+              : t("status.configurationError"),
             runtime.e2e_required ? "ok" : "warn",
           ),
         ].join("");
         document.getElementById("updated-at").innerHTML =
-          '<span class="dot ok"></span>Updated ' + formatTime(lastLoadedAt);
+          '<span class="dot ok"></span>' +
+          escapeHtml(t("common.updated", { time: formatTime(lastLoadedAt) }));
       }
 
       function renderHero() {
@@ -860,19 +1608,19 @@
           Date.now() - agent.started_at,
         );
         document.getElementById("runtime-list").innerHTML = [
-          ["Version", agent.version],
-          ["Platform", agent.platform],
+          [t("runtime.version"), agent.version],
+          [t("runtime.platform"), agent.platform],
           [
-            "Relay",
+            t("runtime.relay"),
             runtime.relay_configured
-              ? relayStatusLabel(runtime)
-              : "not configured",
+              ? translatedValue(relayStatusLabel(runtime))
+              : t("runtime.notConfigured"),
           ],
-          ["Retry Attempts", runtime.relay_reconnect_attempts || 0],
-          ["Next Retry", formatDate(runtime.relay_next_retry_at)],
-          ["Relay Last Error", runtime.relay_last_error || "-"],
-          ["Relay Last Close", formatClose(runtime.relay_last_close)],
-          ["Started", formatDate(agent.started_at)],
+          [t("runtime.retryAttempts"), runtime.relay_reconnect_attempts || 0],
+          [t("runtime.nextRetry"), formatDate(runtime.relay_next_retry_at)],
+          [t("runtime.relayLastError"), runtime.relay_last_error || "-"],
+          [t("runtime.relayLastClose"), formatClose(runtime.relay_last_close)],
+          [t("runtime.started"), formatDate(agent.started_at)],
         ]
           .map(
             ([label, value]) =>
@@ -884,13 +1632,15 @@
           )
           .join("");
         document.getElementById("hero-meta").innerHTML = [
-          badge("trusted", summary.trusted + " trusted"),
-          badge("e2e", summary.encrypted + " encrypted"),
-          badge("relay", summary.relay + " relay"),
-          badge("p2p", summary.p2p + " p2p"),
+          badge("trusted", t("hero.trusted", { count: summary.trusted })),
+          badge("e2e", t("hero.encrypted", { count: summary.encrypted })),
+          badge("relay", t("hero.relay", { count: summary.relay })),
+          badge("p2p", t("hero.p2p", { count: summary.p2p })),
           badge(
             "mixed",
-            formatBytes(summary.bytes_in + summary.bytes_out) + " traffic",
+            t("hero.traffic", {
+              size: formatBytes(summary.bytes_in + summary.bytes_out),
+            }),
           ),
         ].join("");
       }
@@ -898,33 +1648,43 @@
       function renderMetrics() {
         const summary = connectionSnapshot.summary;
         const items = [
-          ["Total", summary.total, "Observed connections", ""],
           [
-            "Attempts",
+            t("metrics.total"),
+            summary.total,
+            t("metrics.observedConnections"),
+            "",
+          ],
+          [
+            t("metrics.attempts"),
             summary.connection_attempts || 0,
-            "logical reconnects",
+            t("metrics.logicalReconnects"),
             "trusted",
           ],
           [
-            "Trusted",
+            t("metrics.trusted"),
             summary.trusted,
-            summary.untrusted + " untrusted",
+            t("metrics.untrusted", { count: summary.untrusted }),
             "trusted",
           ],
-          ["P2P", summary.p2p, summary.relay + " relay", "p2p"],
           [
-            "Traffic",
+            t("metrics.p2p"),
+            summary.p2p,
+            t("metrics.relay", { count: summary.relay }),
+            "p2p",
+          ],
+          [
+            t("metrics.traffic"),
             formatBytes((summary.bytes_in || 0) + (summary.bytes_out || 0)),
-            formatBytes(summary.bytes_in || 0) +
-              " in · " +
-              formatBytes(summary.bytes_out || 0) +
-              " out",
+            t("metrics.inOut", {
+              inbound: formatBytes(summary.bytes_in || 0),
+              outbound: formatBytes(summary.bytes_out || 0),
+            }),
             "mixed",
           ],
           [
-            "Stale",
+            t("metrics.stale"),
             summary.stale,
-            summary.active + " active",
+            t("metrics.active", { count: summary.active }),
             summary.stale > 0 ? "stale" : "trusted",
           ],
         ];
@@ -932,26 +1692,259 @@
           .map(
             ([label, value, note, tone]) =>
               '<article class="metric-card glass"><div class="metric-label"><span>' +
-              label +
+              escapeHtml(label) +
               "</span>" +
               tinyDot(tone) +
               '</div><div class="metric-value">' +
-              value +
+              escapeHtml(value) +
               '</div><div class="metric-note">' +
-              note +
+              escapeHtml(note) +
               "</div></article>",
           )
           .join("");
       }
 
+      function renderPairingRequests() {
+        const requests = (pairingSnapshot && pairingSnapshot.requests) || [];
+        document.getElementById("pairing-caption").textContent = t(
+          "pairing.caption",
+          { count: requests.length },
+        );
+        document.getElementById("pairing-rows").innerHTML = requests
+          .map(
+            (request) =>
+              '<tr data-pair-request-id="' +
+              escapeAttr(request.requestId) +
+              '">' +
+              '<td><div class="primary-text"><strong>' +
+              escapeHtml(
+                request.appName || request.deviceName || t("common.unknownApp"),
+              ) +
+              '</strong></div><div class="subtext">' +
+              escapeHtml(request.appId) +
+              '</div><div class="subtext pairing-mobile-meta">' +
+              escapeHtml(
+                (request.platform || t("common.unknown")) +
+                  " · " +
+                  (request.remoteIp || t("common.unknown")),
+              ) +
+              "</div></td>" +
+              '<td><div class="primary-text">' +
+              escapeHtml(request.platform || t("common.unknown")) +
+              '</div><div class="subtext">' +
+              escapeHtml(
+                [request.os, request.osVersion].filter(Boolean).join(" ") ||
+                  t("common.unknown"),
+              ) +
+              "</div></td>" +
+              '<td><div class="primary-text">' +
+              escapeHtml(request.remoteIp || t("common.unknown")) +
+              '</div><div class="subtext">' +
+              escapeHtml(
+                translatedValue(request.ipSource || t("common.unknown")),
+              ) +
+              "</div></td>" +
+              "<td>" +
+              formatDate(request.expiresAt) +
+              "</td>" +
+              '<td><button class="button" data-pair-action="approve" data-request-id="' +
+              escapeAttr(request.requestId) +
+              '">' +
+              escapeHtml(t("pairing.approve")) +
+              '</button> <button class="button" data-pair-action="reject" data-request-id="' +
+              escapeAttr(request.requestId) +
+              '">' +
+              escapeHtml(t("pairing.reject")) +
+              "</button></td>" +
+              "</tr>",
+          )
+          .join("");
+        document
+          .querySelectorAll("#pairing-rows tr[data-pair-request-id]")
+          .forEach((row) => {
+            row.addEventListener("click", () => {
+              openPairingDetail(row.getAttribute("data-pair-request-id"));
+            });
+          });
+        document.querySelectorAll("[data-pair-action]").forEach((button) => {
+          button.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            const requestId = button.getAttribute("data-request-id");
+            const action = button.getAttribute("data-pair-action");
+            if (!requestId || !action) return;
+            await runPairingAction(requestId, action);
+          });
+        });
+      }
+
+      function openPairingDetail(requestId) {
+        if (!requestId) return;
+        selectedPairingRequestId = requestId;
+        renderPairingDetail();
+        const dialog = document.getElementById("pairing-detail-dialog");
+        if (!dialog.open) dialog.showModal();
+      }
+
+      function renderPairingDetail() {
+        if (!selectedPairingRequestId) return;
+        const requests = (pairingSnapshot && pairingSnapshot.requests) || [];
+        const request = requests.find(
+          (item) => item.requestId === selectedPairingRequestId,
+        );
+        const dialog = document.getElementById("pairing-detail-dialog");
+        if (!request) {
+          selectedPairingRequestId = null;
+          if (dialog.open) dialog.close();
+          return;
+        }
+        const appInfo = request.appInfo || {};
+        document.getElementById("pairing-detail-subtitle").textContent =
+          (request.appName || request.deviceName || t("common.unknownApp")) +
+          " · " +
+          (request.platform || t("common.unknown"));
+        document.getElementById("pairing-detail-body").innerHTML = [
+          detailGroup(t("pairing.app"), [
+            [t("pairing.appName"), request.appName || t("common.unknownApp")],
+            [t("pairing.appId"), request.appId],
+            [t("pairing.publicKey"), request.appPublicKey],
+            [t("detail.version"), appInfo.app?.version || t("common.unknown")],
+            [t("detail.runtime"), appInfo.runtime_id],
+          ]),
+          detailGroup(t("pairing.device"), [
+            [
+              t("pairing.deviceName"),
+              request.deviceName || t("common.unknownDevice"),
+            ],
+            [t("detail.platform"), request.platform || t("common.unknown")],
+            [t("pairing.os"), request.os || t("common.unknown")],
+            [t("pairing.osVersion"), request.osVersion || t("common.unknown")],
+          ]),
+          detailGroup(t("pairing.network"), [
+            ["IP", request.remoteIp || t("common.unknown")],
+            [
+              t("pairing.ipSource"),
+              translatedValue(request.ipSource || t("common.unknown")),
+            ],
+          ]),
+          detailGroup(t("pairing.request"), [
+            [t("pairing.connection"), request.connectionId],
+            [
+              t("pairing.scopes"),
+              (request.requestedScopes || []).join(", ") || t("detail.none"),
+            ],
+            [t("pairing.created"), formatDate(request.createdAt)],
+            [t("table.expires"), formatDate(request.expiresAt)],
+          ]),
+          '<div class="dialog-actions"><button class="button" data-pair-detail-action="approve">' +
+            escapeHtml(t("pairing.approve")) +
+            '</button><button class="button danger" data-pair-detail-action="reject">' +
+            escapeHtml(t("pairing.reject")) +
+            "</button></div>",
+        ].join("");
+        document
+          .querySelectorAll("[data-pair-detail-action]")
+          .forEach((button) => {
+            button.addEventListener("click", async () => {
+              const action = button.getAttribute("data-pair-detail-action");
+              if (!action || !selectedPairingRequestId) return;
+              await runPairingAction(selectedPairingRequestId, action);
+            });
+          });
+      }
+
+      async function runPairingAction(requestId, action) {
+        await postAction(
+          "/api/pairing/requests/" +
+            encodeURIComponent(requestId) +
+            "/" +
+            action,
+        );
+      }
+
+      function renderTrustedApps() {
+        const apps = (trustedAppsSnapshot && trustedAppsSnapshot.apps) || [];
+        document.getElementById("trusted-caption").textContent = t(
+          "trustedApps.caption",
+          { count: apps.length },
+        );
+        document.getElementById("trusted-rows").innerHTML = apps
+          .map(
+            (app) =>
+              "<tr>" +
+              "<td><strong>" +
+              escapeHtml(app.appId) +
+              "</strong></td>" +
+              "<td>" +
+              escapeHtml(
+                app.displayName || app.platform || t("common.unknownApp"),
+              ) +
+              "</td>" +
+              "<td>" +
+              badge(app.status, translatedValue(app.status)) +
+              "</td>" +
+              '<td><button class="button" data-revoke-app="' +
+              escapeAttr(app.appId) +
+              '"' +
+              (app.status === "revoked" ? " disabled" : "") +
+              ">" +
+              escapeHtml(t("trustedApps.revoke")) +
+              '</button> <button class="button danger" data-remove-app="' +
+              escapeAttr(app.appId) +
+              '">' +
+              escapeHtml(t("trustedApps.remove")) +
+              "</button></td>" +
+              "</tr>",
+          )
+          .join("");
+        document.querySelectorAll("[data-revoke-app]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            const appId = button.getAttribute("data-revoke-app");
+            if (!appId) return;
+            if (!window.confirm(t("trustedApps.revokeConfirm"))) {
+              return;
+            }
+            await postAction(
+              "/api/trusted-apps/" + encodeURIComponent(appId) + "/revoke",
+            );
+          });
+        });
+        document.querySelectorAll("[data-remove-app]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            const appId = button.getAttribute("data-remove-app");
+            if (!appId) return;
+            if (!window.confirm(t("trustedApps.removeConfirm"))) {
+              return;
+            }
+            await postAction(
+              "/api/trusted-apps/" + encodeURIComponent(appId) + "/remove",
+            );
+          });
+        });
+      }
+
+      async function postAction(path) {
+        const response = await fetch(path, {
+          method: "POST",
+          headers,
+        });
+        if (!response.ok) {
+          throw new Error(
+            t("errors.actionStatus", { status: response.status }),
+          );
+        }
+        await load();
+      }
+
       function renderRows() {
         const rows = filteredConnections();
         const rowsEl = document.getElementById("rows");
-        document.getElementById("table-caption").textContent =
-          rows.length +
-          " of " +
-          connectionSnapshot.connections.length +
-          " connections shown";
+        document.getElementById("table-caption").textContent = t(
+          "connections.caption",
+          {
+            shown: rows.length,
+            total: connectionSnapshot.connections.length,
+          },
+        );
         document
           .getElementById("empty-state")
           .classList.toggle(
@@ -976,21 +1969,26 @@
               escapeHtml(item.connection_id) +
               "</div></div></div></td>" +
               "<td>" +
-              badge(item.state, item.state) +
+              badge(item.state, translatedValue(item.state)) +
               "</td>" +
               "<td>" +
               badge(
                 item.security.mode,
-                item.security.encrypted ? "E2E" : item.security.mode,
+                item.security.encrypted
+                  ? "E2E"
+                  : translatedValue(item.security.mode),
               ) +
               "</td>" +
               "<td>" +
-              badge(item.transport.current_path, item.transport.current_path) +
+              badge(
+                item.transport.current_path,
+                translatedValue(item.transport.current_path),
+              ) +
               "</td>" +
               '<td><div class="primary-text">' +
-              escapeHtml(item.network.ip || "unknown") +
+              escapeHtml(item.network.ip || t("common.unknown")) +
               '</div><div class="subtext">' +
-              escapeHtml(item.network.ip_source) +
+              escapeHtml(translatedValue(item.network.ip_source)) +
               "</div></td>" +
               "<td>" +
               escapeHtml(item.counters.connection_attempts || 0) +
@@ -1003,10 +2001,13 @@
                 ),
               ) +
               '</div><div class="subtext">' +
-              escapeHtml(formatBytes(item.counters.bytes_in || 0)) +
-              " in · " +
-              escapeHtml(formatBytes(item.counters.bytes_out || 0)) +
-              " out</div></td>" +
+              escapeHtml(
+                t("common.inOut", {
+                  inbound: formatBytes(item.counters.bytes_in || 0),
+                  outbound: formatBytes(item.counters.bytes_out || 0),
+                }),
+              ) +
+              "</div></td>" +
               "<td>" +
               formatDate(item.timing.connected_at) +
               "</td>" +
@@ -1017,7 +2018,7 @@
             );
           })
           .join("");
-        document.querySelectorAll("tbody tr").forEach((row) => {
+        document.querySelectorAll("#rows tr[data-id]").forEach((row) => {
           row.addEventListener("click", () => {
             selectedId = row.getAttribute("data-id");
             renderRows();
@@ -1029,8 +2030,10 @@
       function renderDevices() {
         const devices = connectionSnapshot.devices || [];
         const rowsEl = document.getElementById("device-rows");
-        document.getElementById("devices-caption").textContent =
-          devices.length + " logical devices observed";
+        document.getElementById("devices-caption").textContent = t(
+          "devices.caption",
+          { count: devices.length },
+        );
         document
           .getElementById("devices-empty")
           .classList.toggle("hidden", devices.length !== 0);
@@ -1046,24 +2049,29 @@
               escapeHtml(device.device_id) +
               "</div></div></div></td>" +
               "<td>" +
-              escapeHtml(device.platform || "unknown") +
+              escapeHtml(device.platform || t("common.unknown")) +
               "</td>" +
               "<td>" +
-              badge(device.current_path, device.current_path) +
+              badge(device.current_path, translatedValue(device.current_path)) +
               "</td>" +
               '<td><div class="primary-text">' +
-              escapeHtml(device.ip || "unknown") +
+              escapeHtml(device.ip || t("common.unknown")) +
               '</div><div class="subtext">' +
-              escapeHtml(device.ip_source || "unknown") +
+              escapeHtml(
+                translatedValue(device.ip_source || t("common.unknown")),
+              ) +
               privateNetworkHashSummary(device) +
               "</div></td>" +
               '<td><div class="primary-text">' +
               escapeHtml(device.connection_count || 0) +
               '</div><div class="subtext">' +
-              escapeHtml(device.active_connections || 0) +
-              " active · " +
-              escapeHtml(device.encrypted_connections || 0) +
-              " e2e</div></td>" +
+              escapeHtml(
+                t("devices.connectionSummary", {
+                  active: device.active_connections || 0,
+                  encrypted: device.encrypted_connections || 0,
+                }),
+              ) +
+              "</div></td>" +
               "<td>" +
               escapeHtml(device.connection_attempts || 0) +
               "</td>" +
@@ -1072,19 +2080,25 @@
                 formatBytes((device.bytes_in || 0) + (device.bytes_out || 0)),
               ) +
               '</div><div class="subtext">' +
-              escapeHtml(formatBytes(device.bytes_in || 0)) +
-              " in · " +
-              escapeHtml(formatBytes(device.bytes_out || 0)) +
-              " out</div></td>" +
+              escapeHtml(
+                t("common.inOut", {
+                  inbound: formatBytes(device.bytes_in || 0),
+                  outbound: formatBytes(device.bytes_out || 0),
+                }),
+              ) +
+              "</div></td>" +
               '<td><div class="primary-text">' +
               escapeHtml(
                 (device.messages_in || 0) + (device.messages_out || 0),
               ) +
               '</div><div class="subtext">' +
-              escapeHtml(device.messages_in || 0) +
-              " in · " +
-              escapeHtml(device.messages_out || 0) +
-              " out</div></td>" +
+              escapeHtml(
+                t("common.inOut", {
+                  inbound: device.messages_in || 0,
+                  outbound: device.messages_out || 0,
+                }),
+              ) +
+              "</div></td>" +
               "<td>" +
               timeAgo(device.last_seen_at) +
               "</td>" +
@@ -1098,77 +2112,103 @@
         const body = document.getElementById("detail-body");
         if (!item) {
           document.getElementById("detail-subtitle").textContent =
-            "Select a connection to inspect";
-          body.innerHTML =
-            '<div class="empty"><strong>No connection selected</strong>Click any table row to inspect security, transport, timing, and counters.</div>';
+            t("detail.select");
+          body.innerHTML = t("detail.empty");
           return;
         }
         document.getElementById("detail-subtitle").textContent =
-          appName(item) + " · " + item.state;
+          appName(item) + " · " + translatedValue(item.state);
         body.innerHTML = [
-          detailGroup("Basic", [
-            ["Connection", item.connection_id],
-            ["App Instance", item.app_instance_id],
-            ["Runtime", item.app_runtime_id],
-            ["Platform", item.app_platform || "unknown"],
-            ["Version", item.app_version || "unknown"],
+          detailGroup(t("detail.basic"), [
+            [t("detail.connection"), item.connection_id],
+            [t("detail.appInstance"), item.app_instance_id],
+            [t("detail.runtime"), item.app_runtime_id],
+            [t("detail.platform"), item.app_platform || t("common.unknown")],
+            [t("detail.version"), item.app_version || t("common.unknown")],
           ]),
-          detailGroup("Security", [
-            ["Trusted", bool(item.trusted)],
-            ["Encrypted", bool(item.security.encrypted)],
-            ["Mode", item.security.mode],
-            ["Key ID", item.security.key_id || "unknown"],
-            ["E2E Ready", bool(item.security.e2e_ready)],
-            ["Last Verified", formatDate(item.security.last_verified_at)],
-          ]),
-          detailGroup("Network", [
-            ["Method", item.network.connection_method],
-            ["IP", item.network.ip || "unknown"],
-            ["IP Source", item.network.ip_source],
+          detailGroup(t("detail.security"), [
+            [t("detail.trusted"), bool(item.trusted)],
+            [t("detail.encrypted"), bool(item.security.encrypted)],
+            [t("detail.mode"), translatedValue(item.security.mode)],
+            [t("detail.keyId"), item.security.key_id || t("common.unknown")],
+            [t("detail.e2eReady"), bool(item.security.e2e_ready)],
             [
-              "IP History",
-              (item.network.ip_history || []).join(", ") || "unknown",
+              t("detail.lastVerified"),
+              formatDate(item.security.last_verified_at),
+            ],
+          ]),
+          detailGroup(t("detail.network"), [
+            [
+              t("detail.method"),
+              translatedValue(item.network.connection_method),
+            ],
+            ["IP", item.network.ip || t("common.unknown")],
+            [t("detail.ipSource"), translatedValue(item.network.ip_source)],
+            [
+              t("detail.ipHistory"),
+              (item.network.ip_history || []).join(", ") || t("common.unknown"),
             ],
             [
-              "Private Network Hash",
-              item.network.private_network_hash || "unknown",
+              t("detail.privateNetworkHash"),
+              item.network.private_network_hash || t("common.unknown"),
             ],
             [
-              "Relay ID",
+              t("detail.relayId"),
               item.network.relay_connection_id ||
                 item.relay_connection_id ||
-                "unknown",
+                t("common.unknown"),
             ],
           ]),
-          detailGroup("Timing", [
-            ["Connected", formatDate(item.timing.connected_at)],
-            ["First Seen", formatDate(item.timing.first_seen_at)],
-            ["Last Seen", timeAgo(item.timing.last_seen_at)],
-            ["Last Heartbeat", formatDate(item.timing.last_heartbeat_at)],
-            ["Last Message", formatDate(item.timing.last_message_at)],
-            ["Stale After", formatDate(item.timing.stale_after)],
-          ]),
-          detailGroup("Transport", [
-            ["Current Path", item.transport.current_path],
+          detailGroup(t("detail.timing"), [
+            [t("table.connected"), formatDate(item.timing.connected_at)],
+            [t("detail.firstSeen"), formatDate(item.timing.first_seen_at)],
+            [t("table.lastSeen"), timeAgo(item.timing.last_seen_at)],
             [
-              "Available",
-              item.transport.available_paths.join(", ") || "unknown",
+              t("detail.lastHeartbeat"),
+              formatDate(item.timing.last_heartbeat_at),
             ],
-            ["P2P State", item.transport.p2p_state || "unknown"],
-            ["Relay State", item.transport.relay_state || "unknown"],
-            ["Path Changed", formatDate(item.transport.last_path_change_at)],
+            [t("table.lastMessage"), formatDate(item.timing.last_message_at)],
+            [t("detail.staleAfter"), formatDate(item.timing.stale_after)],
           ]),
-          detailGroup("Counters", [
-            ["Connection Attempts", item.counters.connection_attempts || 0],
-            ["Bytes In", formatBytes(item.counters.bytes_in || 0)],
-            ["Bytes Out", formatBytes(item.counters.bytes_out || 0)],
-            ["Messages In", item.counters.messages_in],
-            ["Messages Out", item.counters.messages_out],
-            ["Heartbeats", item.counters.heartbeats],
-            ["Replay Rejected", item.counters.replay_rejected],
-            ["Auth Failures", item.counters.auth_failures],
+          detailGroup(t("detail.transport"), [
+            [
+              t("detail.currentPath"),
+              translatedValue(item.transport.current_path),
+            ],
+            [
+              t("detail.available"),
+              item.transport.available_paths.map(translatedValue).join(", ") ||
+                t("common.unknown"),
+            ],
+            [
+              t("detail.p2pState"),
+              translatedValue(item.transport.p2p_state || t("common.unknown")),
+            ],
+            [
+              t("detail.relayState"),
+              translatedValue(
+                item.transport.relay_state || t("common.unknown"),
+              ),
+            ],
+            [
+              t("detail.pathChanged"),
+              formatDate(item.transport.last_path_change_at),
+            ],
           ]),
-          detailGroup("Observations", observationRows(item)),
+          detailGroup(t("detail.counters"), [
+            [
+              t("detail.connectionAttempts"),
+              item.counters.connection_attempts || 0,
+            ],
+            [t("detail.bytesIn"), formatBytes(item.counters.bytes_in || 0)],
+            [t("detail.bytesOut"), formatBytes(item.counters.bytes_out || 0)],
+            [t("detail.messagesIn"), item.counters.messages_in],
+            [t("detail.messagesOut"), item.counters.messages_out],
+            [t("detail.heartbeats"), item.counters.heartbeats],
+            [t("detail.replayRejected"), item.counters.replay_rejected],
+            [t("detail.authFailures"), item.counters.auth_failures],
+          ]),
+          detailGroup(t("detail.observations"), observationRows(item)),
         ].join("");
       }
 
@@ -1185,7 +2225,8 @@
           if (path && item.transport.current_path !== path) return false;
           if (security === "encrypted" && !item.security.encrypted)
             return false;
-          if (security === "plaintext" && item.security.encrypted) return false;
+          if (security === "unencrypted" && item.security.encrypted)
+            return false;
           if (security === "trusted" && !item.trusted) return false;
           if (security === "untrusted" && item.trusted) return false;
           return true;
@@ -1220,7 +2261,8 @@
       }
       function observationRows(item) {
         const observations = item.observations || [];
-        if (observations.length === 0) return [["Observed", "none"]];
+        if (observations.length === 0)
+          return [[t("detail.observed"), t("detail.none")]];
         return observations
           .slice(-8)
           .map((observation) => [
@@ -1252,7 +2294,7 @@
               observation.transport && observation.transport.path,
             ]
               .filter(Boolean)
-              .join(" · ") || "recorded",
+              .join(" · ") || t("detail.recorded"),
           ]);
       }
       function statusPill(label, tone) {
@@ -1267,7 +2309,7 @@
       function tinyDot(tone) {
         return (
           '<span class="dot ' +
-          (tone === "stale" || tone === "plaintext"
+          (tone === "stale" || tone === "unencrypted"
             ? "warn"
             : tone
               ? "ok"
@@ -1285,7 +2327,7 @@
         );
       }
       function bool(value) {
-        return value ? "Yes" : "No";
+        return value ? t("common.yes") : t("common.no");
       }
       function relayStatusLabel(runtime) {
         return (
@@ -1308,7 +2350,7 @@
           item.app_name ||
           item.app_device_name ||
           item.app_instance_id ||
-          "Unknown App"
+          t("common.unknownApp")
         );
       }
       function initials(item) {
@@ -1326,7 +2368,7 @@
           device.device_name ||
           device.app_name ||
           device.device_id ||
-          "Unknown Device"
+          t("common.unknownDevice")
         );
       }
       function deviceInitials(device) {
@@ -1341,14 +2383,16 @@
       }
       function privateNetworkHashSummary(value) {
         return value.private_network_hash
-          ? " · private hash " + value.private_network_hash.slice(0, 12)
+          ? t("network.privateHash", {
+              hash: value.private_network_hash.slice(0, 12),
+            })
           : "";
       }
       function formatTime(value) {
-        return value ? new Date(value).toLocaleTimeString() : "-";
+        return value ? new Date(value).toLocaleTimeString(currentLocale) : "-";
       }
       function formatDate(value) {
-        return value ? new Date(value).toLocaleString() : "-";
+        return value ? new Date(value).toLocaleString(currentLocale) : "-";
       }
       function formatBytes(value) {
         const bytes = Number(value) || 0;
@@ -1365,20 +2409,27 @@
       function timeAgo(value) {
         if (!value) return "-";
         const seconds = Math.max(0, Math.floor((Date.now() - value) / 1000));
-        if (seconds < 5) return "just now";
-        if (seconds < 60) return seconds + "s ago";
+        if (seconds < 5) return t("time.justNow");
+        if (seconds < 60) return t("time.secondsAgo", { count: seconds });
         const minutes = Math.floor(seconds / 60);
-        if (minutes < 60) return minutes + "m ago";
+        if (minutes < 60) return t("time.minutesAgo", { count: minutes });
         const hours = Math.floor(minutes / 60);
-        if (hours < 24) return hours + "h ago";
-        return Math.floor(hours / 24) + "d ago";
+        if (hours < 24) return t("time.hoursAgo", { count: hours });
+        return t("time.daysAgo", { count: Math.floor(hours / 24) });
       }
       function relativeDuration(ms) {
         const minutes = Math.max(0, Math.floor(ms / 60000));
-        if (minutes < 60) return minutes + "m";
+        if (minutes < 60) return t("duration.minutes", { minutes });
         const hours = Math.floor(minutes / 60);
-        if (hours < 24) return hours + "h " + (minutes % 60) + "m";
-        return Math.floor(hours / 24) + "d " + (hours % 24) + "h";
+        if (hours < 24)
+          return t("duration.hoursMinutes", {
+            hours,
+            minutes: minutes % 60,
+          });
+        return t("duration.daysHours", {
+          days: Math.floor(hours / 24),
+          hours: hours % 24,
+        });
       }
       function showError(message) {
         document.getElementById("error-state").classList.remove("hidden");
@@ -1408,9 +2459,25 @@
       }
 
       document.getElementById("refresh").addEventListener("click", load);
+      document
+        .getElementById("pairing-detail-close")
+        .addEventListener("click", () => {
+          document.getElementById("pairing-detail-dialog").close();
+        });
+      document
+        .getElementById("pairing-detail-dialog")
+        .addEventListener("close", () => {
+          selectedPairingRequestId = null;
+        });
+      document
+        .getElementById("language")
+        .addEventListener("change", (event) => {
+          setLocale(event.target.value);
+        });
       ["search", "state", "security", "path"].forEach((id) =>
         document.getElementById(id).addEventListener("input", renderRows),
       );
+      applyTranslations();
       load();
       setInterval(load, 5000);
     </script>

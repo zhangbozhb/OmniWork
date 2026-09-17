@@ -1,19 +1,18 @@
+import { machine, release, type, version } from "node:os";
+
 import {
-  E2E_NOISE_NNPSK0_CAPABILITY_V1,
-  ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1,
-  PLAINTEXT_BUSINESS_CAPABILITY_V1,
-  PROTOCOL_SUPPORT_V1,
+  E2E_SIGNED_X25519_CAPABILITY_V2,
+  PROTOCOL_SUPPORT_V2,
   TERMINAL_STREAM_CAPABILITY_V1,
   createMessage,
   type AgentAuthChallengePayload,
   type AgentAuthInitPayload,
   type AgentHelloPayload,
-  type AuthOkPayload,
+  type AgentAuthOkPayload,
   type MessageEnvelope,
 } from "@omni-work/protocol-ts";
 import type { RelayCloseEvent } from "@omni-work/relay-client";
 import type { AgentConfig } from "../config/config.ts";
-import type { SessionKeyRecord } from "../auth-key/authKey.ts";
 import { AgentRelayClient } from "../relay-client/agentRelayClient.ts";
 import type { TerminalProviderRegistry } from "../terminal-provider/terminalProviderRegistry.ts";
 import type { WorkspaceManager } from "../workspace/workspaceManager.ts";
@@ -34,17 +33,17 @@ import {
   type RelayConnectionStatus,
 } from "./relayReconnectPolicy.ts";
 import type { AgentRelayRuntimeStatus } from "./agentRuntimeTypes.ts";
-import type { E2E_SUPPORT_V1 } from "@omni-work/protocol-ts";
+import type { E2E_SUPPORT_V2 } from "@omni-work/protocol-ts";
 
 interface AgentRelayControllerOptions {
   config: AgentConfig;
   logger: Logger;
   logTransport: boolean;
+  createRelayClient?(url: string): AgentRelayClient;
   terminalProviders: TerminalProviderRegistry;
   workspaces: WorkspaceManager;
   terminalStreamPusher: TerminalStreamPusher;
-  getKeyRecord(): SessionKeyRecord;
-  e2eSupport(): typeof E2E_SUPPORT_V1;
+  e2eSupport(): typeof E2E_SUPPORT_V2;
   onMessage(message: MessageEnvelope): Promise<void>;
   onRelayUnavailable(): void;
   onRelayShutdownRequested(reason: string): void;
@@ -54,11 +53,11 @@ export class AgentRelayController {
   private readonly config: AgentConfig;
   private readonly logger: Logger;
   private readonly logTransport: boolean;
+  private readonly createRelayClient: (url: string) => AgentRelayClient;
   private readonly terminalProviders: TerminalProviderRegistry;
   private readonly workspaces: WorkspaceManager;
   private readonly terminalStreamPusher: TerminalStreamPusher;
-  private readonly getKeyRecord: () => SessionKeyRecord;
-  private readonly e2eSupport: () => typeof E2E_SUPPORT_V1;
+  private readonly e2eSupport: () => typeof E2E_SUPPORT_V2;
   private readonly onMessage: (message: MessageEnvelope) => Promise<void>;
   private readonly onRelayUnavailable: () => void;
   private readonly onRelayShutdownRequested: (reason: string) => void;
@@ -78,10 +77,11 @@ export class AgentRelayController {
     this.config = options.config;
     this.logger = options.logger;
     this.logTransport = options.logTransport;
+    this.createRelayClient =
+      options.createRelayClient ?? ((url) => new AgentRelayClient(url));
     this.terminalProviders = options.terminalProviders;
     this.workspaces = options.workspaces;
     this.terminalStreamPusher = options.terminalStreamPusher;
-    this.getKeyRecord = options.getKeyRecord;
     this.e2eSupport = options.e2eSupport;
     this.onMessage = options.onMessage;
     this.onRelayUnavailable = options.onRelayUnavailable;
@@ -147,9 +147,8 @@ export class AgentRelayController {
   }
 
   private async connectRelay(url: string): Promise<void> {
-    const keyRecord = this.getKeyRecord();
     this.agentConnectionId = null;
-    const relay = new AgentRelayClient(url);
+    const relay = this.createRelayClient(url);
     this.relay = relay;
     const relayPath = new AgentRelayPath(relay);
     const transport = new AgentSessionTransport(relayPath);
@@ -207,6 +206,15 @@ export class AgentRelayController {
         });
       });
     });
+    let connected = false;
+    let earlyClose: RelayCloseEvent | null = null;
+    relay.onClose((event) => {
+      if (!connected) {
+        earlyClose = event;
+        return;
+      }
+      this.handleRelayClose(event);
+    });
     try {
       this.updateStatus("connecting");
       await relay.connect();
@@ -221,39 +229,38 @@ export class AgentRelayController {
         ].join("\n"),
       );
     }
-    relay.onClose((event) => this.handleRelayClose(event));
-
-    if (this.config.relayDevicePrivateKey) {
-      const init = createRelayDeviceAuthInit({
-        deviceId: this.config.deviceId,
-        privateKeyPem: this.config.relayDevicePrivateKey,
-      });
-      relay.send(
-        createMessage<AgentAuthInitPayload>(
-          "agent.auth.init",
-          {
-            v: PROTOCOL_SUPPORT_V1.current,
-            device_id: this.config.deviceId,
-            device_public_key: init.device_public_key,
-            timestamp: init.timestamp,
-            signature: init.signature,
-          },
-          { device_id: this.config.deviceId },
-        ),
-      );
-    } else {
-      this.sendAgentHello(relay);
+    connected = true;
+    if (earlyClose) {
+      this.handleRelayClose(earlyClose);
+      return;
+    }
+    if (
+      this.stopping ||
+      this.relay !== relay ||
+      this.transport !== transport
+    ) {
+      return;
     }
 
-    this.logger.info("connected to relay", {
+    const init = createRelayDeviceAuthInit(this.config.identity);
+    relay.send(
+      createMessage<AgentAuthInitPayload>(
+        "agent.auth.init",
+        {
+          v: PROTOCOL_SUPPORT_V2.current,
+          device_id: this.config.deviceId,
+          device_public_key: init.device_public_key,
+          timestamp: init.timestamp,
+          signature: init.signature,
+        },
+        { device_id: this.config.deviceId },
+      ),
+    );
+
+    this.logger.info("relay transport connected; authenticating Agent", {
       relay_url: url,
       device_id: this.config.deviceId,
     });
-    this.reconnectAttempts = 0;
-    this.lastError = null;
-    this.lastClose = null;
-    this.nextRetryAt = null;
-    this.updateStatus("connected");
   }
 
   private async connectRelayWithRetry(url: string): Promise<void> {
@@ -264,6 +271,9 @@ export class AgentRelayController {
         await this.connectRelay(url);
         return;
       } catch (error) {
+        if (this.stopping) {
+          return;
+        }
         this.lastError = formatRelayConnectionError(error);
         if (isTerminalRelayConnectionError(error)) {
           const delayMs = this.config.relayReconnectMaxDelayMs;
@@ -303,10 +313,15 @@ export class AgentRelayController {
     if (message.type !== "auth.ok") {
       return;
     }
-    const payload = message.payload as AuthOkPayload;
-    if (payload.agent_connection_id && !payload.connection_id) {
+    const payload = message.payload as AgentAuthOkPayload;
+    if (payload.agent_connection_id) {
       this.agentConnectionId = payload.agent_connection_id;
-      this.logger.info("relay assigned agent connection id", {
+      this.reconnectAttempts = 0;
+      this.lastError = null;
+      this.lastClose = null;
+      this.nextRetryAt = null;
+      this.updateStatus("connected");
+      this.logger.info("Agent authorized by Relay", {
         agent_connection_id: payload.agent_connection_id,
       });
     }
@@ -316,13 +331,6 @@ export class AgentRelayController {
     relay: AgentRelayClient,
     payload: AgentAuthChallengePayload,
   ): void {
-    if (!this.config.relayDevicePrivateKey) {
-      this.logger.error("relay requested agent auth challenge without private key", {
-        device_id: this.config.deviceId,
-      });
-      relay.close(4403, "missing relay device private key");
-      return;
-    }
     this.sendAgentHello(relay, payload.challenge);
   }
 
@@ -331,30 +339,30 @@ export class AgentRelayController {
       createMessage<AgentHelloPayload>(
         "agent.hello",
         {
-          v: PROTOCOL_SUPPORT_V1.current,
+          v: PROTOCOL_SUPPORT_V2.current,
           device_id: this.config.deviceId,
-          ...(challenge && this.config.relayDevicePrivateKey
-            ? {
-                relay_auth: createRelayDeviceAuthProof({
-                  deviceId: this.config.deviceId,
-                  privateKeyPem: this.config.relayDevicePrivateKey,
-                  challenge,
-                }),
-              }
-            : {}),
-          protocol: PROTOCOL_SUPPORT_V1,
+          device_public_key: this.config.identity.publicKey,
+          relay_auth: createRelayDeviceAuthProof({
+            identity: this.config.identity,
+            challenge: requireChallenge(challenge),
+          }),
+          protocol: PROTOCOL_SUPPORT_V2,
           e2e: this.e2eSupport(),
-          business_security_mode: this.config.businessSecurityMode,
           hostname: this.config.hostname,
           platform: "darwin",
+          system_type: type(),
+          uname: [
+            type(),
+            this.config.hostname,
+            release(),
+            version(),
+            machine(),
+          ].join(" "),
           agent_version: this.config.agentVersion,
           providers: this.terminalProviders.providers(),
           workspaces: this.workspaces.snapshot(),
           capabilities: [
-            E2E_NOISE_NNPSK0_CAPABILITY_V1,
-            this.config.businessSecurityMode === "e2e_required"
-              ? ENCRYPTED_ONLY_BUSINESS_CAPABILITY_V1
-              : PLAINTEXT_BUSINESS_CAPABILITY_V1,
+            E2E_SIGNED_X25519_CAPABILITY_V2,
             "terminal.tui",
             "terminal.snapshot",
             ...(this.config.terminalStreamEnabled
@@ -548,4 +556,11 @@ export class AgentRelayController {
     }
     transport?.close("relay disconnected");
   }
+}
+
+function requireChallenge(challenge: string | undefined): string {
+  if (!challenge) {
+    throw new Error("Relay authentication challenge is required.");
+  }
+  return challenge;
 }

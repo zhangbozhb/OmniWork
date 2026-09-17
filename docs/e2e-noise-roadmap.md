@@ -1,90 +1,120 @@
-# E2E Noise 落地计划
+# E2E 会话安全实施记录
 
-本文记录E2E 安全改造的实施基线。P2P 传输能力已经落地；
-MVP 范围是在既有 relay path 与 p2p path 之上补齐 App-Agent E2E 加密。
-默认采用 encrypted-only 业务模型；本地可信调试可由 Agent 启动配置显式切换为
-`plaintext_allowed`，其他端通过协议字段适配，不做自动降级。
+> 文件名保留用于兼容历史引用。当前实现不再使用 Noise NNpsk0 或共享 PSK；
+> `packages/e2e-noise` 现实现身份签名的临时 X25519 会话协议。
 
-## 前置状态
+关联文档：
 
-- P2P 升级能力已作为传输优化实现，包含 `tunnel.upgrade.*`、`SessionTransport`、`UpgradeCoordinator` 和 Relay 编排能力。
-- Noise E2E 不替代 P2P，也不要求删除 P2P；它覆盖 relay path 和 p2p path 的业务 payload 安全。
-- E2E 完成后，路径选择仍由现有 transport preference、灰度、退避和降级逻辑控制。
-- 本文只描述 E2E retrofit 的落地，不重新规划 P2P 传输能力。
+- [identity-auth-design.md](./identity-auth-design.md)
+- [relay-architecture-implementation.md](./relay-architecture-implementation.md)
+- [p2p-per-app-connection.md](./p2p-per-app-connection.md)
 
-## 安全状态
+## 当前状态
 
-- 代码已接入 App-Agent Noise E2E：App 在 `auth.ok` 后发起握手，Agent 只执行解密后的 `InnerEnvelope`，业务响应也会封装为 `e2e.message`。
-- 同一个 Agent 已支持多个 App 同时连接；每个 App 使用 `app_info.instance_id` / `app_info.runtime_id` 标识应用实例与运行实例，并使用 Relay 分配的 `app_connection_id` 建立独立 E2E session。
-- `packages/e2e-noise` 已覆盖 NNpsk0 握手、ChaCha20-Poly1305 加解密、`seq` 防重放、篡改检测和 key mismatch 测试。
-- `auth.proof` 仍用于 Relay 接入校验和失败限流；签名输入绑定 `nonce`、`app_info.instance_id`、`app_info.runtime_id`，Agent 额外记录已处理 nonce，拒绝同一 nonce 的 `auth.verify` 重放。
-- P2P per App connection 已完成基础收口：Relay 只对 E2E ready 的 App 连接触发 propose，升级控制信令按 `app_connection_id` 绑定并由 Relay 透传；业务 payload 仍复用 App-Agent E2E 通道。
+App-Agent 业务安全已经落地：
 
-## 设计基线
+- 协议 v2 固定要求 E2E，不提供业务明文模式或自动降级。
+- App 与 Agent 在双向身份认证后建立独立的签名 X25519 会话。
+- 每个 App WebSocket 使用 Relay 分配的 `app_connection_id` 绑定独立 E2E
+  session。
+- Relay path 与 P2P path 复用同一个 E2E session，切换路径不改变安全边界。
+- Agent 只执行成功解密并通过序列校验的 `InnerEnvelope`。
+- 业务响应统一封装为 `e2e.message`，Relay 不解析业务 payload。
 
-- `ws://` 和 `wss://` 都只是传输；业务安全边界是 App-Agent E2E。
-- Relay 不可信，只负责外层路由、状态校验、限流和升级协调。
-- P2P 是传输路径优化，不能单独作为业务安全边界。
-- 默认模式下，App-Agent 协议应将业务消息封装为 `e2e.message`；Relay 不解析业务
-  payload，也不按 `session.*`、`terminal.*`、`workspace.*`、`files.*`、`git.*`、
-  `codex.*` 等业务类型裁决明文 envelope。`tunnel.upgrade.*` 是 P2P 控制面信令，
-  只允许在对应 App-Agent E2E pair ready 后按 `app_connection_id` 透传。
-- Agent 可通过 `OMNIWORK_AGENT_REQUIRE_E2E=false` 显式声明
-  `business_security_mode=plaintext_allowed`；同一 Relay 可同时承载
-  `e2e_required` 与 `plaintext_allowed` Agent，并按目标 Agent 模式路由。
-- v1 固定使用 `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`。
-- `app_connection_id` 由 Relay mobile connection id 规范化，参与 Noise prologue 和 E2E message AAD。
-- 外层协议、E2E 协议、内层业务协议均显式携带版本号。
+## 密码学协议
 
-## 已落地能力
+长期身份使用 Ed25519，单次会话使用临时 X25519：
 
-### 协议 v1 地基
+1. App 生成临时 X25519 密钥，并以长期 App 私钥签名握手 init。
+2. Agent 校验 App ID、公钥与签名，生成自己的临时 X25519 密钥。
+3. Agent 以长期 Agent 私钥签名 reply。
+4. 双方对 X25519 共享秘密执行 HKDF-SHA256，派生双向独立会话密钥。
+5. 业务消息使用 ChaCha20-Poly1305。
+6. 单调序列号进入认证上下文，用于拒绝重放和乱序。
 
-- `packages/protocol-ts` 已新增 E2E v1 常量、能力名、TypeScript 类型。
-- `schemas.ts` 已新增 `agent.hello`、`mobile.connect`、`e2e.*`、
-  `protocol.error`、`InnerEnvelope` 的运行时 schema。
-- `AgentHelloPayload` 和 `AuthOkPayload` 已声明 `business_security_mode`，缺省按
-  `e2e_required` 兼容旧端，并用 `e2e.required` 表达本次连接是否强制 E2E。
+签名输入绑定：
 
-### Relay encrypted-only 状态机
+- Agent device ID、Agent 公钥。
+- App ID、App 公钥。
+- Agent/App connection ID。
+- handshake ID。
+- 双方临时公钥。
+- 外层、内层和 E2E 协议版本。
 
-- Relay 配置保留 `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS`，`OMNIWORK_RELAY_REQUIRE_E2E`
-  仅作为旧配置兼容项；业务是否加密由 Agent `business_security_mode` 决定。
-- 非 loopback 明文 `ws://` 必须显式允许；Relay 不再用全局 E2E 开关阻断
-  `plaintext_allowed` Agent。
-- Relay 已新增连接状态：`relay_pairing_verified`、`e2e_handshaking`、
-  `e2e_ready`。
-- Relay 不再按业务消息类型拒绝外层明文 envelope；`e2e_required` 的封装与
-  解封装由 App/Agent 维护。
-- Relay path 已按 `app_connection_id` 定向转发多 App E2E 消息，Agent 响应不再广播给所有 App。
+因此 Relay 无法替换身份、临时密钥或连接上下文而不使签名校验失败。
 
-### Noise 基础库
+## 传输边界
 
-- 已新增 `packages/e2e-noise`。
-- 已使用 `@noble/curves`、`@noble/hashes`、`@noble/ciphers` 实现跨端密码学基础。
-- 已实现 PSK 派生、NNpsk0 握手、transport 加解密、seq/replay 校验。
+- `ws://` 与 `wss://` 都只是传输；生产环境仍推荐 `wss://` 降低元数据暴露。
+- WebRTC P2P 是路径优化，不是业务安全边界。
+- Relay 只保存连接拓扑、E2E ready 状态和短时定向上下文。
+- `tunnel.upgrade.*` 属于 P2P 控制面信令，只在对应 App-Agent E2E pair ready
+  后按 `app_connection_id` 路由。
+- P2P 失败可按传输偏好回到 Relay；业务 payload 始终保持同一 E2E 密文。
+- 严格 P2P 模式失败时关闭业务 session，不以明文或未认证通道继续。
 
-### Agent E2E 接入
+## 已落地模块
 
-- Agent 已处理 `e2e.handshake.init` 并返回 `e2e.handshake.reply` / `e2e.ready`。
-- Agent 已按 `app_connection_id` 维护多个独立 E2E session。
-- Agent 默认只从解密后的 `InnerEnvelope` 分发业务消息；显式 plaintext 模式下
-  接受带 `app_connection_id` 的已鉴权外层业务消息。
-- Agent 默认拒绝所有外层明文业务命令。
-- 请求响应类消息定向返回来源 App，终端帧按订阅 App 推送，共享 session 状态才广播。
+### 协议
 
-### App E2E 接入
+- `packages/protocol-ts` 定义强制 E2E capability、签名 X25519 suite、
+  `e2e.handshake.*`、`e2e.ready`、`e2e.message` 和 `InnerEnvelope` schema。
+- E2E 报文绑定 `device_id`、`app_id`、连接 ID、handshake ID 和协议版本。
 
-- App 已在 `auth.ok` 后发起 Noise 握手。
-- `e2e_ready` 前业务消息入队，`e2e_ready` 后统一加密发送。
-- Noise 失败时关闭 session，不降级明文。
+### 密码学包
 
-## 待收口能力
+- `packages/e2e-noise` 提供发起方与响应方握手、会话派生、加解密和重放保护。
+- 使用 `@noble/curves`、`@noble/hashes` 与 `@noble/ciphers`，支持 Node、
+  React Native 与 Web。
+- 测试覆盖双向签名、身份替换、签名篡改、连接绑定、密文篡改、重放和乱序。
 
-### P2P 路径安全收口
+### Relay
 
-- Relay path 和 p2p path 复用同一个 App-Agent E2E session。
-- P2P 切换不重新暴露业务明文，也不新增明文 fallback。
-- `tunnel.upgrade.propose` 是 Relay 定向升级提示；offer / answer / candidate / committed / downgrade 是 P2P 控制面信令，只在 E2E pair ready 后由 Relay 按 `app_connection_id` 透传。
-- P2P 升级失败只影响路径选择，不影响业务 payload 的 E2E 安全。
-- P2P 多 App 实现边界记录在 `p2p-per-app-connection.md`。
+- 连接状态包含 `relay_pairing_verified`、`e2e_handshaking` 和 `e2e_ready`。
+- E2E handshake 与密文消息按 `app_connection_id` 定向路由。
+- Relay 不持有 E2E 会话密钥，也不接受已认证连接直接发送外层业务命令。
+
+### Agent
+
+- Agent 按 App connection 维护独立 E2E peer。
+- 只有可信 App 完成签名认证后才能开始握手。
+- E2E ready 前不执行业务消息；解密、认证或重放校验失败会清理会话。
+
+### App
+
+- App 在验证签名 `auth.ok` 后发起 E2E 握手。
+- E2E ready 前的业务消息入队，ready 后统一加密发送。
+- Agent reply 必须与 Relay challenge 中已验证的 Agent 公钥一致。
+
+## 已退役机制
+
+以下旧设计只属于历史，不得作为 fallback 恢复：
+
+- `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`。
+- 从共享配对 Key 派生 PSK。
+- `business_security_mode=plaintext_allowed`。
+- `OMNIWORK_AGENT_REQUIRE_E2E=false` 或 Relay 业务明文开关。
+- E2E 握手失败后降级为明文业务 envelope。
+
+包名 `e2e-noise` 为兼容已发布 npm 包与现有 import 路径保留，不代表当前仍使用
+Noise NNpsk0 握手。
+
+## 验证入口
+
+```sh
+pnpm verify:identity-auth
+pnpm --filter @omni-work/e2e-noise test
+pnpm verify:security
+pnpm test
+pnpm verify:app:targets
+```
+
+运行中的 Relay 与 Agent 可进一步使用：
+
+```sh
+pnpm verify:upgrade:simulator -- --pairing 'omniwork://pair?...'
+pnpm verify:upgrade:simulator -- --relay <ws-url> --device <DEV1-id>
+```
+
+该模拟器使用独立 App 身份，仍需在 Agent Admin 中批准；它验证签名认证、E2E
+握手与 P2P 路径，而不是使用链接内凭证。

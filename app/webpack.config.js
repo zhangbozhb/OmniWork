@@ -6,6 +6,9 @@ const workspaceRoot = path.resolve(__dirname, "..");
 const qrcodeSvgRoot = path.dirname(
   require.resolve("react-native-qrcode-svg/package.json"),
 );
+const reactNativeWebRoot = path.dirname(
+  require.resolve("react-native-web/package.json"),
+);
 
 const webPublicPath = process.env.OMNIWORK_WEB_PUBLIC_PATH ?? "/";
 const appVersion = require("./package.json").version;
@@ -38,6 +41,11 @@ module.exports = {
       ".json",
     ],
     alias: {
+      "@op-engineering/op-sqlite$": false,
+      "@react-native/assets-registry/registry$": path.resolve(
+        reactNativeWebRoot,
+        "dist/modules/AssetRegistry/index.js",
+      ),
       "react-native$": "react-native-web",
       "react-native-webrtc$": false,
     },
@@ -91,7 +99,10 @@ module.exports = {
             compilation.emitAsset(
               "omniwork-config.js",
               new webpack.sources.RawSource(
-                runtimeConfigSource({ appVersion }),
+                runtimeConfigSource({
+                  appVersion,
+                  defaultRelayUrl: process.env.OMNIWORK_WEB_RELAY_URL,
+                }),
               ),
             );
           },
@@ -103,6 +114,13 @@ module.exports = {
     historyApiFallback: true,
     hot: true,
     port: 8081,
+    proxy: [
+      {
+        context: ["/relay/ws"],
+        target: "http://127.0.0.1:8787",
+        ws: true,
+      },
+    ],
     static: {
       directory: path.resolve(__dirname, "web"),
     },

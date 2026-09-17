@@ -1,4 +1,4 @@
-import { AppRegistry } from "react-native";
+import { AppRegistry, type RootTag } from "react-native";
 import { Buffer } from "buffer";
 
 import App from "./src/app/App";
@@ -13,5 +13,8 @@ if (!root) {
 
 AppRegistry.registerComponent("OmniWork", () => App);
 AppRegistry.runApplication("OmniWork", {
-  rootTag: root,
+  initialProps: {},
+  // react-native-web accepts an HTMLElement; React Native's strict API exposes
+  // only the native opaque RootTag at this shared import boundary.
+  rootTag: root as unknown as RootTag,
 });

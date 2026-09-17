@@ -1,38 +1,36 @@
 import {
-  createPrivateKey,
-  createPublicKey,
-  sign,
-} from "node:crypto";
+  SIGNATURE_DOMAINS,
+  agentRelayInitSignatureFields,
+  agentRelayProofSignatureFields,
+  signIdentityFields,
+  type IdentityKeyPair,
+} from "@omni-work/protocol-ts";
 
-export function createRelayDeviceAuthInit(input: {
-  deviceId: string;
-  privateKeyPem: string;
-}): {
+export function createRelayDeviceAuthInit(
+  identity: IdentityKeyPair,
+): {
   device_public_key: string;
   timestamp: number;
   signature: string;
 } {
   const timestamp = Date.now();
-  const privateKey = createPrivateKey(input.privateKeyPem);
-  const devicePublicKey = createPublicKey(privateKey)
-    .export({ type: "spki", format: "pem" })
-    .toString();
-  const payload = Buffer.from(
-    ["agent_init_v1", input.deviceId, devicePublicKey, String(timestamp)].join(
-      "|",
-    ),
-    "utf8",
-  );
   return {
-    device_public_key: devicePublicKey,
+    device_public_key: identity.publicKey,
     timestamp,
-    signature: sign(null, payload, privateKey).toString("base64url"),
+    signature: signIdentityFields(
+      identity.privateKey,
+      SIGNATURE_DOMAINS.agentRelayInit,
+      agentRelayInitSignatureFields({
+        deviceId: identity.id,
+        devicePublicKey: identity.publicKey,
+        timestamp,
+      }),
+    ),
   };
 }
 
 export function createRelayDeviceAuthProof(input: {
-  deviceId: string;
-  privateKeyPem: string;
+  identity: IdentityKeyPair;
   challenge: string;
 }): {
   method: "device_signature";
@@ -41,20 +39,18 @@ export function createRelayDeviceAuthProof(input: {
   signature: string;
 } {
   const timestamp = Date.now();
-  const payload = Buffer.from(
-    ["agent_proof_v1", input.deviceId, input.challenge, String(timestamp)].join(
-      "|",
-    ),
-    "utf8",
-  );
   return {
     method: "device_signature",
     timestamp,
     challenge: input.challenge,
-    signature: sign(
-      null,
-      payload,
-      createPrivateKey(input.privateKeyPem),
-    ).toString("base64url"),
+    signature: signIdentityFields(
+      input.identity.privateKey,
+      SIGNATURE_DOMAINS.agentRelayProof,
+      agentRelayProofSignatureFields({
+        deviceId: input.identity.id,
+        challenge: input.challenge,
+        timestamp,
+      }),
+    ),
   };
 }

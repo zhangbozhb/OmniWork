@@ -3,11 +3,10 @@ import { networkInterfaces } from "node:os";
 
 import {
   PROTOCOL_VERSION,
-  createEncryptedPairingShare,
+  createPairingLink,
   type PairingLinkPayload,
 } from "@omni-work/protocol-ts";
 import type { AgentConfig } from "../config/config.ts";
-import type { SessionKeyRecord } from "../auth-key/authKey.ts";
 
 interface QrCodeTerminal {
   generate(
@@ -19,9 +18,6 @@ interface QrCodeTerminal {
 
 export interface PairingQrDetails {
   link: string;
-  password: string;
-  passwordRequired: boolean;
-  expiresAt: Date;
   payload: PairingLinkPayload;
   /**
    * 仅用于本地终端日志展示，便于运维确认 relay_url 中的本机 IP 替换是否生效。
@@ -32,7 +28,6 @@ export interface PairingQrDetails {
 
 export function createPairingQrDetails(
   config: AgentConfig,
-  keyRecord: SessionKeyRecord,
 ): PairingQrDetails | null {
   const relayUrl = createPairingRelayUrl(config);
   if (!relayUrl) {
@@ -45,20 +40,10 @@ export function createPairingQrDetails(
     relay_url: relayUrl,
     device_id: config.deviceId,
     display_name: config.displayName,
-    key: keyRecord.key,
   };
 
-  const share = createEncryptedPairingShare(payload, {
-    source: "agent",
-    ttlMs: config.pairingQrTtlSeconds * 1000,
-    passwordEnabled: config.pairingQrPasswordEnabled,
-  });
-
   return {
-    link: share.link,
-    password: share.password,
-    passwordRequired: share.passwordRequired,
-    expiresAt: share.expiresAt,
+    link: createPairingLink(payload),
     payload,
     endpoint,
   };
@@ -85,10 +70,8 @@ export function printPairingQr(details: PairingQrDetails): void {
 
 export function printPairingDetailsWithoutRelay(
   config: AgentConfig,
-  keyRecord: SessionKeyRecord,
 ): void {
   console.info("[omniwork-agent] pairing details");
-  console.info(`  key: ${keyRecord.key}`);
   console.info(`  device_id: ${config.deviceId}`);
   console.info(`  display_name: ${config.displayName}`);
   console.info("  host: -");
@@ -102,17 +85,11 @@ export function printPairingDetailsWithoutRelay(
 function printPairingSummary(details: PairingQrDetails): void {
   const { payload, endpoint } = details;
   console.info("[omniwork-agent] pairing details");
-  console.info(`  key: ${payload.key}`);
   console.info(`  device_id: ${payload.device_id}`);
   console.info(`  display_name: ${payload.display_name ?? "-"}`);
   console.info(`  host: ${endpoint?.host ?? "-"}`);
   console.info(`  port: ${endpoint?.port ?? "-"}`);
   console.info(`  relay_url: ${payload.relay_url}`);
-  console.info(
-    `  qr_password: ${details.passwordRequired ? details.password : "-"}`,
-  );
-  console.info(`  qr_password_enabled: ${details.passwordRequired}`);
-  console.info(`  qr_expires_at: ${details.expiresAt.toISOString()}`);
 }
 
 function loadQrCodeTerminal(): QrCodeTerminal | null {
@@ -188,9 +165,18 @@ function getPreferredLocalIpv4Address(): string | null {
     }
   }
 
+  return selectPreferredLocalIpv4Address(candidates);
+}
+
+export function selectPreferredLocalIpv4Address(
+  candidates: readonly string[],
+): string | null {
+  const reachable = candidates.filter(
+    (address) => !address.startsWith("169.254."),
+  );
   return (
-    candidates.find((address) => !address.startsWith("192.")) ??
-    candidates[0] ??
+    reachable.find((address) => !address.startsWith("192.")) ??
+    reachable[0] ??
     null
   );
 }

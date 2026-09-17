@@ -78,7 +78,7 @@ Observation
 - L7：项目效果卡分别统计已应用与未应用 Episode 的接受率、样本数和差值，并显示最近一次应用结果。该统计是观察性对比，任务构成和时间窗口未控制时不得解释为因果收益。
 - L7：相同 trigger/guidance 在至少两个本地项目中独立通过审核且无反例时，生成本地晋升资格；不会自动复制经验、改变 scope 或跨项目注入。
 - L7：协议测试 62/62、Desktop Agent 测试 166/166、App 测试 43/43 通过；Outcome 主链路归因、正负证据、自动暂停/废弃、人工恢复门槛、历史回填、基线对比、180 天衰减、跨项目资格、自动信号边界和 schema 迁移均有测试。
-- L7：Web 开发 bundle 已在独立浏览器标签完成冷加载检查，Pair Desktop 页面正常渲染，无 runtime error、错误覆盖层或失败资源请求；控制台仅有既有的 React Native Web `shadow*` 弃用警告。
+- L7：Web 开发 bundle 已在独立浏览器标签完成冷加载检查，添加设备页面正常渲染，无 runtime error、错误覆盖层或失败资源请求；控制台仅有既有的 React Native Web `shadow*` 弃用警告。
 - L7：Desktop Agent 已重启到新实现，正式 `sessions.sqlite` 已创建全部 learning 表；首次启动回放 19 个 fallback 文件中的 2016 条记录。运行态检查时账本含 2040 条 Observation 和 1006 个 Episode，管理端返回 HTTP 200 且 Relay 已重新连接。
 - Learning schema 已一次性切换为显式 v1：切换前备份正式 SQLite，集中补齐旧列、回填历史 Outcome 来源、执行完整性检查并写入 `omniwork_learning_schema`。正式库切换前后均为 2152 条 Observation、1070 个 Episode，业务样本计数无变化，备份权限为 `0600`。
 - 切换完成后，各 Store 中分散的建表、`PRAGMA table_info`、`ALTER TABLE`、启动时历史回填，以及一次性旧 schema 迁移脚本和命令均已移除。新库只初始化当前 schema；已有未版本化或非 v1 库会明确拒绝启动，不再保留旧版本兼容分支。
@@ -86,7 +86,9 @@ Observation
 
 ## 真实验证 Runbook
 
-1. **恢复连接**：确认本机 Agent Admin 显示 `Relay connected`，使用本次 Agent 启动生成的新临时 key 重新配对 App。Agent 重启后旧 key 不再有效；不得把 key、配对链接或数据库复制到项目仓库。
+1. **恢复连接**：确认本机 Agent Admin 显示 `Relay connected`。首次使用该 App
+   身份时扫描目标配对链接并在 Agent Admin 批准；后续使用长期身份重连。不得把
+   私钥、Probe token 或数据库复制到项目仓库。
 2. **建立第一条候选**：在真实项目完成一次实际交付，将确实需要返工的 delivered Episode 标记为“需要修改”并填写聚焦的修改要求。确认候选带有相同项目的 supporting Episode 后，人工编辑并批准；不得为凑样本回填历史 Episode 或提交虚构 Outcome。
 3. **采集 Shadow**：继续执行真实任务。只对当前 Prompt 实际出现的 Shadow match 评价“相关/不相关”，空命中不计入分母；同一 match 的修订只保留最新反馈。采样期间保持项目经验开关关闭。
 4. **检查门槛**：累计至少 10 条已评价 match 后，以 App 显示的 `reviewed_matches`、`relevant_matches` 和 `relevance_rate` 为准。只有 `reviewed_matches >= 10` 且 `relevance_rate >= 70%` 时，才允许用户显式开启当前项目；项目之间不得合并样本。

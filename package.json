@@ -42,17 +42,17 @@
     "release:desktop-agent": "pnpm --filter @omni-work/desktop-agent build:deps && node scripts/release/packageDesktopAgent.mjs",
     "release:downloads": "node scripts/release/updateDownloadsManifest.mjs",
     "relay:start": "pnpm --filter @omni-work/relay-server build && pnpm --filter @omni-work/relay-server start",
-    "verify:app-auth": "pnpm --filter @omni-work/app build:deps && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/verify/app-key-proof.test.mjs",
     "verify:app:targets": "pnpm --filter @omni-work/app verify:targets",
     "verify:app:web": "node packages/web-app/scripts/build.mjs",
     "verify:app:bundle:ios": "pnpm --filter @omni-work/app verify:bundle:ios",
     "verify:app:bundle:android": "pnpm --filter @omni-work/app verify:bundle:android",
+    "verify:agent-authorization": "pnpm --filter @omni-work/relay-server build:deps && node --experimental-strip-types --test relay/server/tests/agentAdmission.test.ts relay/server/tests/agentAuthorization.test.ts",
+    "verify:identity-auth": "pnpm --filter @omni-work/protocol-ts build:dist && node --test scripts/verify/identity-auth.test.mjs",
     "verify:package-boundaries": "node scripts/verify/package-boundaries.mjs",
     "verify:relay": "pnpm --filter @omni-work/relay-server build:deps && node --experimental-strip-types relay/server/src/main.ts --check",
-    "verify:desktop-key": "pnpm --filter @omni-work/desktop-agent build:deps && node --experimental-strip-types desktop/agent/tests/auth-key.test.ts",
     "verify:upgrade:simulator": "pnpm --filter @omni-work/app build:deps && node --experimental-strip-types scripts/verify/mobile-upgrade-simulator.mjs",
     "verify:release-security": "node --test scripts/verify/release-security.test.mjs",
-    "verify:security": "pnpm --filter @omni-work/e2e-noise test && pnpm verify:release-security"
+    "verify:security": "pnpm verify:identity-auth && pnpm verify:agent-authorization && pnpm --filter @omni-work/e2e-noise test && pnpm verify:release-security"
   },
   "devDependencies": {
     "@react-native-community/cli": "latest",

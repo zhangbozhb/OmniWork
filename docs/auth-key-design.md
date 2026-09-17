@@ -1,253 +1,123 @@
-# 临时 Key 鉴权设计
+# 身份鉴权方案演进
+
+> 文件名保留用于兼容历史引用。当前实现不再使用共享 Auth Key。
 
 关联文档：
 
+- [identity-auth-design.md](./identity-auth-design.md)
 - [engineering-requirements.md](./engineering-requirements.md)
-- [mobile-codex-tui-technical-solution.md](./mobile-codex-tui-technical-solution.md)
-- [project-directory-structure.md](./project-directory-structure.md)
+- [relay-architecture-implementation.md](./relay-architecture-implementation.md)
 
-## 结论
+## 当前结论
 
-MVP 范围不接入 SSO，不做企业身份体系，不做持久设备绑定。
+OmniWork 协议 v2 使用长期非对称身份：
 
-MVP 鉴权采用共享 key：
+- Agent 首次运行生成 Ed25519 密钥对，`device_id` 由公钥派生。
+- App 首次运行生成 Ed25519 密钥对，`app_id` 由公钥派生。
+- 配对和分享链接只包含 Relay URL、目标 Agent device ID 与可选名称。
+- App 连接时自动携带自己的 ID、公钥和设备/App 元数据。
+- Relay 从在线 Agent 连接取得登记公钥，并在 `auth.challenge` 中返回。
+- Relay 默认由管理员人工批准新的 Agent identity；也可配置为在 device/IP
+  均未封禁时自动授权。
+- App 验证该公钥能派生出目标 device ID 后签名 `auth.proof`。
+- 默认 `manual` 模式下，未知或已撤销 App 必须由 Agent 本机管理员明确批准；
+  显式 `automatic` 模式在签名和 scope 校验后持久化信任。
+- 认证完成后使用身份签名的临时 X25519 握手建立 E2E 会话。
 
-- 用户可通过 `agent.key` 或 `OMNIWORK_AGENT_KEY` 配置固定 key。
-- 配置值必须是 32 个 Base64URL 字符；非空但格式不合法时 Agent
-  启动失败。未配置或配置为空时，每次启动自动生成新的随机 key。
-- 该 key 保存到 电脑 本地文件。
-- 手机 App 通过手动输入、扫码或演进的本机展示方式获得该 key。
-- App 使用该 key 与 桌面端 Agent 建立本次连接授权。
-- 自动生成的 key 在桌面端 Agent 重启后失效；配置的 key 保持不变。
+不存在 App-Agent 共享 Key、PSK、配对票据或业务明文兼容分支。
 
-## Key 格式和生成规则
+## 为什么退役共享 Key
 
-要求：
+早期 MVP 使用一个 32 字符共享 Key，同时承担配对、认证和 E2E PSK 输入。该
+模型存在以下边界问题：
 
-- 长度固定为 32 个字符。
-- 用户配置和自动生成的 key 都只允许 Base64URL 字符集，即
-  `A-Z`、`a-z`、`0-9`、`_`、`-`。
-- 自动生成时必须使用加密安全随机数生成器。
-- 推荐生成方式：生成 24 bytes 随机数，再做 base64url 无 padding 编码，结果正好 32 字符。
-- 不使用时间戳、用户名、设备名、UUID 截断等可预测材料。
+- 链接或二维码必须携带可直接用于认证的秘密，分享目标信息等同于分享权限。
+- 多个 App 共用同一秘密，无法区分安装实例，也无法单独批准或撤销。
+- Agent 重启轮换临时 Key 会破坏稳定重连；固定 Key 又扩大泄漏影响范围。
+- Relay challenge 只能证明持有共享秘密，不能形成 Agent 与 App 的独立身份。
+- PSK 同时进入准入和会话密钥派生，职责耦合，难以审计授权来源。
 
-示例：
+当前方案将职责拆开：
 
-```text
-q8LDuJppTK3BU9X3et9bF3gAej-vbLQS
-```
+- 目标链接只负责定位。
+- Ed25519 长期密钥负责身份。
+- Agent Admin 记录负责授权。
+- 临时 X25519 密钥负责单次会话前向隔离。
 
-## 电脑 本地文件
+## 本地存储
 
-推荐保存位置：
-
-```text
-~/Library/Application Support/OmniWork/agent/session-key.json
-```
-
-目录权限：
+Agent 身份默认保存在：
 
 ```text
-~/Library/Application Support/OmniWork/agent
-mode: 0700
+~/Library/Application Support/OmniWork/agent/identity-v2.json
 ```
 
-文件权限：
+身份目录权限为 `0700`，文件权限为 `0600`；macOS Keychain 可用时复用同一
+身份。身份损坏时拒绝启动，不静默轮换。
 
-```text
-session-key.json
-mode: 0600
-```
+Native App 使用平台 Keychain/Keystore 封装身份材料。Web App 使用 WebCrypto
+生成不可导出的 Ed25519 私钥，并将 `CryptoKey` 保存到 IndexedDB。
 
-文件内容：
+Agent Probe bearer token 是独立的本机接口凭证，不参与 App-Agent 或
+Agent-Relay 认证。
 
-```json
-{
-  "version": 1,
-  "key": "q8LDuJppTK3BU9X3et9bF3gAej-vbLQS",
-  "created_at": "<ISO_TIMESTAMP>",
-  "relay_url": "wss://relay.company.example/relay/ws/agent"
-}
-```
+## 目标信息导入
 
-说明：
+App 支持两种等价入口：
 
-- `key` 是本次 Agent 启动选择的共享 key，来源可以是用户配置或自动生成。
-- Agent 不再自生成运行实例 ID；Relay 在 `agent.hello` 鉴权通过后生成 `agent_connection_id`，用于标识当前 Agent WebSocket 连接。
-- 文件只保存在本机，不提交仓库，不同步到云盘。
+1. 手动输入 Relay App WebSocket URL、Agent device ID 和可选名称。
+2. 扫描或粘贴同字段的 `omniwork://pair?...` 链接。
 
-## App 获取 Key
+两种入口只保存目标信息。App ID、公钥、运行实例和设备/App 元数据由 App 在
+连接时自动补充，不进入分享链接。
 
-MVP 支持：
-
-- 用户在 电脑 上打开 key 文件后手动复制到 App。
-- 桌面端 Agent 在本机终端输出一次 key。
-- 可提供 Menu Bar 或本地页面展示二维码。
-
-当前二维码协议不兼容旧明文 pairing link。App 端分享二维码和 桌面端 Agent 终端二维码统一使用加密二维码：
-
-- 二维码只包含加密后的 pairing payload、来源、生成时间、过期时间和加密参数。
-- 来源字段取值为 `ios`、`android` 或 `agent`。
-- 生成端同时生成 4 位随机数字密码；密码不写入二维码，需要用户另行输入或告知扫码方。
-- 扫码端先识别 `kind=pairing_qr_encrypted`，再要求用户输入 4 位密码解密。
-- 解密成功后使用扫码设备本地时间校验 `exp`，过期二维码拒绝导入。
-- 加密实现为 `SHA-256(password + salt)` 派生密钥 + `ChaCha20-Poly1305` 认证加密，协议实现见 [pairingCrypto.ts](../packages/protocol-ts/src/pairingCrypto.ts)。二维码是短时临时凭证，4 位密码不使用慢 KDF，避免在移动端 JS 线程阻塞扫码体验。
-- 纯离线场景无法防止用户修改本地时间或在有效期内转发二维码，当前实现仅提供离线加密、防篡改和本地过期校验。
-
-App 侧要求：
-
-- key 不进入普通明文持久存储。
-- 如果为了重连临时保存，必须使用 iOS Keychain / Android Keystore / 安全存储封装。
-- 当自动生成的 key 因桌面端 Agent 重启而变化并导致认证失败时，App
-  清理旧 key 并提示重新输入。
-
-App 收到 `auth.failed` 后的具体清理动作（由 `app/src/app/App.tsx` 实现）：
-
-- 立即调用 `relay.close()` 关闭本次会话连接，避免空跑或重复重连。
-- 将本地缓存的 sessions、workspaces、terminal frame、provider 列表等会话级状态全部清空，避免误用旧 桌面端 Agent 的数据。
-- **保留** 已保存的 pairing 条目本身：将 `connectionStatus` 置为 `failed` 并把失败原因透出到 `connectionMessage` / `pairingError`；用户可在 Device Center 中显式 Edit（修正 key）或 Delete 该设备。
-  - 之所以不再自动从 `securePairingStore` 删除该 pairing，是因为 web 端 RN `Alert.alert` 是 no-op：旧实现会把"鉴权失败"显式打回 Pairing 页并默默删除条目，体验上像"保存失败、设备被静默删除"。实现保留条目，让错误对用户可见、可操作。
-- 视图保持在 `devices`；如果用户当时正在 `pairing` 页编辑该 pairing，则保留 `editingPairing` 让其继续修改。
-
-## Relay 鉴权流程
-
-Relay 不作为身份系统，只作为连接中继。
-
-推荐握手：
+## App-Agent 认证
 
 ```mermaid
 sequenceDiagram
   participant A as App
   participant R as Relay
-  participant M as 桌面端 Agent
+  participant G as Agent
 
-  M->>R: agent.auth.init(device_id, device_public_key, timestamp, signature)
-  R->>R: 校验 device_id 已登记、未撤销
-  R->>R: 校验 device_public_key 与登记公钥规范化后匹配
-  R->>R: 校验 timestamp 窗口和 init 签名
-  R-->>M: agent.auth.challenge(challenge)
-  M->>R: agent.hello(device_id, Sign(device_private_key, challenge, timestamp))
-  R->>R: 校验 challenge HMAC、过期时间、connection 绑定
-  R->>R: 校验 proof 签名
-  R-->>M: auth.ok(agent_connection_id)
-  A->>R: mobile.connect(device_id)
-  R->>A: auth.challenge(nonce)
-  A->>R: auth.proof(HMAC_SHA256(key, nonce))
-  R->>M: auth.verify(nonce, proof)
-  M->>M: 使用本地 key 校验 proof
-  M-->>R: auth.ok
-  R-->>A: connected
+  A->>R: mobile.connect(device_id, app_id, app_public_key, app_info)
+  R->>R: 定位在线 Agent 与登记公钥
+  R-->>A: auth.challenge(nonce, connection ids, agent_public_key)
+  A->>A: 校验 derive(agent_public_key) == device_id
+  A->>R: auth.proof(Sign(app_private_key, challenge + identities + app_info))
+  R->>R: 校验 App ID、公钥和签名
+  R->>G: auth.verify
+  G->>G: 校验目标 Agent 身份与 App 签名
+  alt App 已信任
+    G-->>R: signed auth.ok
+  else App 未知或已撤销
+    G-->>R: auth.pending
+    G->>G: 本机管理员批准或拒绝
+    G-->>R: signed auth.ok / auth.failed
+  end
+  R-->>A: signed auth.ok / auth.failed
 ```
 
-原则：
+Relay 的失败限流按目标 device 和接入 IP 维护。合法重连不会消耗失败桶。
 
-- App 不应把 key 明文发给 Relay。
-- Relay 不保存 key 明文。
-- 桌面端 Agent 是 key 校验真相源。
-- 握手成功后，Relay 只维护内存态连接授权。
-- 连接断开后可以重新 challenge。
-- 桌面端 Agent 使用自动生成 key 时，重启后 key 会变化；Relay 会为新连接分配新的 `agent_connection_id`，并顶替同一 `device_id` 下的旧 Agent 连接。
+定向验证运行 `pnpm verify:identity-auth`；真实 Relay/Agent 链路可使用
+`pnpm verify:upgrade:simulator -- --pairing 'omniwork://pair?...'`，或以
+`--relay <ws-url> --device <DEV1-id>` 手动指定目标。
 
-Agent 设备身份校验流程：
+## 认证失败后的 App 行为
 
-```mermaid
-flowchart TD
-  A[收到 agent.auth.init] --> B{device_id 已登记且未撤销?}
-  B -- 否 --> X[拒绝: device_not_registered / device_revoked]
-  B -- 是 --> C{device_public_key 与登记公钥规范化后匹配?}
-  C -- 否 --> Y[拒绝: public_key_mismatch]
-  C -- 是 --> D{timestamp 在窗口内且 init 签名有效?}
-  D -- 否 --> Z[拒绝: invalid_signature]
-  D -- 是 --> E[返回无状态 agent.auth.challenge]
-  E --> F[收到 agent.hello.relay_auth]
-  F --> S{当前 connection 为 pending?}
-  S -- 否 --> T[忽略重复 hello 或拒绝非法状态]
-  S -- 是 --> G{challenge HMAC 正确、未过期、绑定当前 connection?}
-  G -- 否 --> H[拒绝: invalid_challenge]
-  G -- 是 --> I{proof timestamp 在窗口内且签名有效?}
-  I -- 否 --> J[拒绝: invalid_signature]
-  I -- 是 --> K[准入: 分配 agent_connection_id 并注册 Agent]
-```
+- 关闭当前传输，停止空转重试。
+- 清理 session、workspace、terminal frame 和 provider 等会话级缓存。
+- 保留目标设备条目及错误状态，允许用户编辑 Relay URL 或删除设备。
+- 身份不匹配、撤销或未知 App 不通过复制新链接绕过审批。
 
-校验语义：
+## 已删除的旧机制
 
-- `device_id` 是公开路由标识，不是 secret。
-- `device_public_key` 也是公开信息，但必须与 Relay 登记公钥一致，不能由连接方任意替换。
-- `agent.auth.init.signature = Sign(device_private_key, agent_init_v1 | device_id | device_public_key | timestamp)`，用于在发 challenge 前过滤伪造请求。
-- `agent.auth.challenge` 是 opaque 字符串，内部包含过期时间、当前 `connection_id` 和随机 nonce，并由 Relay 进程内 HMAC 密钥保护；Relay 不写入 DB，默认有效期为 60 秒。
-- init/proof 的 timestamp 使用独立的 `agentAuthClockSkewMs` 校验窗口，默认 60 秒，不再复用 App proof 的 `nonceTtlMs`。
-- `agent.hello.relay_auth.signature = Sign(device_private_key, agent_proof_v1 | device_id | challenge | timestamp)`，用于证明当前连接者能响应本次 challenge。
-- `agent.hello` 只允许从 `pending` 状态进入 `verified`；同一连接在 verified 后重复提交 `agent.hello` 会被忽略并记录 `agent.hello.ignored` 审计日志，不会重复注册 Agent 或关闭已有 App 连接。
-- 抓包得到旧 `device_id`、`device_public_key`、challenge、signature 也不能伪造下一次连接；旧 challenge 会受过期时间、connection 绑定和连接状态机限制。
-- Agent 设备准入按 `agent | device_id | public_remote_ip` 和 `agent_ip | public_remote_ip` 两层 token bucket 限流；`public_remote_ip` 只来自 Relay 连接层观测，内网、loopback、链路本地和保留地址不进入该限流。成功发出 init challenge 会消耗公网 IP-only 桶；最终 `agent.hello` 成功后只重置 device+public IP 桶，不清空 IP-only 桶，避免抓包重放 init 持续刷 challenge。
+以下旧机制不再属于协议或配置：
 
-## 消息头和协议字段
+- `agent.key`、`OMNIWORK_AGENT_KEY` 和 `session-key.json`。
+- `auth.proof = HMAC_SHA256(shared_key, nonce)`。
+- 加密分享链接、4 位二维码密码和短时共享 Key。
+- `key_mismatch`、`key_expired` 等共享 Key 专用失败原因。
+- 以共享 Key/PSK 派生业务会话密钥。
 
-推荐新增消息：
-
-```text
-agent.auth.init
-agent.auth.challenge
-auth.challenge
-auth.proof
-auth.ok
-auth.failed
-agent.hello
-mobile.connect
-```
-
-Agent 设备准入不再依赖 Relay 记录 nonce。`agent.auth.challenge` 是一个 opaque 字符串，内部包含过期时间和当前连接绑定，并由 Relay 进程内 HMAC 密钥保护；Relay 在 `agent.hello` 阶段重新验 HMAC、时间窗口和连接绑定即可完成无状态校验。重复提交的同连接 `agent.hello` 由连接状态机拦截。
-
-`auth.proof` payload 的字段定义以 [protocol/auth/auth-proof.schema.json](../protocol/auth/auth-proof.schema.json) 为唯一来源，运行时校验由 [packages/protocol-ts/src/schemas.ts](../packages/protocol-ts/src/schemas.ts) 落地。示例：
-
-```json
-{
-  "nonce": "nonce_0123456789ab",
-  "proof": "base64url(hmac_sha256(key, nonce))",
-  "connection_id": "conn_..."
-}
-```
-
-`auth.failed` 常见原因：
-
-```text
-key_mismatch
-agent_restarted
-key_expired
-device_not_online
-too_many_attempts
-malformed_proof
-```
-
-## 安全限制
-
-必须实现：
-
-- 未配置 key 时，每次桌面端 Agent 启动重新生成。
-- 配置的 key 必须严格满足 32 字符 Base64URL 格式。
-- key 文件权限为 `0600`。
-- key 所在目录权限为 `0700`。
-- Relay 对失败次数限流（仅对失败的 `auth.proof` 计数：relay 端 `malformed_proof` / agent 端返回 `auth.failed` 两个真实失败分支才 consume token；合法 `auth.proof` → `auth.ok` 不消耗桶，避免频繁重连或切换 `transport_preference` 被误封禁）。
-- App 认证失败后不无限重试。
-- 日志中永远不打印完整 key。
-- 审计中只记录 `device_id` / `agent_connection_id` / `app_connection_id` 等非密钥上下文，不记录 `key`。
-
-不做：
-
-- 不接入 SSO。
-- 不做持久设备绑定。
-- 不做 refresh token。
-- 不做永久登录态。
-- 不把 key 当作持久账户密码。
-
-## 可演进
-
-如需要企业化，可以从该 key 方案平滑演进：
-
-- 临时 key 继续作为本机配对 fallback。
-- Relay 增加公司身份体系。
-- 桌面端 Agent 增加持久设备凭证。
-- App 增加企业登录态。
-- 管理员增加设备撤销和审计策略。
-
-MVP 范围以上能力不进入 MVP。
+代码和文档不得重新引入这些入口作为兼容 fallback。

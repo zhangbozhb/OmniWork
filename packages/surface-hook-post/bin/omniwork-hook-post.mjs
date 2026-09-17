@@ -77,19 +77,19 @@ async function resolveToken() {
   if (envToken) {
     return envToken;
   }
-  const sessionKeyPath =
-    process.env.OMNIWORK_SESSION_KEY_PATH ??
+  const probeTokenPath =
+    process.env.OMNIWORK_AGENT_PROBE_TOKEN_PATH ??
     join(
       homedir(),
       "Library",
       "Application Support",
       "OmniWork",
       "agent",
-      "session-key.json",
+      "probe-token.json",
     );
   try {
-    const parsed = JSON.parse(await readFile(sessionKeyPath, "utf8"));
-    return typeof parsed.key === "string" ? parsed.key : undefined;
+    const parsed = JSON.parse(await readFile(probeTokenPath, "utf8"));
+    return typeof parsed.token === "string" ? parsed.token : undefined;
   } catch {
     return undefined;
   }

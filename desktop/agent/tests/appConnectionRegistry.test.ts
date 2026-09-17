@@ -42,7 +42,7 @@ test("AppConnectionRegistry creates connections from authenticated relay links",
   assert.deepEqual(connection.network.ip_history, ["203.0.113.10"]);
   assert.equal(connection.observations[1]?.http?.user_agent, "OmniWork App");
   assert.equal(connection.counters.connection_attempts, 1);
-  assert.equal(connection.security.mode, "plaintext");
+  assert.equal(connection.security.mode, "unauthenticated");
   assert.equal(connection.security.encrypted, false);
   assert.equal(registry.hasAuthenticatedConnection("relay-app-1"), true);
 });
@@ -247,4 +247,72 @@ test("AppConnectionRegistry marks relay-backed connections unavailable", () => {
   assert.equal(connection.transport.current_path, "unknown");
   assert.equal(connection.network.connection_method, "unknown");
   assert.equal(connection.timing.disconnect_after, 3000);
+});
+
+test("AppConnectionRegistry stops trusting disconnected relay links", () => {
+  const registry = new AppConnectionRegistry({
+    heartbeatIntervalMs: 10000,
+    staleTimeoutMs: 30000,
+    disconnectTimeoutMs: 90000,
+  });
+
+  registry.acceptAuthenticatedConnection({
+    relayConnectionId: "relay-app-1",
+    appInfo: {
+      instance_id: "app-instance-1",
+      runtime_id: "runtime-1",
+    },
+    now: 1000,
+  });
+  registry.markGoodbye("relay-app-1", {
+    sent_at: new Date(2000).toISOString(),
+    seq: 1,
+    reason: "revoked",
+  });
+
+  assert.equal(registry.hasAuthenticatedConnection("relay-app-1"), false);
+  registry.markE2EReady("relay-app-1");
+  assert.equal(registry.hasAuthenticatedConnection("relay-app-1"), false);
+});
+
+test("verified E2E traffic revives an idle timeout but not Relay loss", () => {
+  const registry = new AppConnectionRegistry({
+    heartbeatIntervalMs: 10, staleTimeoutMs: 30, disconnectTimeoutMs: 90,
+  });
+  registry.acceptAuthenticatedConnection({
+    relayConnectionId: "resume-app",
+    appInfo: { instance_id: "app", runtime_id: "runtime" },
+    now: 1000,
+  });
+  registry.markE2EReady("resume-app", 1000);
+  registry.sweep(1100);
+  assert.equal(registry.hasAuthenticatedConnection("resume-app"), false);
+  registry.markE2EReady("resume-app", 1101);
+  assert.equal(registry.hasAuthenticatedConnection("resume-app"), true);
+  registry.markRelayUnavailable(1102);
+  registry.markE2EReady("resume-app", 1103);
+  assert.equal(registry.hasAuthenticatedConnection("resume-app"), false);
+});
+
+test("AppConnectionRegistry removes observations for an App identity", () => {
+  const registry = new AppConnectionRegistry({
+    heartbeatIntervalMs: 10000,
+    staleTimeoutMs: 30000,
+    disconnectTimeoutMs: 90000,
+  });
+
+  registry.acceptAuthenticatedConnection({
+    relayConnectionId: "relay-app-1",
+    appId: "app-identity-1",
+    appInfo: {
+      instance_id: "app-instance-1",
+      runtime_id: "runtime-1",
+    },
+    now: 1000,
+  });
+
+  assert.equal(registry.removeApp("app-identity-1"), 1);
+  assert.equal(registry.list().length, 0);
+  assert.equal(registry.devices().length, 0);
+  assert.equal(registry.removeApp("app-identity-1"), 0);
 });

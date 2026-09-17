@@ -2,14 +2,20 @@
 
 Minimal company-network relay for the native OmniWork App and Desktop Agent.
 
-The server does not store the temporary key. It brokers the challenge flow:
+The server does not hold App or Agent private keys. It brokers the challenge
+flow:
 
 1. Desktop Agent proves its device identity with `agent.auth.init`,
-   `agent.auth.challenge`, and a signed `agent.hello`.
-2. App sends `mobile.connect` for a Desktop Agent `device_id`.
-3. Relay sends `auth.challenge` to the App.
-4. App sends `auth.proof`; Relay forwards `auth.verify` to the Desktop Agent.
-5. Desktop Agent verifies the proof with the local startup key and returns `auth.ok` or `auth.failed`.
+   `agent.auth.challenge`, and a signed `agent.hello`; Relay then applies its
+   manual or automatic Agent authorization policy.
+2. App sends `mobile.connect` with its public identity and the target Agent
+   device ID.
+3. Relay resolves the online Agent and sends its registered public key in
+   `auth.challenge`.
+4. App signs `auth.proof`; Relay verifies and forwards `auth.verify`.
+5. Desktop Agent verifies the App signature, requests local approval for an
+   unknown App, and returns a signed `auth.ok` or `auth.failed`.
+6. App and Agent establish a signed ephemeral X25519 E2E session.
 
 Install and run with Node.js 22.6 or newer:
 
@@ -58,26 +64,56 @@ admin:
   port: 8788
 paths:
   runtimeDir: .omniwork-relay
+agentAuthorization:
+  mode: manual
 auth:
   mode: none
 ```
 
-Legacy `OMNIWORK_*` environment variables remain supported as fallbacks when the
-same value is not present in `config.yml`.
+`OMNIWORK_*` environment variables are supported as fallbacks when the same
+value is not present in `config.yml`.
 
-### Plaintext WS and E2E
+### Agent authorization
 
-The server treats `ws://` and `wss://` as transport only. Business security is
-declared per Agent: the same relay process can carry `e2e_required` Agents whose
-business traffic is inside `e2e.message`, and `plaintext_allowed` Agents started
-with `OMNIWORK_AGENT_REQUIRE_E2E=false`.
+Relay authorizes Agent device identities independently from App-to-Agent
+approval. Configure:
+
+```yml
+agentAuthorization:
+  mode: manual
+  pendingTtlMs: 86400000
+```
+
+- `manual` is the default. After a new Agent proves possession of its Ed25519
+  private key, Relay records a pending request and closes the connection with
+  `4402 / agent_approval_required`. Approve it in Relay Admin; the Agent keeps
+  retrying and connects after approval. The pending row and detail view expose
+  the Relay-observed public IP plus the Agent-reported system type and `uname`;
+  approval and rejection are available from either view.
+- `automatic` permanently authorizes a valid new Agent identity when neither
+  its `device_id` nor its Relay-visible source IP is blocked.
+- Existing authorizations are reused in both modes and persist in
+  `admin-controls.sqlite`.
+- Device disable and IP-ban rules always take precedence.
+
+Set the mode with
+`OMNIWORK_RELAY_AGENT_AUTHORIZATION_MODE=manual|automatic`. Pending requests
+expire after `OMNIWORK_RELAY_AGENT_AUTHORIZATION_PENDING_TTL_MS` (default one
+day) unless the Agent retries and refreshes the request.
+
+When `auth.mode=email_link` is enabled, user device enrollment remains an
+additional prerequisite. Automatic Relay authorization does not bypass device
+ownership checks.
+
+### WebSocket transport and E2E
+
+The server treats `ws://` and `wss://` as transport only. Protocol v2 always
+requires App-Agent business traffic inside `e2e.message`.
 
 Loopback hosts allow plaintext `ws://` by default for local development. Any
 non-loopback host must explicitly set `OMNIWORK_RELAY_ALLOW_PLAINTEXT_WS=true`.
-`OMNIWORK_RELAY_REQUIRE_E2E` is retained only as a legacy compatibility setting;
-business encryption is no longer enforced globally by the relay. `wss://` is
-still recommended to reduce network metadata exposure, but it is not the
-business security boundary.
+`wss://` is still recommended to reduce network metadata exposure, but it is
+not the business security boundary.
 
 ### Optional user registration
 
@@ -98,9 +134,11 @@ Users register and manage device enrollment from the Relay website:
 https://relay.example.com/auth/
 ```
 
-The page sends the email magic link, stores the login cookie after verification,
-lists enrolled devices, revokes devices, and creates a short-lived device token.
-The Desktop Agent can consume that token:
+The page sends the email magic link, sets an HttpOnly login cookie after
+verification, lists enrolled devices, revokes devices, and creates a short-lived
+device token. Browser session tokens are not embedded in HTML or persisted in
+`localStorage`; `/auth/` also removes the legacy `omniwork_user_session` storage
+entry. The Desktop Agent can consume the device token:
 
 ```sh
 omniwork-agent enroll \
@@ -108,9 +146,24 @@ omniwork-agent enroll \
   --token <device-enrollment-token>
 ```
 
-The enrollment command generates an Ed25519 key pair, registers the public key
-with Relay, and stores the local private key plus Relay-owned `device_id` in
-`<OMNIWORK_APP_SUPPORT_DIR>/relay-device.json`.
+The enrollment command creates the Agent identity on first use or reuses the
+existing identity, then registers its derived `device_id` and public key with
+Relay. The private key remains in the Agent identity store.
+
+Native and cross-site Web Apps cannot use the Relay website's login cookie.
+After signing in as the Agent's owner, click **Create App sign-in token** on
+`/auth/`, then copy the private token into the App's optional **Relay sign-in
+token** field (details, link, or edit mode). It can be entered before scanning
+or after import by editing the device. Same-site Web keeps using its login
+cookie. Tokens never belong in pairing/share links.
+
+Each click creates an independent session with `auth.sessionTtlMs`, without
+replacing the browser cookie. The page shows its expiry and supports
+show/select/copy; it clears the displayed token on logout. Browser logout only
+revokes that browser session, not issued App tokens. To revoke an App token,
+call `POST /auth/logout` with that token as `Authorization: Bearer ...`.
+Auth responses use `Cache-Control: no-store`. Use HTTPS and `wss://` outside
+local development: this account credential is sent before App-Agent E2E.
 
 Auth data is stored in `OMNIWORK_RELAY_AUTH_DB_PATH` (default
 `<OMNIWORK_RELAY_RUNTIME_DIR>/relay-auth.sqlite`). Public endpoints:
@@ -118,12 +171,16 @@ Auth data is stored in `OMNIWORK_RELAY_AUTH_DB_PATH` (default
 - `POST /auth/email/start` — body `{ "email": "user@example.com" }`; sends a
   magic login link and always returns `202` for rate-limited valid requests.
 - `GET /auth/email/verify?token=...` — consumes the one-time link, creates the
-  user if needed, and returns a session token while also setting a cookie.
+  user if needed, and sets an HttpOnly session cookie before redirecting to
+  `/auth/`; the browser token is not exposed to page JavaScript.
 - `GET /auth/me`, `POST /auth/logout` — session inspection and logout.
+- `POST /auth/sessions` — authenticated user creates an independent App
+  session; returns `{ "session_token": "...", "expires_at": "<ISO timestamp>" }`.
 - `POST /auth/devices/enrollments` — authenticated user creates a short-lived
   device enrollment token.
-- `POST /auth/devices` — Agent/client exchanges an enrollment token and
-  Ed25519 public key for a Relay-owned `device_id`.
+- `POST /auth/devices` — Agent submits an enrollment token, its derived
+  `device_id`, and Ed25519 public key. The ID is normalized before Agent-role
+  key validation and storage.
 - `GET /auth/devices`, `POST /auth/devices/:device_id/revoke` — list and
   revoke user devices.
 
@@ -139,7 +196,8 @@ the registered device public key. The challenge is not stored; it carries an
 HMAC-protected expiry and connection binding, and defaults to a 60s TTL via
 `auth.agentAuthChallengeTtlMs`. Init/proof timestamps use the separate
 `auth.agentAuthClockSkewMs` window, also defaulting to 60s. `mobile.connect`
-must include a user `session_token`, and Relay only allows access when the
+must include a user `session_token` unless the WebSocket upgrade already
+authenticated the same-site login cookie. Relay only allows access when the
 session user owns the target device.
 
 Relay 校验顺序：
@@ -150,8 +208,9 @@ Relay 校验顺序：
 4. `agent.auth.init.timestamp` 在允许窗口内，init 签名有效。
 5. 无状态 `agent.auth.challenge` 的 HMAC、过期时间和 connection 绑定有效。
 6. `agent.hello.relay_auth.timestamp` 在允许窗口内，proof 签名有效。
-7. `agent.hello` 只允许从 `pending` 进入 `verified`；重复 `agent.hello` 被忽略并记录 `agent.hello.ignored` 审计日志。
-8. 校验通过后分配 `agent_connection_id`，并执行同一 `device_id` 单 Agent 在线策略。
+7. Relay 按 `agentAuthorization.mode` 检查已批准设备；人工模式记录待授权请求，自动模式在 device/IP 未封禁时持久化授权。
+8. `agent.hello` 只允许从 `pending` 进入 `verified`；重复 `agent.hello` 被忽略并记录 `agent.hello.ignored` 审计日志。
+9. 身份和授权均通过后分配 `agent_connection_id`，并执行同一 `device_id` 单 Agent 在线策略。
 
 ### auth.proof rate limiting
 
@@ -166,10 +225,10 @@ token bucket:
   milliseconds after the bucket drains; further attempts are rejected during
   this window. After the window elapses the bucket is fully refilled.
 
-When the limiter rejects a request, the relay responds with `auth.failed` and
+When the limiter rejects a request, Relay responds with `auth.failed` and
 reason `too_many_attempts`. Only failed `auth.proof` consume a token (either a
 malformed proof rejected at the relay, or `auth.failed` returned by the agent
-after key verification); legitimate `auth.proof` that lead to `auth.ok` do not
+after signature or trust verification); legitimate `auth.proof` that lead to `auth.ok` do not
 consume the bucket, so frequent reconnects and transport-preference switches
 are not throttled. A successful `auth.ok` also resets the bucket so subsequent
 attempts are not affected by past failures.
@@ -278,6 +337,11 @@ Operational endpoints:
   devices come from the persisted device-status summary and contain only
   minimal metadata.
 - `GET /admin/api/agents` — online Agent list with current App counts.
+- `GET /admin/api/agent-authorizations` — Agent authorization mode, pending
+  requests, and permanently authorized device IDs.
+- `POST /admin/api/agent-authorizations/device-op` — approve, reject, or
+  remove Agent authorizations. Rejecting a request also creates a permanent
+  Agent device-disable rule.
 - `GET /admin/api/agent-connections/:connection_id/apps` — Relay-visible App
   connections under one online Agent connection.
 - `GET /admin/api/links` — current Relay-visible Agent/App links, including E2E
@@ -346,7 +410,7 @@ immediately consumes the token, rotates a new one, and creates a secure
 `HttpOnly; Secure; SameSite=Strict` session cookie that expires after
 `OMNIWORK_RELAY_ADMIN_SESSION_TTL_MS` (default 30 minutes).
 
-Permanent Agent disable and IP-ban rules are stored in
+Permanent Agent authorizations, Agent disable rules, and IP-ban rules are stored in
 `OMNIWORK_RELAY_ADMIN_CONTROLS_DB_PATH` (default
 `<OMNIWORK_RELAY_RUNTIME_DIR>/admin-controls.sqlite`) and reloaded on startup.
 Temporary rules with
@@ -375,6 +439,12 @@ login route; relay dev uses `/admin/web` for both the page and login fallback.
 Keep UI HTML/CSS/JS out of `src/relayServer.ts`. The traffic board world map
 uses `admin-web/world-land-110m.geojson`, derived from Natural Earth 110m land
 data, as a local static asset rather than a runtime CDN dependency.
+The Admin page and login page provide English and Simplified Chinese resources.
+They prefer an explicit selection from the non-sensitive
+`omniwork_admin_locale` cookie, then inspect the browser language list, and
+finally use the browser time zone as a fallback. Mainland China time zones
+select Simplified Chinese; other unsupported language/time-zone combinations
+default to English.
 Admin HTTP routing, auth checks, snapshots, and control-rule mutations live in
 `src/relayAdminController.ts`; keep `src/relayServer.ts` focused on Relay
 connections and protocol routing.

@@ -6,6 +6,7 @@ import {
   Platform,
   RefreshControl,
   ScrollView,
+  type ScrollViewInstance,
   Text,
   View,
 } from "react-native";
@@ -80,7 +81,7 @@ export function WorkspacePager({
   onSendGitReviewNotes,
   isGitActionPending,
 }: {
-  pagerRef: RefObject<ScrollView | null>;
+  pagerRef: RefObject<ScrollViewInstance | null>;
   activeWorkspace: WorkspaceDefinition;
   activeWorkspaceTab: WorkspaceTab;
   activeProviderGroups: readonly ProviderSessionGroup[];

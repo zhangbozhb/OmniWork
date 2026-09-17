@@ -1,34 +1,32 @@
-import { generateKeyPairSync } from "node:crypto";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 import {
-  defaultRelayDeviceCredentialsPath,
-  writeRelayDeviceCredentials,
-} from "../config/relayDeviceCredentials.ts";
+  defaultIdentityPath,
+  resolveAgentIdentity,
+} from "../config/deviceIdentity.ts";
 
 interface EnrollOptions {
   relayUrl: string;
   token: string;
   deviceName: string;
-  credentialsPath: string;
+  identityPath: string;
 }
 
 export async function enrollRelayDevice(
   options: EnrollOptions,
-): Promise<{ deviceId: string; credentialsPath: string }> {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
-  const privateKeyPem = privateKey
-    .export({ type: "pkcs8", format: "pem" })
-    .toString();
+): Promise<{ deviceId: string; identityPath: string }> {
+  const identity = resolveAgentIdentity({
+    identityPath: options.identityPath,
+  });
   const response = await fetch(new URL("/auth/devices", authBaseUrl(options.relayUrl)), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       enrollment_token: options.token,
       device_name: options.deviceName,
-      public_key: publicKeyPem,
+      device_id: identity.id,
+      public_key: identity.publicKey,
     }),
   });
   const body = (await response.json().catch(() => ({}))) as {
@@ -39,14 +37,10 @@ export async function enrollRelayDevice(
     throw new Error(body.error ?? `device enrollment failed: ${response.status}`);
   }
 
-  writeRelayDeviceCredentials(options.credentialsPath, {
-    version: 1,
-    relayUrl: options.relayUrl,
-    deviceId: body.device_id,
-    privateKeyPem,
-    createdAt: new Date().toISOString(),
-  });
-  return { deviceId: body.device_id, credentialsPath: options.credentialsPath };
+  if (body.device_id !== identity.id) {
+    throw new Error("Relay returned an identity that does not match this Agent.");
+  }
+  return { deviceId: identity.id, identityPath: options.identityPath };
 }
 
 export async function runEnrollRelayDeviceCli(
@@ -56,7 +50,7 @@ export async function runEnrollRelayDeviceCli(
   const result = await enrollRelayDevice(options);
   console.log("[omniwork-agent] device enrolled");
   console.log(`device_id=${result.deviceId}`);
-  console.log(`credentials=${result.credentialsPath}`);
+  console.log(`identity=${result.identityPath}`);
 }
 
 function parseArgs(argv: string[]): EnrollOptions {
@@ -88,10 +82,10 @@ function parseArgs(argv: string[]): EnrollOptions {
     relayUrl,
     token,
     deviceName: args.get("device-name") ?? hostname(),
-    credentialsPath:
-      args.get("credentials-path") ??
-      process.env.OMNIWORK_AGENT_RELAY_DEVICE_CREDENTIALS_PATH ??
-      defaultRelayDeviceCredentialsPath(appSupportDir),
+    identityPath:
+      args.get("identity-path") ??
+      process.env.OMNIWORK_AGENT_IDENTITY_PATH ??
+      defaultIdentityPath(appSupportDir),
   };
 }
 

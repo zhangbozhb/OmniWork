@@ -13,7 +13,7 @@ test("ensureCodexHooksInstalled creates user hooks file with OmniWork hooks", as
   const result = await ensureCodexHooksInstalled({
     hooksPath,
     receiverUrl: "http://127.0.0.1:17669/api/probes/hooks",
-    sessionKeyPath: "/tmp/session-key.json",
+    probeTokenPath: "/tmp/probe-token.json",
   });
   const parsed = JSON.parse(await readFile(hooksPath, "utf8"));
 
@@ -50,7 +50,7 @@ test("ensureCodexHooksInstalled creates user hooks file with OmniWork hooks", as
   );
   assert.match(
     parsed.hooks.Stop[0].hooks[0].command,
-    /OMNIWORK_SESSION_KEY_PATH='\/tmp\/session-key\.json'/u,
+    /OMNIWORK_AGENT_PROBE_TOKEN_PATH='\/tmp\/probe-token\.json'/u,
   );
   assert.match(
     parsed.hooks.Stop[0].hooks[0].command,
@@ -144,7 +144,7 @@ test("ensureCodexHooksInstalled removes stale OmniWork hook commands", async () 
   const result = await ensureCodexHooksInstalled({
     hooksPath,
     receiverUrl: "http://127.0.0.1:17669/api/probes/hooks",
-    sessionKeyPath: "/tmp/current-session-key.json",
+    probeTokenPath: "/tmp/current-probe-token.json",
   });
   const parsed = JSON.parse(await readFile(hooksPath, "utf8"));
 
@@ -163,7 +163,7 @@ test("ensureCodexHooksInstalled removes stale OmniWork hook commands", async () 
   );
   assert.match(
     parsed.hooks.PermissionRequest[0].hooks[0].command,
-    /OMNIWORK_SESSION_KEY_PATH='\/tmp\/current-session-key\.json'/u,
+    /OMNIWORK_AGENT_PROBE_TOKEN_PATH='\/tmp\/current-probe-token\.json'/u,
   );
   assert.match(
     parsed.hooks.PermissionRequest[0].hooks[0].command,

@@ -33,7 +33,12 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 
       <h2>Web App 是否支持二维码扫描？</h2>
       <p>
-        Web App 不使用摄像头扫描。你需要手动输入 Relay URL、device ID 和临时 key，或使用配对链接导入。
+        Web App 不使用摄像头扫描。你可以手动输入 Relay URL、Agent device ID 和可选名称，或使用配对链接导入。App 身份、公钥和设备信息由客户端自动提供。
+      </p>
+
+      <h2>为什么新 Agent 启动后没有立即连接？</h2>
+      <p>
+        Relay 默认采用人工 Agent 授权。新 Agent 完成签名身份验证后会进入 Relay Admin 待审批列表；批准后 Agent 会通过后台重试自动连接。运维也可启用自动模式，但 device ID 与来源 IP 封禁规则仍会优先拒绝连接。
       </p>
 
       <h2>为什么这里没有 Admin、metrics 或 debug 说明？</h2>

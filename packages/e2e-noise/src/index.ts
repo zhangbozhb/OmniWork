@@ -1,99 +1,78 @@
 import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { x25519 } from "@noble/curves/ed25519.js";
-import { blake2s as nobleBlake2s } from "@noble/hashes/blake2.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { randomBytes } from "@noble/hashes/utils.js";
 import {
   E2E_PROTOCOL_VERSION,
   INNER_PROTOCOL_VERSION,
-  NOISE_SUITE_NNPSK0_V1,
   PROTOCOL_VERSION,
+  SIGNATURE_DOMAINS,
+  SIGNED_X25519_SUITE_V2,
+  e2eInitSignatureFields,
+  e2eReplySignatureFields,
+  fromBase64Url,
+  identityMatchesPublicKey,
+  signIdentityFields,
+  toBase64Url,
+  verifyIdentityFields,
+  type E2EHandshakeInitPayload,
+  type E2EHandshakeReplyPayload,
   type E2EMessagePayload,
   type InnerEnvelope,
 } from "@omni-work/protocol-ts";
 
-const HASHLEN = 32;
-const DH_LEN = 32;
 const AEAD_TAG_LEN = 16;
-const PROTOCOL_NAME = "Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s";
-const PSK_SALT = "omniwork:pairing-key:v1";
-const PSK_INFO_PREFIX = "omniwork:e2e-noise-psk:v1";
-const MESSAGE_AAD_PREFIX = "omniwork:e2e-message:v1";
+const MESSAGE_AAD_PREFIX = "omniwork:e2e-message:v2";
+const SESSION_KDF_INFO = "omniwork:e2e-session-keys:v2";
 
-export type NoiseRole = "initiator" | "responder";
+export type E2ERole = "initiator" | "responder";
 
-export type E2ENoiseErrorCode =
+export type E2EErrorCode =
   | "invalid_handshake_message"
+  | "identity_mismatch"
+  | "invalid_signature"
   | "handshake_failed"
   | "decrypt_failed"
   | "replay_detected"
   | "unsupported_suite";
 
-export class E2ENoiseError extends Error {
-  readonly code: E2ENoiseErrorCode;
+export class E2EError extends Error {
+  readonly code: E2EErrorCode;
 
-  constructor(code: E2ENoiseErrorCode, message: string) {
+  constructor(code: E2EErrorCode, message: string) {
     super(message);
     this.code = code;
-    this.name = "E2ENoiseError";
+    this.name = "E2EError";
   }
 }
 
-export interface NoiseContext {
-  pairingKey: string;
+export interface SignedHandshakeContext {
   deviceId: string;
+  agentPublicKey: string;
+  appId: string;
+  appPublicKey: string;
   agentConnectionId: string;
   appConnectionId: string;
   handshakeId?: string;
 }
 
-export interface HandshakeInit {
-  v: typeof PROTOCOL_VERSION;
-  e2e_version: typeof E2E_PROTOCOL_VERSION;
-  agent_connection_id: string;
-  app_connection_id: string;
-  handshake_id: string;
-  suite: typeof NOISE_SUITE_NNPSK0_V1;
-  app_protocol: {
-    outer_v: typeof PROTOCOL_VERSION;
-    inner_v: typeof INNER_PROTOCOL_VERSION;
-    e2e_v: typeof E2E_PROTOCOL_VERSION;
-  };
-  message: string;
+export interface InitiatorHandshakeOptions extends SignedHandshakeContext {
+  signApp(fields: readonly string[]): string | Promise<string>;
 }
 
-export interface HandshakeReply {
-  v: typeof PROTOCOL_VERSION;
-  e2e_version: typeof E2E_PROTOCOL_VERSION;
-  agent_connection_id: string;
-  app_connection_id: string;
-  handshake_id: string;
-  suite: typeof NOISE_SUITE_NNPSK0_V1;
-  agent_protocol: {
-    outer_v: typeof PROTOCOL_VERSION;
-    inner_v: typeof INNER_PROTOCOL_VERSION;
-    e2e_v: typeof E2E_PROTOCOL_VERSION;
-  };
-  message: string;
-}
-
-export interface ReadyPayload {
-  v: typeof PROTOCOL_VERSION;
-  e2e_version: typeof E2E_PROTOCOL_VERSION;
-  app_connection_id: string;
-  handshake_id: string;
-  transcript_hash: string;
+export interface ResponderHandshakeOptions extends SignedHandshakeContext {
+  agentPrivateKey: string;
 }
 
 export interface InitiatorHandshakeState {
-  init: HandshakeInit;
-  complete(reply: HandshakeReply): E2ENoiseSession;
+  init: E2EHandshakeInitPayload;
+  complete(reply: E2EHandshakeReplyPayload): E2ESession;
 }
 
 export interface ResponderHandshakeResult {
-  reply: HandshakeReply;
-  session: E2ENoiseSession;
+  reply: E2EHandshakeReplyPayload;
+  session: E2ESession;
 }
 
 export interface EncryptedFrame {
@@ -101,67 +80,55 @@ export interface EncryptedFrame {
   plaintextBytes: number;
 }
 
-interface SymmetricState {
-  chainingKey: Uint8Array;
-  hash: Uint8Array;
-}
-
 interface X25519KeyPair {
   privateKey: Uint8Array;
-  publicRaw: Uint8Array;
+  publicKey: Uint8Array;
 }
 
-export function createInitiatorHandshake(
-  context: NoiseContext,
-): InitiatorHandshakeState {
-  const handshakeId = context.handshakeId ?? createId("e2e_hs");
-  const state = initializeSymmetric(context);
+export async function createInitiatorHandshake(
+  options: InitiatorHandshakeOptions,
+): Promise<InitiatorHandshakeState> {
+  validateContext(options);
+  const handshakeId = options.handshakeId ?? createId("e2e_hs");
   const localEphemeral = generateX25519KeyPair();
-  mixHash(state, localEphemeral.publicRaw);
-
-  const init: HandshakeInit = {
+  const unsignedInit: Omit<E2EHandshakeInitPayload, "signature"> = {
     v: PROTOCOL_VERSION,
     e2e_version: E2E_PROTOCOL_VERSION,
-      agent_connection_id: context.agentConnectionId,
-    app_connection_id: context.appConnectionId,
+    agent_connection_id: options.agentConnectionId,
+    app_connection_id: options.appConnectionId,
     handshake_id: handshakeId,
-    suite: NOISE_SUITE_NNPSK0_V1,
+    suite: SIGNED_X25519_SUITE_V2,
+    device_id: options.deviceId,
+    app_id: options.appId,
+    app_public_key: options.appPublicKey,
+    app_ephemeral_key: toBase64Url(localEphemeral.publicKey),
     app_protocol: {
       outer_v: PROTOCOL_VERSION,
       inner_v: INNER_PROTOCOL_VERSION,
       e2e_v: E2E_PROTOCOL_VERSION,
     },
-    message: toBase64Url(localEphemeral.publicRaw),
+  };
+  const init: E2EHandshakeInitPayload = {
+    ...unsignedInit,
+    signature: await options.signApp(e2eInitSignatureFields(unsignedInit)),
   };
 
   return {
     init,
-    complete(reply: HandshakeReply): E2ENoiseSession {
-      assertSuite(reply.suite);
-      if (
-        reply.handshake_id !== handshakeId ||
-          reply.agent_connection_id !== context.agentConnectionId ||
-        reply.app_connection_id !== context.appConnectionId ||
-        reply.e2e_version !== E2E_PROTOCOL_VERSION
-      ) {
-        throw new E2ENoiseError(
-          "handshake_failed",
-          "Handshake reply does not match the initiator context.",
-        );
-      }
-
-      const remotePublic = fromBase64Url(reply.message);
-      assertDhMessage(remotePublic);
-      mixHash(state, remotePublic);
-      mixKey(state, dh(localEphemeral.privateKey, remotePublic));
-      const [initiatorKey, responderKey] = split(state);
-
-      return new E2ENoiseSession({
+    complete(reply: E2EHandshakeReplyPayload): E2ESession {
+      validateReply(options, init, reply);
+      const remoteEphemeral = decodeDhKey(reply.agent_ephemeral_key);
+      const transcriptHash = createTranscriptHash(init, reply);
+      const [initiatorKey, responderKey] = deriveSessionKeys(
+        x25519.getSharedSecret(localEphemeral.privateKey, remoteEphemeral),
+        transcriptHash,
+      );
+      return new E2ESession({
         role: "initiator",
         handshakeId,
-        sessionId: deriveSessionId(state.hash),
-        appConnectionId: context.appConnectionId,
-        transcriptHash: toBase64Url(state.hash),
+        sessionId: deriveSessionId(transcriptHash),
+        appConnectionId: options.appConnectionId,
+        transcriptHash: toBase64Url(transcriptHash),
         txKey: initiatorKey,
         rxKey: responderKey,
       });
@@ -170,85 +137,74 @@ export function createInitiatorHandshake(
 }
 
 export function acceptInitiatorHandshake(
-  context: NoiseContext,
-  init: HandshakeInit,
+  options: ResponderHandshakeOptions,
+  init: E2EHandshakeInitPayload,
 ): ResponderHandshakeResult {
-  assertSuite(init.suite);
-  if (
-    init.app_connection_id !== context.appConnectionId ||
-      init.agent_connection_id !== context.agentConnectionId ||
-    init.e2e_version !== E2E_PROTOCOL_VERSION
-  ) {
-    throw new E2ENoiseError(
-      "handshake_failed",
-      "Handshake init does not match the responder context.",
-    );
-  }
-
-  const remotePublic = fromBase64Url(init.message);
-  assertDhMessage(remotePublic);
-
-  const state = initializeSymmetric({
-    ...context,
-    handshakeId: init.handshake_id,
-  });
-  mixHash(state, remotePublic);
-
+  validateContext(options);
+  validateInit(options, init);
+  const remoteEphemeral = decodeDhKey(init.app_ephemeral_key);
   const localEphemeral = generateX25519KeyPair();
-  mixHash(state, localEphemeral.publicRaw);
-  mixKey(state, dh(localEphemeral.privateKey, remotePublic));
-  const [initiatorKey, responderKey] = split(state);
-
-  const reply: HandshakeReply = {
+  const unsignedReply: Omit<E2EHandshakeReplyPayload, "signature"> = {
     v: PROTOCOL_VERSION,
     e2e_version: E2E_PROTOCOL_VERSION,
-      agent_connection_id: context.agentConnectionId,
-    app_connection_id: context.appConnectionId,
+    agent_connection_id: options.agentConnectionId,
+    app_connection_id: options.appConnectionId,
     handshake_id: init.handshake_id,
-    suite: NOISE_SUITE_NNPSK0_V1,
+    suite: SIGNED_X25519_SUITE_V2,
+    device_id: options.deviceId,
+    agent_public_key: options.agentPublicKey,
+    app_id: options.appId,
+    agent_ephemeral_key: toBase64Url(localEphemeral.publicKey),
     agent_protocol: {
       outer_v: PROTOCOL_VERSION,
       inner_v: INNER_PROTOCOL_VERSION,
       e2e_v: E2E_PROTOCOL_VERSION,
     },
-    message: toBase64Url(localEphemeral.publicRaw),
   };
+  const reply: E2EHandshakeReplyPayload = {
+    ...unsignedReply,
+    signature: signIdentityFields(
+      options.agentPrivateKey,
+      SIGNATURE_DOMAINS.e2eReply,
+      e2eReplySignatureFields({
+        reply: unsignedReply,
+        appEphemeralKey: init.app_ephemeral_key,
+      }),
+    ),
+  };
+  const transcriptHash = createTranscriptHash(init, reply);
+  const [initiatorKey, responderKey] = deriveSessionKeys(
+    x25519.getSharedSecret(localEphemeral.privateKey, remoteEphemeral),
+    transcriptHash,
+  );
 
   return {
     reply,
-    session: new E2ENoiseSession({
+    session: new E2ESession({
       role: "responder",
       handshakeId: init.handshake_id,
-      sessionId: deriveSessionId(state.hash),
-      appConnectionId: context.appConnectionId,
-      transcriptHash: toBase64Url(state.hash),
+      sessionId: deriveSessionId(transcriptHash),
+      appConnectionId: options.appConnectionId,
+      transcriptHash: toBase64Url(transcriptHash),
       txKey: responderKey,
       rxKey: initiatorKey,
     }),
   };
 }
 
-export class E2ENoiseSession {
-  readonly role: NoiseRole;
+export class E2ESession {
+  readonly role: E2ERole;
   readonly handshakeId: string;
   readonly sessionId: string;
   readonly appConnectionId: string;
   readonly transcriptHash: string;
-  private readonly options: {
-    role: NoiseRole;
-    handshakeId: string;
-    sessionId: string;
-    appConnectionId: string;
-    transcriptHash: string;
-    txKey: Uint8Array;
-    rxKey: Uint8Array;
-  };
-
+  private readonly txKey: Uint8Array;
+  private readonly rxKey: Uint8Array;
   private txSeq = 0;
   private expectedRxSeq = 1;
 
   constructor(options: {
-    role: NoiseRole;
+    role: E2ERole;
     handshakeId: string;
     sessionId: string;
     appConnectionId: string;
@@ -256,15 +212,22 @@ export class E2ENoiseSession {
     txKey: Uint8Array;
     rxKey: Uint8Array;
   }) {
-    this.options = options;
     this.role = options.role;
     this.handshakeId = options.handshakeId;
     this.sessionId = options.sessionId;
     this.appConnectionId = options.appConnectionId;
     this.transcriptHash = options.transcriptHash;
+    this.txKey = options.txKey;
+    this.rxKey = options.rxKey;
   }
 
-  readyPayload(): ReadyPayload {
+  readyPayload(): {
+    v: typeof PROTOCOL_VERSION;
+    e2e_version: typeof E2E_PROTOCOL_VERSION;
+    app_connection_id: string;
+    handshake_id: string;
+    transcript_hash: string;
+  } {
     return {
       v: PROTOCOL_VERSION,
       e2e_version: E2E_PROTOCOL_VERSION,
@@ -276,14 +239,12 @@ export class E2ENoiseSession {
 
   encrypt(inner: InnerEnvelope): EncryptedFrame {
     const seq = ++this.txSeq;
-    const plaintext = encode(JSON.stringify(inner));
-    const cipher = chacha20poly1305(
-      this.options.txKey,
+    const plaintext = utf8(JSON.stringify(inner));
+    const ciphertext = chacha20poly1305(
+      this.txKey,
       nonceFromSeq(seq),
       this.messageAad(seq, "tx"),
-    );
-    const ciphertext = cipher.encrypt(plaintext);
-
+    ).encrypt(plaintext);
     return {
       plaintextBytes: plaintext.byteLength,
       payload: {
@@ -298,45 +259,39 @@ export class E2ENoiseSession {
   }
 
   decrypt(payload: E2EMessagePayload): InnerEnvelope {
-    if (payload.e2e_session_id !== this.sessionId) {
-      throw new E2ENoiseError(
+    if (
+      payload.e2e_session_id !== this.sessionId ||
+      payload.app_connection_id !== this.appConnectionId
+    ) {
+      throw new E2EError(
         "decrypt_failed",
-        "E2E session id does not match this Noise session.",
-      );
-    }
-    if (payload.app_connection_id !== this.appConnectionId) {
-      throw new E2ENoiseError(
-        "decrypt_failed",
-        "App connection id does not match this Noise session.",
+        "Encrypted frame does not belong to this session.",
       );
     }
     if (payload.seq !== this.expectedRxSeq) {
-      throw new E2ENoiseError(
+      throw new E2EError(
         "replay_detected",
         `Unexpected E2E sequence ${payload.seq}; expected ${this.expectedRxSeq}.`,
       );
     }
-
-    const frame = fromBase64Url(payload.ciphertext);
-    if (frame.byteLength < AEAD_TAG_LEN) {
-      throw new E2ENoiseError(
-        "decrypt_failed",
-        "Ciphertext frame is too short.",
-      );
-    }
-
     try {
-      const decipher = chacha20poly1305(
-        this.options.rxKey,
+      const frame = fromBase64Url(payload.ciphertext);
+      if (frame.byteLength < AEAD_TAG_LEN) {
+        throw new E2EError("decrypt_failed", "Ciphertext frame is too short.");
+      }
+      const plaintext = chacha20poly1305(
+        this.rxKey,
         nonceFromSeq(payload.seq),
         this.messageAad(payload.seq, "rx"),
-      );
-      const plaintext = decipher.decrypt(frame);
+      ).decrypt(frame);
       const decoded = JSON.parse(decodeUtf8(plaintext)) as InnerEnvelope;
       this.expectedRxSeq += 1;
       return decoded;
     } catch (error) {
-      throw new E2ENoiseError(
+      if (error instanceof E2EError) {
+        throw error;
+      }
+      throw new E2EError(
         "decrypt_failed",
         error instanceof Error ? error.message : "Unable to decrypt E2E frame.",
       );
@@ -352,7 +307,7 @@ export class E2ENoiseSession {
         : direction === "tx"
           ? "agent_to_app"
           : "app_to_agent";
-    return encode(
+    return utf8(
       [
         MESSAGE_AAD_PREFIX,
         this.sessionId,
@@ -364,130 +319,173 @@ export class E2ENoiseSession {
   }
 }
 
-export function deriveNoisePsk(context: {
-  pairingKey: string;
-  deviceId: string;
-  agentConnectionId: string;
-  appConnectionId: string;
-}): Uint8Array {
-  return hkdf(
-    sha256,
-    encode(context.pairingKey),
-    encode(PSK_SALT),
-    encode(
-      `${PSK_INFO_PREFIX}|${context.deviceId}|${context.agentConnectionId}|${context.appConnectionId}`,
-    ),
-    32,
-  );
-}
-
-function initializeSymmetric(context: NoiseContext): SymmetricState {
-  const protocolName = encode(PROTOCOL_NAME);
-  const initial =
-    protocolName.byteLength <= HASHLEN
-      ? concat(protocolName, new Uint8Array(HASHLEN - protocolName.byteLength))
-      : blake2s(protocolName);
-  const state: SymmetricState = {
-    chainingKey: initial,
-    hash: initial,
-  };
-  mixHash(state, encode(prologue(context)));
-  mixKeyAndHash(state, deriveNoisePsk(context));
-  return state;
-}
-
-function prologue(context: NoiseContext): string {
-  return [
-    "OmniWork E2E",
-    `outer=${PROTOCOL_VERSION}`,
-    `inner=${INNER_PROTOCOL_VERSION}`,
-    `e2e=${E2E_PROTOCOL_VERSION}`,
-    `device=${context.deviceId}`,
-      `agent_connection=${context.agentConnectionId}`,
-    `app=${context.appConnectionId}`,
-    `suite=${NOISE_SUITE_NNPSK0_V1}`,
-  ].join("|");
-}
-
-function mixHash(state: SymmetricState, data: Uint8Array): void {
-  state.hash = blake2s(concat(state.hash, data));
-}
-
-function mixKey(state: SymmetricState, inputKeyMaterial: Uint8Array): void {
-  const [chainingKey] = noiseHkdf(state.chainingKey, inputKeyMaterial, 2);
-  state.chainingKey = chainingKey;
-}
-
-function mixKeyAndHash(
-  state: SymmetricState,
-  inputKeyMaterial: Uint8Array,
-): void {
-  const [chainingKey, tempHash] = noiseHkdf(
-    state.chainingKey,
-    inputKeyMaterial,
-    3,
-  );
-  state.chainingKey = chainingKey;
-  mixHash(state, tempHash);
-}
-
-function split(state: SymmetricState): [Uint8Array, Uint8Array] {
-  const [k1, k2] = noiseHkdf(state.chainingKey, new Uint8Array(), 2);
-  return [k1, k2];
-}
-
-function noiseHkdf(
-  chainingKey: Uint8Array,
-  inputKeyMaterial: Uint8Array,
-  outputs: 2 | 3,
-): Uint8Array[] {
-  const expanded = hkdf(
-    nobleBlake2s,
-    inputKeyMaterial,
-    chainingKey,
-    new Uint8Array(),
-    HASHLEN * outputs,
-  );
-  const result: Uint8Array[] = [];
-  for (let index = 0; index < outputs; index += 1) {
-    result.push(expanded.subarray(index * HASHLEN, (index + 1) * HASHLEN));
-  }
-  return result;
-}
-
-function generateX25519KeyPair(): X25519KeyPair {
-  const privateKey = x25519.utils.randomSecretKey();
-  return {
-    privateKey,
-    publicRaw: x25519.getPublicKey(privateKey),
-  };
-}
-
-function dh(privateKey: Uint8Array, remotePublicRaw: Uint8Array): Uint8Array {
-  return x25519.getSharedSecret(privateKey, remotePublicRaw);
-}
-
-function assertDhMessage(message: Uint8Array): void {
-  if (message.byteLength !== DH_LEN) {
-    throw new E2ENoiseError(
-      "invalid_handshake_message",
-      `Expected ${DH_LEN} bytes X25519 public key, got ${message.byteLength}.`,
+function validateContext(context: SignedHandshakeContext): void {
+  if (
+    !identityMatchesPublicKey(
+      "agent",
+      context.deviceId,
+      context.agentPublicKey,
+    ) ||
+    !identityMatchesPublicKey("app", context.appId, context.appPublicKey)
+  ) {
+    throw new E2EError(
+      "identity_mismatch",
+      "Handshake identity does not match its public key.",
     );
   }
 }
 
+function validateInit(
+  context: SignedHandshakeContext,
+  init: E2EHandshakeInitPayload,
+): void {
+  assertSuite(init.suite);
+  if (
+    init.v !== PROTOCOL_VERSION ||
+    init.e2e_version !== E2E_PROTOCOL_VERSION ||
+    init.device_id !== context.deviceId ||
+    init.app_id !== context.appId ||
+    init.app_public_key !== context.appPublicKey ||
+    init.agent_connection_id !== context.agentConnectionId ||
+    init.app_connection_id !== context.appConnectionId
+  ) {
+    throw new E2EError(
+      "handshake_failed",
+      "Handshake init does not match the responder context.",
+    );
+  }
+  const { signature, ...unsignedInit } = init;
+  if (
+    !verifyIdentityFields(
+      init.app_public_key,
+      SIGNATURE_DOMAINS.e2eInit,
+      e2eInitSignatureFields(unsignedInit),
+      signature,
+    )
+  ) {
+    throw new E2EError(
+      "invalid_signature",
+      "App handshake signature is invalid.",
+    );
+  }
+}
+
+function validateReply(
+  context: SignedHandshakeContext,
+  init: E2EHandshakeInitPayload,
+  reply: E2EHandshakeReplyPayload,
+): void {
+  assertSuite(reply.suite);
+  if (
+    reply.v !== PROTOCOL_VERSION ||
+    reply.e2e_version !== E2E_PROTOCOL_VERSION ||
+    reply.device_id !== context.deviceId ||
+    reply.agent_public_key !== context.agentPublicKey ||
+    reply.app_id !== context.appId ||
+    reply.agent_connection_id !== context.agentConnectionId ||
+    reply.app_connection_id !== context.appConnectionId ||
+    reply.handshake_id !== init.handshake_id
+  ) {
+    throw new E2EError(
+      "handshake_failed",
+      "Handshake reply does not match the initiator context.",
+    );
+  }
+  const { signature, ...unsignedReply } = reply;
+  if (
+    !verifyIdentityFields(
+      reply.agent_public_key,
+      SIGNATURE_DOMAINS.e2eReply,
+      e2eReplySignatureFields({
+        reply: unsignedReply,
+        appEphemeralKey: init.app_ephemeral_key,
+      }),
+      signature,
+    )
+  ) {
+    throw new E2EError(
+      "invalid_signature",
+      "Agent handshake signature is invalid.",
+    );
+  }
+}
+
+function createTranscriptHash(
+  init: E2EHandshakeInitPayload,
+  reply: E2EHandshakeReplyPayload,
+): Uint8Array {
+  return sha256(
+    utf8(
+      JSON.stringify([
+        "omniwork:e2e-transcript:v2",
+        ...e2eInitSignatureFields(stripInitSignature(init)),
+        init.signature,
+        ...e2eReplySignatureFields({
+          reply: stripReplySignature(reply),
+          appEphemeralKey: init.app_ephemeral_key,
+        }),
+        reply.signature,
+      ]),
+    ),
+  );
+}
+
+function stripInitSignature(
+  init: E2EHandshakeInitPayload,
+): Omit<E2EHandshakeInitPayload, "signature"> {
+  const { signature: _signature, ...unsigned } = init;
+  return unsigned;
+}
+
+function stripReplySignature(
+  reply: E2EHandshakeReplyPayload,
+): Omit<E2EHandshakeReplyPayload, "signature"> {
+  const { signature: _signature, ...unsigned } = reply;
+  return unsigned;
+}
+
+function deriveSessionKeys(
+  sharedSecret: Uint8Array,
+  transcriptHash: Uint8Array,
+): [Uint8Array, Uint8Array] {
+  const keyMaterial = hkdf(
+    sha256,
+    sharedSecret,
+    transcriptHash,
+    utf8(SESSION_KDF_INFO),
+    64,
+  );
+  return [keyMaterial.subarray(0, 32), keyMaterial.subarray(32, 64)];
+}
+
+function generateX25519KeyPair(): X25519KeyPair {
+  const { secretKey, publicKey } = x25519.keygen();
+  return { privateKey: secretKey, publicKey };
+}
+
+function decodeDhKey(value: string): Uint8Array {
+  const key = fromBase64Url(value);
+  if (key.byteLength !== 32) {
+    throw new E2EError(
+      "invalid_handshake_message",
+      `Expected 32-byte X25519 public key, got ${key.byteLength}.`,
+    );
+  }
+  return key;
+}
+
 function assertSuite(suite: string): void {
-  if (suite !== NOISE_SUITE_NNPSK0_V1) {
-    throw new E2ENoiseError(
+  if (suite !== SIGNED_X25519_SUITE_V2) {
+    throw new E2EError(
       "unsupported_suite",
-      `Unsupported Noise suite: ${suite}.`,
+      `Unsupported E2E suite: ${suite}.`,
     );
   }
 }
 
 function nonceFromSeq(seq: number): Uint8Array {
   if (!Number.isSafeInteger(seq) || seq < 0) {
-    throw new E2ENoiseError("decrypt_failed", `Invalid sequence: ${seq}.`);
+    throw new E2EError("decrypt_failed", `Invalid sequence: ${seq}.`);
   }
   const nonce = new Uint8Array(12);
   const view = new DataView(nonce.buffer);
@@ -497,156 +495,33 @@ function nonceFromSeq(seq: number): Uint8Array {
 }
 
 function deriveSessionId(transcriptHash: Uint8Array): string {
-  return `e2e_${toBase64Url(blake2s(concat(encode("session"), transcriptHash)).subarray(0, 18))}`;
+  return `e2e_${toBase64Url(
+    sha256(concat(utf8("omniwork:e2e-session-id:v2"), transcriptHash)).subarray(
+      0,
+      18,
+    ),
+  )}`;
 }
 
 function createId(prefix: string): string {
   return `${prefix}_${toBase64Url(randomBytes(18))}`;
 }
 
-function blake2s(data: Uint8Array): Uint8Array {
-  return nobleBlake2s(data);
-}
-
-function encode(value: string): Uint8Array {
-  const bytes: number[] = [];
-  for (let index = 0; index < value.length; index += 1) {
-    let codePoint = value.charCodeAt(index);
-    if (
-      codePoint >= 0xd800 &&
-      codePoint <= 0xdbff &&
-      index + 1 < value.length
-    ) {
-      const next = value.charCodeAt(index + 1);
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        codePoint = 0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
-        index += 1;
-      }
-    }
-
-    if (codePoint < 0x80) {
-      bytes.push(codePoint);
-    } else if (codePoint < 0x800) {
-      bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
-    } else if (codePoint < 0x10000) {
-      bytes.push(
-        0xe0 | (codePoint >> 12),
-        0x80 | ((codePoint >> 6) & 0x3f),
-        0x80 | (codePoint & 0x3f),
-      );
-    } else {
-      bytes.push(
-        0xf0 | (codePoint >> 18),
-        0x80 | ((codePoint >> 12) & 0x3f),
-        0x80 | ((codePoint >> 6) & 0x3f),
-        0x80 | (codePoint & 0x3f),
-      );
-    }
-  }
-  return new Uint8Array(bytes);
+function utf8(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
 }
 
 function decodeUtf8(value: Uint8Array): string {
-  let result = "";
-  for (let index = 0; index < value.length; ) {
-    const first = value[index];
-    if ((first & 0x80) === 0) {
-      result += String.fromCharCode(first);
-      index += 1;
-      continue;
-    }
-    if ((first & 0xe0) === 0xc0) {
-      const second = value[index + 1];
-      if (second === undefined || (second & 0xc0) !== 0x80) {
-        throw new E2ENoiseError(
-          "decrypt_failed",
-          "Invalid UTF-8 continuation byte.",
-        );
-      }
-      const codePoint = ((first & 0x1f) << 6) | (second & 0x3f);
-      result += String.fromCharCode(codePoint);
-      index += 2;
-      continue;
-    }
-    if ((first & 0xf0) === 0xe0) {
-      const second = value[index + 1];
-      const third = value[index + 2];
-      if (
-        second === undefined ||
-        third === undefined ||
-        (second & 0xc0) !== 0x80 ||
-        (third & 0xc0) !== 0x80
-      ) {
-        throw new E2ENoiseError(
-          "decrypt_failed",
-          "Invalid UTF-8 continuation byte.",
-        );
-      }
-      const codePoint =
-        ((first & 0x0f) << 12) | ((second & 0x3f) << 6) | (third & 0x3f);
-      result += String.fromCharCode(codePoint);
-      index += 3;
-      continue;
-    }
-    if ((first & 0xf8) === 0xf0) {
-      const second = value[index + 1];
-      const third = value[index + 2];
-      const fourth = value[index + 3];
-      if (
-        second === undefined ||
-        third === undefined ||
-        fourth === undefined ||
-        (second & 0xc0) !== 0x80 ||
-        (third & 0xc0) !== 0x80 ||
-        (fourth & 0xc0) !== 0x80
-      ) {
-        throw new E2ENoiseError(
-          "decrypt_failed",
-          "Invalid UTF-8 continuation byte.",
-        );
-      }
-      const codePoint =
-        ((first & 0x07) << 18) |
-        ((second & 0x3f) << 12) |
-        ((third & 0x3f) << 6) |
-        (fourth & 0x3f);
-      const adjusted = codePoint - 0x10000;
-      result += String.fromCharCode(
-        0xd800 | (adjusted >> 10),
-        0xdc00 | (adjusted & 0x3ff),
-      );
-      index += 4;
-      continue;
-    }
-    throw new E2ENoiseError(
-      "decrypt_failed",
-      "Unsupported UTF-8 leading byte.",
-    );
-  }
-  return result;
+  return new TextDecoder().decode(value);
 }
 
-function concat(...chunks: Uint8Array[]): Uint8Array {
-  const size = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-  const result = new Uint8Array(size);
+function concat(...values: Uint8Array[]): Uint8Array {
+  const length = values.reduce((total, value) => total + value.byteLength, 0);
+  const result = new Uint8Array(length);
   let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.byteLength;
+  for (const value of values) {
+    result.set(value, offset);
+    offset += value.byteLength;
   }
   return result;
-}
-
-function toBase64Url(value: Uint8Array): string {
-  return Buffer.from(value)
-    .toString("base64")
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replace(/=+$/u, "");
-}
-
-function fromBase64Url(value: string): Uint8Array {
-  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
-  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
-  return Buffer.from(base64 + padding, "base64");
 }

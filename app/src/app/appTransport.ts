@@ -91,6 +91,11 @@ export function createAppSessionTransport(
     },
   });
 
+  session.onClose(() => {
+    transport.close("relay closed");
+    coordinator.prepareForReconnect("relay_closed", false);
+  });
+
   transport.onEvent((event) => {
     switch (event.type) {
       case "path_change":
@@ -171,6 +176,7 @@ export function createAppSessionTransport(
         coordinator.downgrade("client_closing");
       }
       transport.close("client closing");
+      coordinator.prepareForReconnect("client_closing", false);
       session.close();
     },
     getCurrentPath: () => transport.getCurrentPath(),
